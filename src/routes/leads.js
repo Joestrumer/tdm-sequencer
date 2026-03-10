@@ -1,0 +1,167 @@
+/**
+ * leads.js — Routes CRUD pour la gestion des leads
+ */
+
+const express = require('express');
+const router = express.Router();
+const { v4: uuidv4 } = require('uuid');
+const logger = require('../config/logger');
+const hubspot = require('../services/hubspotService');
+
+module.exports = (db) => {
+
+  // GET /api/leads — Liste tous les leads avec stats
+  router.get('/', (req, res) => {
+    try {
+      const { statut, segment, search } = req.query;
+      let query = `
+        SELECT l.*,
+          (SELECT COUNT(*) FROM emails e WHERE e.lead_id = l.id) as emails_envoyes,
+          (SELECT SUM(e.ouvertures) FROM emails e WHERE e.lead_id = l.id) as total_ouvertures,
+          (SELECT s.nom FROM inscriptions i JOIN sequences s ON i.sequence_id = s.id WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as sequence_active,
+          (SELECT i.etape_courante FROM inscriptions i WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as etape_courante
+        FROM leads l WHERE 1=1
+      `;
+      const params = [];
+
+      if (statut) { query += ' AND l.statut = ?'; params.push(statut); }
+      if (segment) { query += ' AND l.segment = ?'; params.push(segment); }
+      if (search) { query += ' AND (l.prenom LIKE ? OR l.nom LIKE ? OR l.hotel LIKE ? OR l.email LIKE ?)'; const s = `%${search}%`; params.push(s, s, s, s); }
+
+      query += ' ORDER BY l.created_at DESC';
+      const leads = db.prepare(query).all(...params);
+
+      res.json({ leads, total: leads.length });
+    } catch (err) {
+      logger.error('GET /leads erreur', { error: err.message });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // GET /api/leads/:id — Détail d'un lead avec historique
+  router.get('/:id', (req, res) => {
+    try {
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+      if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
+
+      const emails = db.prepare(`
+        SELECT e.*, et.ordre, et.sujet as sujet_etape, s.nom as sequence_nom
+        FROM emails e
+        JOIN etapes et ON e.etape_id = et.id
+        JOIN inscriptions i ON e.inscription_id = i.id
+        JOIN sequences s ON i.sequence_id = s.id
+        WHERE e.lead_id = ? ORDER BY e.envoye_at DESC
+      `).all(req.params.id);
+
+      const events = db.prepare(`
+        SELECT * FROM events WHERE lead_id = ? ORDER BY created_at DESC LIMIT 20
+      `).all(req.params.id);
+
+      res.json({ ...lead, emails, events, tags: JSON.parse(lead.tags || '[]') });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // POST /api/leads — Créer un lead
+  router.post('/', async (req, res) => {
+    try {
+      const { prenom, nom, email, hotel, ville, segment, tags } = req.body;
+      if (!email || !hotel || !prenom) return res.status(400).json({ erreur: 'prenom, email et hotel sont requis' });
+
+      const id = uuidv4();
+      db.prepare(`
+        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', JSON.stringify(tags || []));
+
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
+
+      // Synchroniser dans HubSpot en arrière-plan
+      if (process.env.HUBSPOT_API_KEY) {
+        hubspot.syncContact(db, lead).catch(err => logger.error('HubSpot sync lead', { error: err.message }));
+      }
+
+      logger.info('✅ Lead créé', { email, hotel });
+      res.status(201).json(lead);
+    } catch (err) {
+      if (err.message.includes('UNIQUE')) return res.status(409).json({ erreur: 'Cet email existe déjà' });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // PATCH /api/leads/:id — Mettre à jour un lead
+  router.patch('/:id', (req, res) => {
+    try {
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+      if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
+
+      const { prenom, nom, email, hotel, ville, segment, tags, statut, score } = req.body;
+      db.prepare(`
+        UPDATE leads SET
+          prenom = COALESCE(?, prenom),
+          nom = COALESCE(?, nom),
+          email = COALESCE(?, email),
+          hotel = COALESCE(?, hotel),
+          ville = COALESCE(?, ville),
+          segment = COALESCE(?, segment),
+          tags = COALESCE(?, tags),
+          statut = COALESCE(?, statut),
+          score = COALESCE(?, score),
+          updated_at = datetime('now')
+        WHERE id = ?
+      `).run(prenom, nom, email, hotel, ville, segment, tags ? JSON.stringify(tags) : null, statut, score, req.params.id);
+
+      res.json(db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id));
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // DELETE /api/leads/:id — Supprimer un lead
+  router.delete('/:id', (req, res) => {
+    try {
+      const result = db.prepare('DELETE FROM leads WHERE id = ?').run(req.params.id);
+      if (!result.changes) return res.status(404).json({ erreur: 'Lead introuvable' });
+      res.json({ message: 'Lead supprimé' });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // POST /api/leads/import — Import CSV (array de leads)
+  router.post('/import', async (req, res) => {
+    try {
+      const { leads } = req.body;
+      if (!Array.isArray(leads)) return res.status(400).json({ erreur: 'Fournir un tableau de leads' });
+
+      let crees = 0, ignores = 0, erreurs = [];
+
+      const inserer = db.prepare(`
+        INSERT OR IGNORE INTO leads (id, prenom, nom, email, hotel, ville, segment, tags)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const importerTous = db.transaction((leads) => {
+        for (const l of leads) {
+          if (!l.email || !l.hotel) { ignores++; continue; }
+          try {
+            const result = inserer.run(uuidv4(), l.prenom || '', l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', JSON.stringify(l.tags || []));
+            if (result.changes) crees++;
+            else ignores++;
+          } catch (e) {
+            erreurs.push({ email: l.email, erreur: e.message });
+          }
+        }
+      });
+
+      importerTous(leads);
+      logger.info(`📥 Import CSV : ${crees} créés, ${ignores} ignorés`);
+      res.json({ crees, ignores, erreurs, message: `${crees} leads importés avec succès` });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  return router;
+};

@@ -1,0 +1,205 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>TDM Sequencer — Terre de Mars</title>
+  <meta name="description" content="Sales Email Sequencer — Terre de Mars" />
+
+  <!-- Favicon inline -->
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e293b'/><text x='16' y='22' text-anchor='middle' font-family='Arial' font-weight='bold' font-size='13' fill='white'>TM</text></svg>" />
+
+  <!-- Tailwind CSS via CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+
+  <!-- React 18 via CDN -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+
+  <!-- Babel pour transpiler le JSX dans le navigateur -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet" />
+
+  <style>
+    * { font-family: 'DM Sans', sans-serif; box-sizing: border-box; }
+    .font-mono { font-family: 'DM Mono', monospace !important; }
+    .line-clamp-1 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+    body { margin: 0; background: #f8fafc; }
+
+    /* Écran de chargement */
+    #loading {
+      position: fixed; inset: 0; background: #f8fafc;
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      gap: 16px; z-index: 9999; transition: opacity 0.3s;
+    }
+    #loading .logo {
+      width: 48px; height: 48px; background: #1e293b; border-radius: 12px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 700; font-size: 15px; letter-spacing: 0.05em;
+    }
+    #loading p { color: #94a3b8; font-size: 14px; margin: 0; }
+    #loading .spinner {
+      width: 20px; height: 20px; border: 2px solid #e2e8f0;
+      border-top-color: #1e293b; border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Page de login */
+    #login-screen {
+      position: fixed; inset: 0; background: #f8fafc;
+      display: none; align-items: center; justify-content: center;
+      z-index: 9998;
+    }
+    #login-screen.visible { display: flex; }
+    .login-card {
+      background: white; border-radius: 16px; padding: 40px;
+      width: 360px; box-shadow: 0 4px 24px rgba(0,0,0,0.08);
+      border: 1px solid #f1f5f9;
+    }
+    .login-card h2 { margin: 0 0 4px; font-size: 18px; font-weight: 600; color: #0f172a; }
+    .login-card p { margin: 0 0 28px; font-size: 13px; color: #94a3b8; }
+    .login-card input {
+      width: 100%; padding: 10px 14px; border: 1px solid #e2e8f0;
+      border-radius: 8px; font-size: 14px; outline: none;
+      transition: border-color 0.15s; box-sizing: border-box;
+    }
+    .login-card input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.1); }
+    .login-card button {
+      width: 100%; margin-top: 12px; padding: 10px;
+      background: #0f172a; color: white; border: none;
+      border-radius: 8px; font-size: 14px; font-weight: 500;
+      cursor: pointer; transition: background 0.15s;
+    }
+    .login-card button:hover { background: #1e293b; }
+    .login-card .error { color: #ef4444; font-size: 12px; margin-top: 8px; display: none; }
+    .login-card .logo-wrap { display: flex; align-items: center; gap: 10px; margin-bottom: 24px; }
+    .login-card .logo-icon {
+      width: 36px; height: 36px; background: #0f172a; border-radius: 8px;
+      display: flex; align-items: center; justify-content: center;
+      color: white; font-weight: 700; font-size: 12px;
+    }
+    .login-card .logo-text { font-size: 13px; font-weight: 600; color: #0f172a; }
+    .login-card .logo-sub { font-size: 11px; color: #94a3b8; }
+  </style>
+</head>
+<body>
+
+  <!-- Écran de chargement -->
+  <div id="loading">
+    <div class="logo">TM</div>
+    <div class="spinner"></div>
+    <p>Chargement de TDM Sequencer…</p>
+  </div>
+
+  <!-- Écran de login -->
+  <div id="login-screen">
+    <div class="login-card">
+      <div class="logo-wrap">
+        <div class="logo-icon">TM</div>
+        <div>
+          <div class="logo-text">Terre de Mars</div>
+          <div class="logo-sub">Sales Sequencer</div>
+        </div>
+      </div>
+      <h2>Bienvenue</h2>
+      <p>Entrez votre mot de passe pour accéder à l'outil.</p>
+      <input type="password" id="password-input" placeholder="Mot de passe…" />
+      <div class="error" id="login-error">Mot de passe incorrect</div>
+      <button onclick="tryLogin()">Accéder →</button>
+    </div>
+  </div>
+
+  <!-- Container React -->
+  <div id="root"></div>
+
+  <script>
+    // ─── Gestion Auth ────────────────────────────────────────────────────────
+    const API_BASE = window.location.origin + '/api';
+    let AUTH_TOKEN = sessionStorage.getItem('tdm_token') || '';
+
+    async function tryLogin() {
+      const pwd = document.getElementById('password-input').value.trim();
+      if (!pwd) return;
+
+      // Tester le token contre l'API
+      try {
+        const res = await fetch(API_BASE + '/health', {
+          headers: { 'Authorization': 'Bearer ' + pwd }
+        });
+        if (res.ok) {
+          AUTH_TOKEN = pwd;
+          sessionStorage.setItem('tdm_token', pwd);
+          document.getElementById('login-screen').classList.remove('visible');
+          lancerApp();
+        } else {
+          document.getElementById('login-error').style.display = 'block';
+        }
+      } catch (e) {
+        document.getElementById('login-error').textContent = 'Impossible de contacter le serveur';
+        document.getElementById('login-error').style.display = 'block';
+      }
+    }
+
+    // Enter pour valider
+    document.getElementById('password-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') tryLogin();
+    });
+
+    // ─── API Helper ──────────────────────────────────────────────────────────
+    window.tdmApi = {
+      _headers: () => ({
+        'Authorization': 'Bearer ' + AUTH_TOKEN,
+        'Content-Type': 'application/json',
+      }),
+      get:    (path)        => fetch(API_BASE + path, { headers: window.tdmApi._headers() }).then(r => r.json()),
+      post:   (path, body)  => fetch(API_BASE + path, { method: 'POST',   headers: window.tdmApi._headers(), body: JSON.stringify(body) }).then(r => r.json()),
+      patch:  (path, body)  => fetch(API_BASE + path, { method: 'PATCH',  headers: window.tdmApi._headers(), body: JSON.stringify(body) }).then(r => r.json()),
+      put:    (path, body)  => fetch(API_BASE + path, { method: 'PUT',    headers: window.tdmApi._headers(), body: JSON.stringify(body) }).then(r => r.json()),
+      delete: (path)        => fetch(API_BASE + path, { method: 'DELETE', headers: window.tdmApi._headers() }).then(r => r.json()),
+    };
+
+    // ─── Vérifier si déjà connecté ───────────────────────────────────────────
+    async function verifierSession() {
+      if (!AUTH_TOKEN) return false;
+      try {
+        const res = await fetch(API_BASE + '/health', {
+          headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN }
+        });
+        return res.ok;
+      } catch { return false; }
+    }
+
+    // ─── Démarrage ───────────────────────────────────────────────────────────
+    async function init() {
+      const ok = await verifierSession();
+      document.getElementById('loading').style.opacity = '0';
+      setTimeout(() => document.getElementById('loading').style.display = 'none', 300);
+
+      if (ok) {
+        lancerApp();
+      } else {
+        AUTH_TOKEN = '';
+        sessionStorage.removeItem('tdm_token');
+        document.getElementById('login-screen').classList.add('visible');
+      }
+    }
+
+    function lancerApp() {
+      // Déclencher le rendu React (défini plus bas après le chargement du JSX)
+      if (window._renderApp) window._renderApp();
+      else window._appReady = true;
+    }
+
+    init();
+  </script>
+
+  <!-- App React (JSX transpilé par Babel) -->
+  <script type="text/babel" data-presets="react" src="/app.jsx"></script>
+
+</body>
+</html>
