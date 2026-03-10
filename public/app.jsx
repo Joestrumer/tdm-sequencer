@@ -820,9 +820,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
     if (!file) return;
     setImportStatus("⟳ Import...");
     const text = await file.text();
-    const lines = text.trim().split(/
-?
-/);
+    const lines = text.trim().split(/\r?\n/);
     const sep = lines[0].includes(";") ? ";" : ",";
     const headers = lines[0].split(sep).map(h => h.trim().replace(/"/g, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
     const toImport = lines.slice(1).map(line => {
