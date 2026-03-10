@@ -6,7 +6,7 @@
 const express = require('express');
 
 // Clés sensibles à ne jamais renvoyer en clair (masquées)
-const CLES_SENSIBLES = ['brevo_api_key', 'hubspot_api_key', 'auth_secret'];
+const CLES_SENSIBLES = ['brevo_api_key', 'hubspot_api_key', 'auth_secret', 'zerobounce_api_key'];
 
 module.exports = (db) => {
   const router = express.Router();
