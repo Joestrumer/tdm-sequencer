@@ -293,9 +293,24 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [etapes, setEtapes] = useState(seq ? [...seq.etapes] : [{ jour: 0, sujet: "", corps: "" }]);
   const [nom, setNom] = useState(seq?.nom || "");
   const [activeEtape, setActiveEtape] = useState(0);
+  const [saving, setSaving] = useState(false);
+  const [errMsg, setErrMsg] = useState("");
   const addEtape = () => setEtapes([...etapes, { jour: (etapes[etapes.length - 1]?.jour || 0) + 7, sujet: "", corps: "" }]);
   const updateEtape = (i, k, v) => setEtapes(etapes.map((e, idx) => idx === i ? { ...e, [k]: v } : e));
   const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
+  const handleSave = async () => {
+    if (!nom.trim()) { setErrMsg("Donnez un nom à la séquence"); return; }
+    if (etapes.length === 0) { setErrMsg("Ajoutez au moins un email"); return; }
+    setSaving(true);
+    setErrMsg("");
+    try {
+      await onSave({ id: seq?.id || null, nom, etapes, segment: seq?.segment || "5*", leadsActifs: seq?.leadsActifs || 0 });
+      onClose();
+    } catch(e) {
+      setErrMsg("Erreur : " + (e.message || "impossible de sauvegarder"));
+    }
+    setSaving(false);
+  };
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
@@ -343,7 +358,8 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
         </div>
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600">Annuler</button>
-          <button onClick={() => { onSave({ id: seq?.id || null, nom, etapes, segment: seq?.segment || "5*", leadsActifs: seq?.leadsActifs || 0 }); onClose(); }} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors">Enregistrer</button>
+          {errMsg && <span className="text-xs text-red-500 mr-auto">{errMsg}</span>}
+          <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">{saving ? "Sauvegarde..." : "Enregistrer"}</button>
         </div>
       </div>
     </div>
@@ -844,14 +860,14 @@ function App() {
   };
 
   const saveSeq = async (seq) => {
-    try {
-      if (seq.id) {
-        await api.put(`/sequences/${seq.id}`, seq);
-      } else {
-        await api.post('/sequences', seq);
-      }
-      charger();
-    } catch(e) { console.error("Erreur sauvegarde séquence:", e); }
+    let res;
+    if (seq.id) {
+      res = await api.put(`/sequences/${seq.id}`, seq);
+    } else {
+      res = await api.post('/sequences', seq);
+    }
+    if (res?.erreur) throw new Error(res.erreur);
+    charger();
   };
 
   const NAV = [
