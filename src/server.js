@@ -18,7 +18,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // Santé AVANT auth
 app.get('/api/health', (req, res) => {
-  res.json({ statut: 'ok', port: PORT });
+  res.json({
+    statut: 'ok',
+    port: PORT,
+    brevo: process.env.BREVO_API_KEY ? 'configuré' : 'non configuré',
+    hubspot: process.env.HUBSPOT_API_KEY ? 'configuré' : 'non configuré',
+  });
 });
 
 // Auth
