@@ -259,6 +259,28 @@ const ModalAddLead = ({ onClose, onAdd }) => {
 
 const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
   const [selected, setSelected] = useState(sequences[0]?.id);
+  const [status, setStatus] = useState(null); // null | "loading" | "done" | "error"
+  const [errMsg, setErrMsg] = useState("");
+
+  const handleLaunch = async (sendNow) => {
+    if (!selected) return;
+    setStatus("loading");
+    try {
+      // 1. Inscrire le lead à la séquence
+      await onLaunch(lead.id, selected);
+      // 2. Si "envoyer maintenant" → forcer le scheduler
+      if (sendNow) {
+        const r = await api.post('/sequences/trigger-now', {});
+        if (r?.erreur) throw new Error(r.erreur);
+      }
+      setStatus("done");
+      setTimeout(() => onClose(), 1200);
+    } catch(e) {
+      setStatus("error");
+      setErrMsg(e.message || "Erreur inconnue");
+    }
+  };
+
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
@@ -274,15 +296,30 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
                 <input type="radio" name="seq" value={seq.id} checked={selected === seq.id} onChange={() => setSelected(seq.id)} className="accent-blue-600" />
                 <div>
                   <div className="text-sm font-medium text-slate-800">{seq.nom}</div>
-                  <div className="text-xs text-slate-400">{seq.etapes.length} emails · Segment {seq.segment}</div>
+                  <div className="text-xs text-slate-400">{seq.etapes?.length || 0} emails · Segment {seq.segment}</div>
                 </div>
               </label>
             ))}
           </div>
+          {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée !</p>}
+          {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
         </div>
-        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600">Annuler</button>
-          <button onClick={() => { onLaunch(lead.id, selected); onClose(); }} className="px-5 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors">Lancer ▶</button>
+        <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2">
+          <button
+            disabled={status === "loading" || status === "done"}
+            onClick={() => handleLaunch(true)}
+            className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+          >
+            ⚡ Envoyer le 1er email maintenant
+          </button>
+          <button
+            disabled={status === "loading" || status === "done"}
+            onClick={() => handleLaunch(false)}
+            className="w-full py-2.5 text-sm font-medium bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+          >
+            📅 Lancer la séquence (prochain créneau)
+          </button>
+          <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600 text-center pt-1">Annuler</button>
         </div>
       </div>
     </div>
@@ -875,10 +912,9 @@ function App() {
   };
 
   const launchSequence = async (leadId, seqId) => {
-    try {
-      await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId });
-      charger(); // Recharger les données
-    } catch(e) { console.error("Erreur lancement séquence:", e); }
+    const r = await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId });
+    if (r?.erreur) throw new Error(r.erreur);
+    charger();
   };
 
   const saveSeq = async (seq) => {
