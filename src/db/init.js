@@ -128,3 +128,12 @@ db.exec(`
 
 console.log('✅ Base de données initialisée :', DB_PATH);
 module.exports = db;
+
+// ─── Migration : table config ─────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS config (
+    cle   TEXT PRIMARY KEY,
+    valeur TEXT NOT NULL,
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+`);
