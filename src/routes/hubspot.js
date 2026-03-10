@@ -95,5 +95,33 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/hubspot/recherche-companies?q=barriere
+  router.get('/recherche-companies', async (req, res) => {
+    try {
+      const results = await hubspot.rechercherCompanies(req.query.q || '');
+      res.json(results);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // GET /api/hubspot/contacts-company/:companyId
+  router.get('/contacts-company/:companyId', async (req, res) => {
+    try {
+      const contacts = await hubspot.contactsDeCompany(req.params.companyId);
+      res.json(contacts);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // GET /api/hubspot/status
+  router.get('/status', async (req, res) => {
+    const status = await hubspot.verifierConnexion();
+    res.json(status);
+  });
+
   return router;
 };
+
+// Ces routes sont ajoutées ci-dessous par patch Python
