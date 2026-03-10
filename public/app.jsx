@@ -1280,6 +1280,286 @@ const VueHubspot = () => {
   );
 };
 
+// ─── VUE VALIDATION EMAIL ─────────────────────────────────────────────────────
+
+const ZB_STATUS_CONFIG = {
+  valid:       { label: "Valide",       bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500", desc: "Adresse vérifiée et réelle" },
+  invalid:     { label: "Invalide",     bg: "bg-red-50",     text: "text-red-700",     dot: "bg-red-500",     desc: "Adresse inexistante ou rejetée" },
+  catch_all:   { label: "Catch-all",    bg: "bg-amber-50",   text: "text-amber-700",   dot: "bg-amber-400",   desc: "Domaine accepte tout, non vérifiable" },
+  unknown:     { label: "Inconnu",      bg: "bg-slate-50",   text: "text-slate-500",   dot: "bg-slate-300",   desc: "Temporairement non vérifiable" },
+  spamtrap:    { label: "Spam trap",    bg: "bg-red-50",     text: "text-red-700",     dot: "bg-red-600",     desc: "Piège à spam — ne pas contacter" },
+  abuse:       { label: "Abuse",        bg: "bg-red-50",     text: "text-red-700",     dot: "bg-red-600",     desc: "Compte abusif" },
+  do_not_mail: { label: "Do not mail",  bg: "bg-red-50",     text: "text-red-700",     dot: "bg-red-500",     desc: "À ne pas contacter" },
+};
+
+const ZbBadge = ({ status }) => {
+  const cfg = ZB_STATUS_CONFIG[status] || ZB_STATUS_CONFIG["unknown"];
+  return (
+    <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>
+      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+      {cfg.label}
+    </span>
+  );
+};
+
+const VueValidationEmail = ({ leads, onRefresh }) => {
+  const [zbKey, setZbKey] = useState("");
+  const [zbConfigured, setZbConfigured] = useState(false);
+  const [savingKey, setSavingKey] = useState(false);
+  const [keyMsg, setKeyMsg] = useState("");
+  const [credits, setCredits] = useState(null);
+
+  // Validation unitaire
+  const [singleEmail, setSingleEmail] = useState("");
+  const [singleResult, setSingleResult] = useState(null);
+  const [singleLoading, setSingleLoading] = useState(false);
+
+  // Validation bulk
+  const [bulkMode, setBulkMode] = useState("tous"); // "tous" | "non_verifies"
+  const [bulkResults, setBulkResults] = useState([]);
+  const [bulkLoading, setBulkLoading] = useState(false);
+  const [bulkProgress, setBulkProgress] = useState(0);
+  const [bulkTotal, setBulkTotal] = useState(0);
+  const [bulkErreur, setBulkErreur] = useState("");
+  const [filterBulk, setFilterBulk] = useState("tous");
+
+  const leadsNorm = leads.map(l => ({ ...l, statut_email: l.statut_email || null }));
+
+  // Charger config ZeroBounce
+  useEffect(() => {
+    api.get("/config").then(cfg => {
+      if (cfg.zerobounce_configured) { setZbConfigured(true); chargerCredits(); }
+    }).catch(() => {});
+  }, []);
+
+  const chargerCredits = async () => {
+    try {
+      const r = await api.get("/email-validation/credits");
+      if (r.Credits !== undefined) setCredits(r.Credits);
+    } catch(e) {}
+  };
+
+  const sauvegarderCle = async () => {
+    if (!zbKey.trim()) return;
+    setSavingKey(true); setKeyMsg("");
+    try {
+      await api.post("/config", { zerobounce_api_key: zbKey });
+      setZbConfigured(true); setZbKey("");
+      setKeyMsg("✅ Clé ZeroBounce sauvegardée");
+      chargerCredits();
+    } catch(e) { setKeyMsg("❌ Erreur"); }
+    setSavingKey(false);
+  };
+
+  // Validation d'un seul email
+  const validerSingle = async () => {
+    if (!singleEmail.trim()) return;
+    setSingleLoading(true); setSingleResult(null);
+    try {
+      const r = await api.post("/email-validation/single", { email: singleEmail.trim() });
+      setSingleResult(r);
+    } catch(e) { setSingleResult({ error: e.message }); }
+    setSingleLoading(false);
+  };
+
+  // Validation bulk
+  const validerBulk = async () => {
+    const toVerify = bulkMode === "non_verifies"
+      ? leadsNorm.filter(l => !l.statut_email)
+      : leadsNorm;
+    if (!toVerify.length) { setBulkErreur("Aucun lead à vérifier"); return; }
+
+    setBulkLoading(true); setBulkResults([]); setBulkProgress(0);
+    setBulkTotal(toVerify.length); setBulkErreur("");
+
+    const results = [];
+    for (let i = 0; i < toVerify.length; i++) {
+      try {
+        const r = await api.post("/email-validation/single", { email: toVerify[i].email, lead_id: toVerify[i].id });
+        results.push({ ...toVerify[i], zb: r });
+      } catch(e) {
+        results.push({ ...toVerify[i], zb: { status: "unknown", error: e.message } });
+      }
+      setBulkProgress(i + 1);
+      setBulkResults([...results]);
+      await new Promise(r => setTimeout(r, 250)); // rate limit ZeroBounce
+    }
+    setBulkLoading(false);
+    chargerCredits();
+    if (onRefresh) onRefresh();
+  };
+
+  const stopBulk = () => setBulkLoading(false);
+
+  const STATUTS_BULK = ["tous", "valid", "invalid", "catch_all", "unknown", "spamtrap", "do_not_mail"];
+  const resultsFiltres = filterBulk === "tous" ? bulkResults : bulkResults.filter(r => r.zb?.status === filterBulk);
+
+  const stats = bulkResults.reduce((acc, r) => {
+    const s = r.zb?.status || "unknown";
+    acc[s] = (acc[s] || 0) + 1;
+    return acc;
+  }, {});
+
+  return (
+    <div className="space-y-5 max-w-5xl">
+
+      {/* ── Config clé API ── */}
+      <div className={`rounded-2xl border p-5 ${zbConfigured ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-100"}`}>
+        <div className="flex items-center justify-between flex-wrap gap-3">
+          <div className="flex items-center gap-3">
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${zbConfigured ? "bg-emerald-100" : "bg-slate-100"}`}>✉️</div>
+            <div>
+              <h3 className="text-sm font-semibold text-slate-900">ZeroBounce</h3>
+              <p className={`text-xs ${zbConfigured ? "text-emerald-600" : "text-slate-400"}`}>
+                {zbConfigured ? `Connecté${credits !== null ? ` · ${credits.toLocaleString()} crédits restants` : ""}` : "Clé API requise"}
+              </p>
+            </div>
+          </div>
+          {zbConfigured && (
+            <button onClick={chargerCredits} className="text-xs text-emerald-600 hover:underline">↻ Actualiser crédits</button>
+          )}
+        </div>
+        {!zbConfigured && (
+          <div className="mt-4 space-y-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Clé API ZeroBounce</label>
+              <div className="flex gap-2">
+                <input type="password" value={zbKey} onChange={e => setZbKey(e.target.value)} onKeyDown={e => e.key === "Enter" && sauvegarderCle()} placeholder="Votre clé API ZeroBounce..." className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                <button onClick={sauvegarderCle} disabled={savingKey || !zbKey.trim()} className="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 disabled:opacity-40 whitespace-nowrap">{savingKey ? "..." : "Sauvegarder"}</button>
+              </div>
+              <p className="text-xs text-slate-400 mt-1.5">Disponible sur <a href="https://app.zerobounce.net/members/apikey" target="_blank" className="text-blue-500 hover:underline">app.zerobounce.net</a></p>
+            </div>
+            {keyMsg && <p className="text-xs text-emerald-600">{keyMsg}</p>}
+          </div>
+        )}
+      </div>
+
+      {zbConfigured && (
+        <>
+          {/* ── Validation unitaire ── */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">Vérification rapide</h3>
+            <div className="flex gap-2">
+              <input value={singleEmail} onChange={e => setSingleEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && validerSingle()} placeholder="test@domaine.com" className="flex-1 border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              <button onClick={validerSingle} disabled={singleLoading || !singleEmail.trim()} className="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 whitespace-nowrap">
+                {singleLoading ? <span className="flex items-center gap-2"><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Vérification...</span> : "Vérifier"}
+              </button>
+            </div>
+
+            {singleResult && !singleResult.error && (
+              <div className="mt-4 bg-slate-50 rounded-xl p-4 grid grid-cols-2 sm:grid-cols-4 gap-3">
+                <div><div className="text-xs text-slate-400 mb-1">Statut</div><ZbBadge status={singleResult.status} /></div>
+                <div><div className="text-xs text-slate-400 mb-1">Score qualité</div><div className="text-sm font-semibold text-slate-800">{singleResult.quality_score ?? "—"}<span className="text-xs text-slate-400 font-normal"> / 10</span></div></div>
+                <div><div className="text-xs text-slate-400 mb-1">Domaine</div><div className="text-sm font-medium text-slate-700">{singleResult.domain || "—"}</div></div>
+                <div><div className="text-xs text-slate-400 mb-1">MX valide</div><div className={`text-sm font-medium ${singleResult.mx_found === "true" || singleResult.mx_found === true ? "text-emerald-600" : "text-red-500"}`}>{singleResult.mx_found === "true" || singleResult.mx_found === true ? "✓ Oui" : "✗ Non"}</div></div>
+                <div><div className="text-xs text-slate-400 mb-1">Free email</div><div className="text-sm font-medium text-slate-700">{singleResult.free_email === "true" || singleResult.free_email === true ? "Oui" : "Non"}</div></div>
+                <div><div className="text-xs text-slate-400 mb-1">Rôle</div><div className="text-sm font-medium text-slate-700">{singleResult.is_role_based ? "Oui (info@, etc.)" : "Non"}</div></div>
+                <div className="col-span-2"><div className="text-xs text-slate-400 mb-1">Sous-statut</div><div className="text-sm text-slate-600">{singleResult.sub_status || "—"}</div></div>
+                {(ZB_STATUS_CONFIG[singleResult.status]) && (
+                  <div className="col-span-4 text-xs text-slate-400 italic">{ZB_STATUS_CONFIG[singleResult.status].desc}</div>
+                )}
+              </div>
+            )}
+            {singleResult?.error && <p className="mt-3 text-xs text-red-500">✗ {singleResult.error}</p>}
+          </div>
+
+          {/* ── Validation bulk ── */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Validation en masse</h3>
+                <p className="text-xs text-slate-400 mt-0.5">{leadsNorm.length} leads au total · {leadsNorm.filter(l => !l.statut_email).length} non vérifiés</p>
+              </div>
+              {bulkResults.length > 0 && (
+                <div className="flex gap-2 text-xs">
+                  {["valid","invalid","catch_all","unknown"].map(s => stats[s] ? (
+                    <span key={s} className={`px-2 py-1 rounded-full font-medium ${ZB_STATUS_CONFIG[s]?.bg} ${ZB_STATUS_CONFIG[s]?.text}`}>{stats[s]} {ZB_STATUS_CONFIG[s]?.label}</span>
+                  ) : null)}
+                </div>
+              )}
+            </div>
+
+            <div className="flex flex-wrap gap-3 items-center mb-4">
+              <div className="flex bg-slate-100 rounded-lg p-0.5">
+                <button onClick={() => setBulkMode("non_verifies")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${bulkMode === "non_verifies" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>
+                  Non vérifiés ({leadsNorm.filter(l => !l.statut_email).length})
+                </button>
+                <button onClick={() => setBulkMode("tous")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${bulkMode === "tous" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>
+                  Tous ({leadsNorm.length})
+                </button>
+              </div>
+              {!bulkLoading ? (
+                <button onClick={validerBulk} disabled={!leadsNorm.length} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+                  ▶ Lancer la validation
+                </button>
+              ) : (
+                <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-2 text-sm text-slate-600">
+                    <span className="w-4 h-4 border-2 border-slate-200 border-t-slate-700 rounded-full animate-spin" />
+                    {bulkProgress} / {bulkTotal}
+                  </div>
+                  <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-full bg-slate-700 rounded-full transition-all" style={{ width: `${bulkTotal ? (bulkProgress/bulkTotal)*100 : 0}%` }} />
+                  </div>
+                </div>
+              )}
+              {bulkErreur && <span className="text-xs text-red-500">{bulkErreur}</span>}
+            </div>
+
+            {bulkResults.length > 0 && (
+              <>
+                <div className="flex gap-1 flex-wrap mb-3">
+                  {STATUTS_BULK.map(s => (
+                    <button key={s} onClick={() => setFilterBulk(s)} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${filterBulk === s ? "bg-slate-900 text-white" : "bg-slate-50 border border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+                      {s === "tous" ? `Tous (${bulkResults.length})` : `${ZB_STATUS_CONFIG[s]?.label || s}${stats[s] ? ` (${stats[s]})` : ""}`}
+                    </button>
+                  ))}
+                </div>
+                <div className="overflow-hidden rounded-xl border border-slate-100">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr>
+                        {["Lead", "Email", "Statut", "Score", "Sous-statut", "Domaine"].map(h => (
+                          <th key={h} className="text-left px-4 py-2.5 text-xs font-medium text-slate-400 uppercase tracking-wide">{h}</th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {resultsFiltres.map((r, i) => (
+                        <tr key={r.id} className={`border-b border-slate-50 ${i % 2 === 0 ? "" : "bg-slate-50/30"}`}>
+                          <td className="px-4 py-2.5">
+                            <div className="font-medium text-slate-800 text-xs">{r.prenom} {r.nom}</div>
+                            <div className="text-xs text-slate-400">{r.hotel}</div>
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-slate-600 font-mono">{r.email}</td>
+                          <td className="px-4 py-2.5"><ZbBadge status={r.zb?.status || "unknown"} /></td>
+                          <td className="px-4 py-2.5">
+                            {r.zb?.quality_score != null ? (
+                              <div className="flex items-center gap-1.5">
+                                <div className="w-12 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                                  <div className={`h-full rounded-full ${r.zb.quality_score >= 7 ? "bg-emerald-500" : r.zb.quality_score >= 4 ? "bg-amber-400" : "bg-red-400"}`} style={{ width: `${r.zb.quality_score * 10}%` }} />
+                                </div>
+                                <span className="text-xs text-slate-500">{r.zb.quality_score}</span>
+                              </div>
+                            ) : <span className="text-xs text-slate-300">—</span>}
+                          </td>
+                          <td className="px-4 py-2.5 text-xs text-slate-500">{r.zb?.sub_status || "—"}</td>
+                          <td className="px-4 py-2.5 text-xs text-slate-500">{r.zb?.domain || "—"}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {resultsFiltres.length === 0 && <div className="text-center py-8 text-xs text-slate-400">Aucun résultat pour ce filtre</div>}
+                </div>
+              </>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const VueParametres = () => {
   const [brevoKey, setBrevoKey] = useState("");
   const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"] });
@@ -1446,6 +1726,7 @@ function App() {
     { id: "leads", icon: "👥", label: "Leads" },
     { id: "sequences", icon: "📧", label: "Séquences" },
     { id: "hubspot", icon: "🔗", label: "HubSpot" },
+    { id: "emails", icon: "✅", label: "Validation Email" },
     { id: "parametres", icon: "⚙️", label: "Paramètres" },
   ];
 
@@ -1502,6 +1783,7 @@ function App() {
               {vue === "leads" && `${leads.length} leads au total`}
               {vue === "sequences" && `${sequences.length} séquences actives`}
               {vue === "hubspot" && "Intégration CRM bidirectionnelle"}
+              {vue === "emails" && "Vérification & nettoyage des adresses email"}
               {vue === "parametres" && "Configuration Brevo & envoi"}
             </p>
           </div>
@@ -1519,6 +1801,7 @@ function App() {
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} />}
           {vue === "hubspot" && <VueHubspot />}
+          {vue === "emails" && <VueValidationEmail leads={leads} onRefresh={charger} />}
           {vue === "parametres" && <VueParametres />}
         </main>
       </div>
