@@ -11,13 +11,26 @@
  */
 
 require('dotenv').config();
-const SibApiV3Sdk = require('@getbrevo/brevo');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
 
-// ─── Initialisation du client Brevo ─────────────────────────────────────────
-const apiInstance = new SibApiV3Sdk.TransactionalEmailsApi();
-apiInstance.setApiKey(SibApiV3Sdk.TransactionalEmailsApiApiKeys.apiKey, process.env.BREVO_API_KEY);
+// ─── Envoi Brevo via fetch natif (pas de SDK) ────────────────────────────────
+async function brevoSendEmail(payload) {
+  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+    method: 'POST',
+    headers: {
+      'accept': 'application/json',
+      'api-key': process.env.BREVO_API_KEY,
+      'content-type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Brevo API ${res.status}: ${err}`);
+  }
+  return res.json();
+}
 
 const SENDER = {
   email: process.env.BREVO_SENDER_EMAIL || 'joe@terre-de-mars.com',
@@ -166,30 +179,28 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
   // 5. Construire le HTML
   const corpsHtml = texteVersHtml(corpsTexte, trackingId, lead);
 
-  // 6. Préparer l'email Brevo
-  const sendSmtpEmail = new SibApiV3Sdk.SendSmtpEmail();
-  sendSmtpEmail.sender = SENDER;
-  sendSmtpEmail.to = [{ email: lead.email, name: `${lead.prenom} ${lead.nom}` }];
-  sendSmtpEmail.subject = sujet;
-  sendSmtpEmail.htmlContent = corpsHtml;
-  sendSmtpEmail.textContent = corpsTexte; // Fallback texte brut
-  sendSmtpEmail.replyTo = { email: SENDER.email, name: SENDER.name };
-
-  // Headers pour améliorer la délivrabilité
-  sendSmtpEmail.headers = {
-    'X-Mailer': 'Terre-de-Mars-Sequencer/1.0',
-    'List-Unsubscribe': `<${PUBLIC_URL}/api/tracking/unsubscribe/${lead.id}?t=${trackingId}>`,
-    'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+  // 6. Préparer le payload Brevo
+  const payload = {
+    sender: SENDER,
+    to: [{ email: lead.email, name: `${lead.prenom} ${lead.nom}`.trim() }],
+    subject: sujet,
+    htmlContent: corpsHtml,
+    textContent: corpsTexte,
+    replyTo: { email: SENDER.email, name: SENDER.name },
+    headers: {
+      'X-Mailer': 'Terre-de-Mars-Sequencer/1.0',
+      'List-Unsubscribe': `<${PUBLIC_URL}/api/tracking/unsubscribe/${lead.id}?t=${trackingId}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
   };
 
-  // 7. Envoyer via Brevo avec retry
+  // 7. Envoyer via fetch natif
   let brevoMessageId = null;
-  if (process.env.NODE_ENV !== 'test' && process.env.BREVO_API_KEY) {
-    const result = await avecRetry(() => apiInstance.sendTransacEmail(sendSmtpEmail));
-    brevoMessageId = result?.body?.messageId || null;
+  if (process.env.BREVO_API_KEY) {
+    const result = await avecRetry(() => brevoSendEmail(payload));
+    brevoMessageId = result?.messageId || null;
     logger.info(`✉️  Email envoyé via Brevo`, { to: lead.email, messageId: brevoMessageId });
   } else {
-    // Mode démo : simuler l'envoi sans vrai SMTP
     logger.info(`📧 [MODE DÉMO] Email simulé pour ${lead.email} : "${sujet}"`);
     brevoMessageId = `demo-${Date.now()}`;
   }
