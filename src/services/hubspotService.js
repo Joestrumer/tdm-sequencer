@@ -226,8 +226,13 @@ async function syncContact(db, lead) {
     logger.info('✅ HubSpot contact sync', { email: lead.email, hubspotId });
     return hubspotId;
   } catch (err) {
-    logger.error('❌ HubSpot syncContact', { error: err.message });
-    logHubspot(db, 'contact', 'error', lead.id, null, {}, err.message);
+    logger.error('❌ HubSpot syncContact ERREUR COMPLÈTE', { 
+      error: err.message, 
+      email: lead.email,
+      hasApiKey: !!getApiKey(),
+      apiKeyPrefix: getApiKey()?.slice(0, 10) + '...'
+    });
+    if (db) logHubspot(db, 'contact', 'error', lead.id, null, {}, err.message);
     return null;
   }
 }
