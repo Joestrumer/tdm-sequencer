@@ -66,20 +66,28 @@ module.exports = (db) => {
   // POST /api/leads — Créer un lead
   router.post('/', async (req, res) => {
     try {
-      const { prenom, nom, email, hotel, ville, segment, tags } = req.body;
+      const { prenom, nom, email, hotel, ville, segment, tags, company_hubspot_id } = req.body;
       if (!email || !hotel || !prenom) return res.status(400).json({ erreur: 'prenom, email et hotel sont requis' });
+
+      // Normaliser tags : accepte string JSON ou tableau
+      const tagsStr = typeof tags === 'string' ? tags : JSON.stringify(tags || []);
 
       const id = uuidv4();
       db.prepare(`
         INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', JSON.stringify(tags || []));
+      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', tagsStr);
 
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
 
-      // Synchroniser dans HubSpot en arrière-plan
+      // Synchroniser dans HubSpot (avec company_hubspot_id si fourni)
       if (process.env.HUBSPOT_API_KEY) {
-        hubspot.syncContact(db, lead).catch(err => logger.error('HubSpot sync lead', { error: err.message }));
+        const leadAvecCompany = { ...lead, company_hubspot_id: company_hubspot_id || null };
+        hubspot.syncContact(db, leadAvecCompany)
+          .then(hubspotId => {
+            if (hubspotId) logger.info('✅ Lead synchronisé HubSpot', { email, hubspotId });
+          })
+          .catch(err => logger.error('HubSpot sync lead échoué', { error: err.message }));
       }
 
       logger.info('✅ Lead créé', { email, hotel });
