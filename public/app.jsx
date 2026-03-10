@@ -823,6 +823,13 @@ function App() {
 
   // Charger les données au démarrage
   const charger = async () => {
+    // Attendre que le token soit disponible (Babel charge async)
+    const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+    if (!token) {
+      // Réessayer dans 200ms si pas encore de token
+      setTimeout(charger, 200);
+      return;
+    }
     setLoading(true);
     try {
       const [leadsData, seqData, statsData] = await Promise.all([
@@ -833,7 +840,6 @@ function App() {
       setLeads(Array.isArray(leadsData) ? leadsData : (leadsData.leads || []));
       setSequences(Array.isArray(seqData) ? seqData : (seqData.sequences || []));
       setStats(statsData);
-      // Activités depuis les stats
       if (statsData?.activites_recentes) setActivites(statsData.activites_recentes);
     } catch(e) { console.error("Erreur chargement:", e); }
     setLoading(false);

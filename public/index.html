@@ -152,10 +152,13 @@
 
     // ─── API Helper ──────────────────────────────────────────────────────────
     window.tdmApi = {
-      _headers: () => ({
-        'Authorization': 'Bearer ' + (window.AUTH_TOKEN || sessionStorage.getItem('tdm_token') || ''),
-        'Content-Type': 'application/json',
-      }),
+      _headers: () => {
+        const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+        return {
+          'Authorization': 'Bearer ' + token,
+          'Content-Type': 'application/json',
+        };
+      },
       get:    (path)        => fetch(API_BASE + path, { headers: window.tdmApi._headers() }).then(r => r.json()),
       post:   (path, body)  => fetch(API_BASE + path, { method: 'POST',   headers: window.tdmApi._headers(), body: JSON.stringify(body) }).then(r => r.json()),
       patch:  (path, body)  => fetch(API_BASE + path, { method: 'PATCH',  headers: window.tdmApi._headers(), body: JSON.stringify(body) }).then(r => r.json()),
@@ -190,6 +193,8 @@
     }
 
     function lancerApp() {
+      // S'assurer que le token est bien dans sessionStorage avant de lancer React
+      if (window.AUTH_TOKEN) sessionStorage.setItem('tdm_token', window.AUTH_TOKEN);
       // Déclencher le rendu React (défini plus bas après le chargement du JSX)
       if (window._renderApp) window._renderApp();
       else window._appReady = true;
