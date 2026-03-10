@@ -204,6 +204,14 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
     },
   };
 
+  // Pièce jointe si présente
+  if (etape.piece_jointe?.data) {
+    payload.attachment = [{
+      content: etape.piece_jointe.data,
+      name: etape.piece_jointe.nom,
+    }];
+  }
+
   // 7. Envoyer via fetch natif
   let brevoMessageId = null;
   if (process.env.BREVO_API_KEY) {
