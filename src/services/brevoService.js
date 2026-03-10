@@ -55,21 +55,29 @@ const SIGNATURE_HUGO = `
 `;
 
 // ─── Conversion texte brut → HTML propre ─────────────────────────────────────
-function texteVersHtml(texte, trackingId, lead) {
+function texteVersHtml(texte, trackingId, lead, estHtml = false) {
   const unsubUrl = `${PUBLIC_URL}/api/tracking/unsubscribe/${lead.id}?t=${trackingId}`;
   const pixelUrl = `${PUBLIC_URL}/api/tracking/open/${trackingId}`;
 
-  // Convertir les sauts de ligne en <br> et les liens en <a>
-  // Note : on ne double-encode pas les URLs déjà présentes dans la signature
-  let html = texte
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/\n/g, '<br>')
-    .replace(/(https?:\/\/[^\s<]+)/g, (url) => {
+  let html;
+  if (estHtml) {
+    // Déjà en HTML — juste tracker les liens existants
+    html = texte.replace(/href="(https?:\/\/[^"]+)"/g, (match, url) => {
+      if (url.includes('/api/tracking')) return match; // déjà tracké
       const trackedUrl = `${PUBLIC_URL}/api/tracking/click/${trackingId}?url=${encodeURIComponent(url)}`;
-      return `<a href="${trackedUrl}" style="color:#1a1a2e;">${url}</a>`;
+      return `href="${trackedUrl}"`;
     });
+  } else {
+    html = texte
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/\n/g, '<br>')
+      .replace(/(https?:\/\/[^\s<]+)/g, (url) => {
+        const trackedUrl = `${PUBLIC_URL}/api/tracking/click/${trackingId}?url=${encodeURIComponent(url)}`;
+        return `<a href="${trackedUrl}" style="color:#1a1a2e;">${url}</a>`;
+      });
+  }
 
   return `<!DOCTYPE html>
 <html lang="fr">
@@ -176,8 +184,10 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
   // 4. Générer un ID de tracking unique
   const trackingId = uuidv4();
 
-  // 5. Construire le HTML
-  const corpsHtml = texteVersHtml(corpsTexte, trackingId, lead);
+  // 5. Construire le HTML (corps_html si éditeur riche, sinon conversion texte)
+  const corpsHtml = etape.corps_html
+    ? texteVersHtml(etape.corps_html, trackingId, lead, true)
+    : texteVersHtml(corpsTexte, trackingId, lead, false);
 
   // 6. Préparer le payload Brevo
   const payload = {
