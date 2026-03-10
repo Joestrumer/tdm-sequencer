@@ -178,12 +178,12 @@ module.exports = (db) => {
     }
   });
 
-  // POST /api/sequences/trigger-now — Forcer l'envoi immédiat (test)
+  // POST /api/sequences/trigger-now — Forcer l'envoi immédiat (bypass fenêtre horaire)
   router.post('/trigger-now', async (req, res) => {
     try {
       const scheduler = require('../jobs/sequenceScheduler');
-      await scheduler.lancerVerification();
-      res.json({ message: 'Vérification forcée — emails envoyés si dus' });
+      await scheduler.forcerEnvoi();
+      res.json({ message: 'Envoi forcé — emails envoyés' });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
