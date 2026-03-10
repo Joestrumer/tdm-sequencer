@@ -178,12 +178,76 @@ module.exports = (db) => {
     }
   });
 
-  // POST /api/sequences/trigger-now — Forcer l'envoi immédiat (bypass fenêtre horaire)
+  // POST /api/sequences/trigger-now — Envoi direct bypass total (fenêtre + heure planifiée)
   router.post('/trigger-now', async (req, res) => {
     try {
-      const scheduler = require('../jobs/sequenceScheduler');
-      await scheduler.forcerEnvoi();
-      res.json({ message: 'Envoi forcé — emails envoyés' });
+      const { envoyerEmail } = require('../services/brevoService');
+      const hubspot = require('../services/hubspotService');
+      const logger = require('../config/logger');
+
+      // Chercher toutes les inscriptions actives peu importe l'heure planifiée
+      const inscriptions = db.prepare(`
+        SELECT i.*, l.email as lead_email
+        FROM inscriptions i
+        JOIN leads l ON i.lead_id = l.id
+        WHERE i.statut = 'actif'
+        LIMIT 20
+      `).all();
+
+      if (inscriptions.length === 0) {
+        return res.json({ message: 'Aucune inscription active', envoyes: 0 });
+      }
+
+      let envoyes = 0;
+      const erreurs = [];
+
+      for (const inscription of inscriptions) {
+        try {
+          const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(inscription.lead_id);
+          if (!lead || lead.unsubscribed || lead.statut === 'Désabonné') continue;
+
+          const etapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(inscription.sequence_id);
+          if (!etapes.length) continue;
+
+          const indexCourant = inscription.etape_courante || 0;
+          if (indexCourant >= etapes.length) continue;
+
+          const etape = etapes[indexCourant];
+
+          await envoyerEmail(db, { lead, etape, inscriptionId: inscription.id });
+          envoyes++;
+
+          // Log HubSpot
+          if (process.env.HUBSPOT_API_KEY && lead.hubspot_id) {
+            await hubspot.logEmailTimeline(db, lead, { sujet: etape.sujet, corps: etape.corps }).catch(() => {});
+          }
+
+          // Passer à l'étape suivante
+          const prochainIndex = indexCourant + 1;
+          const { prochaineDateEnvoi } = require('../jobs/sequenceScheduler');
+          if (prochainIndex >= etapes.length) {
+            db.prepare(`UPDATE inscriptions SET etape_courante = ?, statut = 'terminé', prochain_envoi = NULL WHERE id = ?`)
+              .run(prochainIndex, inscription.id);
+            db.prepare(`UPDATE leads SET statut = 'En séquence', updated_at = datetime('now') WHERE id = ?`).run(lead.id);
+            if (process.env.HUBSPOT_API_KEY) {
+              const seq = db.prepare('SELECT nom FROM sequences WHERE id = ?').get(inscription.sequence_id);
+              await hubspot.creerTaskFinSequence(db, lead, seq?.nom || 'Séquence').catch(() => {});
+            }
+          } else {
+            const prochainEtape = etapes[prochainIndex];
+            const prochainDate = prochaineDateEnvoi(prochainEtape.jour_delai || 0);
+            db.prepare(`UPDATE inscriptions SET etape_courante = ?, prochain_envoi = ? WHERE id = ?`)
+              .run(prochainIndex, prochainDate, inscription.id);
+          }
+
+          logger.info(`⚡ Email forcé envoyé`, { email: lead.email, etape: indexCourant + 1 });
+        } catch (err) {
+          erreurs.push({ email: inscription.lead_email, erreur: err.message });
+          logger.error('Erreur envoi forcé', { error: err.message });
+        }
+      }
+
+      res.json({ message: `${envoyes} email(s) envoyé(s)`, envoyes, erreurs });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
