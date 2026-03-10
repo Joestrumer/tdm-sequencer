@@ -326,77 +326,217 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
   );
 };
 
+// ─── Signature Hugo (HTML complet) ───────────────────────────────────────────
+const SIGNATURE_HTML = `<br><br><table cellpadding="0" cellspacing="0" border="0" style="vertical-align:-webkit-baseline-middle;font-size:small;font-family:Arial"><tbody><tr><td><h2 style="margin:0;font-size:16px;font-family:Arial;color:#000;font-weight:600">Hugo Montiel</h2><p style="margin:0;color:#000;font-size:12px;line-height:20px">Sales Director</p><p style="margin:0;font-weight:500;color:#000;font-size:12px;line-height:20px">Terre De Mars</p></td><td width="15"></td><td width="1" style="width:1px;border-left:1px solid #aa8d3e"></td><td width="15"></td><td><table cellpadding="0" cellspacing="0" border="0"><tbody><tr style="height:25px"><td width="30"><span style="display:inline-block;background:#aa8d3e"><img src="https://cdn2.hubspot.net/hubfs/53/tools/email-signature-generator/icons/phone-icon-dark-2x.png" width="13" style="display:block"></span></td><td><a href="tel:+33685820335" style="text-decoration:none;color:#000;font-size:12px">+33685820335</a></td></tr><tr style="height:25px"><td width="30"><span style="display:inline-block;background:#aa8d3e"><img src="https://cdn2.hubspot.net/hubfs/53/tools/email-signature-generator/icons/email-icon-dark-2x.png" width="13" style="display:block"></span></td><td><a href="mailto:hugo@terredemars.com" style="text-decoration:none;color:#000;font-size:12px">hugo@terredemars.com</a></td></tr><tr style="height:25px"><td width="30"><span style="display:inline-block;background:#aa8d3e"><img src="https://cdn2.hubspot.net/hubfs/53/tools/email-signature-generator/icons/link-icon-dark-2x.png" width="13" style="display:block"></span></td><td><a href="https://www.terredemars.com/" style="text-decoration:none;color:#000;font-size:12px">terredemars.com</a></td></tr><tr style="height:25px"><td width="30"><span style="display:inline-block;background:#aa8d3e"><img src="https://cdn2.hubspot.net/hubfs/53/tools/email-signature-generator/icons/address-icon-dark-2x.png" width="13" style="display:block"></span></td><td><span style="font-size:12px;color:#000">2 Rue de Vienne, 75008 Paris</span></td></tr></tbody></table></td></tr></tbody></table><br><table cellpadding="0" cellspacing="0" border="0" style="width:100%"><tbody><tr><td><img src="https://26199813.fs1.hubspotusercontent-eu1.net/hubfs/26199813/Screenshot%202023-01-17%20at%2012.55.44.png" width="130" style="display:block"></td><td style="text-align:right"><a href="https://calendly.com/hugo-montiel/meeting-terre-de-mars" style="border:6px 12px solid #aa8d3e;background:#aa8d3e;color:#fff;font-weight:700;text-decoration:none;padding:8px 16px;border-radius:3px;font-size:12px">Prendre rendez-vous</a></td></tr></tbody></table>`;
+
+// Données de démo pour la prévisualisation
+const DEMO_LEAD_PREVIEW = { prenom: "Sophie", nom: "Lefebvre", hotel: "Hôtel Le Bristol", ville: "Paris", segment: "5*" };
+
+function substituerVarsPreview(texte, lead = DEMO_LEAD_PREVIEW) {
+  return texte
+    .replace(/\{\{prenom\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.prenom}</span>`)
+    .replace(/\{\{nom\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.nom}</span>`)
+    .replace(/\{\{hotel\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.hotel}</span>`)
+    .replace(/\{\{ville\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.ville}</span>`)
+    .replace(/\{\{segment\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.segment}</span>`);
+}
+
+function texteVersHtmlPreview(texte) {
+  return texte
+    .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
+    .replace(/
+/g, "<br>")
+    .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#1a56db">$1</a>');
+}
+
 const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [etapes, setEtapes] = useState(seq ? [...seq.etapes] : [{ jour: 0, sujet: "", corps: "" }]);
   const [nom, setNom] = useState(seq?.nom || "");
+  const [segment, setSegment] = useState(seq?.segment || "5*");
   const [activeEtape, setActiveEtape] = useState(0);
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
-  const addEtape = () => setEtapes([...etapes, { jour: (etapes[etapes.length - 1]?.jour || 0) + 7, sujet: "", corps: "" }]);
-  const updateEtape = (i, k, v) => setEtapes(etapes.map((e, idx) => idx === i ? { ...e, [k]: v } : e));
-  const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
+  const [mode, setMode] = useState("edit"); // "edit" | "preview"
+  const editorRef = useRef(null);
+
+  const addEtape = () => setEtapes(e => [...e, { jour: (e[e.length-1]?.jour || 0) + 7, sujet: "", corps: "" }]);
+  const removeEtape = (i) => { if (etapes.length > 1) { setEtapes(e => e.filter((_, idx) => idx !== i)); setActiveEtape(Math.max(0, i-1)); }};
+  const updateEtape = (i, k, v) => setEtapes(e => e.map((et, idx) => idx === i ? { ...et, [k]: v } : et));
+
+  // Toolbar de mise en forme
+  const fmt = (cmd, val) => { editorRef.current?.focus(); document.execCommand(cmd, false, val); syncCorps(); };
+  const syncCorps = () => {
+    if (editorRef.current) updateEtape(activeEtape, "corps_html", editorRef.current.innerHTML);
+  };
+
+  // Initialiser le contenu de l'éditeur quand on change d'étape
+  useEffect(() => {
+    if (editorRef.current && mode === "edit") {
+      const etape = etapes[activeEtape];
+      editorRef.current.innerHTML = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
+    }
+  }, [activeEtape, mode]);
+
+  // Insérer une variable à la position du curseur
+  const insererVar = (v) => {
+    editorRef.current?.focus();
+    document.execCommand("insertText", false, v);
+    syncCorps();
+  };
+
   const handleSave = async () => {
     if (!nom.trim()) { setErrMsg("Donnez un nom à la séquence"); return; }
     if (etapes.length === 0) { setErrMsg("Ajoutez au moins un email"); return; }
-    setSaving(true);
-    setErrMsg("");
+    setSaving(true); setErrMsg("");
     try {
-      await onSave({ id: seq?.id || null, nom, etapes, segment: seq?.segment || "5*", leadsActifs: seq?.leadsActifs || 0 });
+      const etapesFinales = etapes.map(e => ({
+        ...e,
+        corps: e.corps_html || e.corps || "",
+      }));
+      await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0 });
       onClose();
-    } catch(e) {
-      setErrMsg("Erreur : " + (e.message || "impossible de sauvegarder"));
-    }
+    } catch(e) { setErrMsg("Erreur : " + (e.message || "impossible de sauvegarder")); }
     setSaving(false);
   };
+
+  const etapeCourante = etapes[activeEtape] || {};
+  const corpsPreview = etapeCourante.corps_html || texteVersHtmlPreview(etapeCourante.corps || "");
+
+  const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
+  const TOOLBAR = [
+    { cmd: "bold", label: "B", style: "font-bold" },
+    { cmd: "italic", label: "I", style: "italic" },
+    { cmd: "underline", label: "U", style: "underline" },
+  ];
+
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
-          <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom de la séquence..." className="text-base font-semibold text-slate-900 focus:outline-none border-b border-transparent focus:border-slate-300 transition-colors bg-transparent" />
-          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-4 flex-shrink-0">
+          <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom de la séquence..." className="flex-1 text-base font-semibold text-slate-900 focus:outline-none bg-transparent placeholder-slate-300" />
+          <select value={segment} onChange={e => setSegment(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none">
+            {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
+          </select>
+          {/* Tabs edit/preview */}
+          <div className="flex bg-slate-100 rounded-lg p-0.5">
+            <button onClick={() => setMode("edit")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === "edit" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>✏️ Éditer</button>
+            <button onClick={() => setMode("preview")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === "preview" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>👁 Préview</button>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
+
         <div className="flex flex-1 overflow-hidden">
-          <div className="w-48 border-r border-slate-100 p-3 space-y-1 flex-shrink-0 overflow-y-auto">
+          {/* Sidebar étapes */}
+          <div className="w-44 border-r border-slate-100 p-3 space-y-1 flex-shrink-0 overflow-y-auto bg-slate-50/50">
             {etapes.map((e, i) => (
-              <button key={i} onClick={() => setActiveEtape(i)} className={`w-full text-left px-3 py-2.5 rounded-lg text-sm transition-colors ${activeEtape === i ? "bg-slate-900 text-white" : "text-slate-600 hover:bg-slate-50"}`}>
-                <div className="font-medium">Email {i + 1}</div>
-                <div className={`text-xs ${activeEtape === i ? "text-slate-300" : "text-slate-400"}`}>J+{e.jour}</div>
-              </button>
+              <div key={i} className={`group flex items-center rounded-lg transition-colors ${activeEtape === i ? "bg-slate-900" : "hover:bg-slate-100"}`}>
+                <button onClick={() => { syncCorps(); setActiveEtape(i); }} className="flex-1 text-left px-3 py-2.5">
+                  <div className={`font-medium text-sm ${activeEtape === i ? "text-white" : "text-slate-700"}`}>Email {i + 1}</div>
+                  <div className={`text-xs ${activeEtape === i ? "text-slate-300" : "text-slate-400"}`}>J+{e.jour || 0}</div>
+                </button>
+                {etapes.length > 1 && (
+                  <button onClick={() => removeEtape(i)} className={`pr-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs ${activeEtape === i ? "text-slate-400 hover:text-red-300" : "text-slate-400 hover:text-red-500"}`}>✕</button>
+                )}
+              </div>
             ))}
-            <button onClick={addEtape} className="w-full text-left px-3 py-2.5 rounded-lg text-sm text-slate-400 hover:bg-slate-50 hover:text-slate-600 transition-colors border border-dashed border-slate-200 mt-2">
-              + Ajouter
+            <button onClick={() => { syncCorps(); addEtape(); }} className="w-full px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors border border-dashed border-slate-200 mt-1 text-center">
+              + Email
             </button>
           </div>
-          <div className="flex-1 p-5 overflow-y-auto space-y-4">
-            <div className="flex items-center gap-3">
-              <label className="text-xs font-medium text-slate-500 w-16 flex-shrink-0">Délai</label>
-              <div className="flex items-center gap-2">
-                <span className="text-sm text-slate-500">J +</span>
-                <input type="number" value={etapes[activeEtape]?.jour} onChange={e => updateEtape(activeEtape, "jour", +e.target.value)} className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-                <span className="text-sm text-slate-400">jours après le précédent</span>
+
+          {/* Zone principale */}
+          <div className="flex-1 overflow-y-auto">
+            {mode === "edit" ? (
+              <div className="p-5 space-y-4">
+                {/* Délai + Objet */}
+                <div className="flex gap-4 items-end">
+                  <div className="w-32 flex-shrink-0">
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Délai</label>
+                    <div className="flex items-center gap-1.5 border border-slate-200 rounded-lg px-2.5 py-2 bg-white">
+                      <span className="text-xs text-slate-400">J+</span>
+                      <input type="number" min="0" value={etapeCourante.jour || 0} onChange={e => updateEtape(activeEtape, "jour", +e.target.value)} className="w-10 text-sm font-medium text-slate-800 focus:outline-none bg-transparent" />
+                    </div>
+                  </div>
+                  <div className="flex-1">
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Objet de l'email</label>
+                    <input value={etapeCourante.sujet || ""} onChange={e => updateEtape(activeEtape, "sujet", e.target.value)} placeholder="Ex: Découvrez Terre de Mars — {{hotel}}" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                  </div>
+                </div>
+
+                {/* Toolbar */}
+                <div className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div className="flex items-center gap-1 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                    {TOOLBAR.map(t => (
+                      <button key={t.cmd} onMouseDown={e => { e.preventDefault(); fmt(t.cmd); }} className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 ${t.style}`}>{t.label}</button>
+                    ))}
+                    <div className="w-px h-4 bg-slate-200 mx-1" />
+                    <button onMouseDown={e => { e.preventDefault(); fmt("insertUnorderedList"); }} className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-500">☰</button>
+                    <button onMouseDown={e => { e.preventDefault(); const url = prompt("URL du lien :"); if(url) fmt("createLink", url); }} className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-500">🔗</button>
+                    <div className="w-px h-4 bg-slate-200 mx-1" />
+                    <span className="text-xs text-slate-400 ml-1">Variables :</span>
+                    {VARS.map(v => (
+                      <button key={v} onMouseDown={e => { e.preventDefault(); insererVar(v); }} className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
+                    ))}
+                  </div>
+                  {/* Éditeur contentEditable */}
+                  <div
+                    ref={editorRef}
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={syncCorps}
+                    className="min-h-48 p-4 text-sm text-slate-800 focus:outline-none leading-relaxed"
+                    style={{ fontFamily: "Arial, sans-serif" }}
+                  />
+                  {/* Signature en bas, non éditable */}
+                  <div className="px-4 pb-4 pt-2 border-t border-slate-100">
+                    <div className="text-xs text-slate-400 mb-2 flex items-center gap-1.5">
+                      <span className="w-4 h-px bg-slate-200 inline-block" />
+                      Signature automatique
+                      <span className="w-4 h-px bg-slate-200 inline-block" />
+                    </div>
+                    <div dangerouslySetInnerHTML={{ __html: SIGNATURE_HTML }} style={{ pointerEvents: "none", opacity: 0.7 }} />
+                  </div>
+                </div>
               </div>
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">Objet</label>
-              <input value={etapes[activeEtape]?.sujet} onChange={e => updateEtape(activeEtape, "sujet", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" placeholder="Objet de l'email..." />
-            </div>
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">Corps de l'email</label>
-              <textarea rows={10} value={etapes[activeEtape]?.corps} onChange={e => updateEtape(activeEtape, "corps", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 font-mono leading-relaxed resize-none" />
-            </div>
-            <div className="flex flex-wrap gap-2">
-              {VARS.map(v => (
-                <button key={v} onClick={() => updateEtape(activeEtape, "corps", (etapes[activeEtape]?.corps || "") + v)} className="px-2.5 py-1 bg-slate-100 hover:bg-slate-200 text-slate-600 text-xs rounded-md font-mono transition-colors">
-                  {v}
-                </button>
-              ))}
-            </div>
+            ) : (
+              /* MODE PREVIEW */
+              <div className="p-5">
+                <div className="bg-slate-50 rounded-xl p-4 mb-4 border border-slate-200">
+                  <div className="text-xs text-slate-400 mb-1">Objet</div>
+                  <div className="text-sm font-medium text-slate-800" dangerouslySetInnerHTML={{ __html: substituerVarsPreview(etapeCourante.sujet || "") }} />
+                </div>
+                <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+                  <div className="bg-slate-50 px-4 py-2 border-b border-slate-200 flex items-center gap-2">
+                    <span className="text-xs text-slate-500">De :</span>
+                    <span className="text-xs font-medium text-slate-700">Hugo Montiel &lt;hugo@terredemars.com&gt;</span>
+                    <span className="ml-auto text-xs text-slate-400">À : Sophie Lefebvre &lt;sophie@bristol.fr&gt;</span>
+                  </div>
+                  <div className="p-6">
+                    <div
+                      className="text-sm leading-relaxed text-slate-800"
+                      style={{ fontFamily: "Arial, sans-serif" }}
+                      dangerouslySetInnerHTML={{ __html: substituerVarsPreview(corpsPreview) + SIGNATURE_HTML }}
+                    />
+                  </div>
+                </div>
+                <p className="text-xs text-slate-400 mt-3 text-center">Les variables surlignées en jaune seront remplacées par les vraies données du lead</p>
+              </div>
+            )}
           </div>
         </div>
-        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600">Annuler</button>
-          {errMsg && <span className="text-xs text-red-500 mr-auto">{errMsg}</span>}
-          <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">{saving ? "Sauvegarde..." : "Enregistrer"}</button>
+
+        {/* Footer */}
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between flex-shrink-0">
+          <div className="text-xs text-slate-400">{etapes.length} email{etapes.length > 1 ? "s" : ""} · Signature Hugo incluse automatiquement</div>
+          <div className="flex items-center gap-3">
+            {errMsg && <span className="text-xs text-red-500">{errMsg}</span>}
+            <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
+            <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
+              {saving ? "Sauvegarde..." : "Enregistrer"}
+            </button>
+          </div>
         </div>
       </div>
     </div>
