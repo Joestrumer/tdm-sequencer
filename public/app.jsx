@@ -488,6 +488,21 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch }) => {
         </div>
         <div className="flex gap-2">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          <button onClick={async () => {
+            setTriggerStatus("sending");
+            try {
+              const r = await api.post('/sequences/trigger-now', {});
+              setTriggerStatus(r.erreur ? "error" : "done");
+            } catch(e) { setTriggerStatus("error"); }
+            setTimeout(() => setTriggerStatus(null), 3000);
+          }} className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
+            triggerStatus === "sending" ? "bg-amber-50 border-amber-300 text-amber-700" :
+            triggerStatus === "done"    ? "bg-emerald-50 border-emerald-300 text-emerald-700" :
+            triggerStatus === "error"   ? "bg-red-50 border-red-300 text-red-600" :
+            "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
+          }`}>
+            {triggerStatus === "sending" ? "⟳ Envoi..." : triggerStatus === "done" ? "✓ Envoyé" : triggerStatus === "error" ? "✗ Erreur" : "⚡ Envoyer maintenant"}
+          </button>
           <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors whitespace-nowrap">+ Ajouter</button>
         </div>
       </div>
