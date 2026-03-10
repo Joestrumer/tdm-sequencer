@@ -344,8 +344,7 @@ function substituerVarsPreview(texte, lead = DEMO_LEAD_PREVIEW) {
 function texteVersHtmlPreview(texte) {
   return texte
     .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
-    .replace(/
-/g, "<br>")
+    .replace(/\n/g, "<br>")
     .replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" style="color:#1a56db">$1</a>');
 }
 
