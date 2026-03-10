@@ -120,7 +120,7 @@
   <script>
     // ─── Gestion Auth ────────────────────────────────────────────────────────
     const API_BASE = window.location.origin + '/api';
-    let AUTH_TOKEN = sessionStorage.getItem('tdm_token') || '';
+    window.AUTH_TOKEN = sessionStorage.getItem('tdm_token') || '';
 
     async function tryLogin() {
       const pwd = document.getElementById('password-input').value.trim();
@@ -132,7 +132,7 @@
           headers: { 'Authorization': 'Bearer ' + pwd }
         });
         if (res.ok) {
-          AUTH_TOKEN = pwd;
+          window.AUTH_TOKEN = pwd;
           sessionStorage.setItem('tdm_token', pwd);
           document.getElementById('login-screen').classList.remove('visible');
           lancerApp();
@@ -153,7 +153,7 @@
     // ─── API Helper ──────────────────────────────────────────────────────────
     window.tdmApi = {
       _headers: () => ({
-        'Authorization': 'Bearer ' + (AUTH_TOKEN || sessionStorage.getItem('tdm_token') || ''),
+        'Authorization': 'Bearer ' + (window.AUTH_TOKEN || sessionStorage.getItem('tdm_token') || ''),
         'Content-Type': 'application/json',
       }),
       get:    (path)        => fetch(API_BASE + path, { headers: window.tdmApi._headers() }).then(r => r.json()),
@@ -165,10 +165,10 @@
 
     // ─── Vérifier si déjà connecté ───────────────────────────────────────────
     async function verifierSession() {
-      if (!AUTH_TOKEN) return false;
+      if (!window.AUTH_TOKEN) return false;
       try {
         const res = await fetch(API_BASE + '/health', {
-          headers: { 'Authorization': 'Bearer ' + AUTH_TOKEN }
+          headers: { 'Authorization': 'Bearer ' + window.AUTH_TOKEN }
         });
         return res.ok;
       } catch { return false; }
@@ -183,7 +183,7 @@
       if (ok) {
         lancerApp();
       } else {
-        AUTH_TOKEN = '';
+        window.AUTH_TOKEN = '';
         sessionStorage.removeItem('tdm_token');
         document.getElementById('login-screen').classList.add('visible');
       }
