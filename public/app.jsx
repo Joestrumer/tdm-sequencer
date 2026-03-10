@@ -457,6 +457,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch }) => {
   const [selectedLead, setSelectedLead] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showLaunch, setShowLaunch] = useState(null);
+  const [triggerStatus, setTriggerStatus] = useState(null);
 
   const leadsNorm = leads.map(l => ({
     ...l,
