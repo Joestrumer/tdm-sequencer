@@ -91,6 +91,12 @@ async function traiterInscription(inscription) {
       db.prepare(`UPDATE inscriptions SET etape_courante = ?, statut = 'terminé', prochain_envoi = NULL WHERE id = ?`)
         .run(prochainIndex, inscription.id);
       logger.info(`📭 Dernière étape envoyée pour ${lead.email}`);
+
+      // ── Créer task HubSpot J+7 ──────────────────────────────────────────────
+      if (process.env.HUBSPOT_API_KEY) {
+        const seq = db.prepare('SELECT nom FROM sequences WHERE id = ?').get(inscription.sequence_id);
+        await hubspot.creerTaskFinSequence(db, lead, seq?.nom || 'Séquence');
+      }
     } else {
       // Calculer la date du prochain email
       const prochainEtape = etapes[prochainIndex];
