@@ -357,6 +357,8 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [errMsg, setErrMsg] = useState("");
   const [mode, setMode] = useState("edit"); // "edit" | "preview"
   const editorRef = useRef(null);
+  const objetRef = useRef(null);
+  const colorInputRef = useRef(null);
 
   const addEtape = () => setEtapes(e => [...e, { jour: (e[e.length-1]?.jour || 0) + 7, sujet: "", corps: "" }]);
   const removeEtape = (i) => { if (etapes.length > 1) { setEtapes(e => e.filter((_, idx) => idx !== i)); setActiveEtape(Math.max(0, i-1)); }};
@@ -460,23 +462,72 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                   </div>
                   <div className="flex-1">
                     <label className="text-xs font-medium text-slate-500 mb-1 block">Objet de l'email</label>
-                    <input value={etapeCourante.sujet || ""} onChange={e => updateEtape(activeEtape, "sujet", e.target.value)} placeholder="Ex: Découvrez Terre de Mars — {{hotel}}" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                    <input
+                      ref={objetRef}
+                      value={etapeCourante.sujet || ""}
+                      onChange={e => updateEtape(activeEtape, "sujet", e.target.value)}
+                      placeholder="Ex: Découvrez Terre de Mars — {{hotel}}"
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                    />
+                    <div className="flex gap-1 mt-1.5">
+                      {VARS.map(v => (
+                        <button key={v} type="button" onClick={() => {
+                          const input = objetRef.current;
+                          if (!input) return;
+                          const pos = input.selectionStart;
+                          const val = etapeCourante.sujet || "";
+                          updateEtape(activeEtape, "sujet", val.slice(0, pos) + v + val.slice(pos));
+                          setTimeout(() => input.setSelectionRange(pos + v.length, pos + v.length), 0);
+                        }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
+                      ))}
+                    </div>
                   </div>
                 </div>
 
                 {/* Toolbar */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="flex items-center gap-1 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                  <div className="flex flex-wrap items-center gap-1 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                    {/* Formatage texte */}
                     {TOOLBAR.map(t => (
-                      <button key={t.cmd} onMouseDown={e => { e.preventDefault(); fmt(t.cmd); }} className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 ${t.style}`}>{t.label}</button>
+                      <button key={t.cmd} title={t.cmd} onMouseDown={e => { e.preventDefault(); fmt(t.cmd); }} className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 ${t.style}`}>{t.label}</button>
                     ))}
-                    <div className="w-px h-4 bg-slate-200 mx-1" />
-                    <button onMouseDown={e => { e.preventDefault(); fmt("insertUnorderedList"); }} className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-500">☰</button>
-                    <button onMouseDown={e => { e.preventDefault(); const url = prompt("URL du lien :"); if(url) fmt("createLink", url); }} className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-500">🔗</button>
-                    <div className="w-px h-4 bg-slate-200 mx-1" />
-                    <span className="text-xs text-slate-400 ml-1">Variables :</span>
+                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                    {/* Listes */}
+                    <button title="Liste à puces" onMouseDown={e => { e.preventDefault(); fmt("insertUnorderedList"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs font-bold">• —</button>
+                    <button title="Liste numérotée" onMouseDown={e => { e.preventDefault(); fmt("insertOrderedList"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs font-bold">1.</button>
+                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                    {/* Lien hypertexte */}
+                    <button title="Ajouter un lien" onMouseDown={e => {
+                      e.preventDefault();
+                      const sel = window.getSelection();
+                      const texteSelec = sel?.toString();
+                      const url = prompt("URL du lien :", "https://");
+                      if (!url) return;
+                      if (texteSelec) {
+                        fmt("createLink", url);
+                      } else {
+                        const label = prompt("Texte du lien :", url) || url;
+                        document.execCommand("insertHTML", false, `<a href="${url}" style="color:#1a56db;text-decoration:underline">${label}</a>`);
+                        syncCorps();
+                      }
+                    }} className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs gap-1">
+                      🔗 <span className="text-slate-400">Lien</span>
+                    </button>
+                    {/* Couleur du texte */}
+                    <div className="relative flex items-center">
+                      <button title="Couleur du texte" onMouseDown={e => { e.preventDefault(); colorInputRef.current?.click(); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-sm relative">
+                        <span style={{ borderBottom: "3px solid #e11d48" }}>A</span>
+                      </button>
+                      <input ref={colorInputRef} type="color" defaultValue="#e11d48"
+                        onChange={e => { editorRef.current?.focus(); document.execCommand("foreColor", false, e.target.value); syncCorps(); }}
+                        className="absolute opacity-0 w-0 h-0 pointer-events-none"
+                      />
+                    </div>
+                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                    {/* Variables corps */}
+                    <span className="text-xs text-slate-400">Var :</span>
                     {VARS.map(v => (
-                      <button key={v} onMouseDown={e => { e.preventDefault(); insererVar(v); }} className="px-2 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
+                      <button key={v} onMouseDown={e => { e.preventDefault(); insererVar(v); }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
                     ))}
                   </div>
                   {/* Éditeur contentEditable */}
