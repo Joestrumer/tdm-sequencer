@@ -214,4 +214,8 @@ function initialiser(database) {
   setTimeout(() => lancerVerification().catch(err => logger.error('Erreur scheduler init', { error: err.message })), 5000);
 }
 
-module.exports = { initialiser, inscrireLead, prochaineDateEnvoi, lancerVerification };
+async function forcerEnvoi() {
+  return lancerVerification(true);
+}
+
+module.exports = { initialiser, inscrireLead, prochaineDateEnvoi, lancerVerification, forcerEnvoi };
