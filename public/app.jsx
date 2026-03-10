@@ -506,25 +506,53 @@ const VueSequences = ({ sequences, onNew, onEdit }) => (
 const VueHubspot = () => {
   const [connected, setConnected] = useState(false);
   const [apiKey, setApiKey] = useState("");
-  const [syncing, setSyncing] = useState(false);
-  const simulateSync = () => { setSyncing(true); setTimeout(() => setSyncing(false), 2000); };
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
+
+  // Charger la config au montage
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.hubspot_api_key_configured) setConnected(true);
+    }).catch(() => {});
+  }, []);
+
+  const sauvegarder = async () => {
+    if (!apiKey) return;
+    setSaving(true);
+    setMsg("");
+    try {
+      await api.post('/config', { hubspot_api_key: apiKey });
+      setConnected(true);
+      setMsg("✅ Clé HubSpot sauvegardée");
+      setApiKey("");
+    } catch(e) {
+      setMsg("❌ Erreur lors de la sauvegarde");
+    }
+    setSaving(false);
+  };
+
+  const deconnecter = async () => {
+    await api.post('/config', { hubspot_api_key: '' });
+    setConnected(false);
+    setMsg("");
+  };
 
   return (
     <div className="space-y-4 max-w-2xl">
       <div className={`rounded-2xl border p-5 ${connected ? "bg-emerald-50 border-emerald-200" : "bg-white border-slate-100"}`}>
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${connected ? "bg-emerald-100" : "bg-slate-100"}`}>
-              🔗
-            </div>
+            <div className={`w-10 h-10 rounded-xl flex items-center justify-center text-xl ${connected ? "bg-emerald-100" : "bg-slate-100"}`}>🔗</div>
             <div>
               <h3 className="text-sm font-semibold text-slate-900">HubSpot CRM</h3>
-              <p className={`text-xs ${connected ? "text-emerald-600" : "text-slate-400"}`}>{connected ? "Connecté · Sync active" : "Non connecté"}</p>
+              <p className={`text-xs ${connected ? "text-emerald-600" : "text-slate-400"}`}>{connected ? "Connecté · Clé API sauvegardée" : "Non connecté"}</p>
             </div>
           </div>
-          <button onClick={() => setConnected(c => !c)} className={`px-4 py-2 text-sm font-medium rounded-lg transition-colors ${connected ? "bg-emerald-600 text-white hover:bg-emerald-700" : "bg-slate-900 text-white hover:bg-slate-700"}`}>
-            {connected ? "Déconnecter" : "Connecter"}
-          </button>
+          {connected && (
+            <button onClick={deconnecter} className="px-4 py-2 text-sm font-medium rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors">
+              Déconnecter
+            </button>
+          )}
         </div>
       </div>
 
@@ -536,89 +564,94 @@ const VueHubspot = () => {
             <input type="password" value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder="pat-eu1-xxxxxxxx-xxxx-..." className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
             <p className="text-xs text-slate-400 mt-1.5">Créez une Private App dans HubSpot → Settings → Integrations → Private Apps</p>
           </div>
-          <button onClick={() => apiKey && setConnected(true)} className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-40">
-            Tester la connexion
+          {msg && <p className="text-xs text-emerald-600">{msg}</p>}
+          <button onClick={sauvegarder} disabled={saving || !apiKey} className="px-4 py-2 bg-orange-500 text-white text-sm font-medium rounded-lg hover:bg-orange-600 transition-colors disabled:opacity-40">
+            {saving ? "Sauvegarde..." : "Sauvegarder la clé"}
           </button>
         </div>
       )}
 
       {connected && (
-        <>
-          <div className="bg-white rounded-2xl border border-slate-100 p-5">
-            <h3 className="text-sm font-semibold text-slate-800 mb-4">Synchronisation</h3>
-            <div className="space-y-3">
-              {[
-                { icon: "👤", label: "Contacts", desc: "8 leads → HubSpot Contacts", statut: "Synchronisé" },
-                { icon: "📧", label: "Activités email", desc: "43 logs dans les timelines", statut: "Synchronisé" },
-                { icon: "💼", label: "Deals", desc: "2 deals créés automatiquement", statut: "Synchronisé" },
-                { icon: "🔔", label: "Webhook entrant", desc: "Écoute les mises à jour HubSpot", statut: "Actif" },
-              ].map(({ icon, label, desc, statut }) => (
-                <div key={label} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
-                  <div className="flex items-center gap-3">
-                    <span className="text-lg">{icon}</span>
-                    <div>
-                      <div className="text-sm font-medium text-slate-800">{label}</div>
-                      <div className="text-xs text-slate-400">{desc}</div>
-                    </div>
-                  </div>
-                  <span className="text-xs bg-emerald-50 text-emerald-700 px-2.5 py-1 rounded-full">{statut}</span>
-                </div>
-              ))}
-            </div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-3">Règles d'automatisation actives</h3>
+          <div className="space-y-2 text-sm">
+            {[
+              "Email ouvert 2× → Lifecycle Stage: MQL",
+              "Réponse reçue → Lifecycle Stage: SQL + Deal créé",
+              "Lead converti → Deal pipeline «Nouveaux Clients»",
+              "Désabonnement → Contact bloqué + tag HubSpot",
+            ].map(r => (
+              <div key={r} className="flex items-center gap-2 text-slate-600">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />{r}
+              </div>
+            ))}
           </div>
-          <div className="bg-white rounded-2xl border border-slate-100 p-5">
-            <h3 className="text-sm font-semibold text-slate-800 mb-3">Règles d'automatisation</h3>
-            <div className="space-y-2 text-sm">
-              {[
-                "Email ouvert 2× → Lifecycle Stage: MQL",
-                "Réponse reçue → Lifecycle Stage: SQL + Deal créé",
-                "Lead converti → Deal pipeline «Nouveaux Clients»",
-                "Désabonnement → Contact bloqué + tag HubSpot",
-              ].map(r => (
-                <div key={r} className="flex items-center gap-2 text-slate-600">
-                  <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />{r}
-                </div>
-              ))}
-            </div>
-          </div>
-          <button onClick={simulateSync} disabled={syncing} className="px-4 py-2 border border-slate-200 text-slate-700 text-sm font-medium rounded-lg hover:bg-slate-50 transition-colors disabled:opacity-50">
-            {syncing ? "⟳ Synchronisation..." : "⟳ Forcer la synchronisation"}
-          </button>
-        </>
+        </div>
       )}
     </div>
   );
 };
 
 const VueParametres = () => {
-  const [smtp, setSmtp] = useState({ host: "smtp.gmail.com", port: "587", user: "", pass: "", from: "Joe — Terre de Mars" });
+  const [brevoKey, setBrevoKey] = useState("");
   const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"] });
+  const [brevoConfigured, setBrevoConfigured] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState("");
   const jours = [["lun","Lun"],["mar","Mar"],["mer","Mer"],["jeu","Jeu"],["ven","Ven"],["sam","Sam"],["dim","Dim"]];
   const toggleJour = j => setLimites(l => ({ ...l, joursActifs: l.joursActifs.includes(j) ? l.joursActifs.filter(x => x !== j) : [...l.joursActifs, j] }));
+
+  // Charger la config existante
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.brevo_api_key_configured) setBrevoConfigured(true);
+      if (cfg.max_emails_par_jour) setLimites(l => ({ ...l, maxParJour: +cfg.max_emails_par_jour }));
+      if (cfg.heure_debut) setLimites(l => ({ ...l, heureDebut: cfg.heure_debut }));
+      if (cfg.heure_fin) setLimites(l => ({ ...l, heureFin: cfg.heure_fin }));
+      if (cfg.jours_actifs) setLimites(l => ({ ...l, joursActifs: cfg.jours_actifs.split(',') }));
+    }).catch(() => {});
+  }, []);
+
+  const sauvegarder = async () => {
+    setSaving(true);
+    setMsg("");
+    try {
+      const payload = {
+        max_emails_par_jour: String(limites.maxParJour),
+        heure_debut: limites.heureDebut,
+        heure_fin: limites.heureFin,
+        jours_actifs: limites.joursActifs.join(','),
+      };
+      if (brevoKey) {
+        payload.brevo_api_key = brevoKey;
+        setBrevoConfigured(true);
+        setBrevoKey("");
+      }
+      await api.post('/config', payload);
+      setMsg("✅ Paramètres sauvegardés");
+    } catch(e) {
+      setMsg("❌ Erreur lors de la sauvegarde");
+    }
+    setSaving(false);
+  };
 
   return (
     <div className="space-y-4 max-w-2xl">
       <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-800">Configuration SMTP</h3>
-        <div className="grid grid-cols-2 gap-3">
-          {[["host","Serveur SMTP"],["port","Port"],["user","Identifiant"],["from","Nom expéditeur"]].map(([k,l]) => (
-            <div key={k} className={k === "from" ? "col-span-2" : ""}>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
-              <input value={smtp[k]} onChange={e => setSmtp(s => ({ ...s, [k]: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-            </div>
-          ))}
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Mot de passe</label>
-            <input type="password" value={smtp.pass} onChange={e => setSmtp(s => ({ ...s, pass: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-          </div>
+        <h3 className="text-sm font-semibold text-slate-800">Clé API Brevo</h3>
+        <div className={`flex items-center gap-2 text-xs mb-2 ${brevoConfigured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${brevoConfigured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {brevoConfigured ? "Clé Brevo configurée et sauvegardée" : "Aucune clé configurée"}
         </div>
-        <div className="bg-blue-50 rounded-xl p-3 text-xs text-blue-700">
-          💡 Alternative gratuite : utilisez <strong>Resend.com</strong> (3 000 emails/mois gratuits) ou <strong>Brevo</strong> (300/jour)
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">{brevoConfigured ? "Nouvelle clé API (laisser vide pour conserver l'actuelle)" : "Clé API Brevo"}</label>
+          <input type="password" value={brevoKey} onChange={e => setBrevoKey(e.target.value)} placeholder="xkeysib-xxxxxxxx..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          <p className="text-xs text-slate-400 mt-1">Trouvez votre clé dans Brevo → Mon compte → SMTP & API → Clés API</p>
         </div>
       </div>
 
       <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-800">Limites d'envoi & Deliverability</h3>
+        <h3 className="text-sm font-semibold text-slate-800">Limites d'envoi</h3>
         <div>
           <label className="text-xs font-medium text-slate-500 mb-1 block">Maximum d'emails par jour</label>
           <input type="number" value={limites.maxParJour} onChange={e => setLimites(l => ({ ...l, maxParJour: +e.target.value }))} className="w-32 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
@@ -627,7 +660,7 @@ const VueParametres = () => {
           {[["heureDebut","Heure de début"],["heureFin","Heure de fin"]].map(([k,l]) => (
             <div key={k}>
               <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
-              <input type="time" value={limites[k]} onChange={e => setLimites(l => ({ ...l, [k]: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              <input type="time" value={limites[k]} onChange={e => setLimites(lim => ({ ...lim, [k]: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
             </div>
           ))}
         </div>
@@ -641,8 +674,9 @@ const VueParametres = () => {
         </div>
       </div>
 
-      <button className="px-5 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors">
-        Enregistrer les paramètres
+      {msg && <p className="text-sm text-emerald-600 font-medium">{msg}</p>}
+      <button onClick={sauvegarder} disabled={saving} className="px-5 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
+        {saving ? "Sauvegarde..." : "Enregistrer les paramètres"}
       </button>
     </div>
   );
