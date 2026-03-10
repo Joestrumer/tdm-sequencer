@@ -178,5 +178,16 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/sequences/trigger-now — Forcer l'envoi immédiat (test)
+  router.post('/trigger-now', async (req, res) => {
+    try {
+      const scheduler = require('../jobs/sequenceScheduler');
+      await scheduler.lancerVerification();
+      res.json({ message: 'Vérification forcée — emails envoyés si dus' });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   return router;
 };
