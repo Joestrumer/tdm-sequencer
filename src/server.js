@@ -36,6 +36,7 @@ app.use('/api', (req, res, next) => {
 
 // Routes
 app.use('/api/leads',     require('./routes/leads')(db));
+app.use('/api/email-validation', require('./routes/emailValidation')(db));
 app.use('/api/sequences', require('./routes/sequences')(db));
 app.use('/api/tracking',  require('./routes/tracking')(db));
 app.use('/api/stats',     require('./routes/stats')(db));
