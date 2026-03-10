@@ -511,6 +511,9 @@ const VueHubspot = () => {
 
   // Charger la config au montage
   useEffect(() => {
+    api.get('/health').then(h => {
+      if (h.hubspot === 'configuré') setConnected(true);
+    }).catch(() => {});
     api.get('/config').then(cfg => {
       if (cfg.hubspot_api_key_configured) setConnected(true);
     }).catch(() => {});
@@ -603,6 +606,11 @@ const VueParametres = () => {
 
   // Charger la config existante
   useEffect(() => {
+    // Vérifier via /health si Brevo est configuré (variable Railway)
+    api.get('/health').then(h => {
+      if (h.brevo === 'configuré') setBrevoConfigured(true);
+    }).catch(() => {});
+    // Charger les autres paramètres depuis la DB
     api.get('/config').then(cfg => {
       if (cfg.brevo_api_key_configured) setBrevoConfigured(true);
       if (cfg.max_emails_par_jour) setLimites(l => ({ ...l, maxParJour: +cfg.max_emails_par_jour }));
