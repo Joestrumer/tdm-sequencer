@@ -116,11 +116,18 @@ const MiniChart = ({ data }) => {
 
 const ModalAddLead = ({ onClose, onAdd }) => {
   const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*" });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
-  const submit = () => {
+  const submit = async () => {
     if (!form.email || !form.hotel) return;
-    onAdd({ ...form, id: Date.now(), tags: [form.segment], statut: "Nouveau", sequence: null, etape: 0, ouvertures: 0, dernierContact: null, score: 50 });
-    onClose();
+    setSaving(true);
+    try {
+      const lead = await api.post('/leads', { ...form, tags: JSON.stringify([form.segment]) });
+      onAdd(lead);
+      onClose();
+    } catch(e) { setErr("Erreur lors de l'ajout"); }
+    setSaving(false);
   };
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
@@ -152,8 +159,9 @@ const ModalAddLead = ({ onClose, onAdd }) => {
           </div>
         </div>
         <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3">
+          {err && <span className="text-xs text-red-500 mr-auto">{err}</span>}
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
-          <button onClick={submit} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors">Ajouter</button>
+          <button onClick={submit} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">{saving ? "Ajout..." : "Ajouter"}</button>
         </div>
       </div>
     </div>
@@ -246,7 +254,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
         </div>
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600">Annuler</button>
-          <button onClick={() => { onSave({ id: seq?.id || Date.now(), nom, etapes, segment: seq?.segment || "5*", leadsActifs: seq?.leadsActifs || 0 }); onClose(); }} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors">Enregistrer</button>
+          <button onClick={() => { onSave({ id: seq?.id || null, nom, etapes, segment: seq?.segment || "5*", leadsActifs: seq?.leadsActifs || 0 }); onClose(); }} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors">Enregistrer</button>
         </div>
       </div>
     </div>
@@ -255,12 +263,12 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
 // ─── VUES ─────────────────────────────────────────────────────────────────────
 
-const VueDashboard = ({ leads, activites }) => {
-  const envoyes = leads.filter(l => l.etape > 0).length * 4;
-  const tOuverture = Math.round((leads.filter(l => l.ouvertures > 0).length / Math.max(leads.length, 1)) * 100);
-  const tReponse = Math.round((leads.filter(l => l.statut === "Répondu" || l.statut === "Converti").length / Math.max(leads.length, 1)) * 100);
-  const convertis = leads.filter(l => l.statut === "Converti").length;
-  const chauds = leads.filter(l => l.ouvertures >= 3 && l.statut === "En séquence");
+const VueDashboard = ({ leads, activites, stats }) => {
+  const envoyes = stats?.emails_envoyes_total || leads.filter(l => l.etape > 0).length * 4;
+  const tOuverture = stats?.taux_ouverture || Math.round((leads.filter(l => l.ouvertures > 0).length / Math.max(leads.length, 1)) * 100);
+  const tReponse = stats?.taux_reponse || Math.round((leads.filter(l => l.statut === "Répondu" || l.statut === "Converti").length / Math.max(leads.length, 1)) * 100);
+  const convertis = stats?.leads_convertis || leads.filter(l => l.statut === "Converti").length;
+  const chauds = leads.filter(l => (l.ouvertures >= 3 || l.score >= 80) && l.statut === "En séquence");
 
   return (
     <div className="space-y-6">
@@ -345,7 +353,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch }) => {
   const [showAdd, setShowAdd] = useState(false);
   const [showLaunch, setShowLaunch] = useState(null);
 
-  const filtered = leads.filter(l => {
+  const leadsNorm = leads.map(l => ({
+    ...l,
+    tags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
+    ouvertures: l.ouvertures || 0,
+    score: l.score || 50,
+  }));
+  const filtered = leadsNorm.filter(l => {
     const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville}`.toLowerCase().includes(search.toLowerCase());
     const matchStatut = filterStatut === "Tous" || l.statut === filterStatut;
     return matchSearch && matchStatut;
@@ -694,20 +708,61 @@ const VueParametres = () => {
 
 function App() {
   const [vue, setVue] = useState("dashboard");
-  const [leads, setLeads] = useState(DEMO_LEADS);
-  const [sequences, setSequences] = useState(DEMO_SEQUENCES);
-  const [activites, setActivites] = useState(DEMO_ACTIVITES);
+  const [leads, setLeads] = useState([]);
+  const [sequences, setSequences] = useState([]);
+  const [activites, setActivites] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
   const [editSeq, setEditSeq] = useState(null);
   const [showSeqEditor, setShowSeqEditor] = useState(false);
 
-  const addLead = (lead) => setLeads(l => [...l, lead]);
-  const launchSequence = (leadId, seqId) => {
-    const seq = sequences.find(s => s.id === seqId);
-    setLeads(l => l.map(lead => lead.id === leadId ? { ...lead, statut: "En séquence", sequence: seq?.nom, etape: 1 } : lead));
-    setActivites(a => [{ id: Date.now(), type: "envoye", lead: leads.find(l => l.id === leadId)?.prenom + " " + leads.find(l => l.id === leadId)?.nom, action: "Séquence lancée — Email #1 envoyé", temps: "à l'instant", icon: "📤" }, ...a]);
+  // Charger les données au démarrage
+  const charger = async () => {
+    setLoading(true);
+    try {
+      const [leadsData, seqData, statsData] = await Promise.all([
+        api.get('/leads'),
+        api.get('/sequences'),
+        api.get('/stats/dashboard'),
+      ]);
+      setLeads(Array.isArray(leadsData) ? leadsData : (leadsData.leads || []));
+      setSequences(Array.isArray(seqData) ? seqData : (seqData.sequences || []));
+      setStats(statsData);
+      // Activités depuis les stats
+      if (statsData?.activites_recentes) setActivites(statsData.activites_recentes);
+    } catch(e) { console.error("Erreur chargement:", e); }
+    setLoading(false);
   };
-  const saveSeq = (seq) => {
-    setSequences(s => seq.id && s.find(x => x.id === seq.id) ? s.map(x => x.id === seq.id ? seq : x) : [...s, seq]);
+
+  useEffect(() => { charger(); }, []);
+
+  // Normaliser les séquences depuis l'API (jour_delai → jour)
+  const sequencesNorm = sequences.map(s => ({
+    ...s,
+    leadsActifs: s.leads_actifs || s.leadsActifs || 0,
+    etapes: (s.etapes || []).map(e => ({ ...e, jour: e.jour_delai ?? e.jour ?? 0 }))
+  }));
+
+  const addLead = (lead) => {
+    setLeads(l => [lead, ...l]);
+  };
+
+  const launchSequence = async (leadId, seqId) => {
+    try {
+      await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId });
+      charger(); // Recharger les données
+    } catch(e) { console.error("Erreur lancement séquence:", e); }
+  };
+
+  const saveSeq = async (seq) => {
+    try {
+      if (seq.id) {
+        await api.put(`/sequences/${seq.id}`, seq);
+      } else {
+        await api.post('/sequences', seq);
+      }
+      charger();
+    } catch(e) { console.error("Erreur sauvegarde séquence:", e); }
   };
 
   const NAV = [
@@ -767,11 +822,11 @@ function App() {
               {NAV.find(n => n.id === vue)?.label}
             </h1>
             <p className="text-xs text-slate-400">
-              {vue === "dashboard" && `${leads.filter(l => l.statut === "En séquence").length} leads en séquence · Mardi 16 janvier 2024`}
+              {vue === "dashboard" && `${leads.filter(l => l.statut === "En séquence").length} leads en séquence`}
               {vue === "leads" && `${leads.length} leads au total`}
               {vue === "sequences" && `${sequences.length} séquences actives`}
               {vue === "hubspot" && "Intégration CRM bidirectionnelle"}
-              {vue === "parametres" && "Configuration SMTP & envoi"}
+              {vue === "parametres" && "Configuration Brevo & envoi"}
             </p>
           </div>
           {vue === "leads" && (
@@ -783,9 +838,10 @@ function App() {
         </header>
 
         <main className="p-8">
-          {vue === "dashboard" && <VueDashboard leads={leads} activites={activites} />}
-          {vue === "leads" && <VueLeads leads={leads} sequences={sequences} onAdd={addLead} onLaunch={launchSequence} />}
-          {vue === "sequences" && <VueSequences sequences={sequences} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} />}
+          {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
+          {vue === "dashboard" && <VueDashboard leads={leads} activites={activites} stats={stats} />}
+          {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} />}
+          {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} />}
           {vue === "hubspot" && <VueHubspot />}
           {vue === "parametres" && <VueParametres />}
         </main>
