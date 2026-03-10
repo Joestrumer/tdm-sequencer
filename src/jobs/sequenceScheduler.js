@@ -9,8 +9,8 @@
 const cron = require('node-cron');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
-const { envoyerEmail, estDansLaFenetreEnvoi } = require('./brevoService');
-const hubspot = require('./hubspotService');
+const { envoyerEmail, estDansLaFenetreEnvoi } = require('../services/brevoService');
+const hubspot = require('../services/hubspotService');
 
 let db; // Injecté au démarrage
 
