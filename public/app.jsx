@@ -715,134 +715,420 @@ const VueDashboard = ({ leads, activites, stats }) => {
   );
 };
 
-const VueLeads = ({ leads, sequences, onAdd, onLaunch }) => {
+// ─── Modal édition lead ────────────────────────────────────────────────────
+const ModalEditLead = ({ lead, onClose, onSave }) => {
+  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau" });
+  const [saving, setSaving] = useState(false);
+  const [err, setErr] = useState("");
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const handleSave = async () => {
+    if (!form.email || !form.hotel) { setErr("Email et établissement requis"); return; }
+    setSaving(true);
+    try {
+      await api.patch(`/leads/${lead.id}`, form);
+      onSave();
+    } catch(e) { setErr(e.message); }
+    setSaving(false);
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900">Modifier le lead</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+        </div>
+        <div className="p-6 space-y-3">
+          <div className="grid grid-cols-2 gap-3">
+            {[["Prénom","prenom"],["Nom","nom"]].map(([l,k]) => (
+              <div key={k}><label className="text-xs text-slate-500 mb-1 block">{l}</label>
+              <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
+            ))}
+          </div>
+          {[["Email","email"],["Établissement","hotel"],["Ville","ville"]].map(([l,k]) => (
+            <div key={k}><label className="text-xs text-slate-500 mb-1 block">{l}</label>
+            <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
+          ))}
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="text-xs text-slate-500 mb-1 block">Segment</label>
+            <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+              {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
+            </select></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">Statut</label>
+            <select value={form.statut} onChange={e => set("statut", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+              {Object.keys(STATUT_CONFIG).map(s => <option key={s}>{s}</option>)}
+            </select></div>
+          </div>
+          {err && <p className="text-xs text-red-500">{err}</p>}
+        </div>
+        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600">Annuler</button>
+          <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50">{saving ? "Sauvegarde..." : "Enregistrer"}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── VueLeads ──────────────────────────────────────────────────────────────
+const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
   const [search, setSearch] = useState("");
   const [filterStatut, setFilterStatut] = useState("Tous");
+  const [filterSegment, setFilterSegment] = useState("Tous");
+  const [filterVille, setFilterVille] = useState("Tous");
+  const [sortBy, setSortBy] = useState("recent"); // "recent"|"score"|"nom"
+  const [vueMode, setVueMode] = useState("liste"); // "liste"|"kanban"
   const [selectedLead, setSelectedLead] = useState(null);
+  const [editLead, setEditLead] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
   const [showLaunch, setShowLaunch] = useState(null);
   const [triggerStatus, setTriggerStatus] = useState(null);
+  const [importStatus, setImportStatus] = useState(null);
+  const [hsDetails, setHsDetails] = useState(null);
+  const [loadingHs, setLoadingHs] = useState(false);
+  const csvRef = useRef(null);
 
   const leadsNorm = leads.map(l => ({
     ...l,
-    tags: typeof l.tags === "string" ? JSON.parse(l.tags || "[]") : (l.tags || []),
-    ouvertures: l.ouvertures || 0,
+    tags: typeof l.tags === "string" ? (() => { try { return JSON.parse(l.tags || "[]"); } catch(e) { return []; } })() : (l.tags || []),
+    ouvertures: l.total_ouvertures || l.ouvertures || 0,
     score: l.score || 50,
+    sequence: l.sequence_active || l.sequence || "",
+    etape: l.etape_courante || l.etape || 0,
+    statut: l.statut || "Nouveau",
   }));
-  const filtered = leadsNorm.filter(l => {
-    const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville}`.toLowerCase().includes(search.toLowerCase());
-    const matchStatut = filterStatut === "Tous" || l.statut === filterStatut;
-    return matchSearch && matchStatut;
-  });
 
+  const villes = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.ville).filter(Boolean))).sort()];
+  const segments = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.segment).filter(Boolean))).sort()];
   const statuts = ["Tous", ...Object.keys(STATUT_CONFIG)];
 
+  const filtered = leadsNorm.filter(l => {
+    const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email}`.toLowerCase().includes(search.toLowerCase());
+    const matchStatut = filterStatut === "Tous" || l.statut === filterStatut;
+    const matchSegment = filterSegment === "Tous" || l.segment === filterSegment;
+    const matchVille = filterVille === "Tous" || l.ville === filterVille;
+    return matchSearch && matchStatut && matchSegment && matchVille;
+  }).sort((a, b) => {
+    if (sortBy === "score") return (b.score||0) - (a.score||0);
+    if (sortBy === "nom") return `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`);
+    return 0; // recent = ordre API
+  });
+
+  const KANBAN_COLS = ["Nouveau", "En séquence", "Répondu", "Converti", "Désabonné"];
+
+  // ── Import CSV ──────────────────────────────────────────────────────────
+  const importerCSV = async (file) => {
+    if (!file) return;
+    setImportStatus("⟳ Import...");
+    const text = await file.text();
+    const lines = text.trim().split(/
+?
+/);
+    const sep = lines[0].includes(";") ? ";" : ",";
+    const headers = lines[0].split(sep).map(h => h.trim().replace(/"/g, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
+    const toImport = lines.slice(1).map(line => {
+      const vals = line.split(sep).map(v => v.trim().replace(/"/g, ""));
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = vals[i] || ""; });
+      return {
+        prenom: obj.prenom || obj.firstname || obj["prenom"] || "",
+        nom: obj.nom || obj.lastname || obj["nom"] || "",
+        email: obj.email || "",
+        hotel: obj.hotel || obj.company || obj.etablissement || obj["etablissement"] || obj.societe || "",
+        ville: obj.ville || obj.city || "",
+        segment: obj.segment || "5*",
+      };
+    }).filter(l => l.email && l.hotel);
+    try {
+      const r = await api.post("/leads/import", { leads: toImport });
+      setImportStatus(`✓ ${r.crees} importés`);
+      if (onRefresh) onRefresh();
+    } catch(e) { setImportStatus("✗ Erreur"); }
+    setTimeout(() => setImportStatus(null), 4000);
+    if (csvRef.current) csvRef.current.value = "";
+  };
+
+  // ── Actions lead ────────────────────────────────────────────────────────
+  const supprimerLead = async (lead) => {
+    if (!confirm(`Supprimer ${lead.prenom} ${lead.nom} (${lead.hotel}) ?`)) return;
+    await api.delete(`/leads/${lead.id}`);
+    if (selectedLead?.id === lead.id) setSelectedLead(null);
+    if (onRefresh) onRefresh();
+  };
+
+  const changerStatut = async (lead, statut) => {
+    await api.patch(`/leads/${lead.id}`, { statut });
+    if (onRefresh) onRefresh();
+  };
+
+  // ── HubSpot détails ─────────────────────────────────────────────────────
+  const chargerHubspot = async (lead) => {
+    if (!lead.hubspot_id) return;
+    setLoadingHs(true); setHsDetails(null);
+    try {
+      const [deals, notes] = await Promise.all([
+        api.get(`/hubspot/deals/${lead.hubspot_id}`).catch(() => ({ deals: [] })),
+        api.get(`/hubspot/notes/${lead.hubspot_id}`).catch(() => ({ notes: [] })),
+      ]);
+      setHsDetails({
+        deals: deals.deals || deals || [],
+        notes: notes.notes || notes || [],
+      });
+    } catch(e) { setHsDetails({ deals: [], notes: [] }); }
+    setLoadingHs(false);
+  };
+
+  const ouvrirDetail = (lead) => {
+    setSelectedLead(selectedLead?.id === lead.id ? null : lead);
+    setHsDetails(null);
+    if (lead.hubspot_id) chargerHubspot(lead);
+  };
+
+  // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {showAdd && <ModalAddLead onClose={() => setShowAdd(false)} onAdd={onAdd} />}
+      {showAdd && <ModalAddLead onClose={() => setShowAdd(false)} onAdd={(l) => { onAdd(l); if(onRefresh) onRefresh(); }} />}
       {showLaunch && <ModalLaunchSequence lead={showLaunch} sequences={sequences} onClose={() => setShowLaunch(null)} onLaunch={onLaunch} />}
+      {editLead && <ModalEditLead lead={editLead} onClose={() => setEditLead(null)} onSave={() => { setEditLead(null); if(onRefresh) onRefresh(); }} />}
 
-      <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between">
-        <div className="flex gap-2 flex-wrap">
+      {/* ── Filtres ── */}
+      <div className="flex flex-wrap gap-2 items-center bg-white rounded-2xl border border-slate-100 px-4 py-3">
+        <div className="flex gap-1 flex-wrap">
           {statuts.map(s => (
-            <button key={s} onClick={() => setFilterStatut(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filterStatut === s ? "bg-slate-900 text-white" : "bg-white border border-slate-200 text-slate-600 hover:border-slate-300"}`}>
-              {s}
-            </button>
+            <button key={s} onClick={() => setFilterStatut(s)} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${filterStatut === s ? "bg-slate-900 text-white" : "bg-slate-50 border border-slate-200 text-slate-600 hover:border-slate-300"}`}>{s}</button>
           ))}
         </div>
+        <div className="w-px h-4 bg-slate-200 mx-1 hidden sm:block" />
+        <select value={filterSegment} onChange={e => setFilterSegment(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-600 focus:outline-none bg-white">
+          {segments.map(s => <option key={s}>{s}</option>)}
+        </select>
+        <select value={filterVille} onChange={e => setFilterVille(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-600 focus:outline-none bg-white">
+          {villes.map(v => <option key={v}>{v}</option>)}
+        </select>
+        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-600 focus:outline-none bg-white">
+          <option value="recent">Plus récents</option>
+          <option value="score">Score ↓</option>
+          <option value="nom">Nom A→Z</option>
+        </select>
+        <span className="ml-auto text-xs text-slate-400">{filtered.length} lead{filtered.length !== 1 ? "s" : ""}</span>
+      </div>
+
+      {/* ── Barre actions ── */}
+      <div className="flex gap-2 items-center justify-between">
         <div className="flex gap-2">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-48 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          <div className="flex bg-slate-100 rounded-lg p-0.5">
+            <button onClick={() => setVueMode("liste")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vueMode === "liste" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>☰ Liste</button>
+            <button onClick={() => setVueMode("kanban")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vueMode === "kanban" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>⬛ Kanban</button>
+          </div>
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
+        </div>
+        <div className="flex gap-2">
+          <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
+            {importStatus || "📥 Import CSV"}
+          </button>
+          <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
+          <button onClick={async () => {
+            const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
+            if (r && onRefresh) onRefresh();
+          }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 whitespace-nowrap">
+            🔄 Sync HS
+          </button>
           <button onClick={async () => {
             setTriggerStatus("sending");
-            try {
-              const r = await api.post('/sequences/trigger-now', {});
-              setTriggerStatus(r.erreur ? "error" : "done");
-            } catch(e) { setTriggerStatus("error"); }
+            try { const r = await api.post("/sequences/trigger-now", {}); setTriggerStatus(r.erreur ? "error" : "done"); }
+            catch(e) { setTriggerStatus("error"); }
             setTimeout(() => setTriggerStatus(null), 3000);
-          }} className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${
-            triggerStatus === "sending" ? "bg-amber-50 border-amber-300 text-amber-700" :
-            triggerStatus === "done"    ? "bg-emerald-50 border-emerald-300 text-emerald-700" :
-            triggerStatus === "error"   ? "bg-red-50 border-red-300 text-red-600" :
-            "bg-white border-slate-200 text-slate-600 hover:border-slate-300"
-          }`}>
-            {triggerStatus === "sending" ? "⟳ Envoi..." : triggerStatus === "done" ? "✓ Envoyé" : triggerStatus === "error" ? "✗ Erreur" : "⚡ Envoyer maintenant"}
+          }} className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${triggerStatus === "sending" ? "bg-amber-50 border-amber-300 text-amber-700" : triggerStatus === "done" ? "bg-emerald-50 border-emerald-300 text-emerald-700" : triggerStatus === "error" ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+            {triggerStatus === "sending" ? "⟳ Envoi..." : triggerStatus === "done" ? "✓ Envoyé" : triggerStatus === "error" ? "✗ Erreur" : "⚡ Envoyer"}
           </button>
           <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors whitespace-nowrap">+ Ajouter</button>
         </div>
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-        <table className="w-full">
-          <thead>
-            <tr className="border-b border-slate-100">
-              {["Lead", "Établissement", "Séquence", "Étape", "Score", "Statut", "Actions"].map(h => (
-                <th key={h} className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">{h}</th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {filtered.map((lead, i) => (
-              <tr key={lead.id} className={`border-b border-slate-50 hover:bg-slate-50/50 transition-colors ${i === filtered.length - 1 ? "border-0" : ""}`}>
-                <td className="px-4 py-3">
-                  <div className="font-medium text-slate-800 text-sm">{lead.prenom} {lead.nom}</div>
-                  <div className="text-xs text-slate-400">{lead.email}</div>
-                </td>
-                <td className="px-4 py-3">
-                  <div className="text-sm text-slate-700">{lead.hotel}</div>
-                  <div className="text-xs text-slate-400">{lead.ville}</div>
-                </td>
-                <td className="px-4 py-3">
-                  {lead.sequence ? (
-                    <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md">{lead.sequence}</span>
-                  ) : (
-                    <span className="text-xs text-slate-300">—</span>
-                  )}
-                </td>
-                <td className="px-4 py-3 text-sm text-slate-600">
-                  {lead.etape > 0 ? `Email ${lead.etape}` : "—"}
-                </td>
-                <td className="px-4 py-3"><ScoreBar score={lead.score} /></td>
-                <td className="px-4 py-3"><Badge statut={lead.statut} /></td>
-                <td className="px-4 py-3">
-                  <div className="flex gap-1">
-                    {lead.statut === "Nouveau" && (
-                      <button onClick={() => setShowLaunch(lead)} className="px-2.5 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 transition-colors">
-                        ▶ Lancer
-                      </button>
-                    )}
-                    <button onClick={() => setSelectedLead(selectedLead?.id === lead.id ? null : lead)} className="px-2.5 py-1 text-xs border border-slate-200 text-slate-600 rounded-md hover:bg-slate-50 transition-colors">
-                      Détail
-                    </button>
-                  </div>
-                </td>
+      {/* ── VUE LISTE ── */}
+      {vueMode === "liste" && (
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          <table className="w-full">
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50/50">
+                {["Lead", "Établissement", "Séquence", "Score", "Statut", ""].map(h => (
+                  <th key={h} className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">{h}</th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
-        {filtered.length === 0 && (
-          <div className="text-center py-12 text-slate-400 text-sm">Aucun lead trouvé</div>
-        )}
-      </div>
+            </thead>
+            <tbody>
+              {filtered.map((lead, i) => (
+                <tr key={lead.id} className={`group border-b border-slate-50 hover:bg-blue-50/30 transition-colors ${i === filtered.length-1 ? "border-0" : ""}`}>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-800 text-sm">{lead.prenom} {lead.nom}</div>
+                    <div className="text-xs text-slate-400">{lead.email}</div>
+                    {lead.hubspot_id && <span className="text-xs text-orange-500">● HS</span>}
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="text-sm text-slate-700">{lead.hotel}</div>
+                    <div className="text-xs text-slate-400">{lead.ville}{lead.segment ? <span className="ml-1 text-slate-300">· {lead.segment}</span> : ""}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    {lead.sequence
+                      ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md">Email {(lead.etape||0)+1}</span>
+                      : <span className="text-xs text-slate-300">—</span>}
+                  </td>
+                  <td className="px-4 py-3 w-24"><ScoreBar score={lead.score} /></td>
+                  <td className="px-4 py-3">
+                    <select value={lead.statut} onChange={e => changerStatut(lead, e.target.value)}
+                      className="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none cursor-pointer">
+                      {Object.keys(STATUT_CONFIG).map(s => <option key={s}>{s}</option>)}
+                    </select>
+                  </td>
+                  <td className="px-4 py-3">
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {lead.statut === "Nouveau" && (
+                        <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700">▶</button>
+                      )}
+                      <button onClick={() => ouvrirDetail(lead)} title="Détail" className="px-2 py-1 text-xs border border-slate-200 text-slate-600 rounded-md hover:bg-slate-50">👁</button>
+                      <button onClick={() => setEditLead(lead)} title="Modifier" className="px-2 py-1 text-xs border border-slate-200 text-slate-600 rounded-md hover:bg-slate-50">✏️</button>
+                      <button onClick={() => supprimerLead(lead)} title="Supprimer" className="px-2 py-1 text-xs border border-red-100 text-red-400 rounded-md hover:bg-red-50">✕</button>
+                    </div>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {filtered.length === 0 && <div className="text-center py-12 text-slate-400 text-sm">Aucun lead trouvé</div>}
+        </div>
+      )}
 
-      {selectedLead && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-5">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-base font-semibold text-slate-900">{selectedLead.prenom} {selectedLead.nom}</h3>
-              <p className="text-sm text-slate-500">{selectedLead.hotel} · {selectedLead.ville}</p>
-            </div>
-            <button onClick={() => setSelectedLead(null)} className="text-slate-400 hover:text-slate-600">×</button>
-          </div>
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-4">
-            {[["Email", selectedLead.email], ["Segment", selectedLead.segment], ["Ouvertures", selectedLead.ouvertures], ["Dernier contact", selectedLead.dernierContact || "Jamais"]].map(([k, v]) => (
-              <div key={k} className="bg-slate-50 rounded-xl p-3">
-                <div className="text-xs text-slate-400 mb-1">{k}</div>
-                <div className="text-sm font-medium text-slate-800">{v}</div>
+      {/* ── VUE KANBAN ── */}
+      {vueMode === "kanban" && (
+        <div className="flex gap-3 overflow-x-auto pb-4">
+          {KANBAN_COLS.map(col => {
+            const colLeads = filtered.filter(l => l.statut === col);
+            const cfg = STATUT_CONFIG[col] || STATUT_CONFIG["Nouveau"];
+            return (
+              <div key={col} className="flex-shrink-0 w-60">
+                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl mb-2 ${cfg.bg}`}>
+                  <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+                  <span className={`text-xs font-semibold ${cfg.text}`}>{col}</span>
+                  <span className={`ml-auto text-xs font-bold ${cfg.text} opacity-60`}>{colLeads.length}</span>
+                </div>
+                <div className="space-y-2 min-h-16">
+                  {colLeads.map(lead => (
+                    <div key={lead.id} className="bg-white rounded-xl border border-slate-100 p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => ouvrirDetail(lead)}>
+                      <div className="font-medium text-slate-800 text-sm">{lead.prenom} {lead.nom}</div>
+                      <div className="text-xs text-slate-500 truncate mt-0.5">{lead.hotel}</div>
+                      <div className="text-xs text-slate-400">{lead.ville}{lead.segment ? <span className="ml-1">· {lead.segment}</span> : ""}</div>
+                      {lead.sequence && <div className="text-xs text-blue-600 mt-1 truncate">📧 Email {(lead.etape||0)+1}</div>}
+                      <div className="flex items-center justify-between mt-2">
+                        <ScoreBar score={lead.score} />
+                        <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                          {lead.statut === "Nouveau" && <button onClick={() => setShowLaunch(lead)} className="text-xs text-blue-500 hover:text-blue-700 px-1">▶</button>}
+                          <button onClick={() => setEditLead(lead)} className="text-xs text-slate-400 hover:text-slate-600 px-1">✏️</button>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {colLeads.length === 0 && <div className="text-center py-6 text-xs text-slate-300 border-2 border-dashed border-slate-100 rounded-xl">Vide</div>}
+                </div>
               </div>
-            ))}
+            );
+          })}
+        </div>
+      )}
+
+      {/* ── DETAIL LEAD ── */}
+      {selectedLead && (
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="flex items-start justify-between p-5 border-b border-slate-100">
+            <div>
+              <div className="flex items-center gap-3 flex-wrap">
+                <h3 className="text-base font-semibold text-slate-900">{selectedLead.prenom} {selectedLead.nom}</h3>
+                <Badge statut={selectedLead.statut} />
+                {selectedLead.hubspot_id && (
+                  <a href={`https://app.hubspot.com/contacts/26199813/contact/${selectedLead.hubspot_id}`} target="_blank" className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full hover:bg-orange-100">HubSpot ↗</a>
+                )}
+              </div>
+              <p className="text-sm text-slate-500 mt-0.5">{selectedLead.hotel} · {selectedLead.ville} · {selectedLead.segment}</p>
+              <p className="text-xs text-slate-400 mt-0.5">{selectedLead.email}</p>
+            </div>
+            <div className="flex items-center gap-2 flex-shrink-0">
+              <button onClick={() => setEditLead(selectedLead)} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50">✏️ Éditer</button>
+              <button onClick={() => supprimerLead(selectedLead)} className="px-3 py-1.5 text-xs border border-red-100 text-red-400 rounded-lg hover:bg-red-50">Supprimer</button>
+              <button onClick={() => setSelectedLead(null)} className="text-slate-400 hover:text-slate-600 text-xl ml-1">×</button>
+            </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {selectedLead.tags.map(t => <span key={t} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">{t}</span>)}
+
+          <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
+            {/* Gauche — infos & stats */}
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-3">
+                {[["Ouvertures", selectedLead.ouvertures||0], ["Score", selectedLead.score||50], ["Étape", selectedLead.etape > 0 ? `Email ${selectedLead.etape}` : "—"], ["Séquence", selectedLead.sequence||"—"]].map(([k,v]) => (
+                  <div key={k} className="bg-slate-50 rounded-xl p-3">
+                    <div className="text-xs text-slate-400 mb-1">{k}</div>
+                    <div className="text-sm font-medium text-slate-800">{v}</div>
+                  </div>
+                ))}
+              </div>
+              {selectedLead.tags?.length > 0 && (
+                <div className="flex flex-wrap gap-1.5">
+                  {selectedLead.tags.map(t => <span key={t} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">{t}</span>)}
+                </div>
+              )}
+              {selectedLead.statut === "Nouveau" && (
+                <button onClick={() => setShowLaunch(selectedLead)} className="w-full py-2 text-sm font-medium bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors">▶ Lancer une séquence</button>
+              )}
+            </div>
+
+            {/* Droite — HubSpot */}
+            <div>
+              {selectedLead.hubspot_id ? (
+                <div className="border border-orange-100 rounded-xl p-4 bg-orange-50/30 h-full">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-sm font-semibold text-slate-800">HubSpot CRM</span>
+                    <button onClick={() => chargerHubspot(selectedLead)} className="text-xs text-orange-600 hover:underline">↻ Actualiser</button>
+                  </div>
+                  {loadingHs ? (
+                    <div className="flex items-center gap-2 text-xs text-slate-400"><span className="w-3 h-3 border-2 border-slate-200 border-t-orange-400 rounded-full animate-spin" /> Chargement HubSpot...</div>
+                  ) : hsDetails ? (
+                    <div className="space-y-4">
+                      <div>
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Deals ({hsDetails.deals?.length||0})</div>
+                        {!hsDetails.deals?.length
+                          ? <p className="text-xs text-slate-300 italic">Aucun deal</p>
+                          : hsDetails.deals.map((d, i) => (
+                            <div key={i} className="bg-white rounded-lg p-2 mb-1.5 border border-orange-100">
+                              <div className="text-xs font-medium text-slate-800">{d.properties?.dealname || d.nom || "Deal"}</div>
+                              <div className="flex gap-2 text-xs text-slate-400 mt-0.5">
+                                <span>{d.properties?.dealstage || d.stage || ""}</span>
+                                {(d.properties?.amount || d.montant) && <span className="text-emerald-600 font-medium">{d.properties?.amount || d.montant}€</span>}
+                              </div>
+                            </div>
+                          ))
+                        }
+                      </div>
+                      <div>
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Notes ({hsDetails.notes?.length||0})</div>
+                        {!hsDetails.notes?.length
+                          ? <p className="text-xs text-slate-300 italic">Aucune note</p>
+                          : hsDetails.notes.slice(0, 4).map((n, i) => (
+                            <div key={i} className="bg-white rounded-lg p-2 mb-1.5 border border-orange-100">
+                              <div className="text-xs text-slate-600 line-clamp-2">{n.properties?.hs_note_body || n.corps || n.body || ""}</div>
+                              <div className="text-xs text-slate-400 mt-0.5">{n.properties?.hs_lastmodifieddate ? new Date(n.properties.hs_lastmodifieddate).toLocaleDateString("fr-FR") : (n.date||"")}</div>
+                            </div>
+                          ))
+                        }
+                      </div>
+                    </div>
+                  ) : <p className="text-xs text-slate-400">Cliquez ↻ pour charger</p>}
+                </div>
+              ) : (
+                <div className="border-2 border-dashed border-slate-200 rounded-xl p-4 flex flex-col items-center justify-center gap-2 h-full text-center">
+                  <p className="text-xs text-slate-400">Non synchronisé avec HubSpot</p>
+                  <button onClick={async () => {
+                    await api.post(`/hubspot/sync-lead/${selectedLead.id}`);
+                    if (onRefresh) onRefresh();
+                  }} className="px-3 py-1.5 text-xs bg-orange-500 text-white rounded-lg hover:bg-orange-600">Synchroniser maintenant</button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
       )}
@@ -1230,7 +1516,7 @@ function App() {
         <main className="p-8">
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
           {vue === "dashboard" && <VueDashboard leads={leads} activites={activites} stats={stats} />}
-          {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} />}
+          {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} />}
           {vue === "hubspot" && <VueHubspot />}
           {vue === "parametres" && <VueParametres />}
