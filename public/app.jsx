@@ -118,12 +118,58 @@ const ModalAddLead = ({ onClose, onAdd }) => {
   const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+
+  // Recherche HubSpot
+  const [queryCompany, setQueryCompany] = useState("");
+  const [companies, setCompanies] = useState([]);
+  const [selectedCompany, setSelectedCompany] = useState(null);
+  const [contactsCompany, setContactsCompany] = useState([]);
+  const [searchingHS, setSearchingHS] = useState(false);
+  const searchTimer = useRef(null);
+
+  const rechercherCompany = (q) => {
+    setQueryCompany(q);
+    clearTimeout(searchTimer.current);
+    if (!q || q.length < 2) { setCompanies([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setSearchingHS(true);
+      try {
+        const res = await api.get(`/hubspot/recherche-companies?q=${encodeURIComponent(q)}`);
+        setCompanies(Array.isArray(res) ? res : []);
+      } catch(e) { setCompanies([]); }
+      setSearchingHS(false);
+    }, 400);
+  };
+
+  const selectionnerCompany = async (company) => {
+    setSelectedCompany(company);
+    setCompanies([]);
+    setQueryCompany(company.nom);
+    setForm(f => ({ ...f, hotel: company.nom, ville: company.ville || f.ville }));
+    // Charger les contacts liés
+    try {
+      const contacts = await api.get(`/hubspot/contacts-company/${company.id}`);
+      setContactsCompany(Array.isArray(contacts) ? contacts : []);
+    } catch(e) { setContactsCompany([]); }
+  };
+
+  const selectionnerContact = (contact) => {
+    setForm(f => ({ ...f, prenom: contact.prenom, nom: contact.nom, email: contact.email }));
+    setContactsCompany([]);
+  };
+
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
   const submit = async () => {
     if (!form.email || !form.hotel) return;
     setSaving(true);
     try {
-      const lead = await api.post('/leads', { ...form, tags: JSON.stringify([form.segment]) });
+      const payload = {
+        ...form,
+        tags: JSON.stringify([form.segment]),
+        company_hubspot_id: selectedCompany?.id || null,
+      };
+      const lead = await api.post('/leads', payload);
       onAdd(lead);
       onClose();
     } catch(e) { setErr("Erreur lors de l'ajout"); }
@@ -137,25 +183,68 @@ const ModalAddLead = ({ onClose, onAdd }) => {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
         <div className="p-6 space-y-4">
-          <div className="grid grid-cols-2 gap-3">
-            {[["prenom","Prénom"],["nom","Nom"]].map(([k,l]) => (
-              <div key={k}>
+          {/* Recherche HubSpot */}
+          <div className="relative">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Rechercher un établissement dans HubSpot</label>
+            <input
+              value={queryCompany}
+              onChange={e => rechercherCompany(e.target.value)}
+              placeholder="Barrière, Negresco, Le Bon Marché..."
+              className="w-full border border-orange-200 bg-orange-50 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-orange-300/40 focus:border-orange-400"
+            />
+            {searchingHS && <span className="absolute right-3 top-8 text-xs text-slate-400">⟳</span>}
+            {companies.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+                {companies.map(c => (
+                  <button key={c.id} onClick={() => selectionnerCompany(c)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b border-slate-50 last:border-0">
+                    <div className="text-sm font-medium text-slate-800">{c.nom}</div>
+                    <div className="text-xs text-slate-400">{c.domaine} {c.ville ? `· ${c.ville}` : ""}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Contacts liés à la company */}
+          {contactsCompany.length > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
+              <p className="text-xs font-medium text-orange-700 mb-2">Contacts existants — cliquer pour pré-remplir</p>
+              <div className="space-y-1">
+                {contactsCompany.map(c => (
+                  <button key={c.hubspot_id} onClick={() => selectionnerContact(c)}
+                    className="w-full text-left px-3 py-2 bg-white rounded-lg hover:bg-orange-50 transition-colors border border-orange-100">
+                    <span className="text-sm font-medium text-slate-800">{c.prenom} {c.nom}</span>
+                    <span className="text-xs text-slate-400 ml-2">{c.email}</span>
+                    {c.poste && <span className="text-xs text-slate-400 ml-1">· {c.poste}</span>}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+
+          <div className="border-t border-slate-100 pt-3">
+            <p className="text-xs text-slate-400 mb-3">Ou remplir manuellement</p>
+            <div className="grid grid-cols-2 gap-3">
+              {[["prenom","Prénom"],["nom","Nom"]].map(([k,l]) => (
+                <div key={k}>
+                  <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
+                  <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                </div>
+              ))}
+            </div>
+            {[["hotel","Établissement"],["ville","Ville"],["email","Email"]].map(([k,l]) => (
+              <div key={k} className="mt-3">
                 <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
-                <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                <input type={k === "email" ? "email" : "text"} value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
               </div>
             ))}
-          </div>
-          {[["hotel","Établissement"],["ville","Ville"],["email","Email"]].map(([k,l]) => (
-            <div key={k}>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
-              <input type={k === "email" ? "email" : "text"} value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+            <div className="mt-3">
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Segment</label>
+              <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
+              </select>
             </div>
-          ))}
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Segment</label>
-            <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
-              {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
-            </select>
           </div>
         </div>
         <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3">
