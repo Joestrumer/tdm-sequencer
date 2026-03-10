@@ -1,12 +1,9 @@
 /**
  * hubspotService.js — Intégration HubSpot CRM API v3
- *
- * Fonctionnalités :
- *  - Créer / mettre à jour un contact
- *  - Logger les emails envoyés dans la timeline HubSpot
- *  - Créer un Deal si le lead répond
- *  - Mettre à jour le lifecycle stage (Lead → MQL → SQL)
- *  - Retry automatique sur les erreurs 429/5xx
+ * - Recherche companies par nom / domaine email
+ * - Crée/met à jour contacts + association company
+ * - Logue les emails dans la timeline
+ * - Crée une task J+7 en fin de séquence (assignée à Hugo Montiel id:450706644)
  */
 
 require('dotenv').config();
@@ -14,14 +11,16 @@ const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
 
 const HUBSPOT_BASE = 'https://api.hubapi.com';
-const API_KEY = process.env.HUBSPOT_API_KEY;
+const HUGO_OWNER_ID = '450706644';
 
-// ─── Fetch avec retry et gestion des rate limits ─────────────────────────────
+function getApiKey() {
+  return process.env.HUBSPOT_API_KEY;
+}
+
+// ─── Fetch avec retry ─────────────────────────────────────────────────────────
 async function hubspotFetch(path, options = {}, tentative = 1) {
-  if (!API_KEY) {
-    logger.debug('HubSpot désactivé (pas de clé API configurée)');
-    return null;
-  }
+  const API_KEY = getApiKey();
+  if (!API_KEY) return null;
 
   const url = `${HUBSPOT_BASE}${path}`;
   const res = await fetch(url, {
@@ -33,46 +32,126 @@ async function hubspotFetch(path, options = {}, tentative = 1) {
     },
   });
 
-  // Rate limit HubSpot : 100 req/10s — attendre et réessayer
   if (res.status === 429 && tentative <= 3) {
     const retryAfter = parseInt(res.headers.get('Retry-After') || '10') * 1000;
-    logger.warn(`HubSpot rate limit, retry dans ${retryAfter}ms (tentative ${tentative}/3)`);
     await new Promise(r => setTimeout(r, retryAfter));
     return hubspotFetch(path, options, tentative + 1);
   }
-
-  // Erreurs serveur : retry avec backoff
   if (res.status >= 500 && tentative <= 3) {
-    const delai = 2000 * tentative;
-    logger.warn(`HubSpot erreur ${res.status}, retry dans ${delai}ms (tentative ${tentative}/3)`);
-    await new Promise(r => setTimeout(r, delai));
+    await new Promise(r => setTimeout(r, 2000 * tentative));
     return hubspotFetch(path, options, tentative + 1);
   }
-
   if (!res.ok) {
     const body = await res.text();
-    throw new Error(`HubSpot API ${res.status}: ${body}`);
+    throw new Error(`HubSpot ${res.status}: ${body}`);
   }
-
   return res.status === 204 ? null : res.json();
 }
 
-// ─── Logger le résultat dans la table hubspot_logs ───────────────────────────
 function logHubspot(db, type, action, leadId, hubspotId, payload, erreur = null) {
   try {
-    db.prepare(`
-      INSERT INTO hubspot_logs (id, type, action, lead_id, hubspot_id, payload, erreur)
-      VALUES (?, ?, ?, ?, ?, ?, ?)
-    `).run(uuidv4(), type, action, leadId, hubspotId, JSON.stringify(payload), erreur);
-  } catch (e) {
-    logger.error('Erreur log HubSpot', { error: e.message });
+    db.prepare(`INSERT INTO hubspot_logs (id, type, action, lead_id, hubspot_id, payload, erreur)
+      VALUES (?, ?, ?, ?, ?, ?, ?)`
+    ).run(uuidv4(), type, action, leadId, hubspotId, JSON.stringify(payload), erreur);
+  } catch (e) {}
+}
+
+// ─── Rechercher des companies par nom ────────────────────────────────────────
+async function rechercherCompanies(query) {
+  if (!getApiKey() || !query) return [];
+  try {
+    const res = await hubspotFetch('/crm/v3/objects/companies/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'name', operator: 'CONTAINS_TOKEN', value: query }]
+        }],
+        properties: ['name', 'domain', 'city', 'phone'],
+        limit: 10,
+      }),
+    });
+    return (res?.results || []).map(c => ({
+      id: c.id,
+      nom: c.properties.name,
+      domaine: c.properties.domain,
+      ville: c.properties.city,
+    }));
+  } catch (err) {
+    logger.error('HubSpot rechercherCompanies', { error: err.message });
+    return [];
   }
 }
 
-// ─── Créer ou mettre à jour un contact HubSpot ───────────────────────────────
-async function syncContact(db, lead) {
-  if (!API_KEY) return null;
+// ─── Chercher une company par domaine email ───────────────────────────────────
+async function trouverCompanyParDomaine(domaine) {
+  if (!getApiKey() || !domaine) return null;
+  try {
+    const res = await hubspotFetch('/crm/v3/objects/companies/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'domain', operator: 'EQ', value: domaine }]
+        }],
+        properties: ['name', 'domain', 'city'],
+        limit: 1,
+      }),
+    });
+    const c = res?.results?.[0];
+    return c ? { id: c.id, nom: c.properties.name, domaine: c.properties.domain } : null;
+  } catch (err) {
+    return null;
+  }
+}
 
+// ─── Créer une company ────────────────────────────────────────────────────────
+async function creerCompany(nom, domaine, ville) {
+  try {
+    const res = await hubspotFetch('/crm/v3/objects/companies', {
+      method: 'POST',
+      body: JSON.stringify({
+        properties: { name: nom, domain: domaine || '', city: ville || '' }
+      }),
+    });
+    return res?.id || null;
+  } catch (err) {
+    logger.error('HubSpot creerCompany', { error: err.message });
+    return null;
+  }
+}
+
+// ─── Contacts d'une company ───────────────────────────────────────────────────
+async function contactsDeCompany(companyId) {
+  if (!getApiKey() || !companyId) return [];
+  try {
+    const res = await hubspotFetch(
+      `/crm/v3/objects/companies/${companyId}/associations/contacts`
+    );
+    const ids = (res?.results || []).map(r => r.id);
+    if (!ids.length) return [];
+
+    const details = await hubspotFetch('/crm/v3/objects/contacts/batch/read', {
+      method: 'POST',
+      body: JSON.stringify({
+        inputs: ids.map(id => ({ id })),
+        properties: ['firstname', 'lastname', 'email', 'jobtitle'],
+      }),
+    });
+    return (details?.results || []).map(c => ({
+      hubspot_id: c.id,
+      prenom: c.properties.firstname || '',
+      nom: c.properties.lastname || '',
+      email: c.properties.email || '',
+      poste: c.properties.jobtitle || '',
+    }));
+  } catch (err) {
+    logger.error('HubSpot contactsDeCompany', { error: err.message });
+    return [];
+  }
+}
+
+// ─── Créer ou mettre à jour un contact + lier à la company ───────────────────
+async function syncContact(db, lead) {
+  if (!getApiKey()) return null;
   try {
     const payload = {
       properties: {
@@ -81,37 +160,73 @@ async function syncContact(db, lead) {
         lastname: lead.nom,
         company: lead.hotel,
         city: lead.ville,
-        // Propriété custom : segment Terre de Mars
-        tdm_segment: lead.segment,
+        hubspot_owner_id: HUGO_OWNER_ID,
       }
     };
 
     let hubspotId = lead.hubspot_id;
 
     if (hubspotId) {
-      // Mise à jour
       await hubspotFetch(`/crm/v3/objects/contacts/${hubspotId}`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
       });
-      logHubspot(db, 'contact', 'update', lead.id, hubspotId, payload);
     } else {
-      // Création
-      const res = await hubspotFetch('/crm/v3/objects/contacts', {
-        method: 'POST',
-        body: JSON.stringify(payload),
-      });
-      hubspotId = res?.id;
+      // Tenter upsert par email
+      try {
+        const res = await hubspotFetch('/crm/v3/objects/contacts', {
+          method: 'POST',
+          body: JSON.stringify(payload),
+        });
+        hubspotId = res?.id;
+      } catch (err) {
+        // Contact existe déjà — le retrouver par email
+        if (err.message.includes('409') || err.message.includes('CONTACT_EXISTS')) {
+          const search = await hubspotFetch('/crm/v3/objects/contacts/search', {
+            method: 'POST',
+            body: JSON.stringify({
+              filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: lead.email }] }],
+              limit: 1,
+            }),
+          });
+          hubspotId = search?.results?.[0]?.id;
+        } else throw err;
+      }
 
-      // Sauvegarder l'ID HubSpot dans la base locale
-      db.prepare('UPDATE leads SET hubspot_id = ? WHERE id = ?').run(hubspotId, lead.id);
+      if (db && lead.id) {
+        try { db.prepare('UPDATE leads SET hubspot_id = ? WHERE id = ?').run(hubspotId, lead.id); } catch(e) {}
+      }
       logHubspot(db, 'contact', 'create', lead.id, hubspotId, payload);
     }
 
-    logger.info('✅ HubSpot contact synchronisé', { email: lead.email, hubspotId });
+    // Lier à la company
+    if (hubspotId) {
+      const domaine = lead.email?.split('@')[1];
+      let companyId = lead.company_hubspot_id;
+
+      if (!companyId && domaine) {
+        const company = await trouverCompanyParDomaine(domaine);
+        if (company) {
+          companyId = company.id;
+        } else {
+          companyId = await creerCompany(lead.hotel, domaine, lead.ville);
+        }
+      }
+
+      if (companyId) {
+        await hubspotFetch(`/crm/v3/associations/contacts/companies/batch/create`, {
+          method: 'POST',
+          body: JSON.stringify({
+            inputs: [{ from: { id: hubspotId }, to: { id: companyId }, type: 'contact_to_company' }]
+          }),
+        }).catch(() => {});
+      }
+    }
+
+    logger.info('✅ HubSpot contact sync', { email: lead.email, hubspotId });
     return hubspotId;
   } catch (err) {
-    logger.error('❌ HubSpot syncContact échoué', { email: lead.email, error: err.message });
+    logger.error('❌ HubSpot syncContact', { error: err.message });
     logHubspot(db, 'contact', 'error', lead.id, null, {}, err.message);
     return null;
   }
@@ -119,128 +234,118 @@ async function syncContact(db, lead) {
 
 // ─── Logger un email dans la timeline HubSpot ────────────────────────────────
 async function logEmailTimeline(db, lead, emailData) {
-  if (!API_KEY || !lead.hubspot_id) return;
-
+  if (!getApiKey() || !lead.hubspot_id) return;
   try {
-    const eventTypeId = '1'; // ID de type d'événement timeline (à créer dans HubSpot ou utiliser engagement)
+    await hubspotFetch('/engagements/v1/engagements', {
+      method: 'POST',
+      body: JSON.stringify({
+        engagement: { active: true, type: 'EMAIL', timestamp: Date.now(), ownerId: parseInt(HUGO_OWNER_ID) },
+        associations: { contactIds: [parseInt(lead.hubspot_id)] },
+        metadata: {
+          from: { email: process.env.BREVO_SENDER_EMAIL || 'hugo@terredemars.com', firstName: 'Hugo', lastName: 'Montiel' },
+          to: [{ email: lead.email }],
+          subject: emailData.sujet,
+          status: 'SENT',
+          html: emailData.corps || '',
+        }
+      }),
+    });
+    logger.info('📝 HubSpot email loggé', { email: lead.email, sujet: emailData.sujet });
+  } catch (err) {
+    logger.error('❌ HubSpot logEmailTimeline', { error: err.message });
+  }
+}
 
-    // Utiliser l'API Engagements pour logger l'email
-    const engagement = {
-      engagement: {
-        active: true,
-        type: 'EMAIL',
-        timestamp: Date.now(),
-      },
-      associations: {
-        contactIds: [parseInt(lead.hubspot_id)],
-      },
-      metadata: {
-        from: { email: process.env.BREVO_SENDER_EMAIL, firstName: 'Joe', lastName: 'Terre de Mars' },
-        to: [{ email: lead.email }],
-        subject: emailData.sujet,
-        status: 'SENT',
-        html: `Email de séquence envoyé via Terre de Mars Sequencer`,
-      }
-    };
+// ─── Créer une task J+7 en fin de séquence ───────────────────────────────────
+async function creerTaskFinSequence(db, lead, nomSequence) {
+  if (!getApiKey()) return;
+  try {
+    const dateEcheance = Date.now() + 7 * 24 * 3600 * 1000; // J+7
 
     await hubspotFetch('/engagements/v1/engagements', {
       method: 'POST',
-      body: JSON.stringify(engagement),
+      body: JSON.stringify({
+        engagement: {
+          active: true,
+          type: 'TASK',
+          timestamp: Date.now(),
+          ownerId: parseInt(HUGO_OWNER_ID),
+        },
+        associations: {
+          contactIds: lead.hubspot_id ? [parseInt(lead.hubspot_id)] : [],
+        },
+        metadata: {
+          subject: `Suivi — ${lead.prenom} ${lead.nom} · ${lead.hotel}`,
+          body: `Séquence "${nomSequence}" terminée.\n\nAppeler ou relancer manuellement ${lead.prenom} ${lead.nom} (${lead.email}) de ${lead.hotel}.`,
+          status: 'NOT_STARTED',
+          taskType: 'CALL',
+          reminders: [dateEcheance],
+          completionDate: dateEcheance,
+        }
+      }),
     });
-
-    logHubspot(db, 'engagement', 'create', lead.id, lead.hubspot_id, { type: 'EMAIL', sujet: emailData.sujet });
-    logger.info('📝 HubSpot engagement email loggé', { email: lead.email });
+    logger.info('✅ HubSpot task créée J+7', { email: lead.email, sequence: nomSequence });
   } catch (err) {
-    logger.error('❌ HubSpot logEmailTimeline échoué', { error: err.message });
-    logHubspot(db, 'engagement', 'error', lead.id, lead.hubspot_id, {}, err.message);
+    logger.error('❌ HubSpot creerTaskFinSequence', { error: err.message });
   }
 }
 
-// ─── Mettre à jour le lifecycle stage ────────────────────────────────────────
+// ─── Lifecycle stage ─────────────────────────────────────────────────────────
 async function mettreAJourLifecycle(db, lead, stage) {
-  // Stages valides : 'lead', 'marketingqualifiedlead', 'salesqualifiedlead', 'opportunity', 'customer'
-  if (!API_KEY || !lead.hubspot_id) return;
-
-  const stageMap = {
-    'lead': 'lead',
-    'MQL': 'marketingqualifiedlead',
-    'SQL': 'salesqualifiedlead',
-    'Converti': 'customer',
-  };
-
-  const hsStage = stageMap[stage] || stage;
-
+  if (!getApiKey() || !lead.hubspot_id) return;
+  const stageMap = { 'lead': 'lead', 'MQL': 'marketingqualifiedlead', 'SQL': 'salesqualifiedlead', 'Converti': 'customer' };
   try {
     await hubspotFetch(`/crm/v3/objects/contacts/${lead.hubspot_id}`, {
       method: 'PATCH',
-      body: JSON.stringify({ properties: { lifecyclestage: hsStage } }),
+      body: JSON.stringify({ properties: { lifecyclestage: stageMap[stage] || stage } }),
     });
-    logHubspot(db, 'lifecycle', 'update', lead.id, lead.hubspot_id, { stage: hsStage });
-    logger.info(`🏷️  HubSpot lifecycle mis à jour : ${stage}`, { email: lead.email });
   } catch (err) {
-    logger.error('❌ HubSpot lifecycle update échoué', { error: err.message });
-    logHubspot(db, 'lifecycle', 'error', lead.id, lead.hubspot_id, { stage }, err.message);
+    logger.error('❌ HubSpot lifecycle', { error: err.message });
   }
 }
 
-// ─── Créer un Deal HubSpot si le lead répond ─────────────────────────────────
+// ─── Créer un Deal ────────────────────────────────────────────────────────────
 async function creerDeal(db, lead) {
-  if (!API_KEY) return null;
-
+  if (!getApiKey()) return null;
   try {
-    // S'assurer que le contact est synchronisé
-    let hubspotId = lead.hubspot_id;
-    if (!hubspotId) hubspotId = await syncContact(db, lead);
-
-    const deal = {
-      properties: {
-        dealname: `${lead.hotel} — Terre de Mars`,
-        dealstage: 'appointmentscheduled', // Adapter selon votre pipeline HubSpot
-        pipeline: 'default',
-        amount: '',
-        closedate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(), // +30 jours
-        hubspot_owner_id: '',
-        description: `Lead généré via séquence email automatique. Segment: ${lead.segment}. Ville: ${lead.ville}.`,
-      }
-    };
-
+    let hubspotId = lead.hubspot_id || await syncContact(db, lead);
     const res = await hubspotFetch('/crm/v3/objects/deals', {
       method: 'POST',
-      body: JSON.stringify(deal),
+      body: JSON.stringify({
+        properties: {
+          dealname: `${lead.hotel} — Terre de Mars`,
+          dealstage: 'appointmentscheduled',
+          pipeline: 'default',
+          hubspot_owner_id: HUGO_OWNER_ID,
+          closedate: new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString(),
+          description: `Lead généré via séquence. Segment: ${lead.segment}.`,
+        }
+      }),
     });
-
     const dealId = res?.id;
-
-    // Associer le deal au contact
     if (dealId && hubspotId) {
-      await hubspotFetch(`/crm/v3/associations/deals/contacts/batch/create`, {
+      await hubspotFetch('/crm/v3/associations/deals/contacts/batch/create', {
         method: 'POST',
         body: JSON.stringify({
           inputs: [{ from: { id: dealId }, to: { id: hubspotId }, type: 'deal_to_contact' }]
         }),
-      });
+      }).catch(() => {});
     }
-
-    logHubspot(db, 'deal', 'create', lead.id, dealId, deal.properties);
+    logHubspot(db, 'deal', 'create', lead.id, dealId, { hotel: lead.hotel });
     logger.info('💼 HubSpot Deal créé', { hotel: lead.hotel, dealId });
-
-    // Mettre le lead en SQL
-    await mettreAJourLifecycle(db, { ...lead, hubspot_id: hubspotId }, 'SQL');
-
     return dealId;
   } catch (err) {
-    logger.error('❌ HubSpot creerDeal échoué', { error: err.message });
-    logHubspot(db, 'deal', 'error', lead.id, null, {}, err.message);
+    logger.error('❌ HubSpot creerDeal', { error: err.message });
     return null;
   }
 }
 
-// ─── Vérifier la connexion HubSpot ───────────────────────────────────────────
+// ─── Vérifier la connexion ────────────────────────────────────────────────────
 async function verifierConnexion() {
-  if (!API_KEY) return { connecte: false, raison: 'Clé API non configurée' };
+  if (!getApiKey()) return { connecte: false, raison: 'Clé API non configurée' };
   try {
-    const res = await hubspotFetch('/crm/v3/objects/contacts?limit=1');
-    return { connecte: true, portailId: process.env.HUBSPOT_PORTAL_ID };
+    await hubspotFetch('/crm/v3/objects/contacts?limit=1');
+    return { connecte: true };
   } catch (err) {
     return { connecte: false, raison: err.message };
   }
@@ -251,5 +356,9 @@ module.exports = {
   logEmailTimeline,
   mettreAJourLifecycle,
   creerDeal,
+  creerTaskFinSequence,
   verifierConnexion,
+  rechercherCompanies,
+  contactsDeCompany,
+  trouverCompanyParDomaine,
 };
