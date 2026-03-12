@@ -1016,51 +1016,78 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
           <table className="w-full">
             <thead>
-              <tr className="border-b border-slate-100 bg-slate-50/50">
-                {["Lead", "Établissement", "Séquence", "Score", "Statut", ""].map(h => (
-                  <th key={h} className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">{h}</th>
-                ))}
+              <tr className="border-b border-slate-100 bg-slate-50/60">
+                <th className="px-3 py-3 w-8">
+                  <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={e => setSelectedIds(e.target.checked ? new Set(filtered.map(l => l.id)) : new Set())} />
+                </th>
+                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Contact</th>
+                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Établissement</th>
+                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Séquence</th>
+                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Engagement</th>
+                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Statut</th>
+                <th className="px-3 py-3 w-32"></th>
               </tr>
             </thead>
             <tbody>
-              {filtered.map((lead, i) => (
-                <tr key={lead.id} className={`group border-b border-slate-50 hover:bg-blue-50/30 transition-colors ${selectedIds.has(lead.id) ? "bg-blue-50/50" : ""} ${i === filtered.length-1 ? "border-0" : ""}`}>
-                  <td className="px-4 py-3 w-8">
-                    <input type="checkbox" className="rounded" checked={selectedIds.has(lead.id)} onChange={e => { const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} onClick={e => e.stopPropagation()} />
+              {filtered.map((lead, i) => {
+                const cfg = STATUT_CONFIG[lead.statut] || STATUT_CONFIG["Nouveau"];
+                return (
+                <tr key={lead.id} className={`group border-b border-slate-50 transition-colors cursor-pointer ${selectedIds.has(lead.id) ? "bg-blue-50/60" : "hover:bg-slate-50/80"} ${i === filtered.length-1 ? "border-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
+                  <td className="px-3 py-3 w-8" onClick={e => e.stopPropagation()}>
+                    <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.has(lead.id)} onChange={e => { const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} />
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="font-medium text-slate-800 text-sm">{lead.prenom} {lead.nom}</div>
-                    <div className="text-xs text-slate-400">{lead.email}</div>
-                    {lead.hubspot_id && <span title="Synchronisé HubSpot" className="text-xs text-orange-300 ml-1">⬡</span>}
+                  <td className="px-3 py-3">
+                    <div className="flex items-center gap-2">
+                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${cfg.bg} ${cfg.text}`}>
+                        {lead.prenom?.[0]}{lead.nom?.[0]}
+                      </div>
+                      <div>
+                        <div className="font-medium text-slate-800 text-sm leading-tight">{lead.prenom} {lead.nom}
+                          {lead.hubspot_id && <span title="Synchronisé HubSpot" className="ml-1 text-orange-300 text-xs">⬡</span>}
+                        </div>
+                        <div className="text-xs text-slate-400 leading-tight">{lead.email}</div>
+                      </div>
+                    </div>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="text-sm text-slate-700">{lead.hotel}</div>
-                    <div className="text-xs text-slate-400">{lead.ville}{lead.segment ? <span className="ml-1 text-slate-300">· {lead.segment}</span> : ""}</div>
+                  <td className="px-3 py-3">
+                    <div className="text-sm text-slate-700 font-medium leading-tight">{lead.hotel}</div>
+                    <div className="text-xs text-slate-400 leading-tight">{[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
                   </td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3">
                     {lead.sequence
-                      ? <span className="text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md">Email {(lead.etape||0)+1}</span>
+                      ? <div>
+                          <span className="text-xs bg-blue-50 text-blue-600 font-medium px-2 py-0.5 rounded-full">Étape {(lead.etape||0)+1}</span>
+                          <div className="text-xs text-slate-400 mt-0.5 truncate max-w-[120px]">{lead.sequence}</div>
+                        </div>
                       : <span className="text-xs text-slate-300">—</span>}
                   </td>
-                  <td className="px-4 py-3 w-24"><ScoreBar score={lead.score} /></td>
-                  <td className="px-4 py-3">
+                  <td className="px-3 py-3 w-28">
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full transition-all ${lead.score >= 80 ? "bg-emerald-500" : lead.score >= 50 ? "bg-amber-400" : "bg-slate-300"}`} style={{width: lead.score + "%"}} />
+                      </div>
+                      <span className="text-xs font-medium text-slate-500 w-7 text-right">{lead.score}</span>
+                    </div>
+                    {lead.ouvertures > 0 && <div className="text-xs text-slate-400 mt-0.5">👁 {lead.ouvertures}</div>}
+                  </td>
+                  <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                     <select value={lead.statut} onChange={e => changerStatut(lead, e.target.value)}
-                      className="text-xs border border-slate-200 rounded-md px-2 py-1 bg-white focus:outline-none cursor-pointer">
+                      className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none ${cfg.bg} ${cfg.text}`}>
                       {Object.keys(STATUT_CONFIG).map(s => <option key={s}>{s}</option>)}
                     </select>
                   </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      {lead.statut === "Nouveau" && (
-                        <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700">▶</button>
+                  <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                      {(lead.statut === "Nouveau" || lead.statut === "Répondu") && (
+                        <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 whitespace-nowrap">▶</button>
                       )}
-                      <button onClick={() => ouvrirDetail(lead)} title="Détail" className="px-2 py-1 text-xs border border-slate-200 text-slate-600 rounded-md hover:bg-slate-50">👁</button>
-                      <button onClick={() => setEditLead(lead)} title="Modifier" className="px-2 py-1 text-xs border border-slate-200 text-slate-600 rounded-md hover:bg-slate-50">✏️</button>
+                      <button onClick={() => setEditLead(lead)} title="Modifier" className="px-2 py-1 text-xs border border-slate-200 text-slate-500 rounded-md hover:bg-slate-100">✏️</button>
                       <button onClick={() => supprimerLead(lead)} title="Supprimer" className="px-2 py-1 text-xs border border-red-100 text-red-400 rounded-md hover:bg-red-50">✕</button>
                     </div>
                   </td>
                 </tr>
-              ))}
+                );
+              })}
             </tbody>
           </table>
           {filtered.length === 0 && <div className="text-center py-12 text-slate-400 text-sm">Aucun lead trouvé</div>}
@@ -1248,7 +1275,7 @@ const VueSequences = ({ sequences, onNew, onEdit }) => (
                 <span className="text-xs font-bold text-slate-400 w-10 flex-shrink-0 mt-0.5">J+{etape.jour}</span>
                 <div className="min-w-0">
                   <div className="text-sm font-medium text-slate-800 truncate">{etape.sujet || "(sans objet)"}</div>
-                  <div className="text-xs text-slate-400 mt-0.5 line-clamp-1">{etape.corps?.split("\n")[0]}</div>
+                  <div className="text-xs text-slate-400 mt-0.5 line-clamp-1">{(etape.corps_html ? etape.corps_html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : etape.corps?.split("\n")[0]) || "(vide)"}</div>
                 </div>
               </div>
             ))}
@@ -1760,11 +1787,18 @@ function App() {
   useEffect(() => { charger(); }, []);
 
   // Normaliser les séquences depuis l'API (jour_delai → jour)
-  const sequencesNorm = sequences.map(s => ({
-    ...s,
-    leadsActifs: s.leads_actifs || s.leadsActifs || 0,
-    etapes: (s.etapes || []).map(e => ({ ...e, jour: e.jour_delai ?? e.jour ?? 0 }))
-  }));
+  const sequencesNorm = sequences.map(s => {
+    let opts = {};
+    if (s.options) {
+      try { opts = typeof s.options === 'string' ? JSON.parse(s.options) : s.options; } catch(e) {}
+    }
+    return {
+      ...s,
+      options: opts,
+      leadsActifs: s.leads_actifs || s.leadsActifs || 0,
+      etapes: (s.etapes || []).map(e => ({ ...e, jour: e.jour_delai ?? e.jour ?? 0 }))
+    };
+  });
 
   const addLead = (lead) => {
     setLeads(l => [lead, ...l]);
