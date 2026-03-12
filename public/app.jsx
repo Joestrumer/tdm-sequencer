@@ -268,9 +268,9 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
     try {
       // 1. Inscrire le lead à la séquence
       await onLaunch(lead.id, selected);
-      // 2. Si "envoyer maintenant" → forcer le scheduler
+      // 2. Si "envoyer maintenant" → forcer le scheduler sur ce lead uniquement
       if (sendNow) {
-        const r = await api.post('/sequences/trigger-now', {});
+        const r = await api.post('/sequences/trigger-now', { lead_ids: [lead.id] });
         if (r?.erreur) throw new Error(r.erreur);
       }
       setStatus("done");
@@ -942,7 +942,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
       {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow) => {
         const ids = Array.from(selectedIds);
         await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids });
-        if (sendNow) await api.post('/sequences/trigger-now', {}).catch(() => {});
+        if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(() => {});
         setSelectedIds(new Set());
         if (onRefresh) onRefresh();
       }} />}
@@ -1031,7 +1031,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-800 text-sm">{lead.prenom} {lead.nom}</div>
                     <div className="text-xs text-slate-400">{lead.email}</div>
-                    {lead.hubspot_id && <span className="text-xs text-orange-500">● HS</span>}
+                    {lead.hubspot_id && <span title="Synchronisé HubSpot" className="text-xs text-orange-300 ml-1">⬡</span>}
                   </td>
                   <td className="px-4 py-3">
                     <div className="text-sm text-slate-700">{lead.hotel}</div>
