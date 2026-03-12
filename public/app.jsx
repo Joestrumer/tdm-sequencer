@@ -1330,10 +1330,10 @@ const VueValidationEmail = ({ leads, onRefresh }) => {
     } catch(e) {}
   };
 
-  // Charger config ZeroBounce au montage
+  // Charger config ZeroBounce au montage — via /health (variable Railway)
   useEffect(() => {
-    api.get("/config").then(cfg => {
-      if (cfg.zerobounce_configured || cfg.zerobounce_api_key_configured) {
+    api.get("/health").then(h => {
+      if (h.zerobounce === 'configuré') {
         setZbConfigured(true);
         chargerCredits();
       }
@@ -1421,16 +1421,8 @@ const VueValidationEmail = ({ leads, onRefresh }) => {
           )}
         </div>
         {!zbConfigured && (
-          <div className="mt-4 space-y-3">
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">Clé API ZeroBounce</label>
-              <div className="flex gap-2">
-                <input type="password" value={zbKey} onChange={e => setZbKey(e.target.value)} onKeyDown={e => e.key === "Enter" && sauvegarderCle()} placeholder="Votre clé API ZeroBounce..." className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-                <button onClick={sauvegarderCle} disabled={savingKey || !zbKey.trim()} className="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 disabled:opacity-40 whitespace-nowrap">{savingKey ? "..." : "Sauvegarder"}</button>
-              </div>
-              <p className="text-xs text-slate-400 mt-1.5">Disponible sur <a href="https://app.zerobounce.net/members/apikey" target="_blank" className="text-blue-500 hover:underline">app.zerobounce.net</a></p>
-            </div>
-            {keyMsg && <p className="text-xs text-emerald-600">{keyMsg}</p>}
+          <div className="mt-4 p-3 bg-amber-50 border border-amber-200 rounded-xl text-xs text-amber-800">
+            Ajouter <code className="font-mono bg-amber-100 px-1 rounded">ZEROBOUNCE_API_KEY</code> dans les variables Railway pour activer la validation.
           </div>
         )}
       </div>
