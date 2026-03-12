@@ -93,6 +93,23 @@ async function brevoSendEmail(payload) {
   }
 }
 
+// ─── Nettoyage HTML éditeur (supprime attributs Froala/isPasted) ─────────────
+function nettoyerHtml(html) {
+  if (!html) return html;
+  return html
+    .replace(/\s*fr-original-style="[^"]*"/g, '')
+    .replace(/\s*fr-original-class="[^"]*"/g, '')
+    .replace(/\s*id="isPasted"/g, '')
+    .replace(/\s*data-fr-[^=\s]+="[^"]*"/g, '')
+    // Nettoyer styles inline verbeux sur p/span pour garder uniquement font-size utile
+    .replace(/<(p|div|span)([^>]*)\sstyle="[^"]*caret-color:[^"]*"([^>]*)>/g, (m, tag, before, after) => {
+      // Garder uniquement font-size si présent
+      const fs = m.match(/font-size:\s*([^;'"]+)/);
+      const style = fs ? ` style="font-size:${fs[1]}"` : '';
+      return `<${tag}${style}>`;
+    });
+}
+
 const SENDER = {
   email: process.env.BREVO_SENDER_EMAIL || 'hugo@terredemars.com',
   name: process.env.BREVO_SENDER_NAME || 'Hugo Montiel',
@@ -145,8 +162,9 @@ function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
 
   let html;
   if (estHtml) {
-    // Déjà en HTML — juste tracker les liens existants
-    html = texte.replace(/href="(https?:\/\/[^"]+)"/g, (match, url) => {
+    // Nettoyer HTML éditeur puis tracker les liens
+    const htmlClean = nettoyerHtml(texte);
+    html = htmlClean.replace(/href="(https?:\/\/[^"]+)"/g, (match, url) => {
       if (url.includes('/api/tracking')) return match; // déjà tracké
       const trackedUrl = `${PUBLIC_URL}/api/tracking/click/${trackingId}?url=${encodeURIComponent(url)}`;
       return `href="${trackedUrl}"`;
@@ -175,6 +193,7 @@ function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
   return `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#ffffff;">
+<style>ul,ol{margin:8px 0 8px 0;padding-left:20px}li{margin:3px 0;font-size:14px;line-height:1.65;color:#1a1a1a}a{color:#aa8d3e}</style>
 <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.65;color:#1a1a1a;padding:0;max-width:680px;">
   <div>${html}</div>
   <br>
