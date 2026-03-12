@@ -352,6 +352,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [etapes, setEtapes] = useState(seq ? [...seq.etapes] : [{ jour: 0, sujet: "", corps: "" }]);
   const [nom, setNom] = useState(seq?.nom || "");
   const [segment, setSegment] = useState(seq?.segment || "5*");
+  const [desabonnement, setDesabonnement] = useState(seq?.options?.desabonnement !== false);
   const [activeEtape, setActiveEtape] = useState(0);
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
@@ -411,7 +412,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
         ...e,
         corps: e.corps_html || e.corps || "",
       }));
-      await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0 });
+      await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options: { desabonnement } });
       onClose();
     } catch(e) { setErrMsg("Erreur : " + (e.message || "impossible de sauvegarder")); }
     setSaving(false);
@@ -439,6 +440,10 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
           <select value={segment} onChange={e => setSegment(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none">
             {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
           </select>
+          <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+            <input type="checkbox" checked={desabonnement} onChange={e => setDesabonnement(e.target.checked)} className="rounded" />
+            Lien désabonnement
+          </label>
           {/* Tabs edit/preview */}
           <div className="flex bg-slate-100 rounded-lg p-0.5">
             <button onClick={() => setMode("edit")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === "edit" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>✏️ Éditer</button>
