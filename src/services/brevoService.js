@@ -14,8 +14,50 @@ require('dotenv').config();
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
 
-// ─── Envoi Brevo via fetch natif (pas de SDK) ────────────────────────────────
+// ─── Envoi Brevo via SMTP (nodemailer) — pas de restriction IP ───────────────
+const nodemailer = require('nodemailer');
+
+let _transporter = null;
+function getTransporter() {
+  if (_transporter) return _transporter;
+  _transporter = nodemailer.createTransport({
+    host: 'smtp-relay.brevo.com',
+    port: 587,
+    secure: false, // STARTTLS
+    auth: {
+      user: process.env.BREVO_SMTP_USER || process.env.BREVO_SENDER_EMAIL || 'hugo@terredemars.com',
+      pass: process.env.BREVO_SMTP_KEY,   // Clé SMTP Brevo (≠ clé API)
+    },
+  });
+  return _transporter;
+}
+
 async function brevoSendEmail(payload) {
+  // Si clé SMTP dispo → SMTP (pas de whitelist IP)
+  // Sinon fallback API REST (nécessite whitelist IP)
+  if (process.env.BREVO_SMTP_KEY) {
+    const transporter = getTransporter();
+    const mailOptions = {
+      from: `"${payload.sender.name}" <${payload.sender.email}>`,
+      to: payload.to.map(t => `"${t.name || ''}" <${t.email}>`).join(', '),
+      subject: payload.subject,
+      html: payload.htmlContent,
+      text: payload.textContent || '',
+      replyTo: payload.replyTo ? `"${payload.replyTo.name}" <${payload.replyTo.email}>` : undefined,
+      headers: payload.headers || {},
+    };
+    if (payload.attachment?.length) {
+      mailOptions.attachments = payload.attachment.map(a => ({
+        filename: a.name,
+        content: Buffer.from(a.content, 'base64'),
+      }));
+    }
+    const info = await transporter.sendMail(mailOptions);
+    logger.info('✉️  Email envoyé via SMTP Brevo', { messageId: info.messageId });
+    return { messageId: info.messageId };
+  }
+
+  // Fallback API REST
   const res = await fetch('https://api.brevo.com/v3/smtp/email', {
     method: 'POST',
     headers: {
