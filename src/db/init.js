@@ -50,13 +50,15 @@ db.exec(`
 
   -- ─── ÉTAPES DE SÉQUENCE ───────────────────────────────────────────────────
   CREATE TABLE IF NOT EXISTS etapes (
-    id          TEXT PRIMARY KEY,
-    sequence_id TEXT NOT NULL REFERENCES sequences(id) ON DELETE CASCADE,
-    ordre       INTEGER NOT NULL,
-    jour_delai  INTEGER NOT NULL DEFAULT 0,  -- délai en jours depuis l'étape précédente
-    sujet       TEXT NOT NULL,
-    corps       TEXT NOT NULL,
-    created_at  TEXT DEFAULT (datetime('now'))
+    id            TEXT PRIMARY KEY,
+    sequence_id   TEXT NOT NULL REFERENCES sequences(id) ON DELETE CASCADE,
+    ordre         INTEGER NOT NULL,
+    jour_delai    INTEGER NOT NULL DEFAULT 0,
+    sujet         TEXT NOT NULL,
+    corps         TEXT NOT NULL,
+    corps_html    TEXT,
+    piece_jointe  TEXT,
+    created_at    TEXT DEFAULT (datetime('now'))
   );
 
   -- ─── INSCRIPTIONS LEAD → SÉQUENCE ─────────────────────────────────────────
@@ -127,6 +129,14 @@ db.exec(`
 `);
 
 console.log('✅ Base de données initialisée :', DB_PATH);
+// ─── Migrations colonnes manquantes ──────────────────────────────────────────
+['corps_html', 'piece_jointe'].forEach(col => {
+  try { db.prepare('ALTER TABLE etapes ADD COLUMN ' + col + ' TEXT').run(); } catch(e) {}
+});
+try { db.prepare('ALTER TABLE sequences ADD COLUMN options TEXT').run(); } catch(e) {}
+try { db.prepare('ALTER TABLE leads ADD COLUMN statut_email TEXT').run(); } catch(e) {}
+try { db.prepare('ALTER TABLE leads ADD COLUMN email_score INTEGER').run(); } catch(e) {}
+
 module.exports = db;
 
 // ─── Migration : table config ─────────────────────────────────────────────────
