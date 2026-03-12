@@ -157,6 +157,51 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/tracking/reply — Détection de réponse (webhook Brevo inbound ou polling)
+  // Brevo inbound : configurer https://tdm-sequencer-production.up.railway.app/api/tracking/reply
+  router.post('/reply', express.json(), async (req, res) => {
+    res.sendStatus(200);
+    setImmediate(async () => {
+      try {
+        const body = req.body;
+        // Support format Brevo inbound email
+        const fromEmail = body.from || body.sender || body.From;
+        const subject = body.subject || body.Subject || '';
+        const rawHeaders = body.headers || '';
+
+        if (!fromEmail) return;
+
+        // Chercher le lead par email expéditeur
+        const lead = db.prepare('SELECT * FROM leads WHERE email = ?').get(
+          typeof fromEmail === 'object' ? fromEmail.address || fromEmail.email : fromEmail
+        );
+        if (!lead) {
+          logger.debug('Reply reçu mais lead inconnu', { from: fromEmail });
+          return;
+        }
+
+        // Marquer lead comme Répondu + stopper séquence
+        db.prepare(`UPDATE leads SET statut = 'Répondu', score = MIN(100, score + 50), updated_at = datetime('now') WHERE id = ?`).run(lead.id);
+        db.prepare(`UPDATE inscriptions SET statut = 'répondu', prochain_envoi = NULL WHERE lead_id = ? AND statut = 'actif'`).run(lead.id);
+
+        // Enregistrer l'événement
+        db.prepare('INSERT INTO events (id, lead_id, type, meta) VALUES (?, ?, ?, ?)').run(
+          uuidv4(), lead.id, 'réponse',
+          JSON.stringify({ sujet: subject, recu_at: new Date().toISOString() })
+        );
+
+        // Notifier HubSpot
+        if (process.env.HUBSPOT_API_KEY && lead.hubspot_id) {
+          await hubspot.mettreAJourLifecycle(db, lead, 'MQL').catch(() => {});
+        }
+
+        logger.info('📩 Réponse détectée — lead passé en Répondu', { email: lead.email, sujet: subject });
+      } catch(err) {
+        logger.error('Erreur webhook reply', { error: err.message });
+      }
+    });
+  });
+
   // POST /api/tracking/webhook/brevo — Webhooks Brevo (bounces, spam, etc.)
   router.post('/webhook/brevo', express.json(), (req, res) => {
     res.sendStatus(200); // Répondre vite à Brevo

@@ -205,14 +205,28 @@ module.exports = (db) => {
       const hubspot = require('../services/hubspotService');
       const logger = require('../config/logger');
 
-      // Chercher toutes les inscriptions actives peu importe l'heure planifiée
-      const inscriptions = db.prepare(`
-        SELECT i.*, l.email as lead_email
-        FROM inscriptions i
-        JOIN leads l ON i.lead_id = l.id
-        WHERE i.statut = 'actif'
-        LIMIT 20
-      `).all();
+      // Cibler uniquement les leads passés en paramètre (ou toutes les inscriptions actives)
+      const { lead_ids } = req.body || {};
+      let inscriptions;
+      if (lead_ids && lead_ids.length) {
+        const placeholders = lead_ids.map(() => '?').join(',');
+        inscriptions = db.prepare(`
+          SELECT i.*, l.email as lead_email
+          FROM inscriptions i
+          JOIN leads l ON i.lead_id = l.id
+          WHERE i.statut = 'actif' AND i.lead_id IN (${placeholders})
+          ORDER BY i.created_at DESC
+        `).all(...lead_ids);
+      } else {
+        inscriptions = db.prepare(`
+          SELECT i.*, l.email as lead_email
+          FROM inscriptions i
+          JOIN leads l ON i.lead_id = l.id
+          WHERE i.statut = 'actif'
+          ORDER BY i.created_at DESC
+          LIMIT 50
+        `).all();
+      }
 
       if (inscriptions.length === 0) {
         return res.json({ message: 'Aucune inscription active', envoyes: 0 });
