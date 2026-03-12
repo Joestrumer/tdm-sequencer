@@ -775,6 +775,52 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
 };
 
 // ─── VueLeads ──────────────────────────────────────────────────────────────
+const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
+  const [selected, setSelected] = useState(sequences[0]?.id);
+  const [status, setStatus] = useState(null);
+  const [errMsg, setErrMsg] = useState("");
+  const handleLaunch = async (sendNow) => {
+    if (!selected) return;
+    setStatus("loading");
+    try {
+      await onLaunch(selected, sendNow);
+      setStatus("done");
+      setTimeout(() => onClose(), 1200);
+    } catch(e) { setStatus("error"); setErrMsg(e.message || "Erreur"); }
+  };
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+          <h3 className="text-base font-semibold text-slate-900">Lancer une séquence</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+        </div>
+        <div className="p-6">
+          <p className="text-sm text-slate-500 mb-4"><span className="font-semibold text-slate-800">{count} leads</span> seront inscrits à la séquence sélectionnée.</p>
+          <div className="space-y-2">
+            {sequences.map(seq => (
+              <label key={seq.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selected === seq.id ? "border-blue-300 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}>
+                <input type="radio" name="bseq" value={seq.id} checked={selected === seq.id} onChange={() => setSelected(seq.id)} className="accent-blue-600" />
+                <div>
+                  <div className="text-sm font-medium text-slate-800">{seq.nom}</div>
+                  <div className="text-xs text-slate-400">{seq.etapes?.length || 0} emails · {seq.segment}</div>
+                </div>
+              </label>
+            ))}
+          </div>
+          {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée pour {count} leads !</p>}
+          {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
+        </div>
+        <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2">
+          <button disabled={status === "loading" || status === "done"} onClick={() => handleLaunch(true)} className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50">⚡ Envoyer le 1er email maintenant</button>
+          <button disabled={status === "loading" || status === "done"} onClick={() => handleLaunch(false)} className="w-full py-2.5 text-sm font-medium bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 disabled:opacity-50">📅 Lancer (prochain créneau)</button>
+          <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600 text-center pt-1">Annuler</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
   const [search, setSearch] = useState("");
   const [filterStatut, setFilterStatut] = useState("Tous");
@@ -788,6 +834,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
   const [showLaunch, setShowLaunch] = useState(null);
   const [triggerStatus, setTriggerStatus] = useState(null);
   const [importStatus, setImportStatus] = useState(null);
+  const [selectedIds, setSelectedIds] = useState(new Set());
+  const [showBulkLaunch, setShowBulkLaunch] = useState(false);
   const [hsDetails, setHsDetails] = useState(null);
   const [loadingHs, setLoadingHs] = useState(false);
   const csvRef = useRef(null);
@@ -891,6 +939,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
     <div className="space-y-4">
       {showAdd && <ModalAddLead onClose={() => setShowAdd(false)} onAdd={(l) => { onAdd(l); if(onRefresh) onRefresh(); }} />}
       {showLaunch && <ModalLaunchSequence lead={showLaunch} sequences={sequences} onClose={() => setShowLaunch(null)} onLaunch={onLaunch} />}
+      {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow) => {
+        const ids = Array.from(selectedIds);
+        await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids });
+        if (sendNow) await api.post('/sequences/trigger-now', {}).catch(() => {});
+        setSelectedIds(new Set());
+        if (onRefresh) onRefresh();
+      }} />}
       {editLead && <ModalEditLead lead={editLead} onClose={() => setEditLead(null)} onSave={() => { setEditLead(null); if(onRefresh) onRefresh(); }} />}
 
       {/* ── Filtres ── */}
@@ -949,6 +1004,15 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
 
       {/* ── VUE LISTE ── */}
       {vueMode === "liste" && (
+        <>
+        {selectedIds.size > 0 && (
+          <div className="flex items-center gap-3 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm">
+            <span className="font-medium">{selectedIds.size} lead{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
+            <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer une séquence</button>
+            <button onClick={async () => { if(!confirm('Supprimer ' + selectedIds.size + ' leads ?')) return; for(const id of selectedIds) await api.delete('/leads/' + id).catch(()=>{}); setSelectedIds(new Set()); if(onRefresh) onRefresh(); }} className="px-3 py-1 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600">✕ Supprimer</button>
+            <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-blue-200 hover:text-white text-xs">Annuler</button>
+          </div>
+        )}
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
           <table className="w-full">
             <thead>
@@ -960,7 +1024,10 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
             </thead>
             <tbody>
               {filtered.map((lead, i) => (
-                <tr key={lead.id} className={`group border-b border-slate-50 hover:bg-blue-50/30 transition-colors ${i === filtered.length-1 ? "border-0" : ""}`}>
+                <tr key={lead.id} className={`group border-b border-slate-50 hover:bg-blue-50/30 transition-colors ${selectedIds.has(lead.id) ? "bg-blue-50/50" : ""} ${i === filtered.length-1 ? "border-0" : ""}`}>
+                  <td className="px-4 py-3 w-8">
+                    <input type="checkbox" className="rounded" checked={selectedIds.has(lead.id)} onChange={e => { const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} onClick={e => e.stopPropagation()} />
+                  </td>
                   <td className="px-4 py-3">
                     <div className="font-medium text-slate-800 text-sm">{lead.prenom} {lead.nom}</div>
                     <div className="text-xs text-slate-400">{lead.email}</div>
@@ -998,6 +1065,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
           </table>
           {filtered.length === 0 && <div className="text-center py-12 text-slate-400 text-sm">Aucun lead trouvé</div>}
         </div>
+        </>
       )}
 
       {/* ── VUE KANBAN ── */}
