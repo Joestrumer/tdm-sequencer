@@ -14,64 +14,77 @@ require('dotenv').config();
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
 
-// ─── Envoi Brevo via SMTP (nodemailer) — pas de restriction IP ───────────────
-const nodemailer = require('nodemailer');
+// ─── Envoi Brevo via SMTP (nodemailer si dispo) ou API REST ─────────────────
 
 let _transporter = null;
 function getTransporter() {
   if (_transporter) return _transporter;
+  let nodemailer;
+  try { nodemailer = require('nodemailer'); } catch(e) { throw new Error('nodemailer non disponible'); }
   _transporter = nodemailer.createTransport({
     host: 'smtp-relay.brevo.com',
     port: 587,
-    secure: false, // STARTTLS
+    secure: false,
     auth: {
-      user: process.env.BREVO_SMTP_USER || process.env.BREVO_SENDER_EMAIL || 'hugo@terredemars.com',
-      pass: process.env.BREVO_SMTP_KEY,   // Clé SMTP Brevo (≠ clé API)
+      user: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com',
+      pass: process.env.BREVO_SMTP_KEY,
     },
   });
   return _transporter;
 }
 
 async function brevoSendEmail(payload) {
-  // Si clé SMTP dispo → SMTP (pas de whitelist IP)
-  // Sinon fallback API REST (nécessite whitelist IP)
+  // SMTP si BREVO_SMTP_KEY défini ET nodemailer disponible
   if (process.env.BREVO_SMTP_KEY) {
-    const transporter = getTransporter();
-    const mailOptions = {
-      from: `"${payload.sender.name}" <${payload.sender.email}>`,
-      to: payload.to.map(t => `"${t.name || ''}" <${t.email}>`).join(', '),
-      subject: payload.subject,
-      html: payload.htmlContent,
-      text: payload.textContent || '',
-      replyTo: payload.replyTo ? `"${payload.replyTo.name}" <${payload.replyTo.email}>` : undefined,
-      headers: payload.headers || {},
-    };
-    if (payload.attachment?.length) {
-      mailOptions.attachments = payload.attachment.map(a => ({
-        filename: a.name,
-        content: Buffer.from(a.content, 'base64'),
-      }));
+    try {
+      const transporter = getTransporter();
+      const mailOptions = {
+        from: '"' + payload.sender.name + '" <' + payload.sender.email + '>',
+        to: payload.to.map(t => '"' + (t.name || '') + '" <' + t.email + '>').join(', '),
+        subject: payload.subject,
+        html: payload.htmlContent,
+        text: payload.textContent || '',
+        replyTo: payload.replyTo ? '"' + payload.replyTo.name + '" <' + payload.replyTo.email + '>' : undefined,
+        headers: payload.headers || {},
+      };
+      if (payload.attachment && payload.attachment.length) {
+        mailOptions.attachments = payload.attachment.map(function(a) {
+          return { filename: a.name, content: Buffer.from(a.content, 'base64') };
+        });
+      }
+      const info = await transporter.sendMail(mailOptions);
+      logger.info('Email envoyé via SMTP Brevo', { messageId: info.messageId });
+      return { messageId: info.messageId };
+    } catch(smtpErr) {
+      logger.warn('SMTP echoue, fallback API REST', { erreur: smtpErr.message });
     }
-    const info = await transporter.sendMail(mailOptions);
-    logger.info('✉️  Email envoyé via SMTP Brevo', { messageId: info.messageId });
-    return { messageId: info.messageId };
   }
 
-  // Fallback API REST
-  const res = await fetch('https://api.brevo.com/v3/smtp/email', {
-    method: 'POST',
-    headers: {
-      'accept': 'application/json',
-      'api-key': process.env.BREVO_API_KEY,
-      'content-type': 'application/json',
-    },
-    body: JSON.stringify(payload),
-  });
-  if (!res.ok) {
-    const err = await res.text();
-    throw new Error(`Brevo API ${res.status}: ${err}`);
+  // API REST Brevo (fallback ou par defaut)
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000); // 15s max
+  try {
+    const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+      method: 'POST',
+      headers: {
+        'accept': 'application/json',
+        'api-key': process.env.BREVO_API_KEY,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+      signal: controller.signal,
+    });
+    clearTimeout(timeout);
+    if (!res.ok) {
+      const err = await res.text();
+      throw new Error('Brevo API ' + res.status + ': ' + err);
+    }
+    return res.json();
+  } catch(e) {
+    clearTimeout(timeout);
+    if (e.name === 'AbortError') throw new Error('Brevo API timeout (>15s) — verifier IP whitelist ou connectivite Railway');
+    throw e;
   }
-  return res.json();
 }
 
 const SENDER = {
