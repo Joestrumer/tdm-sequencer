@@ -48,11 +48,13 @@ module.exports = (db) => {
   // POST /api/sequences — Créer une séquence avec ses étapes
   router.post('/', (req, res) => {
     try {
-      const { nom, segment, etapes } = req.body;
+      const { nom, segment, etapes, options } = req.body;
       if (!nom || !etapes?.length) return res.status(400).json({ erreur: 'nom et etapes sont requis' });
 
       const seqId = uuidv4();
-      db.prepare('INSERT INTO sequences (id, nom, segment) VALUES (?, ?, ?)').run(seqId, nom, segment || '5*');
+      // Ajouter colonne options si elle n'existe pas
+      try { db.prepare('ALTER TABLE sequences ADD COLUMN options TEXT').run(); } catch(e) {}
+      db.prepare('INSERT INTO sequences (id, nom, segment, options) VALUES (?, ?, ?, ?)').run(seqId, nom, segment || '5*', options ? JSON.stringify(options) : null);
 
       const insererEtapes = db.transaction((etapes) => {
         for (let i = 0; i < etapes.length; i++) {
@@ -73,11 +75,11 @@ module.exports = (db) => {
   // PUT /api/sequences/:id — Mettre à jour une séquence (remplace les étapes)
   router.put('/:id', (req, res) => {
     try {
-      const { nom, segment, etapes } = req.body;
+      const { nom, segment, etapes, options } = req.body;
       const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
       if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
 
-      db.prepare('UPDATE sequences SET nom = ?, segment = ? WHERE id = ?').run(nom || seq.nom, segment || seq.segment, req.params.id);
+      db.prepare('UPDATE sequences SET nom = ?, segment = ?, options = ? WHERE id = ?').run(nom || seq.nom, segment || seq.segment, options ? JSON.stringify(options) : seq.options, req.params.id);
 
       if (etapes?.length) {
         db.prepare('DELETE FROM etapes WHERE sequence_id = ?').run(req.params.id);
