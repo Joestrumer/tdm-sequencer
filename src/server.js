@@ -23,6 +23,7 @@ app.get('/api/health', (req, res) => {
     port: PORT,
     brevo: process.env.BREVO_API_KEY ? 'configuré' : 'non configuré',
     hubspot: process.env.HUBSPOT_API_KEY ? 'configuré' : 'non configuré',
+    zerobounce: process.env.ZEROBOUNCE_API_KEY ? 'configuré' : 'non configuré',
   });
 });
 
