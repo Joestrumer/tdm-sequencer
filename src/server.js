@@ -17,6 +17,25 @@ app.use(express.json({ limit: '2mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Santé AVANT auth
+// Route diagnostic Brevo (pas d'auth requise)
+app.get('/api/test-brevo', async (req, res) => {
+  const key = process.env.BREVO_API_KEY;
+  if (!key) return res.json({ ok: false, erreur: 'BREVO_API_KEY non définie' });
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 8000);
+    const r = await fetch('https://api.brevo.com/v3/senders', {
+      headers: { 'api-key': key, 'accept': 'application/json' },
+      signal: controller.signal,
+    });
+    const data = await r.json();
+    if (r.ok) res.json({ ok: true, status: r.status, senders: data.senders?.length });
+    else res.json({ ok: false, status: r.status, detail: JSON.stringify(data) });
+  } catch(e) {
+    res.json({ ok: false, erreur: e.name === 'AbortError' ? 'TIMEOUT — Railway bloque api.brevo.com ?' : e.message });
+  }
+});
+
 app.get('/api/health', (req, res) => {
   res.json({
     statut: 'ok',
