@@ -1323,19 +1323,22 @@ const VueValidationEmail = ({ leads, onRefresh }) => {
 
   const leadsNorm = leads.map(l => ({ ...l, statut_email: l.statut_email || null }));
 
-  // Charger config ZeroBounce
-  useEffect(() => {
-    api.get("/config").then(cfg => {
-      if (cfg.zerobounce_configured) { setZbConfigured(true); chargerCredits(); }
-    }).catch(() => {});
-  }, []);
-
   const chargerCredits = async () => {
     try {
       const r = await api.get("/email-validation/credits");
       if (r.Credits !== undefined) setCredits(r.Credits);
     } catch(e) {}
   };
+
+  // Charger config ZeroBounce au montage
+  useEffect(() => {
+    api.get("/config").then(cfg => {
+      if (cfg.zerobounce_configured || cfg.zerobounce_api_key_configured) {
+        setZbConfigured(true);
+        chargerCredits();
+      }
+    }).catch(() => {});
+  }, []);
 
   const sauvegarderCle = async () => {
     if (!zbKey.trim()) return;
