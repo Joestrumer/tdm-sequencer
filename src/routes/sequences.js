@@ -82,14 +82,32 @@ module.exports = (db) => {
       db.prepare('UPDATE sequences SET nom = ?, segment = ?, options = ? WHERE id = ?').run(nom || seq.nom, segment || seq.segment, options ? JSON.stringify(options) : seq.options, req.params.id);
 
       if (etapes?.length) {
-        db.prepare('DELETE FROM etapes WHERE sequence_id = ?').run(req.params.id);
-        const insererEtapes = db.transaction((etapes) => {
+        // Mettre à jour les étapes sans DELETE (FK constraint avec emails)
+        const updateEtapes = db.transaction((etapes) => {
+          const existantes = db.prepare('SELECT id FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(req.params.id);
           for (let i = 0; i < etapes.length; i++) {
             const e = etapes[i];
-            db.prepare('INSERT INTO etapes (id, sequence_id, ordre, jour_delai, sujet, corps) VALUES (?, ?, ?, ?, ?, ?)').run(uuidv4(), req.params.id, i + 1, e.jour_delai ?? e.jour ?? 0, e.sujet, e.corps);
+            const corps_html = e.corps_html !== undefined ? e.corps_html : e.corps_html_val || null;
+            const piece_jointe = e.piece_jointe ? JSON.stringify(e.piece_jointe) : null;
+            if (i < existantes.length) {
+              // Mettre à jour étape existante (conserve l'ID pour les FK)
+              db.prepare('UPDATE etapes SET ordre=?, jour_delai=?, sujet=?, corps=?, corps_html=?, piece_jointe=? WHERE id=?')
+                .run(i+1, e.jour_delai ?? e.jour ?? 0, e.sujet || '', e.corps || '', corps_html, piece_jointe, existantes[i].id);
+            } else {
+              // Nouvelle étape
+              db.prepare('INSERT INTO etapes (id, sequence_id, ordre, jour_delai, sujet, corps, corps_html, piece_jointe) VALUES (?,?,?,?,?,?,?,?)')
+                .run(uuidv4(), req.params.id, i+1, e.jour_delai ?? e.jour ?? 0, e.sujet || '', e.corps || '', corps_html, piece_jointe);
+            }
+          }
+          // Supprimer les étapes en trop (celles sans emails liés)
+          if (existantes.length > etapes.length) {
+            for (let i = etapes.length; i < existantes.length; i++) {
+              const hasEmails = db.prepare('SELECT COUNT(*) as c FROM emails WHERE etape_id=?').get(existantes[i].id);
+              if (!hasEmails?.c) db.prepare('DELETE FROM etapes WHERE id=?').run(existantes[i].id);
+            }
           }
         });
-        insererEtapes(etapes);
+        updateEtapes(etapes);
       }
 
       const updated = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
