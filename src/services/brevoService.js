@@ -21,14 +21,20 @@ function getTransporter() {
   if (_transporter) return _transporter;
   let nodemailer;
   try { nodemailer = require('nodemailer'); } catch(e) { throw new Error('nodemailer non disponible'); }
+  // Essayer port 587, 465, puis 2525 selon ce que Railway autorise
+  const smtpPort = parseInt(process.env.BREVO_SMTP_PORT) || 587;
+  const smtpSecure = smtpPort === 465;
   _transporter = nodemailer.createTransport({
     host: 'smtp-relay.brevo.com',
-    port: 587,
-    secure: false,
+    port: smtpPort,
+    secure: smtpSecure,
     auth: {
       user: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com',
       pass: process.env.BREVO_SMTP_KEY,
     },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
   });
   return _transporter;
 }
