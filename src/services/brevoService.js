@@ -94,8 +94,8 @@ async function brevoSendEmail(payload) {
 }
 
 const SENDER = {
-  email: process.env.BREVO_SENDER_EMAIL || 'joe@terre-de-mars.com',
-  name: process.env.BREVO_SENDER_NAME || 'Joe — Terre de Mars',
+  email: process.env.BREVO_SENDER_EMAIL || 'hugo@terredemars.com',
+  name: process.env.BREVO_SENDER_NAME || 'Hugo Montiel',
 };
 
 const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3001';
@@ -116,7 +116,7 @@ const SIGNATURE_HUGO = `
 `;
 
 // ─── Conversion texte brut → HTML propre ─────────────────────────────────────
-function texteVersHtml(texte, trackingId, lead, estHtml = false) {
+function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
   const unsubUrl = `${PUBLIC_URL}/api/tracking/unsubscribe/${lead.id}?t=${trackingId}`;
   const pixelUrl = `${PUBLIC_URL}/api/tracking/open/${trackingId}`;
 
@@ -140,49 +140,29 @@ function texteVersHtml(texte, trackingId, lead, estHtml = false) {
       });
   }
 
+  // Désabonnement optionnel (activé par défaut si pas de paramètre)
+  const showUnsub = options && options.desabonnement === false ? false : true;
+  const unsubBlock = showUnsub
+    ? `<p style="margin:32px 0 0;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:12px;">
+        Vous recevez cet email en tant que contact professionnel de Terre de Mars.
+        &nbsp;<a href="${unsubUrl}" style="color:#999;text-decoration:underline;">Se désabonner</a>
+       </p>`
+    : '';
+
   return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title></title>
-  <style>
-    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; font-size: 15px; line-height: 1.6; color: #2d2d2d; margin: 0; padding: 0; background: #f8f8f8; }
-    .wrapper { max-width: 600px; margin: 30px auto; background: #ffffff; border-radius: 8px; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.08); }
-    .body { padding: 36px 40px 24px; }
-    .signature-wrapper { padding: 0 40px 24px; }
-    .footer { padding: 16px 40px; background: #f4f4f4; border-top: 1px solid #eee; font-size: 11px; color: #aaa; text-align: center; }
-    .footer a { color: #aaa; text-decoration: underline; }
-  </style>
-</head>
-<body>
-  <div class="wrapper">
-
-    <!-- Corps du message -->
-    <div class="body">
-      ${html}
-    </div>
-
-    <!-- Séparateur avant signature -->
-    <div style="margin: 0 40px; border-top: 1px solid #e8e0cc;"></div>
-
-    <!-- Signature Hugo Montiel -->
-    <div class="signature-wrapper" style="padding-top: 20px;">
-      ${SIGNATURE_HUGO}
-    </div>
-
-    <!-- Footer RGPD discret -->
-    <div class="footer">
-      Vous recevez cet email car vous avez été identifié comme contact potentiel de Terre de Mars.
-      &nbsp;·&nbsp;
-      <a href="${unsubUrl}">Se désabonner</a>
-    </div>
-
+<html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
+<body style="margin:0;padding:0;background:#ffffff;font-family:Arial,Helvetica,sans-serif;">
+<div style="max-width:600px;margin:0 auto;padding:24px 0;">
+  <div style="font-size:15px;line-height:1.6;color:#1a1a1a;">
+    ${html}
   </div>
-  <!-- Pixel de tracking ouverture -->
-  <img src="${pixelUrl}" width="1" height="1" alt="" style="display:none;" />
-</body>
-</html>`;
+  <div style="margin-top:24px;padding-top:16px;border-top:1px solid #e8e0cc;">
+    ${SIGNATURE_HUGO}
+  </div>
+  ${unsubBlock}
+</div>
+<img src="${pixelUrl}" width="1" height="1" alt="" style="display:none;" />
+</body></html>`;
 }
 
 // ─── Vérification du quota journalier ────────────────────────────────────────
@@ -246,9 +226,16 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
   const trackingId = uuidv4();
 
   // 5. Construire le HTML (corps_html si éditeur riche, sinon conversion texte)
+  // Récupérer le paramètre desabonnement depuis la séquence
+  let seqOptions = {};
+  try {
+    const insc = db.prepare('SELECT s.options FROM inscriptions i JOIN sequences s ON i.sequence_id = s.id WHERE i.id = ?').get(inscriptionId);
+    if (insc?.options) seqOptions = JSON.parse(insc.options);
+  } catch(e) {}
+
   const corpsHtml = etape.corps_html
-    ? texteVersHtml(etape.corps_html, trackingId, lead, true)
-    : texteVersHtml(corpsTexte, trackingId, lead, false);
+    ? texteVersHtml(etape.corps_html, trackingId, lead, true, seqOptions)
+    : texteVersHtml(corpsTexte, trackingId, lead, false, seqOptions);
 
   // 6. Préparer le payload Brevo
   const payload = {
