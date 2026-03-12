@@ -19,21 +19,49 @@ app.use(express.urlencoded({ extended: true }));
 // Santé AVANT auth
 // Route diagnostic Brevo (pas d'auth requise)
 app.get('/api/test-brevo', async (req, res) => {
-  const key = process.env.BREVO_API_KEY;
-  if (!key) return res.json({ ok: false, erreur: 'BREVO_API_KEY non définie' });
+  const results = {};
+
+  // Test 1 : API REST
   try {
     const controller = new AbortController();
     setTimeout(() => controller.abort(), 8000);
     const r = await fetch('https://api.brevo.com/v3/senders', {
-      headers: { 'api-key': key, 'accept': 'application/json' },
+      headers: { 'api-key': process.env.BREVO_API_KEY || '', 'accept': 'application/json' },
       signal: controller.signal,
     });
     const data = await r.json();
-    if (r.ok) res.json({ ok: true, status: r.status, senders: data.senders?.length });
-    else res.json({ ok: false, status: r.status, detail: JSON.stringify(data) });
+    results.api_rest = r.ok ? { ok: true, senders: data.senders?.length } : { ok: false, status: r.status, detail: JSON.stringify(data).slice(0, 200) };
   } catch(e) {
-    res.json({ ok: false, erreur: e.name === 'AbortError' ? 'TIMEOUT — Railway bloque api.brevo.com ?' : e.message });
+    results.api_rest = { ok: false, erreur: e.name === 'AbortError' ? 'TIMEOUT 8s' : e.message };
   }
+
+  // Test 2 : SMTP via nodemailer (si clé dispo)
+  if (process.env.BREVO_SMTP_KEY) {
+    try {
+      const nodemailer = require('nodemailer');
+      for (const port of [587, 465, 2525]) {
+        try {
+          const t = nodemailer.createTransport({
+            host: 'smtp-relay.brevo.com', port, secure: port === 465,
+            auth: { user: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com', pass: process.env.BREVO_SMTP_KEY },
+            connectionTimeout: 6000, greetingTimeout: 6000,
+          });
+          await t.verify();
+          results['smtp_' + port] = { ok: true };
+          break;
+        } catch(e) {
+          results['smtp_' + port] = { ok: false, erreur: e.message.slice(0, 100) };
+        }
+      }
+    } catch(e) {
+      results.smtp = { ok: false, erreur: 'nodemailer non disponible: ' + e.message };
+    }
+  } else {
+    results.smtp = { ok: false, erreur: 'BREVO_SMTP_KEY non définie' };
+  }
+
+  results.ip_sortante = req.headers['x-forwarded-for'] || 'inconnue';
+  res.json(results);
 });
 
 app.get('/api/health', (req, res) => {
