@@ -937,7 +937,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
   };
 
   // ── Actions lead ────────────────────────────────────────────────────────
-  const supprimerLead = async (lead) => {
+  const supprimerLead = async (lead, e) => {
+    if (e) e.stopPropagation();
     if (!confirm(`Supprimer ${lead.prenom} ${lead.nom} (${lead.hotel}) ?`)) return;
     await api.delete(`/leads/${lead.id}`);
     if (selectedLead?.id === lead.id) setSelectedLead(null);
@@ -1146,7 +1147,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
                         <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 whitespace-nowrap">▶</button>
                       )}
                       <button onClick={() => setEditLead(lead)} title="Modifier" className="px-2 py-1 text-xs border border-slate-200 text-slate-500 rounded-md hover:bg-slate-100">✏️</button>
-                      <button onClick={() => supprimerLead(lead)} title="Supprimer" className="px-2 py-1 text-xs border border-red-100 text-red-400 rounded-md hover:bg-red-50">✕</button>
+                      <button onClick={(e) => supprimerLead(lead, e)} title="Supprimer" className="px-2 py-1 text-xs border border-red-100 text-red-400 rounded-md hover:bg-red-50">✕</button>
                     </div>
                   </td>
                 </tr>
@@ -1219,7 +1220,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button onClick={() => setEditLead(selectedLead)} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50">✏️ Éditer</button>
-              <button onClick={() => supprimerLead(selectedLead)} className="px-3 py-1.5 text-xs border border-red-100 text-red-400 rounded-lg hover:bg-red-50">Supprimer</button>
+              <button onClick={(e) => supprimerLead(selectedLead, e)} className="px-3 py-1.5 text-xs border border-red-100 text-red-400 rounded-lg hover:bg-red-50">Supprimer</button>
               <button onClick={() => { setSelectedLead(null); setDetailData(null); }} className="text-slate-400 hover:text-slate-600 text-xl ml-1">×</button>
             </div>
           </div>
