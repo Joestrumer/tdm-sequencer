@@ -1737,6 +1737,217 @@ const VueHubspot = () => {
   );
 };
 
+// ─── Modal Qualification Lead ──────────────────────────────────────────────────
+const ModalQualification = ({ email, onClose, onSuccess, sequences }) => {
+  const [form, setForm] = useState({
+    email,
+    prenom: '',
+    nom: '',
+    hotel: '',
+    ville: '',
+    segment: '5*',
+    company_hubspot_id: null,
+    create_deal: false,
+    deal_amount: 0,
+    deal_name: '',
+    create_task: true,
+    task_subject: '',
+    sequence_id: sequences[0]?.id || null
+  });
+  const [companies, setCompanies] = useState([]);
+  const [queryCompany, setQueryCompany] = useState('');
+  const [searchingHS, setSearchingHS] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState('');
+  const searchTimer = useRef(null);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  const rechercherCompany = (q) => {
+    setQueryCompany(q);
+    clearTimeout(searchTimer.current);
+    if (!q || q.length < 2) { setCompanies([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setSearchingHS(true);
+      try {
+        const res = await api.get(`/hubspot/recherche-companies?q=${encodeURIComponent(q)}`);
+        setCompanies(Array.isArray(res) ? res : []);
+      } catch(e) { setCompanies([]); }
+      setSearchingHS(false);
+    }, 400);
+  };
+
+  const selectionnerCompany = (company) => {
+    set('company_hubspot_id', company.id);
+    set('hotel', company.nom);
+    set('ville', company.ville || '');
+    set('deal_name', `Deal - ${company.nom}`);
+    setCompanies([]);
+    setQueryCompany(company.nom);
+  };
+
+  const handleSubmit = async () => {
+    if (!form.prenom || !form.hotel) {
+      setError('Prénom et établissement requis');
+      return;
+    }
+
+    setSaving(true);
+    setError('');
+
+    try {
+      const result = await api.post('/qualification/create-and-launch', form);
+
+      if (result.errors && result.errors.length > 0) {
+        setError(`Lead créé mais : ${result.errors.join(', ')}`);
+      }
+
+      alert(`✅ Lead qualifié !\n\n` +
+        `Lead créé : ${result.lead?.email}\n` +
+        (result.hubspot_contact ? `HubSpot contact : ✅\n` : '') +
+        (result.hubspot_deal ? `HubSpot deal : ✅\n` : '') +
+        (result.hubspot_task ? `HubSpot task : ✅\n` : '') +
+        (result.sequence ? `Séquence lancée : ${result.sequence.nom}\n` : '')
+      );
+
+      onSuccess();
+      onClose();
+    } catch (err) {
+      setError(err.message || 'Erreur lors de la qualification');
+    }
+
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Qualifier le lead</h3>
+            <p className="text-xs text-slate-500 mt-1">Créer lead → HubSpot → Séquence</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+        </div>
+
+        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          {/* Recherche HubSpot Company */}
+          <div className="relative">
+            <label className="text-xs font-medium text-slate-600 mb-2 block">Rechercher établissement (HubSpot)</label>
+            <input
+              value={queryCompany}
+              onChange={e => rechercherCompany(e.target.value)}
+              placeholder="Nom de l'hôtel, restaurant..."
+              className="w-full border border-orange-200 bg-orange-50 rounded-lg px-3 py-2 text-sm"
+            />
+            {searchingHS && <span className="absolute right-3 top-9 text-xs text-slate-400">⟳</span>}
+            {companies.length > 0 && (
+              <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
+                {companies.map(c => (
+                  <button key={c.id} onClick={() => selectionnerCompany(c)}
+                    className="w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b border-slate-50 last:border-0">
+                    <div className="text-sm font-medium text-slate-800">{c.nom}</div>
+                    <div className="text-xs text-slate-400">{c.domaine} {c.ville ? `· ${c.ville}` : ""}</div>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Informations lead */}
+          <div className="border-t border-slate-100 pt-4">
+            <p className="text-xs font-medium text-slate-600 mb-3">Informations du lead</p>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">Prénom *</label>
+                <input value={form.prenom} onChange={e => set('prenom', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">Nom</label>
+                <input value={form.nom} onChange={e => set('nom', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs text-slate-500 mb-1 block">Email</label>
+              <input value={form.email} disabled className="w-full border border-slate-200 bg-slate-50 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">Établissement *</label>
+                <input value={form.hotel} onChange={e => set('hotel', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+              <div>
+                <label className="text-xs text-slate-500 mb-1 block">Ville</label>
+                <input value={form.ville} onChange={e => set('ville', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs text-slate-500 mb-1 block">Segment</label>
+              <select value={form.segment} onChange={e => set('segment', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
+              </select>
+            </div>
+          </div>
+
+          {/* HubSpot Deal */}
+          <div className="border-t border-slate-100 pt-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.create_deal} onChange={e => set('create_deal', e.target.checked)} className="rounded accent-blue-600" />
+              <span className="text-xs font-medium text-slate-600">Créer un deal dans HubSpot</span>
+            </label>
+            {form.create_deal && (
+              <div className="grid grid-cols-2 gap-3 mt-3">
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Nom du deal</label>
+                  <input value={form.deal_name} onChange={e => set('deal_name', e.target.value)} placeholder="Deal - Hotel X" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+                <div>
+                  <label className="text-xs text-slate-500 mb-1 block">Montant (€)</label>
+                  <input type="number" value={form.deal_amount} onChange={e => set('deal_amount', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* HubSpot Task */}
+          <div className="border-t border-slate-100 pt-4">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={form.create_task} onChange={e => set('create_task', e.target.checked)} className="rounded accent-blue-600" />
+              <span className="text-xs font-medium text-slate-600">Créer une tâche dans HubSpot</span>
+            </label>
+            {form.create_task && (
+              <div className="mt-3">
+                <label className="text-xs text-slate-500 mb-1 block">Sujet de la tâche</label>
+                <input value={form.task_subject} onChange={e => set('task_subject', e.target.value)} placeholder={`Contacter ${form.prenom || '...'}`} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              </div>
+            )}
+          </div>
+
+          {/* Séquence */}
+          <div className="border-t border-slate-100 pt-4">
+            <label className="text-xs font-medium text-slate-600 mb-2 block">Lancer dans une séquence (optionnel)</label>
+            <select value={form.sequence_id || ''} onChange={e => set('sequence_id', e.target.value || null)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="">Aucune séquence</option>
+              {sequences.map(seq => (
+                <option key={seq.id} value={seq.id}>{seq.nom} ({seq.etapes?.length || 0} emails)</option>
+              ))}
+            </select>
+          </div>
+
+          {error && <div className="bg-red-50 border border-red-200 rounded-lg p-3 text-xs text-red-700">{error}</div>}
+        </div>
+
+        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 flex-shrink-0 border-t border-slate-100">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
+          <button onClick={handleSubmit} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50">
+            {saving ? "Qualification..." : "✅ Qualifier le lead"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── VUE VALIDATION EMAIL ─────────────────────────────────────────────────────
 
 const ZB_STATUS_CONFIG = {
@@ -1759,7 +1970,7 @@ const ZbBadge = ({ status }) => {
   );
 };
 
-const VueValidationEmail = ({ leads, onRefresh }) => {
+const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
   const [zbKey, setZbKey] = useState("");
   const [zbConfigured, setZbConfigured] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
@@ -1770,6 +1981,10 @@ const VueValidationEmail = ({ leads, onRefresh }) => {
   const [singleEmail, setSingleEmail] = useState("");
   const [singleResult, setSingleResult] = useState(null);
   const [singleLoading, setSingleLoading] = useState(false);
+
+  // Modal qualification
+  const [showQualificationModal, setShowQualificationModal] = useState(false);
+  const [qualificationEmail, setQualificationEmail] = useState("");
 
   // Validation bulk
   const [bulkMode, setBulkMode] = useState("tous"); // "tous" | "non_verifies"
@@ -1819,6 +2034,12 @@ const VueValidationEmail = ({ leads, onRefresh }) => {
     try {
       const r = await api.post("/email-validation/single", { email: singleEmail.trim() });
       setSingleResult(r);
+
+      // Si l'email est valide, proposer la qualification
+      if (r.status === 'valid') {
+        setQualificationEmail(singleEmail.trim());
+        setShowQualificationModal(true);
+      }
     } catch(e) { setSingleResult({ error: e.message }); }
     setSingleLoading(false);
   };
@@ -2012,6 +2233,21 @@ const VueValidationEmail = ({ leads, onRefresh }) => {
             )}
           </div>
         </>
+      )}
+
+      {/* Modal Qualification */}
+      {showQualificationModal && (
+        <ModalQualification
+          email={qualificationEmail}
+          sequences={sequences || []}
+          onClose={() => setShowQualificationModal(false)}
+          onSuccess={() => {
+            setShowQualificationModal(false);
+            setSingleEmail("");
+            setSingleResult(null);
+            if (onRefresh) onRefresh();
+          }}
+        />
       )}
     </div>
   );
@@ -2417,7 +2653,7 @@ function App() {
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} />}
           {vue === "blocklist" && <VueBlocklist onRefresh={charger} />}
           {vue === "hubspot" && <VueHubspot />}
-          {vue === "emails" && <VueValidationEmail leads={leads} onRefresh={charger} />}
+          {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} />}
           {vue === "parametres" && <VueParametres />}
         </main>
       </div>
