@@ -144,10 +144,27 @@ module.exports = (db) => {
   // DELETE /api/leads/:id — Supprimer un lead
   router.delete('/:id', (req, res) => {
     try {
-      const result = db.prepare('DELETE FROM leads WHERE id = ?').run(req.params.id);
-      if (!result.changes) return res.status(404).json({ erreur: 'Lead introuvable' });
+      // Supprimer dans une transaction pour assurer la cohérence
+      db.transaction(() => {
+        // Supprimer les events liés (pas de CASCADE dans le schéma)
+        db.prepare('DELETE FROM events WHERE lead_id = ?').run(req.params.id);
+
+        // Supprimer les emails liés (pas de CASCADE dans le schéma)
+        db.prepare('DELETE FROM emails WHERE lead_id = ?').run(req.params.id);
+
+        // Les inscriptions ont CASCADE, mais on les supprime explicitement pour être sûr
+        db.prepare('DELETE FROM inscriptions WHERE lead_id = ?').run(req.params.id);
+
+        // Enfin supprimer le lead
+        const result = db.prepare('DELETE FROM leads WHERE id = ?').run(req.params.id);
+        if (!result.changes) throw new Error('Lead introuvable');
+      })();
+
       res.json({ message: 'Lead supprimé' });
     } catch (err) {
+      if (err.message === 'Lead introuvable') {
+        return res.status(404).json({ erreur: err.message });
+      }
       res.status(500).json({ erreur: err.message });
     }
   });

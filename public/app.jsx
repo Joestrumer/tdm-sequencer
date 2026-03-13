@@ -940,9 +940,18 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
   const supprimerLead = async (lead, e) => {
     if (e) e.stopPropagation();
     if (!confirm(`Supprimer ${lead.prenom} ${lead.nom} (${lead.hotel}) ?`)) return;
-    await api.delete(`/leads/${lead.id}`);
-    if (selectedLead?.id === lead.id) setSelectedLead(null);
-    if (onRefresh) onRefresh();
+    try {
+      const result = await api.delete(`/leads/${lead.id}`);
+      if (result?.erreur) {
+        alert(`Erreur : ${result.erreur}`);
+        return;
+      }
+      if (selectedLead?.id === lead.id) setSelectedLead(null);
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      console.error('Erreur suppression lead:', err);
+      alert(`Impossible de supprimer le lead : ${err.message}`);
+    }
   };
 
   const changerStatut = async (lead, statut) => {
