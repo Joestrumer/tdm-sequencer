@@ -638,79 +638,155 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 // ─── VUES ─────────────────────────────────────────────────────────────────────
 
 const VueDashboard = ({ leads, activites, stats }) => {
-  const envoyes = stats?.emails_envoyes_total || leads.filter(l => l.etape > 0).length * 4;
-  const tOuverture = stats?.taux_ouverture || Math.round((leads.filter(l => l.ouvertures > 0).length / Math.max(leads.length, 1)) * 100);
-  const tReponse = stats?.taux_reponse || Math.round((leads.filter(l => l.statut === "Répondu" || l.statut === "Converti").length / Math.max(leads.length, 1)) * 100);
-  const convertis = stats?.leads_convertis || leads.filter(l => l.statut === "Converti").length;
-  const chauds = leads.filter(l => (l.ouvertures >= 3 || l.score >= 80) && l.statut === "En séquence");
+  const kpis = stats?.kpis || {};
+  const envoyes = kpis.emailsEnvoyes || 0;
+  const tOuverture = kpis.tOuverture || 0;
+  const tClic = kpis.tClic || 0;
+  const tReponse = kpis.tReponse || 0;
+  const convertis = kpis.convertis || 0;
+  const leadsActifs = kpis.leadsActifs || 0;
+  const chauds = stats?.leadsChauds || leads.filter(l => (l.total_ouvertures >= 3 || l.score >= 80) && l.statut === "En séquence");
+  const perf7j = stats?.performance7j || [];
+  const statsSeq = stats?.statsSequences || [];
+  const maxEnvoyes = Math.max(...perf7j.map(d => d.envoyes || 0), 1);
+
+  // Formater date relative
+  const relTime = (iso) => {
+    if (!iso) return "—";
+    const diff = Date.now() - new Date(iso).getTime();
+    const m = Math.floor(diff/60000);
+    if (m < 1) return "à l'instant";
+    if (m < 60) return `il y a ${m}min`;
+    const h = Math.floor(m/60);
+    if (h < 24) return `il y a ${h}h`;
+    return `il y a ${Math.floor(h/24)}j`;
+  };
+
+  const actRecentes = stats?.activitesRecentes || activites || [];
+  const ICONS = { ouverture: "👁", clic: "🔗", envoi: "📧", réponse: "💬", désabonnement: "🚫", bounce: "⚠️" };
 
   return (
-    <div className="space-y-6">
-      {/* KPIs */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="space-y-5">
+      {/* ── KPIs ── */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
         {[
-          { label: "Emails envoyés", value: envoyes, sub: "ce mois", color: "text-slate-900" },
-          { label: "Taux d'ouverture", value: `${tOuverture}%`, sub: "↑ +4% vs semaine dernière", color: "text-blue-600" },
-          { label: "Taux de réponse", value: `${tReponse}%`, sub: "industrie : ~8%", color: "text-emerald-600" },
-          { label: "Conversions", value: convertis, sub: "ce mois", color: "text-amber-600" },
-        ].map(({ label, value, sub, color }) => (
-          <div key={label} className="bg-white rounded-2xl border border-slate-100 p-5">
-            <div className="text-xs text-slate-400 font-medium uppercase tracking-wide mb-2">{label}</div>
-            <div className={`text-3xl font-bold ${color} mb-1`}>{value}</div>
-            <div className="text-xs text-slate-400">{sub}</div>
+          { label: "Emails envoyés", value: envoyes, icon: "📧", color: "text-slate-800" },
+          { label: "Taux ouverture", value: tOuverture + "%", icon: "👁", color: tOuverture >= 40 ? "text-emerald-600" : tOuverture >= 20 ? "text-amber-600" : "text-red-500" },
+          { label: "Taux de clic", value: tClic + "%", icon: "🔗", color: "text-blue-600" },
+          { label: "Taux de réponse", value: tReponse + "%", icon: "💬", color: tReponse >= 8 ? "text-emerald-600" : "text-amber-600" },
+          { label: "En séquence", value: leadsActifs, icon: "⚡", color: "text-purple-600" },
+        ].map(({ label, value, icon, color }) => (
+          <div key={label} className="bg-white rounded-xl border border-slate-100 p-4">
+            <div className="text-xs text-slate-400 mb-1">{label}</div>
+            <div className={`text-2xl font-bold ${color}`}>{value}</div>
+            <div className="text-lg mt-1">{icon}</div>
           </div>
         ))}
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* Chart */}
-        <div className="lg:col-span-2 bg-white rounded-2xl border border-slate-100 p-5">
-          <div className="flex items-center justify-between mb-4">
-            <h3 className="text-sm font-semibold text-slate-800">Performance 7 derniers jours</h3>
-            <div className="flex items-center gap-3 text-xs text-slate-400">
-              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-slate-300 inline-block rounded" />Envoyés</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-blue-500 inline-block rounded" />Ouverts</span>
-              <span className="flex items-center gap-1"><span className="w-3 h-0.5 bg-emerald-500 inline-block rounded" />Réponses</span>
-            </div>
-          </div>
-          <MiniChart data={CHART_DATA} />
-          <div className="flex justify-between mt-2">
-            {CHART_DATA.map(d => <span key={d.jour} className="text-xs text-slate-400">{d.jour}</span>)}
-          </div>
+        {/* ── Courbe 7j ── */}
+        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-4">Performance 7 derniers jours</h3>
+          {perf7j.length === 0 ? (
+            <div className="flex items-end justify-center gap-1 h-24 text-xs text-slate-300">Aucune donnée</div>
+          ) : (
+            <>
+              <div className="flex items-end gap-2 h-24">
+                {perf7j.map((d, i) => (
+                  <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
+                    <div className="w-full flex flex-col justify-end gap-0.5" style={{height:"80px"}}>
+                      <div className="w-full bg-slate-100 rounded-sm" style={{height: Math.max(2, (d.envoyes/maxEnvoyes)*70)+"px"}} title={`${d.envoyes} envoyés`} />
+                      <div className="w-full bg-blue-400 rounded-sm" style={{height: Math.max(d.ouverts?2:0, ((d.ouverts||0)/maxEnvoyes)*70)+"px"}} title={`${d.ouverts||0} ouverts`} />
+                    </div>
+                    <span className="text-xs text-slate-400">{d.jour?.slice(5)}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="flex gap-4 mt-2 text-xs text-slate-400">
+                <span className="flex items-center gap-1"><span className="w-3 h-2 bg-slate-200 rounded-sm inline-block"/>Envoyés</span>
+                <span className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-400 rounded-sm inline-block"/>Ouverts</span>
+              </div>
+            </>
+          )}
         </div>
 
-        {/* Activité récente */}
-        <div className="bg-white rounded-2xl border border-slate-100 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-4">Activité récente</h3>
-          <div className="space-y-3">
-            {activites.slice(0, 5).map(a => (
-              <div key={a.id} className="flex items-start gap-2.5">
-                <span className="text-base leading-none mt-0.5">{a.icon}</span>
+        {/* ── Activité récente ── */}
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-3">Activité récente</h3>
+          <div className="space-y-2.5">
+            {actRecentes.slice(0, 8).map((a, i) => (
+              <div key={i} className="flex items-start gap-2">
+                <span className="text-sm leading-none mt-0.5 flex-shrink-0">{ICONS[a.type] || "📌"}</span>
                 <div className="min-w-0">
-                  <p className="text-xs text-slate-700 leading-snug">
-                    <span className="font-medium">{a.lead}</span> {a.action}
+                  <p className="text-xs text-slate-700 leading-snug truncate">
+                    <span className="font-medium">{a.prenom} {a.nom}</span>
+                    {a.type === "ouverture" && " a ouvert"}
+                    {a.type === "clic" && " a cliqué"}
+                    {a.type === "envoi" && " — email envoyé"}
+                    {a.type === "réponse" && " a répondu ✨"}
+                    {a.type === "désabonnement" && " s'est désabonné"}
                   </p>
-                  <p className="text-xs text-slate-400 mt-0.5">{a.temps}</p>
+                  {a.sujet && <p className="text-xs text-slate-400 truncate italic">{a.sujet}</p>}
+                  <p className="text-xs text-slate-300">{relTime(a.created_at)}</p>
                 </div>
               </div>
             ))}
+            {actRecentes.length === 0 && <p className="text-xs text-slate-300 italic">Aucune activité</p>}
           </div>
         </div>
       </div>
 
-      {/* Leads chauds */}
+      {/* ── Performance par séquence ── */}
+      {statsSeq.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-3">Performance par séquence</h3>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-slate-100 text-xs text-slate-400 uppercase">
+                <th className="text-left py-2 pr-4">Séquence</th>
+                <th className="text-right py-2 px-3">Leads</th>
+                <th className="text-right py-2 px-3">Emails</th>
+                <th className="text-right py-2 px-3">Ouverture</th>
+                <th className="text-right py-2 px-3">Actifs</th>
+              </tr></thead>
+              <tbody>
+                {statsSeq.map((s, i) => (
+                  <tr key={i} className="border-b border-slate-50">
+                    <td className="py-2 pr-4 font-medium text-slate-800">{s.nom}</td>
+                    <td className="py-2 px-3 text-right text-slate-600">{s.total_leads}</td>
+                    <td className="py-2 px-3 text-right text-slate-600">{s.emails_envoyes}</td>
+                    <td className="py-2 px-3 text-right">
+                      <span className={`font-semibold ${(s.taux_ouverture||0) >= 40 ? "text-emerald-600" : (s.taux_ouverture||0) >= 20 ? "text-amber-600" : "text-slate-400"}`}>
+                        {Math.round(s.taux_ouverture||0)}%
+                      </span>
+                    </td>
+                    <td className="py-2 px-3 text-right text-blue-600 font-medium">{s.leads_actifs}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* ── Leads chauds ── */}
       {chauds.length > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-2xl p-5">
+        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5">
           <div className="flex items-center gap-2 mb-3">
             <span>🔥</span>
-            <h3 className="text-sm font-semibold text-amber-800">Leads chauds — à contacter maintenant</h3>
+            <h3 className="text-sm font-semibold text-amber-800">Leads chauds — à relancer maintenant</h3>
+            <span className="ml-auto text-xs text-amber-600 font-medium">{chauds.length} lead{chauds.length > 1 ? "s" : ""}</span>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-            {chauds.map(l => (
-              <div key={l.id} className="bg-white rounded-xl p-3 border border-amber-100">
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+            {chauds.slice(0, 8).map(l => (
+              <div key={l.id} className="bg-white rounded-lg p-3 border border-amber-100 shadow-sm">
                 <div className="font-medium text-slate-800 text-sm">{l.prenom} {l.nom}</div>
-                <div className="text-xs text-slate-500">{l.hotel}</div>
-                <div className="text-xs text-amber-600 mt-1">👁 {l.ouvertures} ouvertures · Pas de réponse</div>
+                <div className="text-xs text-slate-500 truncate">{l.hotel}</div>
+                <div className="flex items-center gap-2 mt-1.5">
+                  <span className="text-xs text-amber-600">👁 {l.total_ouvertures} ouv.</span>
+                  <span className="text-xs text-slate-400">Score {l.score}</span>
+                </div>
               </div>
             ))}
           </div>
@@ -980,9 +1056,18 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
         <div className="flex gap-2">
-          <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
-            {importStatus || "📥 Import CSV"}
-          </button>
+          <div className="relative group">
+            <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
+              {importStatus || "📥 Import CSV"}
+            </button>
+            <div className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block w-72 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-xl">
+              <div className="font-semibold mb-1.5">Format CSV attendu</div>
+              <div className="font-mono text-slate-300 text-xs leading-relaxed">prenom,nom,email,hotel,ville,segment</div>
+              <div className="font-mono text-slate-400 text-xs mt-1">Hugo,Montiel,hugo@hotel.com,Le Bristol,Paris,5*</div>
+              <div className="mt-2 text-slate-400">Séparateur <span className="text-white">,</span> ou <span className="text-white">;</span> · Encoding UTF-8</div>
+              <div className="mt-1 text-slate-400">Segments : 5*, 4*, Boutique, Retail, SPA, Concept Store</div>
+            </div>
+          </div>
           <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
           <button onClick={async () => {
             const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
@@ -1157,14 +1242,84 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
           <div className="p-5 grid grid-cols-1 lg:grid-cols-2 gap-5">
             {/* Gauche — infos & stats */}
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-3">
-                {[["Ouvertures", selectedLead.ouvertures||0], ["Score", selectedLead.score||50], ["Étape", selectedLead.etape > 0 ? `Email ${selectedLead.etape}` : "—"], ["Séquence", selectedLead.sequence||"—"]].map(([k,v]) => (
-                  <div key={k} className="bg-slate-50 rounded-xl p-3">
-                    <div className="text-xs text-slate-400 mb-1">{k}</div>
-                    <div className="text-sm font-medium text-slate-800">{v}</div>
+              <div className="grid grid-cols-3 gap-2">
+                {[
+                  ["Score", selectedLead.score || 50],
+                  ["Ouvertures", selectedLead.total_ouvertures || selectedLead.ouvertures || 0],
+                  ["Emails envoyés", selectedLead.emails_envoyes || 0],
+                ].map(([k,v]) => (
+                  <div key={k} className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className="text-lg font-bold text-slate-800">{v}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">{k}</div>
                   </div>
                 ))}
               </div>
+
+              {/* ── Timeline séquence ── */}
+              {selectedLead.sequence_active || selectedLead.sequence ? (
+                <div className="border border-blue-100 rounded-xl p-4 bg-blue-50/30">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Séquence en cours</span>
+                    <span className="text-xs font-medium text-blue-600">{selectedLead.sequence_active || selectedLead.sequence}</span>
+                  </div>
+                  {(() => {
+                    const seq = sequences.find(s => s.id === (selectedLead.sequence_id_active || selectedLead.sequence_id));
+                    const etapeCourante = selectedLead.etape_courante || selectedLead.etape || 0;
+                    const prochainEnvoi = selectedLead.prochain_envoi;
+                    const nbEtapes = seq?.etapes?.length || selectedLead.nb_etapes_sequence || 0;
+                    const formatDate = (iso) => {
+                      if (!iso) return "—";
+                      const d = new Date(iso);
+                      const now = new Date();
+                      const diff = d - now;
+                      if (diff < 0) return "Imminent";
+                      const days = Math.floor(diff / 86400000);
+                      const hrs = Math.floor((diff % 86400000) / 3600000);
+                      if (days > 0) return `dans ${days}j ${hrs}h`;
+                      if (hrs > 0) return `dans ${hrs}h`;
+                      return "Très bientôt";
+                    };
+                    return (
+                      <div className="space-y-2">
+                        {seq ? (
+                          <div className="flex items-center gap-1 flex-wrap">
+                            {seq.etapes.map((e, i) => (
+                              <div key={i} className="flex items-center gap-1">
+                                <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors
+                                  ${i < etapeCourante ? "bg-emerald-500 border-emerald-500 text-white" :
+                                    i === etapeCourante ? "bg-blue-600 border-blue-600 text-white ring-2 ring-blue-200" :
+                                    "bg-white border-slate-200 text-slate-400"}`}
+                                  title={`J+${e.jour} — ${e.sujet}`}>
+                                  {i < etapeCourante ? "✓" : i + 1}
+                                </div>
+                                {i < seq.etapes.length - 1 && (
+                                  <div className={`w-5 h-0.5 ${i < etapeCourante ? "bg-emerald-400" : "bg-slate-200"}`} />
+                                )}
+                              </div>
+                            ))}
+                          </div>
+                        ) : (
+                          <div className="text-xs text-blue-600">Étape {etapeCourante + 1} / {nbEtapes || "?"}</div>
+                        )}
+                        <div className="flex items-center justify-between mt-2">
+                          <span className="text-xs text-slate-500">Prochain email :</span>
+                          <span className={`text-xs font-semibold ${prochainEnvoi && new Date(prochainEnvoi) < new Date() ? "text-orange-600" : "text-blue-700"}`}>
+                            {prochainEnvoi ? (
+                              <>📅 {new Date(prochainEnvoi).toLocaleDateString("fr-FR", {day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})} ({formatDate(prochainEnvoi)})</>
+                            ) : "—"}
+                          </span>
+                        </div>
+                        {seq && etapeCourante < seq.etapes.length && (
+                          <div className="bg-white rounded-lg p-2 border border-blue-100 mt-1">
+                            <div className="text-xs text-slate-400">Prochain objet :</div>
+                            <div className="text-xs font-medium text-slate-700 mt-0.5 truncate">{seq.etapes[etapeCourante]?.sujet || "—"}</div>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })()}
+                </div>
+              ) : null}
               {selectedLead.tags?.length > 0 && (
                 <div className="flex flex-wrap gap-1.5">
                   {selectedLead.tags.map(t => <span key={t} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">{t}</span>)}
@@ -1778,8 +1933,15 @@ function App() {
       ]);
       setLeads(Array.isArray(leadsData) ? leadsData : (leadsData.leads || []));
       setSequences(Array.isArray(seqData) ? seqData : (seqData.sequences || []));
+      // Enrichir statsData avec les stats séquences
+      try {
+        const seqStats = await api.get('/stats/sequences');
+        statsData.statsSequences = seqStats.stats || [];
+      } catch(e) {}
       setStats(statsData);
-      if (statsData?.activites_recentes) setActivites(statsData.activites_recentes);
+      if (statsData?.activitesRecentes || statsData?.activites_recentes) {
+        setActivites(statsData.activitesRecentes || statsData.activites_recentes);
+      }
     } catch(e) { console.error("Erreur chargement:", e); }
     setLoading(false);
   };
