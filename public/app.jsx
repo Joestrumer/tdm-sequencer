@@ -1,58 +1,8 @@
-const { useState, useEffect, useRef } = React;
+const { useState, useEffect, useRef, useMemo } = React;
 
 // ─── API BACKEND (remplace les données démo) ──────────────────────────────────
 const api = window.tdmApi;
 
-
-// ─── DONNÉES DE DÉMO ─────────────────────────────────────────────────────────
-
-const DEMO_LEADS = [
-  { id: 1, prenom: "Sophie", nom: "Lefebvre", hotel: "Hôtel Le Bristol", ville: "Paris", email: "s.lefebvre@bristol.fr", segment: "5*", tags: ["hôtel 5*", "luxe", "Paris"], statut: "En séquence", sequence: "Prospection 5*", etape: 2, ouvertures: 3, dernierContact: "2024-01-15", score: 85 },
-  { id: 2, prenom: "Marc", nom: "Dubois", hotel: "Château de Bagnols", ville: "Lyon", email: "m.dubois@bagnols.com", segment: "5*", tags: ["hôtel 5*", "château"], statut: "Répondu", sequence: "Prospection 5*", etape: 2, ouvertures: 5, dernierContact: "2024-01-14", score: 96 },
-  { id: 3, prenom: "Claire", nom: "Martin", hotel: "Le Bon Marché", ville: "Paris", email: "c.martin@lebonmarche.fr", segment: "Retail", tags: ["grand magasin", "retail premium"], statut: "En séquence", sequence: "Relance Retailers", etape: 1, ouvertures: 2, dernierContact: "2024-01-13", score: 62 },
-  { id: 4, prenom: "Thomas", nom: "Bernard", hotel: "Hôtel Barrière Deauville", ville: "Deauville", email: "t.bernard@barriere.fr", segment: "5*", tags: ["hôtel 5*", "SPA"], statut: "Nouveau", sequence: null, etape: 0, ouvertures: 0, dernierContact: null, score: 70 },
-  { id: 5, prenom: "Isabelle", nom: "Rousseau", hotel: "Concept Store Merci", ville: "Paris", email: "i.rousseau@merci.fr", segment: "Retail", tags: ["concept store", "retail"], statut: "Converti", sequence: "Relance Retailers", etape: 3, ouvertures: 8, dernierContact: "2024-01-10", score: 100 },
-  { id: 6, prenom: "Antoine", nom: "Moreau", hotel: "Hôtel Negresco", ville: "Nice", email: "a.moreau@negresco.com", segment: "5*", tags: ["hôtel 5*", "luxe", "Côte d'Azur"], statut: "En séquence", sequence: "Prospection 5*", etape: 3, ouvertures: 4, dernierContact: "2024-01-12", score: 78 },
-  { id: 7, prenom: "Lucie", nom: "Fontaine", hotel: "Spa Sisley Paris", ville: "Paris", email: "l.fontaine@sisley-spa.fr", segment: "SPA", tags: ["SPA", "luxe"], statut: "Désabonné", sequence: null, etape: 0, ouvertures: 1, dernierContact: "2024-01-05", score: 0 },
-  { id: 8, prenom: "Pierre", nom: "Garnier", hotel: "Hôtel du Cap Eden Roc", ville: "Antibes", email: "p.garnier@edenroc.fr", segment: "5*", tags: ["hôtel 5*", "luxe", "MICE"], statut: "En séquence", sequence: "Prospection 5*", etape: 1, ouvertures: 1, dernierContact: "2024-01-16", score: 55 },
-];
-
-const DEMO_SEQUENCES = [
-  {
-    id: 1, nom: "Prospection Hôtels 5*", segment: "5*", leadsActifs: 24, etapes: [
-      { jour: 0, sujet: "Découvrez Terre de Mars — cosmétiques naturels certifiés pour l'hôtellerie de luxe", corps: "Bonjour {{prenom}},\n\nJe me permets de vous contacter car {{hotel}} incarne exactement les valeurs que Terre de Mars défend : l'excellence, l'authenticité et le respect de l'environnement.\n\nTerre de Mars est une marque française de cosmétiques naturels certifiée Ecocert Cosmos et PETA Vegan, présente dans plus de 400 établissements hôteliers premium.\n\nNos produits de soin rechargeables répondent aux enjeux RSE de l'hôtellerie de luxe tout en offrant une expérience client mémorable.\n\nSeriez-vous disponible pour un échange de 20 minutes cette semaine ?\n\nBien cordialement,\nJoe\nTerre de Mars" },
-      { jour: 3, sujet: "Hôtel Barrière, Four Seasons... ils ont choisi Terre de Mars — et vous ?", corps: "Bonjour {{prenom}},\n\nFaisant suite à mon message, je souhaitais partager quelques retours de nos partenaires hôteliers.\n\nLe groupe Barrière et plusieurs Palace parisiens utilisent nos amenities depuis 2022 avec d'excellents retours clients — notamment sur la réduction des déchets plastiques (-73%) et la satisfaction des notes TripAdvisor.\n\nNos certifications Ecocert Cosmos, PETA et RSPO témoignent de notre engagement sans compromis.\n\nJe serais ravi de vous envoyer un kit d'échantillons gratuit pour {{hotel}}.\n\nCordialement,\nJoe" },
-      { jour: 7, sujet: "Kit d'échantillons offert — spécialement pour {{hotel}}", corps: "Bonjour {{prenom}},\n\nJe me permets de revenir vers vous avec une proposition concrète.\n\nNous proposons aux établissements sélectionnés un kit découverte complet (valeur 85€) incluant nos meilleures références en format hôtelier, accompagné d'une analyse personnalisée de la consommation.\n\nCette offre est valable pour {{hotel}} jusqu'à la fin du mois.\n\nIl suffit de répondre à cet email pour que je prépare votre sélection.\n\nBien à vous,\nJoe" },
-      { jour: 14, sujet: "Dernier contact — Terre de Mars × {{hotel}}", corps: "Bonjour {{prenom}},\n\nJe ne veux pas vous importuner davantage, mais je tenais à vous laisser nos ressources avant de clore ce fil.\n\n→ Catalogue digital : terre-de-mars.com/catalogue\n→ Livre blanc RSE hôtelier : terre-de-mars.com/rse\n\nSi la question se repose pour {{hotel}} dans les prochains mois, n'hésitez pas à me recontacter directement.\n\nÀ bientôt peut-être,\nJoe\nTerre de Mars" },
-    ]
-  },
-  {
-    id: 2, nom: "Relance Retailers Premium", segment: "Retail", leadsActifs: 11, etapes: [
-      { jour: 0, sujet: "Terre de Mars chez {{hotel}} — une collaboration évidente", corps: "Bonjour {{prenom}},\n\nTerre de Mars est aujourd'hui référencée au Bon Marché, chez Saks 5th Avenue et dans les plus beaux concept stores européens.\n\nNotre univers — cosmétiques naturels certifiés, design épuré, packaging rechargeable — s'adresse parfaitement à une clientèle exigeante et écoresponsable.\n\nJe serais ravi d'explorer une collaboration avec {{hotel}}.\n\nDisponible pour un appel cette semaine ?\n\nCordialement,\nJoe — Terre de Mars" },
-      { jour: 5, sujet: "Le Bon Marché : +34% de sell-through en 6 mois avec Terre de Mars", corps: "Bonjour {{prenom}},\n\nPour donner suite à mon précédent message, voici quelques chiffres concrets.\n\nDepuis notre référencement au Bon Marché (2022), les performances ont dépassé nos projections initiales avec un taux de réachat de 67% et une clientèle internationale fortement sensible à nos certifications.\n\nPour {{hotel}}, je pense qu'un assortiment de 8 à 12 références pourrait s'intégrer naturellement à votre offre beauté.\n\nJe peux vous envoyer notre book retailer avec les conditions commerciales.\n\nBien cordialement,\nJoe" },
-      { jour: 10, sujet: "Showroom Paris ou call découverte — à vous de choisir", corps: "Bonjour {{prenom}},\n\nDernière tentative de ma part — promis !\n\nNous organisons régulièrement des présentations dans notre showroom parisien (Marais) et des calls découverte de 30 minutes pour les acheteurs qui souhaitent aller à l'essentiel.\n\nLequel vous conviendrait le mieux ?\n\nJoe\nTerre de Mars — 07 XX XX XX XX" },
-    ]
-  },
-];
-
-const DEMO_ACTIVITES = [
-  { id: 1, type: "ouverture", lead: "Sophie Lefebvre", action: "a ouvert l'email #2", temps: "il y a 2h", icon: "👁" },
-  { id: 2, type: "reponse", lead: "Marc Dubois", action: "a répondu à votre séquence", temps: "il y a 4h", icon: "💬" },
-  { id: 3, type: "clic", lead: "Antoine Moreau", action: "a cliqué sur le catalogue", temps: "il y a 6h", icon: "🔗" },
-  { id: 4, type: "ouverture", lead: "Pierre Garnier", action: "a ouvert l'email #1 (3x)", temps: "il y a 8h", icon: "🔥" },
-  { id: 5, type: "envoye", lead: "Claire Martin", action: "Email #2 envoyé", temps: "ce matin", icon: "📤" },
-  { id: 6, type: "converti", lead: "Isabelle Rousseau", action: "Deal créé dans HubSpot", temps: "hier", icon: "🎯" },
-];
-
-const CHART_DATA = [
-  { jour: "Lun", envoyes: 12, ouverts: 7, reponses: 2 },
-  { jour: "Mar", envoyes: 18, ouverts: 11, reponses: 3 },
-  { jour: "Mer", envoyes: 15, ouverts: 8, reponses: 1 },
-  { jour: "Jeu", envoyes: 22, ouverts: 14, reponses: 4 },
-  { jour: "Ven", envoyes: 19, ouverts: 12, reponses: 5 },
-  { jour: "Sam", envoyes: 6, ouverts: 4, reponses: 1 },
-  { jour: "Dim", envoyes: 3, ouverts: 2, reponses: 0 },
-];
 
 // ─── COMPOSANTS UI ────────────────────────────────────────────────────────────
 
@@ -86,31 +36,6 @@ const ScoreBar = ({ score }) => {
   );
 };
 
-const MiniChart = ({ data }) => {
-  const max = Math.max(...data.map(d => d.envoyes));
-  const w = 320, h = 80, pad = 4;
-  const points = (key, color) => {
-    const pts = data.map((d, i) => {
-      const x = pad + (i / (data.length - 1)) * (w - 2 * pad);
-      const y = h - pad - (d[key] / max) * (h - 2 * pad);
-      return `${x},${y}`;
-    }).join(" ");
-    return <polyline points={pts} fill="none" stroke={color} strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />;
-  };
-  return (
-    <svg viewBox={`0 0 ${w} ${h}`} className="w-full" style={{ height: 80 }}>
-      <defs>
-        <linearGradient id="gBlue" x1="0" y1="0" x2="0" y2="1">
-          <stop offset="0%" stopColor="#3b82f6" stopOpacity="0.15" />
-          <stop offset="100%" stopColor="#3b82f6" stopOpacity="0" />
-        </linearGradient>
-      </defs>
-      {points("envoyes", "#94a3b8")}
-      {points("ouverts", "#3b82f6")}
-      {points("reponses", "#10b981")}
-    </svg>
-  );
-};
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 
@@ -1926,30 +1851,25 @@ function App() {
     }
     setLoading(true);
     try {
-      const [leadsData, seqData, statsData] = await Promise.all([
+      const [leadsData, seqData, statsData, seqStatsData] = await Promise.all([
         api.get('/leads'),
         api.get('/sequences'),
         api.get('/stats/dashboard'),
+        api.get('/stats/sequences'),
       ]);
       setLeads(Array.isArray(leadsData) ? leadsData : (leadsData.leads || []));
       setSequences(Array.isArray(seqData) ? seqData : (seqData.sequences || []));
-      // Enrichir statsData avec les stats séquences
-      try {
-        const seqStats = await api.get('/stats/sequences');
-        statsData.statsSequences = seqStats.stats || [];
-      } catch(e) {}
+      statsData.statsSequences = seqStatsData?.stats || [];
       setStats(statsData);
-      if (statsData?.activitesRecentes || statsData?.activites_recentes) {
-        setActivites(statsData.activitesRecentes || statsData.activites_recentes);
-      }
+      if (statsData?.activitesRecentes) setActivites(statsData.activitesRecentes);
     } catch(e) { console.error("Erreur chargement:", e); }
     setLoading(false);
   };
 
   useEffect(() => { charger(); }, []);
 
-  // Normaliser les séquences depuis l'API (jour_delai → jour)
-  const sequencesNorm = sequences.map(s => {
+  // Normaliser les séquences (memoïsé pour éviter les recalculs)
+  const sequencesNorm = useMemo(() => sequences.map(s => {
     let opts = {};
     if (s.options) {
       try { opts = typeof s.options === 'string' ? JSON.parse(s.options) : s.options; } catch(e) {}
@@ -1960,7 +1880,7 @@ function App() {
       leadsActifs: s.leads_actifs || s.leadsActifs || 0,
       etapes: (s.etapes || []).map(e => ({ ...e, jour: e.jour_delai ?? e.jour ?? 0 }))
     };
-  });
+  }), [sequences]);
 
   const addLead = (lead) => {
     setLeads(l => [lead, ...l]);
