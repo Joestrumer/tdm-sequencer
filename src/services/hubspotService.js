@@ -358,6 +358,8 @@ async function verifierConnexion() {
 
 module.exports = {
   syncContact,
+  getDealsForContact,
+  getNotesForContact,
   logEmailTimeline,
   mettreAJourLifecycle,
   creerDeal,
@@ -367,3 +369,40 @@ module.exports = {
   contactsDeCompany,
   trouverCompanyParDomaine,
 };
+
+// ─── Deals d'un contact ───────────────────────────────────────────────────────
+async function getDealsForContact(hubspotContactId) {
+  if (!getApiKey()) return [];
+  const assoc = await hubspotFetch(`/crm/v4/objects/contacts/${hubspotContactId}/associations/deals`);
+  const dealIds = (assoc?.results || []).map(r => r.toObjectId);
+  if (!dealIds.length) return [];
+
+  const batch = await hubspotFetch('/crm/v3/objects/deals/batch/read', {
+    method: 'POST',
+    body: JSON.stringify({
+      inputs: dealIds.map(id => ({ id: String(id) })),
+      properties: ['dealname', 'dealstage', 'amount', 'closedate', 'pipeline'],
+    }),
+  });
+  return batch?.results || [];
+}
+
+// ─── Notes d'un contact ───────────────────────────────────────────────────────
+async function getNotesForContact(hubspotContactId) {
+  if (!getApiKey()) return [];
+  const assoc = await hubspotFetch(`/crm/v4/objects/contacts/${hubspotContactId}/associations/notes`);
+  const noteIds = (assoc?.results || []).slice(0, 10).map(r => r.toObjectId);
+  if (!noteIds.length) return [];
+
+  const batch = await hubspotFetch('/crm/v3/objects/notes/batch/read', {
+    method: 'POST',
+    body: JSON.stringify({
+      inputs: noteIds.map(id => ({ id: String(id) })),
+      properties: ['hs_note_body', 'hs_lastmodifieddate', 'hubspot_owner_id'],
+    }),
+  });
+
+  return (batch?.results || []).sort((a, b) =>
+    new Date(b.properties?.hs_lastmodifieddate || 0) - new Date(a.properties?.hs_lastmodifieddate || 0)
+  );
+}
