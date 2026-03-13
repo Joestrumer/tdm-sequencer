@@ -45,7 +45,18 @@ module.exports = (db) => {
   // GET /api/leads/:id — Détail d'un lead avec historique
   router.get('/:id', (req, res) => {
     try {
-      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
+      const lead = db.prepare(`
+        SELECT l.*,
+          (SELECT COUNT(*) FROM emails e WHERE e.lead_id = l.id) as emails_envoyes,
+          (SELECT SUM(e.ouvertures) FROM emails e WHERE e.lead_id = l.id) as total_ouvertures,
+          (SELECT s.nom FROM inscriptions i JOIN sequences s ON i.sequence_id = s.id WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as sequence_active,
+          (SELECT s.id FROM inscriptions i JOIN sequences s ON i.sequence_id = s.id WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as sequence_id_active,
+          (SELECT i.etape_courante FROM inscriptions i WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as etape_courante,
+          (SELECT i.prochain_envoi FROM inscriptions i WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as prochain_envoi,
+          (SELECT i.id FROM inscriptions i WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as inscription_id_active,
+          (SELECT COUNT(*) FROM etapes et JOIN inscriptions i ON et.sequence_id = i.sequence_id WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as nb_etapes_sequence
+        FROM leads l WHERE l.id = ?
+      `).get(req.params.id);
       if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
 
       const emails = db.prepare(`
