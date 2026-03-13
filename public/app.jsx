@@ -37,6 +37,21 @@ const ScoreBar = ({ score }) => {
 };
 
 
+// ─── HELPERS ─────────────────────────────────────────────────────────────────
+
+function relTime(iso) {
+  if (!iso) return "—";
+  const diff = Date.now() - new Date(iso).getTime();
+  const m = Math.floor(diff / 60000);
+  if (m < 1) return "à l'instant";
+  if (m < 60) return `il y a ${m}min`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `il y a ${h}h`;
+  const d = Math.floor(h / 24);
+  if (d < 7) return `il y a ${d}j`;
+  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 
 const ModalAddLead = ({ onClose, onAdd }) => {
@@ -251,9 +266,30 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
   );
 };
 
-// ─── Signature Hugo (HTML complet) ───────────────────────────────────────────
-const SIGNATURE_HTML = `<br><br><table cellpadding="0" cellspacing="0" border="0" style="vertical-align:-webkit-baseline-middle;font-size:small;font-family:Arial"><tbody><tr><td><h2 style="margin:0;font-size:16px;font-family:Arial;color:#000;font-weight:600">Hugo Montiel</h2><p style="margin:0;color:#000;font-size:12px;line-height:20px">Sales Director</p><p style="margin:0;font-weight:500;color:#000;font-size:12px;line-height:20px">Terre De Mars</p></td><td width="15"></td><td width="1" style="width:1px;border-left:1px solid #aa8d3e"></td><td width="15"></td><td><table cellpadding="0" cellspacing="0" border="0"><tbody><tr style="height:25px"><td width="30"><span style="display:inline-block;background:#aa8d3e"><img src="https://cdn2.hubspot.net/hubfs/53/tools/email-signature-generator/icons/phone-icon-dark-2x.png" width="13" style="display:block"></span></td><td><a href="tel:+33685820335" style="text-decoration:none;color:#000;font-size:12px">+33685820335</a></td></tr><tr style="height:25px"><td width="30"><span style="display:inline-block;background:#aa8d3e"><img src="https://cdn2.hubspot.net/hubfs/53/tools/email-signature-generator/icons/email-icon-dark-2x.png" width="13" style="display:block"></span></td><td><a href="mailto:hugo@terredemars.com" style="text-decoration:none;color:#000;font-size:12px">hugo@terredemars.com</a></td></tr><tr style="height:25px"><td width="30"><span style="display:inline-block;background:#aa8d3e"><img src="https://cdn2.hubspot.net/hubfs/53/tools/email-signature-generator/icons/link-icon-dark-2x.png" width="13" style="display:block"></span></td><td><a href="https://www.terredemars.com/" style="text-decoration:none;color:#000;font-size:12px">terredemars.com</a></td></tr><tr style="height:25px"><td width="30"><span style="display:inline-block;background:#aa8d3e"><img src="https://cdn2.hubspot.net/hubfs/53/tools/email-signature-generator/icons/address-icon-dark-2x.png" width="13" style="display:block"></span></td><td><span style="font-size:12px;color:#000">2 Rue de Vienne, 75008 Paris</span></td></tr></tbody></table></td></tr></tbody></table><br><table cellpadding="0" cellspacing="0" border="0" style="width:100%"><tbody><tr><td><img src="https://26199813.fs1.hubspotusercontent-eu1.net/hubfs/26199813/Screenshot%202023-01-17%20at%2012.55.44.png" width="130" style="display:block"></td><td style="text-align:right"><a href="https://calendly.com/hugo-montiel/meeting-terre-de-mars" style="border:6px 12px solid #aa8d3e;background:#aa8d3e;color:#fff;font-weight:700;text-decoration:none;padding:8px 16px;border-radius:3px;font-size:12px">Prendre rendez-vous</a></td></tr></tbody></table>`;
-
+// ─── Signature Hugo ─────────────────────────────────────────────────────────
+// Texte pur : aucune image CDN (bloquées par Gmail/Outlook par défaut)
+const SIGNATURE_HTML = `<br>
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;">
+<tr>
+  <td style="padding-right:14px;border-right:2px solid #aa8d3e;vertical-align:top;line-height:1.6;">
+    <strong style="font-size:14px;">Hugo Montiel</strong><br>
+    <span style="color:#555;font-size:12px;">Sales Director — Terre de Mars</span>
+  </td>
+  <td style="padding-left:14px;vertical-align:top;font-size:12px;line-height:1.8;">
+    <a href="tel:+33685820335" style="color:#444;text-decoration:none;">+33 6 85 82 03 35</a><br>
+    <a href="mailto:hugo@terredemars.com" style="color:#aa8d3e;text-decoration:none;">hugo@terredemars.com</a><br>
+    <a href="https://www.terredemars.com" style="color:#aa8d3e;text-decoration:none;">www.terredemars.com</a><br>
+    <span style="color:#888;">2 Rue de Vienne, 75008 Paris</span>
+  </td>
+</tr>
+<tr><td colspan="2" style="padding-top:10px;">
+  <a href="https://calendly.com/hugo-montiel/meeting-terre-de-mars"
+     style="display:inline-block;background:#aa8d3e;color:#fff;font-size:11px;font-weight:700;text-decoration:none;padding:6px 14px;border-radius:3px;">
+    📅 Prendre rendez-vous
+  </a>
+</td></tr>
+</table>
+`;
 // Données de démo pour la prévisualisation
 const DEMO_LEAD_PREVIEW = { prenom: "Sophie", nom: "Lefebvre", hotel: "Hôtel Le Bristol", ville: "Paris", segment: "5*" };
 
@@ -303,9 +339,18 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     reader.readAsDataURL(file);
   };
 
-  const addEtape = () => setEtapes(e => [...e, { jour: (e[e.length-1]?.jour || 0) + 7, sujet: "", corps: "" }]);
+  const addEtape = () => {
+    const lastJour = etapes[etapes.length - 1]?.jour ?? etapes[etapes.length - 1]?.jour_delai ?? 0;
+    const nextJour = lastJour + 7;
+    setEtapes(e => [...e, { jour: nextJour, jour_delai: nextJour, sujet: "", corps: "" }]);
+  };
   const removeEtape = (i) => { if (etapes.length > 1) { setEtapes(e => e.filter((_, idx) => idx !== i)); setActiveEtape(Math.max(0, i-1)); }};
-  const updateEtape = (i, k, v) => setEtapes(e => e.map((et, idx) => idx === i ? { ...et, [k]: v } : et));
+  const updateEtape = (i, k, v) => setEtapes(e => e.map((et, idx) => {
+    if (idx !== i) return et;
+    // Garder jour et jour_delai en sync (DB stocke jour_delai, UI utilise jour)
+    const extra = k === 'jour' ? { jour_delai: v } : k === 'jour_delai' ? { jour: v } : {};
+    return { ...et, [k]: v, ...extra };
+  }));
 
   // Toolbar de mise en forme
   const fmt = (cmd, val) => { editorRef.current?.focus(); document.execCommand(cmd, false, val); syncCorps(); };
@@ -335,6 +380,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     try {
       const etapesFinales = etapes.map(e => ({
         ...e,
+        jour_delai: e.jour_delai ?? e.jour ?? 0, // assurer les deux formes présentes
         corps: e.corps_html || e.corps || "",
       }));
       await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options: { desabonnement } });
@@ -575,18 +621,6 @@ const VueDashboard = ({ leads, activites, stats }) => {
   const statsSeq = stats?.statsSequences || [];
   const maxEnvoyes = Math.max(...perf7j.map(d => d.envoyes || 0), 1);
 
-  // Formater date relative
-  const relTime = (iso) => {
-    if (!iso) return "—";
-    const diff = Date.now() - new Date(iso).getTime();
-    const m = Math.floor(diff/60000);
-    if (m < 1) return "à l'instant";
-    if (m < 60) return `il y a ${m}min`;
-    const h = Math.floor(m/60);
-    if (h < 24) return `il y a ${h}h`;
-    return `il y a ${Math.floor(h/24)}j`;
-  };
-
   const actRecentes = stats?.activitesRecentes || activites || [];
   const ICONS = { ouverture: "👁", clic: "🔗", envoi: "📧", réponse: "💬", désabonnement: "🚫", bounce: "⚠️" };
 
@@ -775,7 +809,7 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
   );
 };
 
-// ─── VueLeads ──────────────────────────────────────────────────────────────
+// ─── Modal bulk (lancer séquence sur plusieurs leads) ───────────────────────
 const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
   const [selected, setSelected] = useState(sequences[0]?.id);
   const [status, setStatus] = useState(null);
@@ -948,6 +982,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
     if (lead.hubspot_id) chargerHubspot(lead);
   };
 
+  // Auto-charger HubSpot si on clique sur l'onglet et que les données ne sont pas encore là
+  useEffect(() => {
+    if (detailTab === 'hubspot' && selectedLead?.hubspot_id && !hsDetails && !loadingHs) {
+      chargerHubspot(selectedLead);
+    }
+  }, [detailTab]);
+
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
@@ -1055,7 +1096,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
               {filtered.map((lead, i) => {
                 const cfg = STATUT_CONFIG[lead.statut] || STATUT_CONFIG["Nouveau"];
                 return (
-                <tr key={lead.id} className={`group border-b border-slate-50 transition-colors cursor-pointer ${selectedIds.has(lead.id) ? "bg-blue-50/60" : "hover:bg-slate-50/80"} ${i === filtered.length-1 ? "border-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
+                <tr key={lead.id} className={`group border-b border-slate-50 transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : selectedIds.has(lead.id) ? "bg-slate-100" : "hover:bg-slate-50/80"} ${i === filtered.length-1 ? "border-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
                   <td className="px-3 py-3 w-8" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.has(lead.id)} onChange={e => { const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} />
                   </td>
@@ -1101,7 +1142,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
                   </td>
                   <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
-                      {(lead.statut === "Nouveau" || lead.statut === "Répondu") && (
+                      {lead.statut !== "Désabonné" && (
                         <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 whitespace-nowrap">▶</button>
                       )}
                       <button onClick={() => setEditLead(lead)} title="Modifier" className="px-2 py-1 text-xs border border-slate-200 text-slate-500 rounded-md hover:bg-slate-100">✏️</button>
@@ -1133,7 +1174,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
                 </div>
                 <div className="space-y-2 min-h-16">
                   {colLeads.map(lead => (
-                    <div key={lead.id} className="bg-white rounded-xl border border-slate-100 p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => ouvrirDetail(lead)}>
+                    <div key={lead.id} className="bg-white rounded-xl border border-slate-100 p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => ouvrirDetail(lead).catch(e => console.error("Erreur détail:", e))}>
                       <div className="font-medium text-slate-800 text-sm">{lead.prenom} {lead.nom}</div>
                       <div className="text-xs text-slate-500 truncate mt-0.5">{lead.hotel}</div>
                       <div className="text-xs text-slate-400">{lead.ville}{lead.segment ? <span className="ml-1">· {lead.segment}</span> : ""}</div>
@@ -1141,7 +1182,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
                       <div className="flex items-center justify-between mt-2">
                         <ScoreBar score={lead.score} />
                         <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                          {lead.statut === "Nouveau" && <button onClick={() => setShowLaunch(lead)} className="text-xs text-blue-500 hover:text-blue-700 px-1">▶</button>}
+                          {lead.statut !== "Désabonné" && <button onClick={() => setShowLaunch(lead)} className="text-xs text-blue-500 hover:text-blue-700 px-1" title="Lancer séquence">▶</button>}
                           <button onClick={() => setEditLead(lead)} className="text-xs text-slate-400 hover:text-slate-600 px-1">✏️</button>
                         </div>
                       </div>
@@ -1292,10 +1333,12 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
                   ) : (
                     <div className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center">
                       <p className="text-xs text-slate-400 mb-3">Aucune séquence en cours</p>
-                      {(selectedLead.statut === 'Nouveau' || selectedLead.statut === 'Répondu') && (
+                      {selectedLead.statut !== 'Désabonné' && (
                         <button onClick={() => setShowLaunch(selectedLead)}
                           className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">
-                          ▶ Lancer une séquence
+                          {selectedLead.sequence_active
+                            ? '↻ Changer de séquence'
+                            : '▶ Lancer une séquence'}
                         </button>
                       )}
                     </div>
@@ -1322,17 +1365,6 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
                     <div className="space-y-1">
                       {detailData.events.slice(0, 10).map((ev, i) => {
                         const ICONS = { ouverture: '👁', clic: '🔗', envoi: '📧', réponse: '💬', désabonnement: '🚫', bounce: '⚠️' };
-                        const relTime = (iso) => {
-                          const diff = Date.now() - new Date(iso);
-                          const m = Math.floor(diff / 60000);
-                          if (m < 1) return "à l'instant";
-                          if (m < 60) return `il y a ${m}min`;
-                          const h = Math.floor(m / 60);
-                          if (h < 24) return `il y a ${h}h`;
-                          const d = Math.floor(h / 24);
-                          if (d < 7) return `il y a ${d}j`;
-                          return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
-                        };
                         let meta = null;
                         try { meta = ev.meta ? JSON.parse(ev.meta) : null; } catch (_) {}
                         return (
@@ -1713,6 +1745,7 @@ const VueValidationEmail = ({ leads, onRefresh }) => {
   const [bulkTotal, setBulkTotal] = useState(0);
   const [bulkErreur, setBulkErreur] = useState("");
   const [filterBulk, setFilterBulk] = useState("tous");
+  const bulkAbortRef = useRef(false);
 
   const leadsNorm = leads.map(l => ({ ...l, statut_email: l.statut_email || null }));
 
@@ -1763,11 +1796,13 @@ const VueValidationEmail = ({ leads, onRefresh }) => {
       : leadsNorm;
     if (!toVerify.length) { setBulkErreur("Aucun lead à vérifier"); return; }
 
+    bulkAbortRef.current = false;
     setBulkLoading(true); setBulkResults([]); setBulkProgress(0);
     setBulkTotal(toVerify.length); setBulkErreur("");
 
     const results = [];
     for (let i = 0; i < toVerify.length; i++) {
+      if (bulkAbortRef.current) break; // arrêt propre dès le prochain cycle
       try {
         const r = await api.post("/email-validation/single", { email: toVerify[i].email, lead_id: toVerify[i].id });
         results.push({ ...toVerify[i], zb: r });
@@ -1779,11 +1814,13 @@ const VueValidationEmail = ({ leads, onRefresh }) => {
       await new Promise(r => setTimeout(r, 250)); // rate limit ZeroBounce
     }
     setBulkLoading(false);
-    chargerCredits();
-    if (onRefresh) onRefresh();
+    if (!bulkAbortRef.current) {
+      chargerCredits();
+      if (onRefresh) onRefresh();
+    }
   };
 
-  const stopBulk = () => setBulkLoading(false);
+  const stopBulk = () => { bulkAbortRef.current = true; setBulkLoading(false); };
 
   const STATUTS_BULK = ["tous", "valid", "invalid", "catch_all", "unknown", "spamtrap", "do_not_mail"];
   const resultsFiltres = filterBulk === "tous" ? bulkResults : bulkResults.filter(r => r.zb?.status === filterBulk);
