@@ -41,6 +41,7 @@ Core tables:
 - **envoi_quota** - Daily email sending limits
 - **hubspot_logs** - HubSpot sync audit trail
 - **config** - Key-value configuration store
+- **email_blocklist** - Do not email list (emails and domains blocked from sending, with override option)
 
 ### Core Services
 
@@ -76,15 +77,16 @@ Core tables:
 1. Scheduler identifies due inscriptions
 2. Fetches lead + current etape
 3. Checks lead not unsubscribed
-4. Verifies daily quota not exceeded
-5. Substitutes variables in sujet/corps
-6. Generates unique trackingId
-7. Builds HTML with tracking pixel + linked signature
-8. Sends via brevoService (SMTP or API)
-9. Records email in `emails` table with brevo_message_id
-10. Increments quota counter
-11. Calculates next send date (respects ACTIVE_DAYS + randomized hour)
-12. Updates inscription with new etape_courante and prochain_envoi
+4. **Checks blocklist (email and domain)**
+5. Verifies daily quota not exceeded
+6. Substitutes variables in sujet/corps
+7. Generates unique trackingId
+8. Builds HTML with tracking pixel + linked signature
+9. Sends via brevoService (SMTP or API)
+10. Records email in `emails` table with brevo_message_id
+11. Increments quota counter
+12. Calculates next send date (respects ACTIVE_DAYS + randomized hour)
+13. Updates inscription with new etape_courante and prochain_envoi
 
 ### Routing Structure
 
@@ -101,6 +103,10 @@ Key endpoints:
 - **POST /api/leads/import** - Bulk CSV import
 - **GET /api/stats** - Campaign analytics
 - **POST /api/hubspot/sync-companies** - Sync HubSpot companies to local DB
+- **POST /api/blocklist** - Add email or domain to blocklist
+- **POST /api/blocklist/from-lead/:id** - Block a lead's email and mark as unsubscribed
+- **DELETE /api/blocklist/:id** - Remove from blocklist
+- **PATCH /api/blocklist/:id/override** - Toggle override permission (allow sending despite block)
 
 ### Environment Variables
 
@@ -229,6 +235,13 @@ When user clicks unsubscribe link, `PATCH /api/tracking/unsubscribe/:leadId` set
 - `leads.unsubscribed = 1`
 - `leads.statut = 'Désabonné'`
 - All active inscriptions set to `statut='terminé'`
+
+**Blocklist (Do Not Email):**
+- Blocks emails by exact address or entire domain
+- Checked before every send in `brevoService.verifierBlocklist()`
+- `override_allowed=1` allows sending despite block (manual permission)
+- Use `POST /api/blocklist/from-lead/:id` to block a lead (also marks as unsubscribed)
+- UI: "Blocklist" tab + "🚫 Bloquer" button on lead details
 
 ## Frontend Architecture
 
