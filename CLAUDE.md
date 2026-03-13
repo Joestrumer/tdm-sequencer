@@ -6,6 +6,12 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Sales email sequencer for Terre de Mars — automates multi-step email campaigns for hotel leads. Node.js/Express backend with SQLite database, Brevo email service integration, and optional HubSpot CRM sync.
 
+## Comportement
+
+- **Toujours committer et pusher sur GitHub après chaque modification** - Chaque changement de code doit être immédiatement committé et pushé
+- **Ne pas demander de confirmation** pour les commandes npm, git, node - Exécuter directement sans prompt
+- **Langage : français** - Toute communication, messages de commit, et documentation doivent être en français
+
 ## Development Commands
 
 ```bash
