@@ -117,11 +117,22 @@ db.exec(`
     updated_at TEXT DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS email_blocklist (
+    id              TEXT PRIMARY KEY,
+    type            TEXT NOT NULL CHECK(type IN ('email', 'domain')),
+    value           TEXT NOT NULL UNIQUE,
+    raison          TEXT,
+    override_allowed INTEGER DEFAULT 0,
+    created_at      TEXT DEFAULT (datetime('now'))
+  );
+
   CREATE INDEX IF NOT EXISTS idx_leads_email       ON leads(email);
   CREATE INDEX IF NOT EXISTS idx_leads_statut      ON leads(statut);
   CREATE INDEX IF NOT EXISTS idx_inscriptions_next ON inscriptions(prochain_envoi, statut);
   CREATE INDEX IF NOT EXISTS idx_emails_tracking   ON emails(tracking_id);
   CREATE INDEX IF NOT EXISTS idx_events_lead       ON events(lead_id, created_at);
+  CREATE INDEX IF NOT EXISTS idx_blocklist_value   ON email_blocklist(value);
+  CREATE INDEX IF NOT EXISTS idx_blocklist_type    ON email_blocklist(type);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────

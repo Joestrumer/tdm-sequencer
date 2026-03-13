@@ -249,6 +249,26 @@ async function avecRetry(fn, maxTentatives = 3, delaiMs = 1000) {
   throw derniereErreur;
 }
 
+// ─── Vérifier blocklist ─────────────────────────────────────────────────────
+function verifierBlocklist(db, email) {
+  const emailLower = email.toLowerCase().trim();
+  const domain = emailLower.split('@')[1];
+
+  // Vérifier email exact
+  const emailBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = ? AND value = ?').get('email', emailLower);
+  if (emailBlock && !emailBlock.override_allowed) {
+    throw new Error(`Email bloqué par la blocklist : ${email} (raison: ${emailBlock.raison || 'non spécifiée'})`);
+  }
+
+  // Vérifier domaine
+  const domainBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = ? AND value = ?').get('domain', domain);
+  if (domainBlock && !domainBlock.override_allowed) {
+    throw new Error(`Domaine bloqué par la blocklist : ${domain} (raison: ${domainBlock.raison || 'non spécifiée'})`);
+  }
+
+  return true;
+}
+
 // ─── Envoi principal ─────────────────────────────────────────────────────────
 async function envoyerEmail(db, { lead, etape, inscriptionId }) {
   // 1. Vérifier quota
@@ -259,14 +279,17 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
     throw new Error(`Lead désabonné : ${lead.email}`);
   }
 
-  // 3. Substituer les variables
+  // 3. Vérifier la blocklist
+  verifierBlocklist(db, lead.email);
+
+  // 4. Substituer les variables
   const sujet = substituerVariables(etape.sujet, lead);
   const corpsTexte = substituerVariables(etape.corps, lead);
 
-  // 4. Générer un ID de tracking unique
+  // 5. Générer un ID de tracking unique
   const trackingId = uuidv4();
 
-  // 5. Construire le HTML (corps_html si éditeur riche, sinon conversion texte)
+  // 6. Construire le HTML (corps_html si éditeur riche, sinon conversion texte)
   // Récupérer le paramètre desabonnement depuis la séquence
   let seqOptions = {};
   try {
@@ -278,7 +301,7 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
     ? texteVersHtml(etape.corps_html, trackingId, lead, true, seqOptions)
     : texteVersHtml(corpsTexte, trackingId, lead, false, seqOptions);
 
-  // 6. Préparer le payload Brevo
+  // 7. Préparer le payload Brevo
   const payload = {
     sender: SENDER,
     to: [{ email: lead.email, name: `${lead.prenom} ${lead.nom}`.trim() }],
@@ -301,7 +324,7 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
     }];
   }
 
-  // 7. Envoyer via fetch natif
+  // 8. Envoyer via fetch natif
   let brevoMessageId = null;
   if (process.env.BREVO_API_KEY) {
     const result = await avecRetry(() => brevoSendEmail(payload));
@@ -312,17 +335,17 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
     brevoMessageId = `demo-${Date.now()}`;
   }
 
-  // 8. Enregistrer l'email en base
+  // 9. Enregistrer l'email en base
   const emailId = uuidv4();
   db.prepare(`
     INSERT INTO emails (id, inscription_id, lead_id, etape_id, sujet, brevo_message_id, tracking_id, statut)
     VALUES (?, ?, ?, ?, ?, ?, ?, 'envoyé')
   `).run(emailId, inscriptionId, lead.id, etape.id, sujet, brevoMessageId, trackingId);
 
-  // 9. Enregistrer l'événement
+  // 10. Enregistrer l'événement
   db.prepare(`INSERT INTO events (id, email_id, lead_id, type) VALUES (?, ?, ?, 'envoi')`).run(uuidv4(), emailId, lead.id);
 
-  // 10. Mettre à jour le quota
+  // 11. Mettre à jour le quota
   incrementerQuota(db, today);
 
   return { emailId, trackingId, brevoMessageId };

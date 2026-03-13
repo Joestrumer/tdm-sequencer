@@ -90,6 +90,7 @@ app.use('/api/tracking',  require('./routes/tracking')(db));
 app.use('/api/stats',     require('./routes/stats')(db));
 app.use('/api/hubspot',   require('./routes/hubspot')(db));
 app.use('/api/config',    require('./routes/config')(db));
+app.use('/api/blocklist', require('./routes/blocklist')(db));
 
 // Frontend statique
 const publicPath = path.join(__dirname, '..', 'public');
