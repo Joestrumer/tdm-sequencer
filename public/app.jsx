@@ -1229,6 +1229,17 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button onClick={() => setEditLead(selectedLead)} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50">✏️ Éditer</button>
+              <button onClick={async () => {
+                if (!confirm(`Bloquer ${selectedLead.email} et l'ajouter à la blocklist ?`)) return;
+                try {
+                  await api.post(`/blocklist/from-lead/${selectedLead.id}`, { raison: `Lead ${selectedLead.prenom} ${selectedLead.nom}` });
+                  alert('Lead ajouté à la blocklist');
+                  setSelectedLead(null);
+                  if (onRefresh) onRefresh();
+                } catch (err) {
+                  alert(err.message || 'Erreur lors du blocage');
+                }
+              }} className="px-3 py-1.5 text-xs border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50">🚫 Bloquer</button>
               <button onClick={(e) => supprimerLead(selectedLead, e)} className="px-3 py-1.5 text-xs border border-red-100 text-red-400 rounded-lg hover:bg-red-50">Supprimer</button>
               <button onClick={() => { setSelectedLead(null); setDetailData(null); }} className="text-slate-400 hover:text-slate-600 text-xl ml-1">×</button>
             </div>
@@ -2088,6 +2099,153 @@ const VueParametres = () => {
   );
 };
 
+// ─── Vue Blocklist ────────────────────────────────────────────────────────────
+const VueBlocklist = ({ onRefresh }) => {
+  const [blocklist, setBlocklist] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [newEntry, setNewEntry] = useState({ type: 'email', value: '', raison: '' });
+  const [showAdd, setShowAdd] = useState(false);
+
+  useEffect(() => { chargerBlocklist(); }, []);
+
+  const chargerBlocklist = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/blocklist');
+      setBlocklist(data.blocklist || []);
+    } catch (err) {
+      console.error('Erreur chargement blocklist:', err);
+    }
+    setLoading(false);
+  };
+
+  const ajouterEntree = async () => {
+    if (!newEntry.value.trim()) return;
+    try {
+      await api.post('/blocklist', newEntry);
+      setNewEntry({ type: 'email', value: '', raison: '' });
+      setShowAdd(false);
+      chargerBlocklist();
+    } catch (err) {
+      alert(err.message || 'Erreur lors de l\'ajout');
+    }
+  };
+
+  const supprimerEntree = async (id) => {
+    if (!confirm('Retirer cette entrée de la blocklist ?')) return;
+    try {
+      await api.delete(`/blocklist/${id}`);
+      chargerBlocklist();
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la suppression');
+    }
+  };
+
+  const toggleOverride = async (id, allowed) => {
+    try {
+      await api.patch(`/blocklist/${id}/override`, { allowed });
+      chargerBlocklist();
+    } catch (err) {
+      alert(err.message || 'Erreur lors de la modification');
+    }
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Liste d'exclusion d'emails</h2>
+          <p className="text-sm text-slate-500 mt-1">Emails et domaines bloqués pour l'envoi automatique</p>
+        </div>
+        <button onClick={() => setShowAdd(!showAdd)} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">
+          {showAdd ? 'Annuler' : '+ Ajouter une entrée'}
+        </button>
+      </div>
+
+      {/* Formulaire d'ajout */}
+      {showAdd && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6">
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-2 block">Type</label>
+              <select value={newEntry.type} onChange={e => setNewEntry({...newEntry, type: e.target.value})} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                <option value="email">Email</option>
+                <option value="domain">Domaine</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-2 block">
+                {newEntry.type === 'email' ? 'Adresse email' : 'Domaine (ex: example.com)'}
+              </label>
+              <input value={newEntry.value} onChange={e => setNewEntry({...newEntry, value: e.target.value})} placeholder={newEntry.type === 'email' ? 'contact@example.com' : 'example.com'} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-2 block">Raison (optionnel)</label>
+              <input value={newEntry.raison} onChange={e => setNewEntry({...newEntry, raison: e.target.value})} placeholder="Concurrent, spam, etc." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div className="flex justify-end gap-2 mt-4">
+            <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
+            <button onClick={ajouterEntree} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">Ajouter</button>
+          </div>
+        </div>
+      )}
+
+      {/* Liste */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <table className="w-full">
+          <thead className="bg-slate-50 border-b border-slate-200">
+            <tr>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Type</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Valeur</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Raison</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Permission expresse</th>
+              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Ajouté le</th>
+              <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {loading ? (
+              <tr><td colSpan="6" className="px-6 py-8 text-center text-sm text-slate-400">Chargement...</td></tr>
+            ) : blocklist.length === 0 ? (
+              <tr><td colSpan="6" className="px-6 py-8 text-center text-sm text-slate-400">Aucune entrée dans la blocklist</td></tr>
+            ) : (
+              blocklist.map(entry => (
+                <tr key={entry.id} className="border-b border-slate-100 hover:bg-slate-50">
+                  <td className="px-6 py-4">
+                    <span className={`inline-flex items-center px-2.5 py-0.5 rounded text-xs font-medium ${entry.type === 'email' ? 'bg-blue-100 text-blue-800' : 'bg-purple-100 text-purple-800'}`}>
+                      {entry.type === 'email' ? '📧 Email' : '🌐 Domaine'}
+                    </span>
+                  </td>
+                  <td className="px-6 py-4 text-sm font-mono text-slate-900">{entry.value}</td>
+                  <td className="px-6 py-4 text-sm text-slate-600">{entry.raison || '—'}</td>
+                  <td className="px-6 py-4">
+                    <label className="flex items-center gap-2 cursor-pointer">
+                      <input type="checkbox" checked={entry.override_allowed === 1} onChange={e => toggleOverride(entry.id, e.target.checked)} className="rounded accent-emerald-600" />
+                      <span className="text-xs text-slate-600">Autoriser malgré blocage</span>
+                    </label>
+                  </td>
+                  <td className="px-6 py-4 text-sm text-slate-500">{new Date(entry.created_at).toLocaleDateString('fr-FR')}</td>
+                  <td className="px-6 py-4 text-right">
+                    <button onClick={() => supprimerEntree(entry.id)} className="px-3 py-1 text-xs border border-red-100 text-red-500 rounded-md hover:bg-red-50">Retirer</button>
+                  </td>
+                </tr>
+              ))
+            )}
+          </tbody>
+        </table>
+      </div>
+
+      <div className="text-xs text-slate-500">
+        <p><strong>📛 Email bloqué :</strong> L'adresse exacte est refusée pour tous les envois</p>
+        <p className="mt-1"><strong>🌐 Domaine bloqué :</strong> Tous les emails du domaine (ex: @example.com) sont refusés</p>
+        <p className="mt-1"><strong>✅ Permission expresse :</strong> Permet l'envoi malgré le blocage (à activer manuellement)</p>
+      </div>
+    </div>
+  );
+};
+
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 
 function App() {
@@ -2167,6 +2325,7 @@ function App() {
     { id: "dashboard", icon: "📊", label: "Dashboard" },
     { id: "leads", icon: "👥", label: "Leads" },
     { id: "sequences", icon: "📧", label: "Séquences" },
+    { id: "blocklist", icon: "🚫", label: "Blocklist" },
     { id: "hubspot", icon: "🔗", label: "HubSpot" },
     { id: "emails", icon: "✅", label: "Validation Email" },
     { id: "parametres", icon: "⚙️", label: "Paramètres" },
@@ -2224,6 +2383,7 @@ function App() {
               {vue === "dashboard" && `${leads.filter(l => l.statut === "En séquence").length} leads en séquence`}
               {vue === "leads" && `${leads.length} leads au total`}
               {vue === "sequences" && `${sequences.length} séquences actives`}
+              {vue === "blocklist" && "Gestion des emails et domaines bloqués"}
               {vue === "hubspot" && "Intégration CRM bidirectionnelle"}
               {vue === "emails" && "Vérification & nettoyage des adresses email"}
               {vue === "parametres" && "Configuration Brevo & envoi"}
@@ -2242,6 +2402,7 @@ function App() {
           {vue === "dashboard" && <VueDashboard leads={leads} activites={activites} stats={stats} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} />}
+          {vue === "blocklist" && <VueBlocklist onRefresh={charger} />}
           {vue === "hubspot" && <VueHubspot />}
           {vue === "emails" && <VueValidationEmail leads={leads} onRefresh={charger} />}
           {vue === "parametres" && <VueParametres />}
