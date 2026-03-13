@@ -117,12 +117,12 @@ const ModalAddLead = ({ onClose, onAdd }) => {
   };
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <h3 className="text-base font-semibold text-slate-900">Ajouter un lead</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
-        <div className="p-6 space-y-4">
+        <div className="p-6 space-y-4 overflow-y-auto flex-1">
           {/* Recherche HubSpot */}
           <div className="relative">
             <label className="text-xs font-medium text-slate-500 mb-1 block">Rechercher un établissement dans HubSpot</label>
@@ -134,7 +134,7 @@ const ModalAddLead = ({ onClose, onAdd }) => {
             />
             {searchingHS && <span className="absolute right-3 top-8 text-xs text-slate-400">⟳</span>}
             {companies.length > 0 && (
-              <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg overflow-hidden">
+              <div className="absolute z-10 w-full mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-64 overflow-y-auto">
                 {companies.map(c => (
                   <button key={c.id} onClick={() => selectionnerCompany(c)}
                     className="w-full text-left px-4 py-2.5 hover:bg-slate-50 border-b border-slate-50 last:border-0">
@@ -187,7 +187,7 @@ const ModalAddLead = ({ onClose, onAdd }) => {
             </div>
           </div>
         </div>
-        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3">
+        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 flex-shrink-0 border-t border-slate-100">
           {err && <span className="text-xs text-red-500 mr-auto">{err}</span>}
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
           <button onClick={submit} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">{saving ? "Ajout..." : "Ajouter"}</button>
@@ -223,12 +223,12 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 max-h-[90vh] flex flex-col">
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <h3 className="text-base font-semibold text-slate-900">Lancer une séquence</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
         </div>
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-1">
           <p className="text-sm text-slate-500 mb-4">Pour <span className="font-medium text-slate-800">{lead.prenom} {lead.nom}</span> — {lead.hotel}</p>
           <div className="space-y-2">
             {sequences.map(seq => (
@@ -244,7 +244,7 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
           {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée !</p>}
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
         </div>
-        <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2">
+        <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2 flex-shrink-0 border-t border-slate-100">
           <button
             disabled={status === "loading" || status === "done"}
             onClick={() => handleLaunch(true)}
@@ -772,12 +772,12 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
   };
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md">
-        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-semibold text-slate-900">Modifier le lead</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
         </div>
-        <div className="p-6 space-y-3">
+        <div className="p-6 space-y-3 overflow-y-auto flex-1">
           <div className="grid grid-cols-2 gap-3">
             {[["Prénom","prenom"],["Nom","nom"]].map(([l,k]) => (
               <div key={k}><label className="text-xs text-slate-500 mb-1 block">{l}</label>
@@ -800,7 +800,7 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
           </div>
           {err && <p className="text-xs text-red-500">{err}</p>}
         </div>
-        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3">
+        <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 flex-shrink-0 border-t border-slate-100">
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600">Annuler</button>
           <button onClick={handleSave} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50">{saving ? "Sauvegarde..." : "Enregistrer"}</button>
         </div>
@@ -825,12 +825,12 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
   };
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 overflow-hidden">
-        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 max-h-[90vh] flex flex-col">
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <h3 className="text-base font-semibold text-slate-900">Lancer une séquence</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
         </div>
-        <div className="p-6">
+        <div className="p-6 overflow-y-auto flex-1">
           <p className="text-sm text-slate-500 mb-4"><span className="font-semibold text-slate-800">{count} leads</span> seront inscrits à la séquence sélectionnée.</p>
           <div className="space-y-2">
             {sequences.map(seq => (
@@ -846,7 +846,7 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
           {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée pour {count} leads !</p>}
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
         </div>
-        <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2">
+        <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2 flex-shrink-0 border-t border-slate-100">
           <button disabled={status === "loading" || status === "done"} onClick={() => handleLaunch(true)} className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50">⚡ Envoyer le 1er email maintenant</button>
           <button disabled={status === "loading" || status === "done"} onClick={() => handleLaunch(false)} className="w-full py-2.5 text-sm font-medium bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 disabled:opacity-50">📅 Lancer (prochain créneau)</button>
           <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600 text-center pt-1">Annuler</button>
