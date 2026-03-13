@@ -223,3 +223,58 @@ When user clicks unsubscribe link, `PATCH /api/tracking/unsubscribe/:leadId` set
 - `leads.unsubscribed = 1`
 - `leads.statut = 'Désabonné'`
 - All active inscriptions set to `statut='terminé'`
+
+## Frontend Architecture
+
+**Technology Stack:**
+- React (single-page app in `public/app.jsx`)
+- Tailwind CSS for styling
+- Served as static files from Express
+
+**Key Components:**
+- `ModalAddLead` - Lead creation with HubSpot company search
+- `ModalEditLead` - Lead editing
+- `ModalLaunchSequence` - Enroll single lead in sequence
+- `ModalBulkLaunch` - Bulk enrollment
+- `VueLeads` - Main leads list/kanban view with filtering
+- `VueSequences` - Sequence management interface
+- `VueStats` - Analytics dashboard
+
+**Modal Structure:**
+All modals use consistent flexbox layout:
+- Container: `max-h-[90vh] flex flex-col` for responsive height
+- Header: `flex-shrink-0` to stay fixed at top
+- Content: `overflow-y-auto flex-1` for scrollable middle section
+- Footer: `flex-shrink-0 border-t` to stay fixed at bottom
+
+**HubSpot Integration (Frontend):**
+- Company search dropdown with debounced API calls (400ms)
+- Contact autocomplete from selected company
+- Auto-fills hotel, ville, prenom, nom, email fields
+
+**State Management:**
+- Uses React hooks (useState, useRef, useEffect)
+- No external state management library
+- API calls via custom `api` utility with auth headers
+
+## Common Issues & Solutions
+
+**Issue: Lead shows status "En séquence" but no sequence visible in detail view**
+- **Cause:** GET /api/leads/:id was missing sequence-related subqueries
+- **Solution:** Route now includes `sequence_active`, `etape_courante`, `prochain_envoi`, etc.
+- **Fixed in:** src/routes/leads.js (lines 48-60)
+
+**Issue: Cannot scroll in modals (company dropdown or form content)**
+- **Cause:** Modals had `overflow-hidden` and no max-height
+- **Solution:** All modals now use flexbox with scrollable content area
+- **Fixed in:** public/app.jsx (ModalAddLead, ModalEditLead, ModalLaunchSequence, ModalBulkLaunch)
+
+**Issue: First email not sending in development**
+- **Cause:** Sending window restrictions apply even in dev
+- **Solution:** Set `NODE_ENV=development` to schedule first email 1 minute after enrollment
+- **Alternative:** Use POST /api/sequences/trigger-now to force immediate send
+
+**Issue: Brevo emails not sending**
+- **Debug:** Visit /api/test-brevo to check both SMTP and REST API connectivity
+- **Common causes:** IP not whitelisted, wrong SMTP port, invalid API key
+- **Solution:** SMTP tries ports 587, 465, 2525 automatically; REST API is fallback
