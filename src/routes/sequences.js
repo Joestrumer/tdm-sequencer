@@ -189,10 +189,29 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/sequences/stop-lead/:leadId — Arrêter toutes les séquences d'un lead
+  router.post('/stop-lead/:leadId', (req, res) => {
+    try {
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.leadId);
+      if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
+
+      const result = db.prepare(`
+        UPDATE inscriptions
+        SET statut = 'terminé', prochain_envoi = NULL
+        WHERE lead_id = ? AND statut = 'actif'
+      `).run(req.params.leadId);
+
+      logger.info(`⏹️  Séquences arrêtées pour ${lead.email}`, { count: result.changes });
+      res.json({ message: `${result.changes} séquence(s) arrêtée(s)`, count: result.changes });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // POST /api/sequences/trigger-now — Envoi direct (bypass fenêtre horaire)
   router.post('/trigger-now', async (req, res) => {
     try {
-      const { lead_ids } = req.body || {};
+      const { lead_ids, async } = req.body || {};
 
       let inscriptions;
       if (lead_ids?.length) {
@@ -211,6 +230,33 @@ module.exports = (db) => {
 
       if (!inscriptions.length) return res.json({ message: 'Aucune inscription active', envoyes: 0 });
 
+      // Mode asynchrone : retourne immédiatement et traite en arrière-plan
+      if (async) {
+        res.json({
+          message: `Envoi de ${inscriptions.length} email(s) en cours en arrière-plan...`,
+          count: inscriptions.length,
+          async: true
+        });
+
+        // Traitement en arrière-plan (fire and forget)
+        setImmediate(async () => {
+          let envoyes = 0;
+          for (const inscription of inscriptions) {
+            try {
+              await traiterInscriptionDirect(inscription);
+              envoyes++;
+              await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000));
+            } catch (err) {
+              logger.error('Erreur envoi forcé async', { error: err.message });
+            }
+          }
+          logger.info(`✅ Envoi async terminé: ${envoyes}/${inscriptions.length} emails envoyés`);
+        });
+
+        return;
+      }
+
+      // Mode synchrone (comportement par défaut)
       let envoyes = 0;
       const erreurs = [];
 

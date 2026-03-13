@@ -208,9 +208,9 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
     try {
       // 1. Inscrire le lead à la séquence
       await onLaunch(lead.id, selected);
-      // 2. Si "envoyer maintenant" → forcer le scheduler sur ce lead uniquement
+      // 2. Si "envoyer maintenant" → forcer le scheduler sur ce lead uniquement (en arrière-plan)
       if (sendNow) {
-        const r = await api.post('/sequences/trigger-now', { lead_ids: [lead.id] });
+        const r = await api.post('/sequences/trigger-now', { lead_ids: [lead.id], async: true });
         if (r?.erreur) throw new Error(r.erreur);
       }
       setStatus("done");
@@ -241,7 +241,7 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
               </label>
             ))}
           </div>
-          {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée !</p>}
+          {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée ! Email en cours d'envoi...</p>}
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
         </div>
         <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2 flex-shrink-0 border-t border-slate-100">
@@ -250,7 +250,7 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
             onClick={() => handleLaunch(true)}
             className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
           >
-            ⚡ Envoyer le 1er email maintenant
+            {status === "loading" ? "⏳ Envoi en cours..." : "⚡ Envoyer le 1er email maintenant"}
           </button>
           <button
             disabled={status === "loading" || status === "done"}
@@ -1229,6 +1229,19 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
             </div>
             <div className="flex items-center gap-2 flex-shrink-0">
               <button onClick={() => setEditLead(selectedLead)} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50">✏️ Éditer</button>
+              {selectedLead.sequence_active && (
+                <button onClick={async () => {
+                  if (!confirm(`Arrêter la séquence "${selectedLead.sequence_active}" pour ce lead ?`)) return;
+                  try {
+                    await api.post(`/sequences/stop-lead/${selectedLead.id}`);
+                    alert('Séquence arrêtée');
+                    if (onRefresh) onRefresh();
+                    setSelectedLead(null);
+                  } catch (err) {
+                    alert(err.message || 'Erreur lors de l\'arrêt');
+                  }
+                }} className="px-3 py-1.5 text-xs border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50">⏹️ Arrêter séquence</button>
+              )}
               <button onClick={async () => {
                 if (!confirm(`Bloquer ${selectedLead.email} et l'ajouter à la blocklist ?`)) return;
                 try {
