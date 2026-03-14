@@ -4,6 +4,24 @@ const { useState, useEffect, useRef, useMemo } = React;
 const api = window.tdmApi;
 
 
+// ─── TOAST ───────────────────────────────────────────────────────────────────
+const Toast = ({ toast, onDismiss }) => {
+  if (!toast || !toast.visible) return null;
+  const colors = {
+    success: "bg-emerald-600",
+    error: "bg-red-600",
+    info: "bg-slate-800",
+  };
+  return (
+    <div className={`fixed top-4 right-4 z-[100] px-4 py-3 rounded-xl shadow-lg text-white text-sm font-medium flex items-center gap-2 animate-fade-in ${colors[toast.type] || colors.info}`}>
+      {toast.type === "success" && <span>✓</span>}
+      {toast.type === "error" && <span>✗</span>}
+      <span>{toast.message}</span>
+      <button onClick={onDismiss} className="ml-2 text-white/60 hover:text-white">×</button>
+    </div>
+  );
+};
+
 // ─── COMPOSANTS UI ────────────────────────────────────────────────────────────
 
 const STATUT_CONFIG = {
@@ -856,7 +874,7 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
   );
 };
 
-const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
+const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) => {
   const [search, setSearch] = useState("");
   const [filterStatut, setFilterStatut] = useState("Tous");
   const [filterSegment, setFilterSegment] = useState("Tous");
@@ -943,14 +961,14 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
     try {
       const result = await api.delete(`/leads/${lead.id}`);
       if (result?.erreur) {
-        alert(`Erreur : ${result.erreur}`);
+        showToast(`Erreur : ${result.erreur}`, "error");
         return;
       }
       if (selectedLead?.id === lead.id) setSelectedLead(null);
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Erreur suppression lead:', err);
-      alert(`Impossible de supprimer le lead : ${err.message}`);
+      showToast(`Impossible de supprimer le lead : ${err.message}`, "error");
     }
   };
 
@@ -1106,7 +1124,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
               {filtered.map((lead, i) => {
                 const cfg = STATUT_CONFIG[lead.statut] || STATUT_CONFIG["Nouveau"];
                 return (
-                <tr key={lead.id} className={`group border-b border-slate-50 transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200" : selectedIds.has(lead.id) ? "bg-slate-100" : "hover:bg-slate-50/80"} ${i === filtered.length-1 ? "border-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
+                <tr key={lead.id} className={`group border-b border-slate-50 border-l-2 transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200 border-l-indigo-400" : selectedIds.has(lead.id) ? "bg-slate-100 border-l-transparent" : "hover:bg-slate-50/80 border-l-transparent hover:border-l-blue-400"} ${i === filtered.length-1 ? "border-b-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
                   <td className="px-3 py-3 w-8" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.has(lead.id)} onChange={e => { const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} />
                   </td>
@@ -1171,34 +1189,36 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
 
       {/* ── VUE KANBAN ── */}
       {vueMode === "kanban" && (
-        <div className="flex gap-3 overflow-x-auto pb-4">
+        <div className="flex gap-2 overflow-x-auto pb-4">
           {KANBAN_COLS.map(col => {
             const colLeads = filtered.filter(l => l.statut === col);
             const cfg = STATUT_CONFIG[col] || STATUT_CONFIG["Nouveau"];
             return (
-              <div key={col} className="flex-shrink-0 w-60">
-                <div className={`flex items-center gap-2 px-3 py-2 rounded-xl mb-2 ${cfg.bg}`}>
-                  <span className={`w-2 h-2 rounded-full ${cfg.dot}`} />
+              <div key={col} className="flex-shrink-0 w-48">
+                <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg mb-2 ${cfg.bg}`}>
+                  <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
                   <span className={`text-xs font-semibold ${cfg.text}`}>{col}</span>
                   <span className={`ml-auto text-xs font-bold ${cfg.text} opacity-60`}>{colLeads.length}</span>
                 </div>
-                <div className="space-y-2 min-h-16">
-                  {colLeads.map(lead => (
-                    <div key={lead.id} className="bg-white rounded-xl border border-slate-100 p-3 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => ouvrirDetail(lead).catch(e => console.error("Erreur détail:", e))}>
-                      <div className="font-medium text-slate-800 text-sm">{lead.prenom} {lead.nom}</div>
-                      <div className="text-xs text-slate-500 truncate mt-0.5">{lead.hotel}</div>
-                      <div className="text-xs text-slate-400">{lead.ville}{lead.segment ? <span className="ml-1">· {lead.segment}</span> : ""}</div>
-                      {lead.sequence && <div className="text-xs text-blue-600 mt-1 truncate">📧 Email {(lead.etape||0)+1}</div>}
-                      <div className="flex items-center justify-between mt-2">
-                        <ScoreBar score={lead.score} />
-                        <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                          {lead.statut !== "Désabonné" && <button onClick={() => setShowLaunch(lead)} className="text-xs text-blue-500 hover:text-blue-700 px-1" title="Lancer séquence">▶</button>}
-                          <button onClick={() => setEditLead(lead)} className="text-xs text-slate-400 hover:text-slate-600 px-1">✏️</button>
-                        </div>
+                <div className="space-y-1.5 min-h-16 max-h-[calc(100vh-220px)] overflow-y-auto">
+                  {colLeads.map(lead => {
+                    const scoreColor = lead.score >= 80 ? "bg-emerald-500" : lead.score >= 50 ? "bg-amber-400" : "bg-slate-300";
+                    return (
+                    <div key={lead.id} className="group bg-white rounded-lg border border-slate-100 p-2 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => ouvrirDetail(lead).catch(e => console.error("Erreur détail:", e))}>
+                      <div className="flex items-center gap-1.5">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${scoreColor}`} title={`Score: ${lead.score}`} />
+                        <span className="text-xs font-medium text-slate-800 truncate">{lead.prenom} {lead.nom}</span>
+                      </div>
+                      <div className="text-[11px] text-slate-500 truncate mt-0.5">{lead.hotel}</div>
+                      {lead.sequence && <div className="text-[11px] text-blue-600 truncate mt-0.5">📧 Étape {(lead.etape||0)+1}</div>}
+                      <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
+                        {lead.statut !== "Désabonné" && <button onClick={() => setShowLaunch(lead)} className="text-[10px] text-blue-500 hover:text-blue-700 px-1" title="Lancer séquence">▶</button>}
+                        <button onClick={() => setEditLead(lead)} className="text-[10px] text-slate-400 hover:text-slate-600 px-1">✏️</button>
                       </div>
                     </div>
-                  ))}
-                  {colLeads.length === 0 && <div className="text-center py-6 text-xs text-slate-300 border-2 border-dashed border-slate-100 rounded-xl">Vide</div>}
+                    );
+                  })}
+                  {colLeads.length === 0 && <div className="text-center py-4 text-[11px] text-slate-300 border border-dashed border-slate-100 rounded-lg">Vide</div>}
                 </div>
               </div>
             );
@@ -1234,11 +1254,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
                   if (!confirm(`Arrêter la séquence "${selectedLead.sequence_active}" pour ce lead ?`)) return;
                   try {
                     await api.post(`/sequences/stop-lead/${selectedLead.id}`);
-                    alert('Séquence arrêtée');
+                    showToast('Séquence arrêtée', 'success');
                     if (onRefresh) onRefresh();
                     setSelectedLead(null);
                   } catch (err) {
-                    alert(err.message || 'Erreur lors de l\'arrêt');
+                    showToast(err.message || 'Erreur lors de l\'arrêt', 'error');
                   }
                 }} className="px-3 py-1.5 text-xs border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50">⏹️ Arrêter séquence</button>
               )}
@@ -1246,11 +1266,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
                 if (!confirm(`Bloquer ${selectedLead.email} et l'ajouter à la blocklist ?`)) return;
                 try {
                   await api.post(`/blocklist/from-lead/${selectedLead.id}`, { raison: `Lead ${selectedLead.prenom} ${selectedLead.nom}` });
-                  alert('Lead ajouté à la blocklist');
+                  showToast('Lead ajouté à la blocklist', 'success');
                   setSelectedLead(null);
                   if (onRefresh) onRefresh();
                 } catch (err) {
-                  alert(err.message || 'Erreur lors du blocage');
+                  showToast(err.message || 'Erreur lors du blocage', 'error');
                 }
               }} className="px-3 py-1.5 text-xs border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50">🚫 Bloquer</button>
               <button onClick={(e) => supprimerLead(selectedLead, e)} className="px-3 py-1.5 text-xs border border-red-100 text-red-400 rounded-lg hover:bg-red-50">Supprimer</button>
@@ -1593,57 +1613,108 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh }) => {
   );
 };
 
-const VueSequences = ({ sequences, onNew, onEdit }) => (
+const VueSequences = ({ sequences, onNew, onEdit, showToast }) => {
+  const [testModal, setTestModal] = useState(null); // seq id
+  const [testEmail, setTestEmail] = useState("");
+  const [testLoading, setTestLoading] = useState(false);
+
+  const envoyerTest = async (seqId) => {
+    if (!testEmail.trim()) return;
+    setTestLoading(true);
+    try {
+      // Chercher ou créer le lead
+      const search = await api.get(`/leads?search=${encodeURIComponent(testEmail.trim())}`);
+      const existing = (Array.isArray(search) ? search : search.leads || []).find(l => l.email === testEmail.trim());
+      let leadId;
+      if (existing) {
+        leadId = existing.id;
+      } else {
+        const created = await api.post('/leads', { email: testEmail.trim(), prenom: 'Test', nom: 'Séquence', hotel: 'Test', segment: '5*' });
+        leadId = created.id || created.lead?.id;
+      }
+      // Inscrire à la séquence
+      await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId });
+      // Forcer l'envoi immédiat
+      await api.post('/sequences/trigger-now');
+      showToast(`Email test envoyé à ${testEmail.trim()}`, 'success');
+      setTestModal(null);
+      setTestEmail("");
+    } catch (err) {
+      showToast(err.message || 'Erreur lors du test', 'error');
+    }
+    setTestLoading(false);
+  };
+
+  return (
   <div className="space-y-4">
     <div className="flex justify-end">
       <button onClick={onNew} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors">
         + Nouvelle séquence
       </button>
     </div>
-    <div className="grid gap-4">
+    <div className="grid gap-3">
       {sequences.map(seq => (
-        <div key={seq.id} className="bg-white rounded-2xl border border-slate-100 p-5">
-          <div className="flex items-start justify-between mb-4">
-            <div>
-              <h3 className="text-base font-semibold text-slate-800">{seq.nom}</h3>
-              <div className="flex items-center gap-3 mt-1">
-                <span className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">Segment {seq.segment}</span>
-                <span className="text-xs text-slate-400">{seq.leadsActifs} leads actifs</span>
-              </div>
+        <div key={seq.id} className="bg-white rounded-xl border border-slate-100 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <div className="flex items-center gap-3 min-w-0">
+              <h3 className="text-sm font-semibold text-slate-800 truncate">{seq.nom}</h3>
+              <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full flex-shrink-0">{seq.segment}</span>
+              <span className="text-xs text-slate-400 flex-shrink-0">{seq.leadsActifs} actifs</span>
             </div>
-            <button onClick={() => onEdit(seq)} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
-              Modifier
-            </button>
+            <div className="flex gap-2 flex-shrink-0">
+              <button onClick={() => { setTestModal(seq.id); setTestEmail(""); }} className="px-3 py-1.5 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
+                Tester
+              </button>
+              <button onClick={() => onEdit(seq)} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
+                Modifier
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-0">
-            {seq.etapes.map((etape, i) => (
-              <div key={i} className="flex items-center">
-                <div className="flex flex-col items-center">
-                  <div className="w-8 h-8 rounded-full bg-slate-900 text-white text-xs font-bold flex items-center justify-center">{i + 1}</div>
-                  <div className="text-xs text-slate-400 mt-1 text-center w-20 truncate" title={etape.sujet}>J+{etape.jour}</div>
-                </div>
-                {i < seq.etapes.length - 1 && (
-                  <div className="w-12 h-px bg-slate-200 mx-1 mb-4" />
-                )}
-              </div>
-            ))}
-          </div>
-          <div className="mt-3 space-y-2">
-            {seq.etapes.map((etape, i) => (
-              <div key={i} className="flex gap-3 items-start bg-slate-50 rounded-xl p-3">
-                <span className="text-xs font-bold text-slate-400 w-10 flex-shrink-0 mt-0.5">J+{etape.jour}</span>
-                <div className="min-w-0">
-                  <div className="text-sm font-medium text-slate-800 truncate">{etape.sujet || "(sans objet)"}</div>
-                  <div className="text-xs text-slate-400 mt-0.5 line-clamp-1">{(etape.corps_html ? etape.corps_html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : etape.corps?.split("\n")[0]) || "(vide)"}</div>
-                </div>
-              </div>
-            ))}
+          <div className="overflow-hidden rounded-lg border border-slate-100">
+            <table className="w-full text-xs">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase w-8">#</th>
+                  <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase w-16">Délai</th>
+                  <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase">Objet</th>
+                  <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase hidden md:table-cell">Aperçu</th>
+                </tr>
+              </thead>
+              <tbody>
+                {seq.etapes.map((etape, i) => (
+                  <tr key={i} className="border-t border-slate-50">
+                    <td className="px-3 py-2 font-bold text-slate-400">{i + 1}</td>
+                    <td className="px-3 py-2 text-slate-500">J+{etape.jour}</td>
+                    <td className="px-3 py-2 font-medium text-slate-800 truncate max-w-[200px]">{etape.sujet || "(sans objet)"}</td>
+                    <td className="px-3 py-2 text-slate-400 truncate max-w-[300px] hidden md:table-cell">{(etape.corps_html ? etape.corps_html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : etape.corps?.split("\n")[0]) || "(vide)"}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         </div>
       ))}
     </div>
+
+    {/* Mini-modal test */}
+    {testModal && (
+      <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
+          <h3 className="text-sm font-semibold text-slate-900 mb-3">Tester la séquence</h3>
+          <p className="text-xs text-slate-500 mb-3">L'email sera envoyé immédiatement à cette adresse.</p>
+          <input value={testEmail} onChange={e => setTestEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && envoyerTest(testModal)} placeholder="email@test.com" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" autoFocus />
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setTestModal(null)} className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700">Annuler</button>
+            <button onClick={() => envoyerTest(testModal)} disabled={testLoading || !testEmail.trim()} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {testLoading ? "Envoi..." : "Envoyer le test"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
   </div>
-);
+  );
+};
 
 const VueHubspot = () => {
   const [connected, setConnected] = useState(false);
@@ -1738,7 +1809,7 @@ const VueHubspot = () => {
 };
 
 // ─── Modal Qualification Lead ──────────────────────────────────────────────────
-const ModalQualification = ({ email, onClose, onSuccess, sequences }) => {
+const ModalQualification = ({ email, onClose, onSuccess, sequences, showToast }) => {
   const [form, setForm] = useState({
     email,
     prenom: '',
@@ -1803,13 +1874,7 @@ const ModalQualification = ({ email, onClose, onSuccess, sequences }) => {
         setError(`Lead créé mais : ${result.errors.join(', ')}`);
       }
 
-      alert(`✅ Lead qualifié !\n\n` +
-        `Lead créé : ${result.lead?.email}\n` +
-        (result.hubspot_contact ? `HubSpot contact : ✅\n` : '') +
-        (result.hubspot_deal ? `HubSpot deal : ✅\n` : '') +
-        (result.hubspot_task ? `HubSpot task : ✅\n` : '') +
-        (result.sequence ? `Séquence lancée : ${result.sequence.nom}\n` : '')
-      );
+      if (showToast) showToast(`Lead qualifié : ${result.lead?.email}${result.sequence ? ` — séquence lancée` : ''}`, 'success');
 
       onSuccess();
       onClose();
@@ -1975,7 +2040,7 @@ const ZbBadge = ({ status }) => {
   );
 };
 
-const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
+const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
   const [zbKey, setZbKey] = useState("");
   const [zbConfigured, setZbConfigured] = useState(false);
   const [savingKey, setSavingKey] = useState(false);
@@ -1986,12 +2051,15 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
   const [singleEmail, setSingleEmail] = useState("");
   const [singleResult, setSingleResult] = useState(null);
   const [singleLoading, setSingleLoading] = useState(false);
+  const [validationHistory, setValidationHistory] = useState([]);
 
   // Modal qualification
   const [showQualificationModal, setShowQualificationModal] = useState(false);
   const [qualificationEmail, setQualificationEmail] = useState("");
 
   // Validation bulk
+  const [bulkSource, setBulkSource] = useState("leads"); // "leads" | "brut"
+  const [bulkRawText, setBulkRawText] = useState("");
   const [bulkMode, setBulkMode] = useState("tous"); // "tous" | "non_verifies"
   const [bulkResults, setBulkResults] = useState([]);
   const [bulkLoading, setBulkLoading] = useState(false);
@@ -2039,7 +2107,9 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
     try {
       const r = await api.post("/email-validation/single", { email: singleEmail.trim() });
       setSingleResult(r);
-
+      if (!r.error) {
+        setValidationHistory(h => [{ email: singleEmail.trim(), ...r, heure: new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) }, ...h].slice(0, 50));
+      }
     } catch(e) { setSingleResult({ error: e.message }); }
     setSingleLoading(false);
   };
@@ -2081,6 +2151,32 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
   };
 
   const stopBulk = () => { bulkAbortRef.current = true; setBulkLoading(false); };
+
+  // Validation bulk emails bruts
+  const validerBulkBrut = async () => {
+    const emails = [...new Set(bulkRawText.split(/[\n,;]+/).map(e => e.trim()).filter(e => e && e.includes('@')))];
+    if (!emails.length) { setBulkErreur("Aucun email valide trouvé"); return; }
+
+    bulkAbortRef.current = false;
+    setBulkLoading(true); setBulkResults([]); setBulkProgress(0);
+    setBulkTotal(emails.length); setBulkErreur("");
+
+    const results = [];
+    for (let i = 0; i < emails.length; i++) {
+      if (bulkAbortRef.current) break;
+      try {
+        const r = await api.post("/email-validation/single", { email: emails[i] });
+        results.push({ id: `brut-${i}`, email: emails[i], prenom: '', nom: '', hotel: '', zb: r });
+      } catch(e) {
+        results.push({ id: `brut-${i}`, email: emails[i], prenom: '', nom: '', hotel: '', zb: { status: "unknown", error: e.message } });
+      }
+      setBulkProgress(i + 1);
+      setBulkResults([...results]);
+      await new Promise(r => setTimeout(r, 250));
+    }
+    setBulkLoading(false);
+    if (!bulkAbortRef.current) chargerCredits();
+  };
 
   const STATUTS_BULK = ["tous", "valid", "invalid", "catch_all", "unknown", "spamtrap", "do_not_mail"];
   const resultsFiltres = filterBulk === "tous" ? bulkResults : bulkResults.filter(r => r.zb?.status === filterBulk);
@@ -2153,6 +2249,38 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
                 Qualifier ce lead
               </button>
             )}
+
+            {/* Historique des validations unitaires */}
+            {validationHistory.length > 0 && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <h4 className="text-xs font-medium text-slate-500">Historique ({validationHistory.length})</h4>
+                  <button onClick={() => setValidationHistory([])} className="text-xs text-slate-400 hover:text-slate-600">Effacer</button>
+                </div>
+                <div className="overflow-hidden rounded-lg border border-slate-100">
+                  <table className="w-full text-xs">
+                    <thead className="bg-slate-50">
+                      <tr>
+                        <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400">Email</th>
+                        <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400">Statut</th>
+                        <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400">Score</th>
+                        <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400">Heure</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {validationHistory.map((h, i) => (
+                        <tr key={i} className="border-t border-slate-50">
+                          <td className="px-3 py-1.5 font-mono text-slate-700">{h.email}</td>
+                          <td className="px-3 py-1.5"><ZbBadge status={h.status} /></td>
+                          <td className="px-3 py-1.5 text-slate-500">{h.quality_score ?? "—"}</td>
+                          <td className="px-3 py-1.5 text-slate-400">{h.heure}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* ── Validation bulk ── */}
@@ -2160,7 +2288,7 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
             <div className="flex items-center justify-between mb-4">
               <div>
                 <h3 className="text-sm font-semibold text-slate-800">Validation en masse</h3>
-                <p className="text-xs text-slate-400 mt-0.5">{leadsNorm.length} leads au total · {leadsNorm.filter(l => !l.statut_email).length} non vérifiés</p>
+                <p className="text-xs text-slate-400 mt-0.5">{bulkSource === "leads" ? `${leadsNorm.length} leads au total · ${leadsNorm.filter(l => !l.statut_email).length} non vérifiés` : "Coller des emails bruts"}</p>
               </div>
               {bulkResults.length > 0 && (
                 <div className="flex gap-2 text-xs">
@@ -2171,6 +2299,20 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
               )}
             </div>
 
+            {/* Source toggle */}
+            <div className="flex flex-wrap gap-3 items-center mb-4">
+              <div className="flex bg-slate-100 rounded-lg p-0.5">
+                <button onClick={() => { setBulkSource("leads"); setBulkResults([]); }} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${bulkSource === "leads" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>
+                  Leads existants
+                </button>
+                <button onClick={() => { setBulkSource("brut"); setBulkResults([]); }} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${bulkSource === "brut" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>
+                  Coller des emails
+                </button>
+              </div>
+            </div>
+
+            {/* Mode leads */}
+            {bulkSource === "leads" && (
             <div className="flex flex-wrap gap-3 items-center mb-4">
               <div className="flex bg-slate-100 rounded-lg p-0.5">
                 <button onClick={() => setBulkMode("non_verifies")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${bulkMode === "non_verifies" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>
@@ -2182,7 +2324,7 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
               </div>
               {!bulkLoading ? (
                 <button onClick={validerBulk} disabled={!leadsNorm.length} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
-                  ▶ Lancer la validation
+                  Lancer la validation
                 </button>
               ) : (
                 <div className="flex items-center gap-3">
@@ -2193,10 +2335,38 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
                   <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
                     <div className="h-full bg-slate-700 rounded-full transition-all" style={{ width: `${bulkTotal ? (bulkProgress/bulkTotal)*100 : 0}%` }} />
                   </div>
+                  <button onClick={stopBulk} className="px-3 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Arrêter</button>
                 </div>
               )}
               {bulkErreur && <span className="text-xs text-red-500">{bulkErreur}</span>}
             </div>
+            )}
+
+            {/* Mode emails bruts */}
+            {bulkSource === "brut" && (
+            <div className="mb-4 space-y-3">
+              <textarea value={bulkRawText} onChange={e => setBulkRawText(e.target.value)} rows={4} placeholder="Collez des emails (un par ligne, ou séparés par virgule / point-virgule)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              <div className="flex items-center gap-3">
+                {!bulkLoading ? (
+                  <button onClick={validerBulkBrut} disabled={!bulkRawText.trim()} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+                    Lancer la validation
+                  </button>
+                ) : (
+                  <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-2 text-sm text-slate-600">
+                      <span className="w-4 h-4 border-2 border-slate-200 border-t-slate-700 rounded-full animate-spin" />
+                      {bulkProgress} / {bulkTotal}
+                    </div>
+                    <div className="w-32 h-1.5 bg-slate-100 rounded-full overflow-hidden">
+                      <div className="h-full bg-slate-700 rounded-full transition-all" style={{ width: `${bulkTotal ? (bulkProgress/bulkTotal)*100 : 0}%` }} />
+                    </div>
+                    <button onClick={stopBulk} className="px-3 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50">Arrêter</button>
+                  </div>
+                )}
+                {bulkErreur && <span className="text-xs text-red-500">{bulkErreur}</span>}
+              </div>
+            </div>
+            )}
 
             {bulkResults.length > 0 && (
               <>
@@ -2254,6 +2424,7 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
         <ModalQualification
           email={qualificationEmail}
           sequences={sequences || []}
+          showToast={showToast}
           onClose={() => setShowQualificationModal(false)}
           onSuccess={() => {
             setShowQualificationModal(false);
@@ -2366,16 +2537,23 @@ const VueParametres = () => {
       <button onClick={sauvegarder} disabled={saving} className="px-5 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
         {saving ? "Sauvegarde..." : "Enregistrer les paramètres"}
       </button>
+
+      <VueHubspot />
     </div>
   );
 };
 
 // ─── Vue Blocklist ────────────────────────────────────────────────────────────
-const VueBlocklist = ({ onRefresh }) => {
+const VueBlocklist = ({ onRefresh, showToast }) => {
   const [blocklist, setBlocklist] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newEntry, setNewEntry] = useState({ type: 'email', value: '', raison: '' });
   const [showAdd, setShowAdd] = useState(false);
+  const [showBulk, setShowBulk] = useState(false);
+  const [bulkText, setBulkText] = useState("");
+  const [bulkType, setBulkType] = useState("email");
+  const [bulkRaison, setBulkRaison] = useState("");
+  const [bulkImporting, setBulkImporting] = useState(false);
 
   useEffect(() => { chargerBlocklist(); }, []);
 
@@ -2398,7 +2576,7 @@ const VueBlocklist = ({ onRefresh }) => {
       setShowAdd(false);
       chargerBlocklist();
     } catch (err) {
-      alert(err.message || 'Erreur lors de l\'ajout');
+      showToast(err.message || 'Erreur lors de l\'ajout', 'error');
     }
   };
 
@@ -2408,7 +2586,7 @@ const VueBlocklist = ({ onRefresh }) => {
       await api.delete(`/blocklist/${id}`);
       chargerBlocklist();
     } catch (err) {
-      alert(err.message || 'Erreur lors de la suppression');
+      showToast(err.message || 'Erreur lors de la suppression', 'error');
     }
   };
 
@@ -2417,8 +2595,27 @@ const VueBlocklist = ({ onRefresh }) => {
       await api.patch(`/blocklist/${id}/override`, { allowed });
       chargerBlocklist();
     } catch (err) {
-      alert(err.message || 'Erreur lors de la modification');
+      showToast(err.message || 'Erreur lors de la modification', 'error');
     }
+  };
+
+  const importerEnMasse = async () => {
+    const lines = bulkText.split('\n').map(l => l.trim()).filter(Boolean);
+    if (!lines.length) return;
+    setBulkImporting(true);
+    let ok = 0, erreurs = 0;
+    for (const val of lines) {
+      try {
+        await api.post('/blocklist', { type: bulkType, value: val, raison: bulkRaison });
+        ok++;
+      } catch { erreurs++; }
+    }
+    showToast(`${ok} ajouté${ok > 1 ? 's' : ''}${erreurs ? `, ${erreurs} erreur${erreurs > 1 ? 's' : ''}` : ''}`, ok > 0 ? 'success' : 'error');
+    setBulkImporting(false);
+    setBulkText("");
+    setBulkRaison("");
+    setShowBulk(false);
+    chargerBlocklist();
   };
 
   return (
@@ -2429,9 +2626,14 @@ const VueBlocklist = ({ onRefresh }) => {
           <h2 className="text-lg font-semibold text-slate-900">Liste d'exclusion d'emails</h2>
           <p className="text-sm text-slate-500 mt-1">Emails et domaines bloqués pour l'envoi automatique</p>
         </div>
-        <button onClick={() => setShowAdd(!showAdd)} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">
-          {showAdd ? 'Annuler' : '+ Ajouter une entrée'}
-        </button>
+        <div className="flex gap-2">
+          <button onClick={() => { setShowBulk(!showBulk); setShowAdd(false); }} className="px-4 py-2 border border-slate-200 text-slate-600 text-sm font-medium rounded-lg hover:bg-slate-50">
+            {showBulk ? 'Annuler' : 'Import en masse'}
+          </button>
+          <button onClick={() => { setShowAdd(!showAdd); setShowBulk(false); }} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">
+            {showAdd ? 'Annuler' : '+ Ajouter une entrée'}
+          </button>
+        </div>
       </div>
 
       {/* Formulaire d'ajout */}
@@ -2459,6 +2661,35 @@ const VueBlocklist = ({ onRefresh }) => {
           <div className="flex justify-end gap-2 mt-4">
             <button onClick={() => setShowAdd(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
             <button onClick={ajouterEntree} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">Ajouter</button>
+          </div>
+        </div>
+      )}
+
+      {/* Import en masse */}
+      {showBulk && (
+        <div className="bg-white rounded-xl border border-slate-200 p-6 space-y-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-2 block">Type</label>
+              <select value={bulkType} onChange={e => setBulkType(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                <option value="email">Emails</option>
+                <option value="domain">Domaines</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-600 mb-2 block">Raison (optionnel)</label>
+              <input value={bulkRaison} onChange={e => setBulkRaison(e.target.value)} placeholder="Concurrent, spam, etc." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-600 mb-2 block">Liste ({bulkText.split('\n').filter(l => l.trim()).length} entrées)</label>
+            <textarea value={bulkText} onChange={e => setBulkText(e.target.value)} rows={6} placeholder="Collez une liste d'emails ou domaines (un par ligne)" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          </div>
+          <div className="flex justify-end gap-2">
+            <button onClick={() => setShowBulk(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
+            <button onClick={importerEnMasse} disabled={bulkImporting || !bulkText.trim()} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+              {bulkImporting ? "Import..." : "Importer"}
+            </button>
           </div>
         </div>
       )}
@@ -2528,6 +2759,14 @@ function App() {
   const [loading, setLoading] = useState(true);
   const [editSeq, setEditSeq] = useState(null);
   const [showSeqEditor, setShowSeqEditor] = useState(false);
+  const [toast, setToast] = useState({ message: "", type: "info", visible: false });
+  const toastTimer = useRef(null);
+
+  const showToast = (message, type = "info") => {
+    clearTimeout(toastTimer.current);
+    setToast({ message, type, visible: true });
+    toastTimer.current = setTimeout(() => setToast(t => ({ ...t, visible: false })), 3000);
+  };
 
   // Charger les données au démarrage
   const charger = async () => {
@@ -2597,7 +2836,6 @@ function App() {
     { id: "leads", icon: "👥", label: "Leads" },
     { id: "sequences", icon: "📧", label: "Séquences" },
     { id: "blocklist", icon: "🚫", label: "Blocklist" },
-    { id: "hubspot", icon: "🔗", label: "HubSpot" },
     { id: "emails", icon: "✅", label: "Validation Email" },
     { id: "parametres", icon: "⚙️", label: "Paramètres" },
   ];
@@ -2612,7 +2850,11 @@ function App() {
         [contenteditable] ul { list-style-type: disc; padding-left: 20px; margin: 8px 0; }
         [contenteditable] ol { list-style-type: decimal; padding-left: 20px; margin: 8px 0; }
         [contenteditable] li { margin: 2px 0; }
+        @keyframes fade-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+        .animate-fade-in { animation: fade-in 0.2s ease-out; }
       `}</style>
+
+      <Toast toast={toast} onDismiss={() => setToast(t => ({ ...t, visible: false }))} />
 
       {showSeqEditor && <ModalEmailEditor seq={editSeq} onClose={() => { setShowSeqEditor(false); setEditSeq(null); }} onSave={saveSeq} />}
 
@@ -2648,7 +2890,7 @@ function App() {
 
       {/* Main */}
       <div className="ml-56 min-h-screen">
-        <header className="bg-white border-b border-slate-100 px-8 py-4 flex items-center justify-between sticky top-0 z-30">
+        <header className="bg-white border-b border-slate-100 shadow-sm px-8 py-4 flex items-center justify-between sticky top-0 z-30">
           <div>
             <h1 className="text-base font-semibold text-slate-900">
               {NAV.find(n => n.id === vue)?.label}
@@ -2658,7 +2900,6 @@ function App() {
               {vue === "leads" && `${leads.length} leads au total`}
               {vue === "sequences" && `${sequences.length} séquences actives`}
               {vue === "blocklist" && "Gestion des emails et domaines bloqués"}
-              {vue === "hubspot" && "Intégration CRM bidirectionnelle"}
               {vue === "emails" && "Vérification & nettoyage des adresses email"}
               {vue === "parametres" && "Configuration Brevo & envoi"}
             </p>
@@ -2674,11 +2915,10 @@ function App() {
         <main className="p-8">
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
           {vue === "dashboard" && <VueDashboard leads={leads} activites={activites} stats={stats} />}
-          {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} />}
-          {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} />}
-          {vue === "blocklist" && <VueBlocklist onRefresh={charger} />}
-          {vue === "hubspot" && <VueHubspot />}
-          {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} />}
+          {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
+          {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} showToast={showToast} />}
+          {vue === "blocklist" && <VueBlocklist onRefresh={charger} showToast={showToast} />}
+          {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} showToast={showToast} />}
           {vue === "parametres" && <VueParametres />}
         </main>
       </div>
