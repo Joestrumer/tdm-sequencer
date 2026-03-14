@@ -1200,25 +1200,23 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                   <span className={`text-xs font-semibold ${cfg.text}`}>{col}</span>
                   <span className={`ml-auto text-xs font-bold ${cfg.text} opacity-60`}>{colLeads.length}</span>
                 </div>
-                <div className="space-y-1.5 min-h-16 max-h-[calc(100vh-220px)] overflow-y-auto">
+                <div className="space-y-1 min-h-8 max-h-[calc(100vh-220px)] overflow-y-auto">
                   {colLeads.map(lead => {
                     const scoreColor = lead.score >= 80 ? "bg-emerald-500" : lead.score >= 50 ? "bg-amber-400" : "bg-slate-300";
                     return (
-                    <div key={lead.id} className="group bg-white rounded-lg border border-slate-100 p-2 shadow-sm hover:shadow-md transition-shadow cursor-pointer" onClick={() => ouvrirDetail(lead).catch(e => console.error("Erreur détail:", e))}>
-                      <div className="flex items-center gap-1.5">
-                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${scoreColor}`} title={`Score: ${lead.score}`} />
-                        <span className="text-xs font-medium text-slate-800 truncate">{lead.prenom} {lead.nom}</span>
+                    <div key={lead.id} className="group bg-white rounded-md border border-slate-100 px-2 py-1 hover:bg-slate-50 transition-colors cursor-pointer flex items-center gap-1.5" onClick={() => ouvrirDetail(lead).catch(e => console.error("Erreur détail:", e))}>
+                      <span className={`w-1.5 h-1.5 rounded-full flex-shrink-0 ${scoreColor}`} title={`Score: ${lead.score}`} />
+                      <div className="min-w-0 flex-1">
+                        <div className="text-[11px] font-medium text-slate-800 truncate leading-tight">{lead.prenom} {lead.nom}{lead.sequence ? <span className="text-blue-500 ml-1">E{(lead.etape||0)+1}</span> : ""}</div>
+                        <div className="text-[10px] text-slate-400 truncate leading-tight">{lead.hotel}</div>
                       </div>
-                      <div className="text-[11px] text-slate-500 truncate mt-0.5">{lead.hotel}</div>
-                      {lead.sequence && <div className="text-[11px] text-blue-600 truncate mt-0.5">📧 Étape {(lead.etape||0)+1}</div>}
-                      <div className="flex gap-1 mt-1 opacity-0 group-hover:opacity-100 transition-opacity" onClick={e => e.stopPropagation()}>
-                        {lead.statut !== "Désabonné" && <button onClick={() => setShowLaunch(lead)} className="text-[10px] text-blue-500 hover:text-blue-700 px-1" title="Lancer séquence">▶</button>}
-                        <button onClick={() => setEditLead(lead)} className="text-[10px] text-slate-400 hover:text-slate-600 px-1">✏️</button>
+                      <div className="flex-shrink-0 opacity-0 group-hover:opacity-100" onClick={e => e.stopPropagation()}>
+                        <button onClick={() => setEditLead(lead)} className="text-[10px] text-slate-400 hover:text-slate-600">✏️</button>
                       </div>
                     </div>
                     );
                   })}
-                  {colLeads.length === 0 && <div className="text-center py-4 text-[11px] text-slate-300 border border-dashed border-slate-100 rounded-lg">Vide</div>}
+                  {colLeads.length === 0 && <div className="text-center py-3 text-[10px] text-slate-300 border border-dashed border-slate-100 rounded-md">Vide</div>}
                 </div>
               </div>
             );
@@ -1621,24 +1619,35 @@ const VueSequences = ({ sequences, onNew, onEdit, showToast }) => {
   const envoyerTest = async (seqId) => {
     if (!testEmail.trim()) return;
     setTestLoading(true);
+    const email = testEmail.trim();
+    const seq = sequences.find(s => s.id === seqId);
+    const nbEtapes = seq?.etapes?.length || 1;
     try {
       // Chercher ou créer le lead
-      const search = await api.get(`/leads?search=${encodeURIComponent(testEmail.trim())}`);
-      const existing = (Array.isArray(search) ? search : search.leads || []).find(l => l.email === testEmail.trim());
+      const search = await api.get(`/leads?search=${encodeURIComponent(email)}`);
+      const existing = (Array.isArray(search) ? search : search.leads || []).find(l => l.email === email);
       let leadId;
       if (existing) {
         leadId = existing.id;
       } else {
-        const created = await api.post('/leads', { email: testEmail.trim(), prenom: 'Test', nom: 'Séquence', hotel: 'Test', segment: '5*' });
+        const created = await api.post('/leads', { email, prenom: 'Test', nom: 'Séquence', hotel: 'Test', segment: '5*' });
         leadId = created.id || created.lead?.id;
       }
       // Inscrire à la séquence
       await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId });
-      // Forcer l'envoi immédiat
-      await api.post('/sequences/trigger-now');
-      showToast(`Email test envoyé à ${testEmail.trim()}`, 'success');
+      // Fermer le modal immédiatement
       setTestModal(null);
       setTestEmail("");
+      setTestLoading(false);
+      showToast(`Test lancé : ${nbEtapes} email(s) vers ${email}`, 'success');
+      // Envoyer tous les emails en background avec 20s de délai
+      for (let i = 0; i < nbEtapes; i++) {
+        try {
+          await api.post('/sequences/trigger-now', { lead_ids: [leadId] });
+        } catch {}
+        if (i < nbEtapes - 1) await new Promise(r => setTimeout(r, 20000));
+      }
+      return;
     } catch (err) {
       showToast(err.message || 'Erreur lors du test', 'error');
     }

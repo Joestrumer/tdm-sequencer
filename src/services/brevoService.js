@@ -193,11 +193,10 @@ function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
   return `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#ffffff;">
-<style>ul,ol{margin:8px 0 8px 0;padding-left:20px}li{margin:3px 0;font-size:14px;line-height:1.65;color:#1a1a1a}a{color:#aa8d3e}</style>
-<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.65;color:#1a1a1a;padding:16px 20px;max-width:680px;margin:0 auto;">
-  <div>${html}</div>
-  <br>
-  <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:8px;">
+<style>ul,ol{margin:8px 0 8px 0;padding-left:20px}li{margin:3px 0;font-size:14px;line-height:1.5;color:#1a1a1a}a{color:#aa8d3e}</style>
+<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;text-align:left;padding:16px 20px;max-width:680px;">
+  <div style="text-align:left;">${html}</div>
+  <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:16px;">
     ${SIGNATURE_HUGO}
   </div>
   ${unsubBlock}
