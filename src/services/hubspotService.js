@@ -160,6 +160,7 @@ async function syncContact(db, lead) {
         lastname: lead.nom,
         company: lead.hotel,
         city: lead.ville,
+        jobtitle: lead.poste || '',
         hubspot_owner_id: HUGO_OWNER_ID,
       }
     };

@@ -18,8 +18,10 @@ let db; // Injecté par initialiser()
 function prochaineDateEnvoi(joursDelai) {
   const heureDebut  = parseInt(process.env.SEND_HOUR_START) || 8;
   const joursActifs = (process.env.ACTIVE_DAYS || '1,2,3,4,5').split(',').map(Number);
+  const fuseau = process.env.FUSEAU || 'Europe/Paris';
 
-  let date = new Date();
+  // Travailler en heure locale du fuseau configuré
+  let date = new Date(new Date().toLocaleString('en-US', { timeZone: fuseau }));
   date.setDate(date.getDate() + joursDelai);
 
   // Avancer au prochain jour ouvré si nécessaire

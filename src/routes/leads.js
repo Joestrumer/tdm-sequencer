@@ -81,7 +81,7 @@ module.exports = (db) => {
   // POST /api/leads — Créer un lead
   router.post('/', async (req, res) => {
     try {
-      const { prenom, nom, email, hotel, ville, segment, tags, company_hubspot_id } = req.body;
+      const { prenom, nom, email, hotel, ville, segment, tags, poste, company_hubspot_id } = req.body;
       if (!email || !hotel || !prenom) return res.status(400).json({ erreur: 'prenom, email et hotel sont requis' });
 
       // Normaliser tags : accepte string JSON ou tableau
@@ -89,9 +89,9 @@ module.exports = (db) => {
 
       const id = uuidv4();
       db.prepare(`
-        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', tagsStr);
+        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', tagsStr, poste || null);
 
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
 
@@ -119,7 +119,7 @@ module.exports = (db) => {
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
       if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
 
-      const { prenom, nom, email, hotel, ville, segment, tags, statut, score } = req.body;
+      const { prenom, nom, email, hotel, ville, segment, tags, statut, score, poste } = req.body;
       db.prepare(`
         UPDATE leads SET
           prenom = COALESCE(?, prenom),
@@ -131,9 +131,10 @@ module.exports = (db) => {
           tags = COALESCE(?, tags),
           statut = COALESCE(?, statut),
           score = COALESCE(?, score),
+          poste = COALESCE(?, poste),
           updated_at = datetime('now')
         WHERE id = ?
-      `).run(prenom, nom, email, hotel, ville, segment, tags ? JSON.stringify(tags) : null, statut, score, req.params.id);
+      `).run(prenom, nom, email, hotel, ville, segment, tags ? JSON.stringify(tags) : null, statut, score, poste, req.params.id);
 
       res.json(db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id));
     } catch (err) {

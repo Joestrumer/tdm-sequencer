@@ -55,7 +55,7 @@ function relTime(iso) {
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 
 const ModalAddLead = ({ onClose, onAdd }) => {
-  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*" });
+  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -94,7 +94,7 @@ const ModalAddLead = ({ onClose, onAdd }) => {
   };
 
   const selectionnerContact = (contact) => {
-    setForm(f => ({ ...f, prenom: contact.prenom, nom: contact.nom, email: contact.email }));
+    setForm(f => ({ ...f, prenom: contact.prenom, nom: contact.nom, email: contact.email, poste: contact.poste || "" }));
     setContactsCompany([]);
   };
 
@@ -173,7 +173,7 @@ const ModalAddLead = ({ onClose, onAdd }) => {
                 </div>
               ))}
             </div>
-            {[["hotel","Établissement"],["ville","Ville"],["email","Email"]].map(([k,l]) => (
+            {[["hotel","Établissement"],["ville","Ville"],["email","Email"],["poste","Poste / Fonction"]].map(([k,l]) => (
               <div key={k} className="mt-3">
                 <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
                 <input type={k === "email" ? "email" : "text"} value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
@@ -757,7 +757,7 @@ const VueDashboard = ({ leads, activites, stats }) => {
 
 // ─── Modal édition lead ────────────────────────────────────────────────────
 const ModalEditLead = ({ lead, onClose, onSave }) => {
-  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau" });
+  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -784,7 +784,7 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
               <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
             ))}
           </div>
-          {[["Email","email"],["Établissement","hotel"],["Ville","ville"]].map(([l,k]) => (
+          {[["Email","email"],["Établissement","hotel"],["Ville","ville"],["Poste / Fonction","poste"]].map(([l,k]) => (
             <div key={k}><label className="text-xs text-slate-500 mb-1 block">{l}</label>
             <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
           ))}
@@ -1746,6 +1746,7 @@ const ModalQualification = ({ email, onClose, onSuccess, sequences }) => {
     hotel: '',
     ville: '',
     segment: '5*',
+    poste: '',
     company_hubspot_id: null,
     create_deal: false,
     deal_amount: 0,
@@ -1880,6 +1881,10 @@ const ModalQualification = ({ email, onClose, onSuccess, sequences }) => {
                 <label className="text-xs text-slate-500 mb-1 block">Ville</label>
                 <input value={form.ville} onChange={e => set('ville', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
               </div>
+            </div>
+            <div className="mt-3">
+              <label className="text-xs text-slate-500 mb-1 block">Poste / Fonction</label>
+              <input value={form.poste} onChange={e => set('poste', e.target.value)} placeholder="Directeur, Spa Manager..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div className="mt-3">
               <label className="text-xs text-slate-500 mb-1 block">Segment</label>
@@ -2035,13 +2040,13 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
       const r = await api.post("/email-validation/single", { email: singleEmail.trim() });
       setSingleResult(r);
 
-      // Si l'email est valide, proposer la qualification
-      if (r.status === 'valid') {
-        setQualificationEmail(singleEmail.trim());
-        setShowQualificationModal(true);
-      }
     } catch(e) { setSingleResult({ error: e.message }); }
     setSingleLoading(false);
+  };
+
+  const ouvrirQualification = () => {
+    setQualificationEmail(singleEmail.trim());
+    setShowQualificationModal(true);
   };
 
   // Validation bulk
@@ -2139,6 +2144,15 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
               </div>
             )}
             {singleResult?.error && <p className="mt-3 text-xs text-red-500">✗ {singleResult.error}</p>}
+            {singleResult && !singleResult.error && singleResult.status !== 'spamtrap' && singleResult.status !== 'invalid' && (
+              <button onClick={ouvrirQualification} className={`mt-3 px-4 py-2 text-sm font-medium rounded-lg transition-colors ${
+                singleResult.status === 'valid' || singleResult.status === 'catch_all'
+                  ? 'bg-emerald-600 hover:bg-emerald-700 text-white'
+                  : 'bg-amber-500 hover:bg-amber-600 text-white'
+              }`}>
+                Qualifier ce lead
+              </button>
+            )}
           </div>
 
           {/* ── Validation bulk ── */}
@@ -2255,7 +2269,7 @@ const VueValidationEmail = ({ leads, sequences, onRefresh }) => {
 
 const VueParametres = () => {
   const [brevoKey, setBrevoKey] = useState("");
-  const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"] });
+  const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"], fuseau: "Europe/Paris" });
   const [brevoConfigured, setBrevoConfigured] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -2275,6 +2289,7 @@ const VueParametres = () => {
       if (cfg.heure_debut) setLimites(l => ({ ...l, heureDebut: cfg.heure_debut }));
       if (cfg.heure_fin) setLimites(l => ({ ...l, heureFin: cfg.heure_fin }));
       if (cfg.jours_actifs) setLimites(l => ({ ...l, joursActifs: cfg.jours_actifs.split(',') }));
+      if (cfg.fuseau) setLimites(l => ({ ...l, fuseau: cfg.fuseau }));
     }).catch(() => {});
   }, []);
 
@@ -2287,6 +2302,7 @@ const VueParametres = () => {
         heure_debut: limites.heureDebut,
         heure_fin: limites.heureFin,
         jours_actifs: limites.joursActifs.join(','),
+        fuseau: limites.fuseau,
       };
       if (brevoKey) {
         payload.brevo_api_key = brevoKey;
@@ -2337,6 +2353,12 @@ const VueParametres = () => {
               <button key={k} onClick={() => toggleJour(k)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${limites.joursActifs.includes(k) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{l}</button>
             ))}
           </div>
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Fuseau horaire</label>
+          <select value={limites.fuseau} onChange={e => setLimites(l => ({ ...l, fuseau: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+            {["Europe/Paris","Europe/London","Europe/Berlin","Europe/Madrid","Europe/Rome","Europe/Zurich","Europe/Brussels","America/New_York","America/Chicago","America/Los_Angeles","Asia/Dubai","Asia/Tokyo","Asia/Shanghai","Pacific/Auckland"].map(tz => <option key={tz} value={tz}>{tz}</option>)}
+          </select>
         </div>
       </div>
 
@@ -2587,6 +2609,9 @@ function App() {
         * { font-family: 'DM Sans', sans-serif; }
         .font-mono { font-family: 'DM Mono', monospace !important; }
         .line-clamp-1 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
+        [contenteditable] ul { list-style-type: disc; padding-left: 20px; margin: 8px 0; }
+        [contenteditable] ol { list-style-type: decimal; padding-left: 20px; margin: 8px 0; }
+        [contenteditable] li { margin: 2px 0; }
       `}</style>
 
       {showSeqEditor && <ModalEmailEditor seq={editSeq} onClose={() => { setShowSeqEditor(false); setEditSeq(null); }} onSave={saveSeq} />}

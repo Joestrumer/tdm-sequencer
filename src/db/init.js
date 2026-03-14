@@ -142,6 +142,7 @@ const migrations = [
   'ALTER TABLE sequences ADD COLUMN options      TEXT',
   'ALTER TABLE leads     ADD COLUMN statut_email TEXT',
   'ALTER TABLE leads     ADD COLUMN email_score  REAL',
+  'ALTER TABLE leads     ADD COLUMN poste        TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (_) { /* colonne déjà présente */ }

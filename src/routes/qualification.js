@@ -23,6 +23,7 @@ module.exports = (db) => {
         hotel,
         ville,
         segment,
+        poste,
         company_hubspot_id,
         create_deal,
         deal_amount,
@@ -50,8 +51,8 @@ module.exports = (db) => {
       const leadId = uuidv4();
       try {
         db.prepare(`
-          INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, statut)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Nouveau')
+          INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, statut, poste)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Nouveau', ?)
         `).run(
           leadId,
           prenom,
@@ -60,7 +61,8 @@ module.exports = (db) => {
           hotel,
           ville || '',
           segment || '5*',
-          JSON.stringify([segment || '5*'])
+          JSON.stringify([segment || '5*']),
+          poste || null
         );
 
         results.lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);

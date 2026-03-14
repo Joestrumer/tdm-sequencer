@@ -194,7 +194,7 @@ function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
 <html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#ffffff;">
 <style>ul,ol{margin:8px 0 8px 0;padding-left:20px}li{margin:3px 0;font-size:14px;line-height:1.65;color:#1a1a1a}a{color:#aa8d3e}</style>
-<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.65;color:#1a1a1a;padding:0;max-width:680px;">
+<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.65;color:#1a1a1a;padding:16px 20px;max-width:680px;margin:0 auto;">
   <div>${html}</div>
   <br>
   <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:8px;">
@@ -353,9 +353,10 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
 
 // ─── Vérifier si on est dans la fenêtre d'envoi ──────────────────────────────
 function estDansLaFenetreEnvoi() {
-  const now = new Date();
-  const heure = now.getHours();
-  const jourSemaine = now.getDay(); // 0=dim, 1=lun, ..., 6=sam
+  const fuseau = process.env.FUSEAU || 'Europe/Paris';
+  const nowLocal = new Date(new Date().toLocaleString('en-US', { timeZone: fuseau }));
+  const heure = nowLocal.getHours();
+  const jourSemaine = nowLocal.getDay(); // 0=dim, 1=lun, ..., 6=sam
 
   const heureDebut = parseInt(process.env.SEND_HOUR_START) || 8;
   const heureFin = parseInt(process.env.SEND_HOUR_END) || 18;
