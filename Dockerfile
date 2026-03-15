@@ -24,8 +24,8 @@ COPY . .
 # Créer le dossier data
 RUN mkdir -p /app/data
 
-# Initialiser la DB + seed données factures
-RUN node src/db/init.js && node src/db/seedFactures.js
+# Initialiser la DB (le seed factures se lance automatiquement au démarrage si nécessaire)
+RUN node src/db/init.js
 
 # Port exposé
 EXPOSE 3001
