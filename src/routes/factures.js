@@ -209,7 +209,7 @@ module.exports = (db) => {
 
   router.post('/invoices', async (req, res) => {
     try {
-      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts, priceMode } = req.body;
+      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts, priceMode, logGSheets } = req.body;
 
       const catalog = getCatalogMap();
       const productIdMappings = getCodeMappings('product_id');
@@ -368,6 +368,38 @@ module.exports = (db) => {
           db.prepare('UPDATE vf_invoice_logs SET email_sent = 1 WHERE vf_invoice_id = ?').run(String(result.id));
         } catch (emailErr) {
           console.error('⚠️ Erreur envoi email:', emailErr.message);
+        }
+      }
+
+      // Log Google Sheets automatique si demandé
+      if (logGSheets !== false) {
+        try {
+          const gsheetsService = require('../services/googlesheetsService')(db);
+          const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
+          const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
+
+          if (spreadsheetId) {
+            const gsProducts = (products || []).map(p => ({
+              ref: p.ref,
+              quantity: p.quantite || p.quantity || 1,
+              priceHT: p.prix_ht || catalog[normalizeRef(p.ref)]?.prix_ht || 0,
+              csvRef: catalog[normalizeRef(p.ref)]?.csv_ref,
+            }));
+
+            const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
+              clientName: client.name,
+              invoiceNumber: result.number || '',
+              invoiceDate: new Date().toISOString().split('T')[0],
+              products: gsProducts,
+            }, canonicalClientName);
+
+            console.log('📊 GSheets log:', JSON.stringify(gsResult));
+            if (gsResult.ok) {
+              db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));
+            }
+          }
+        } catch (gsErr) {
+          console.error('⚠️ Erreur log GSheets:', gsErr.message);
         }
       }
 

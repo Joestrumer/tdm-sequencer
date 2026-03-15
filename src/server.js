@@ -11,7 +11,8 @@ const db = require('./db/init.js');
 try {
   const check = db.prepare("SELECT COUNT(*) as n FROM vf_code_mappings WHERE type = 'product_id' AND code_source = 'P037-5000-41.00'").get();
   const gsheetsCreds = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
-  if (!check || check.n === 0 || !gsheetsCreds?.valeur) {
+  const credsValid = gsheetsCreds?.valeur && gsheetsCreds.valeur.length > 100 && gsheetsCreds.valeur.includes('private_key');
+  if (!check || check.n === 0 || !credsValid) {
     console.log('🌱 Données factures manquantes ou incomplètes, lancement du seed...');
     require('child_process').execSync('node src/db/seedFactures.js', {
       cwd: __dirname + '/..',

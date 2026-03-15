@@ -2658,22 +2658,12 @@ const FacturesSingle = ({ showToast }) => {
         documentType,
         orderNumber,
         sendEmail,
+        logGSheets,
       });
       if (res.erreur) throw new Error(res.erreur);
       setResult(res);
       setStep(5);
       showToast('Facture créée avec succès !', 'success');
-
-      // Log GSheets si demandé
-      if (logGSheets) {
-        try {
-          await api.post('/factures/log-gsheets', {
-            invoiceData: { ...res, montant_ht: calculation?.total_ht, client_name: selectedClient?.name, vf_invoice_id: String(res.id) },
-          });
-        } catch (gsErr) {
-          showToast('GSheets: ' + gsErr.message, 'error');
-        }
-      }
     } catch (err) {
       setError(err.message);
       showToast('Erreur: ' + err.message, 'error');
