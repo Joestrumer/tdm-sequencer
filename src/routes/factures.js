@@ -31,6 +31,20 @@ module.exports = (db) => {
     return db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(clientName);
   }
 
+  function getClientMappings() {
+    return db.prepare('SELECT * FROM vf_client_mappings').all();
+  }
+
+  function resolveCanonicalClientName(vfName) {
+    if (!vfName) return vfName;
+    const mapping = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
+    return (mapping && mapping.file_name) || vfName;
+  }
+
+  function getForcedPrices() {
+    return getCodeMappings('forced_price');
+  }
+
   function getShippingNames() {
     const rows = db.prepare("SELECT code_source, valeur FROM vf_code_mappings WHERE type = 'shipping_name'").all();
     const map = {};
@@ -195,36 +209,117 @@ module.exports = (db) => {
 
   router.post('/invoices', async (req, res) => {
     try {
-      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts } = req.body;
+      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts, priceMode } = req.body;
 
       const catalog = getCatalogMap();
       const productIdMappings = getCodeMappings('product_id');
       const productNameMappings = getCodeMappings('product_name');
+      const codeMappings = getCodeMappings('code_alias');
+      const forcedPrices = getForcedPrices();
 
-      // Construire les positions de la facture
+      // Résoudre le nom canonique du client pour les remises
+      const canonicalClientName = resolveCanonicalClientName(client.name);
+      const discountsDb = canonicalClientName ? getDiscountsForClient(canonicalClientName) : [];
+
+      // Construire les positions de la facture (logique HTML)
       const positions = [];
-      const allProducts = [...(products || []), ...(fraisPort || [])];
+      let hasDiscount = false;
+      const allProducts = [...(products || [])];
 
       for (const p of allProducts) {
-        const vfProduct = findVFProduct(p.ref, p.prix_ht, catalog, getCodeMappings('code_alias'), productIdMappings, productNameMappings);
+        const ref = normalizeRef(p.ref);
+        const catEntry = catalog[ref];
+        const qty = p.quantite || p.quantity || 1;
+        const taxRate = p.tva || catEntry?.tva || 20;
+        const priceHT = p.prix_ht || catEntry?.prix_ht || 0;
 
+        // Résoudre la remise : d'abord celle passée explicitement, sinon DB
+        let discount = p.discount || 0;
+        if (!discount && canonicalClientName) {
+          discount = calculerRemise(canonicalClientName, ref, discountsDb);
+        }
+        if (discount > 0) hasDiscount = true;
+
+        // Résoudre le produit VF via la clé REF-PRIX (comme le HTML)
+        const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
+
+        // Prix forcé TTC
+        const forcedEntry = forcedPrices.find(f => normalizeRef(f.code_source) === ref);
+        const forcedPriceTTC = forcedEntry ? parseFloat(forcedEntry.valeur) : null;
+
+        // Déterminer le prix HT à utiliser
+        let priceToUse = priceHT;
+        if (forcedPriceTTC) {
+          priceToUse = forcedPriceTTC / (1 + taxRate / 100);
+        }
+
+        // Calcul du total_price_gross (TTC sans remise)
+        const totalPriceNet = priceToUse * qty;
+        const totalPriceGross = forcedPriceTTC
+          ? (forcedPriceTTC * qty)
+          : (totalPriceNet * (1 + taxRate / 100));
+
+        // Construire la position (comme le HTML)
         const position = {
-          quantity: p.quantite || p.quantity || 1,
-          total_price_gross: (p.prix_ht || 0) * (p.quantite || p.quantity || 1),
-          tax: p.tva || 20,
-          discount: (p.discount || 0).toString(),
+          product_id: vfProduct.productId || undefined,
+          name: vfProduct.productName || p.nom || p.name || vfProduct.ref,
+          code: p.ref || vfProduct.vfRef || ref,
+          tax: taxRate,
+          quantity: qty,
         };
 
-        if (vfProduct.productId) position.product_id = vfProduct.productId;
-        if (vfProduct.productName) position.name = vfProduct.productName;
-        else position.name = p.nom || p.name || vfProduct.ref;
+        // Remise : discount_percent, JAMAIS total_price_gross quand discount > 0
+        if (discount > 0) {
+          position.discount_percent = discount;
+        }
+
+        // Forcer le prix explicitement si : prix forcé TTC, ou mode prix commande
+        if (forcedPriceTTC || priceMode === 'order') {
+          position.price_net = priceToUse.toFixed(2);
+          // Ne passer total_price_gross QUE s'il n'y a PAS de discount
+          if (discount === 0) {
+            position.total_price_gross = totalPriceGross.toFixed(2);
+          }
+        }
+
+        // Nettoyer les undefined
+        if (!position.product_id) delete position.product_id;
 
         positions.push(position);
       }
 
+      // Frais de port (toujours avec price_net + total_price_gross)
+      for (const f of (fraisPort || [])) {
+        const ref = normalizeRef(f.ref);
+        const qty = f.quantite || f.quantity || 1;
+        const taxRate = f.tva || 20;
+        const priceHT = f.prix_ht || 0;
+        const gross = priceHT * qty * (1 + taxRate / 100);
+
+        const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
+
+        const position = {
+          name: vfProduct.productName || f.nom || f.name || ref,
+          code: f.ref || ref,
+          price_net: Number(priceHT).toFixed(2),
+          total_price_gross: Number(gross).toFixed(2),
+          tax: taxRate,
+          quantity: qty,
+        };
+        if (vfProduct.productId) position.product_id = vfProduct.productId;
+
+        positions.push(position);
+      }
+
+      const today = new Date().toISOString().split('T')[0];
+      const paymentTo = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
       const invoiceData = {
         kind: documentType === 'proforma' ? 'proforma' : 'vat',
         number: null,
+        sell_date: today,
+        issue_date: today,
+        payment_to: paymentTo,
         department_id: parseInt(process.env.VF_DEPARTMENT_ID) || 1553025,
         buyer_name: client.name || '',
         buyer_tax_no: client.tax_no || '',
@@ -234,6 +329,8 @@ module.exports = (db) => {
         buyer_country: client.country || 'FR',
         buyer_email: client.email || '',
         buyer_phone: client.phone || '',
+        show_discount: hasDiscount,
+        discount_kind: hasDiscount ? 'percent_unit' : null,
         positions,
         oid: orderNumber || '',
       };
@@ -243,7 +340,15 @@ module.exports = (db) => {
       const result = await vfService.creerFacture(invoiceData);
 
       // Logger dans la DB
-      const montantHT = positions.reduce((s, p) => s + (p.total_price_gross || 0), 0);
+      const montantHT = (products || []).reduce((s, p) => {
+        const ref = normalizeRef(p.ref);
+        const catEntry = catalog[ref];
+        const priceHT = p.prix_ht || catEntry?.prix_ht || 0;
+        const qty = p.quantite || p.quantity || 1;
+        const discount = p.discount || 0;
+        return s + priceHT * (1 - discount / 100) * qty;
+      }, 0);
+      const montantTTC = montantHT * 1.2;
       db.prepare(`
         INSERT INTO vf_invoice_logs (vf_invoice_id, vf_invoice_number, client_name, mode, montant_ht, montant_ttc, meta)
         VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -252,9 +357,9 @@ module.exports = (db) => {
         result.number || '',
         client.name || '',
         documentType || 'vat',
-        montantHT,
-        montantHT * 1.2,
-        JSON.stringify({ orderNumber }),
+        Math.round(montantHT * 100) / 100,
+        Math.round(montantTTC * 100) / 100,
+        JSON.stringify({ orderNumber, canonicalClientName }),
       );
 
       // Envoyer email si demandé
@@ -370,22 +475,31 @@ module.exports = (db) => {
 
       // Lire config GSheets
       const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
-      const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Suivi';
+      const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
 
       if (!spreadsheetId) {
         return res.status(400).json({ erreur: 'Spreadsheet ID non configuré' });
       }
 
-      // Résoudre le nom partenaire
-      const partners = getPartners();
-      const canonName = partnerName || mapPartnerNameToCanon(invoiceData.client_name || '', partners);
+      // Résoudre le nom partenaire via clientNameMapping d'abord, puis fallback fuzzy
+      let canonName = partnerName;
+      if (!canonName) {
+        const clientName = invoiceData.clientName || invoiceData.client_name || '';
+        canonName = resolveCanonicalClientName(clientName);
+        if (canonName === clientName) {
+          // Fallback : essayer le fuzzy matching
+          const partners = getPartners();
+          canonName = mapPartnerNameToCanon(clientName, partners);
+        }
+      }
 
       const result = await gsheetsService.logInvoice(spreadsheetId, sheetName, invoiceData, canonName);
 
       // Mettre à jour le log
-      if (invoiceData.vf_invoice_id) {
+      const vfInvoiceId = invoiceData.vf_invoice_id || invoiceData.vfInvoiceId;
+      if (vfInvoiceId) {
         db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?')
-          .run(invoiceData.vf_invoice_id);
+          .run(String(vfInvoiceId));
       }
 
       res.json(result);
@@ -421,7 +535,9 @@ module.exports = (db) => {
     try {
       const { client } = req.query;
       if (!client) return res.json([]);
-      res.json(getDiscountsForClient(client));
+      // Résoudre le nom canonique avant de chercher les remises
+      const canonName = resolveCanonicalClientName(client);
+      res.json(getDiscountsForClient(canonName));
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
