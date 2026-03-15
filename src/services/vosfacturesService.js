@@ -2,7 +2,7 @@
  * vosfacturesService.js — Proxy VosFactures API
  */
 
-const VF_BASE_URL = 'https://app.vosfactures.fr';
+const VF_BASE_URL = process.env.VF_BASE_URL || 'https://terredemars.vosfactures.fr';
 
 function getToken(db) {
   const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('vf_api_token');
@@ -72,7 +72,7 @@ const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 module.exports = (db) => ({
   async testConnexion() {
     try {
-      await vfFetch('/departments.json', { timeout: 8000 }, db);
+      await vfFetch('/invoices.json?page=1&per_page=1', { timeout: 8000 }, db);
       return { ok: true };
     } catch (e) {
       return { ok: false, erreur: e.message };
