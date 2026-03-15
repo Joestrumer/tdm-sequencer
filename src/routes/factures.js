@@ -241,7 +241,10 @@ module.exports = (db) => {
         if (discount > 0) hasDiscount = true;
 
         // Résoudre le produit VF via la clé REF-PRIX (comme le HTML)
+        const lookupKey = `${ref}-${parseFloat(priceHT).toFixed(2)}`;
+        console.log(`🔍 findVFProduct: ref=${p.ref} → normalized=${ref}, prix_ht=${priceHT}, lookupKey=${lookupKey}`);
         const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
+        console.log(`   → productId=${vfProduct.productId}, productName=${vfProduct.productName}`);
 
         // Prix forcé TTC
         const forcedEntry = forcedPrices.find(f => normalizeRef(f.code_source) === ref);
