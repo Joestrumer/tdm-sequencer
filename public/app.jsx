@@ -2485,6 +2485,852 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
   );
 };
 
+// ─── Vue Factures ─────────────────────────────────────────────────────────────
+const VueFactures = ({ showToast }) => {
+  const [tab, setTab] = useState("commande");
+  const [vfStatus, setVfStatus] = useState(null);
+  const [gsheetsStatus, setGsheetsStatus] = useState(null);
+
+  useEffect(() => {
+    api.get('/factures/status').then(setVfStatus).catch(() => setVfStatus({ ok: false }));
+    api.get('/gsheets/status').then(setGsheetsStatus).catch(() => setGsheetsStatus({ ok: false }));
+  }, []);
+
+  const tabs = [
+    { id: "commande", label: "Commande", icon: "📋" },
+    { id: "batch", label: "Batch", icon: "📦" },
+    { id: "echantillons", label: "Échantillons", icon: "🎁" },
+    { id: "relances", label: "Relances", icon: "📨" },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Status bar */}
+      <div className="flex items-center gap-4 text-xs">
+        <div className={`flex items-center gap-1.5 ${vfStatus?.ok ? 'text-emerald-600' : 'text-slate-400'}`}>
+          <span className={`w-2 h-2 rounded-full ${vfStatus?.ok ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+          VosFactures {vfStatus?.ok ? 'connecté' : 'non connecté'}
+        </div>
+        <div className={`flex items-center gap-1.5 ${gsheetsStatus?.ok ? 'text-emerald-600' : 'text-slate-400'}`}>
+          <span className={`w-2 h-2 rounded-full ${gsheetsStatus?.ok ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+          Google Sheets {gsheetsStatus?.ok ? 'connecté' : 'non connecté'}
+        </div>
+      </div>
+
+      {/* Tabs */}
+      <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${tab === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <span>{t.icon}</span> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Content */}
+      {tab === "commande" && <FacturesSingle showToast={showToast} />}
+      {tab === "batch" && <FacturesBatch showToast={showToast} />}
+      {tab === "echantillons" && <FacturesSamples showToast={showToast} />}
+      {tab === "relances" && <FacturesReminders showToast={showToast} />}
+    </div>
+  );
+};
+
+// ─── Factures Single (Step Wizard) ────────────────────────────────────────────
+const FacturesSingle = ({ showToast }) => {
+  const [step, setStep] = useState(1); // 1=upload, 2=match, 3=client, 4=review, 5=done
+  const [rawLines, setRawLines] = useState([]);
+  const [matchedProducts, setMatchedProducts] = useState([]);
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [documentType, setDocumentType] = useState('vat');
+  const [orderNumber, setOrderNumber] = useState('');
+  const [manualText, setManualText] = useState('');
+  const [shippingId, setShippingId] = useState('1302');
+  const [includeShipping, setIncludeShipping] = useState(true);
+  const [sendEmail, setSendEmail] = useState(true);
+  const [logGSheets, setLogGSheets] = useState(true);
+  const [calculation, setCalculation] = useState(null);
+  const [result, setResult] = useState(null);
+  const [processing, setProcessing] = useState(false);
+  const [error, setError] = useState(null);
+
+  // Step 1: Upload / Saisie manuelle
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    setError(null);
+
+    try {
+      if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
+        const data = new Uint8Array(await file.arrayBuffer());
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+
+        const products = [];
+        for (const row of json) {
+          if (!row[0] || row[0] === 'Ref 500ml' || row[0] === 'Menu Déroulant' || row[0] === 'TOTAL') continue;
+          const rawRef = String(row[0] || '').trim();
+          const qtyUnits = parseFloat(row[6]) || 0;
+          const qtyCartons = parseFloat(row[5]) || 0;
+          const quantity = qtyUnits > 0 ? qtyUnits : qtyCartons;
+          let priceHT = parseFloat(String(row[3] || '0').replace(/[€\s]/g, '').replace(',', '.')) || 0;
+          const discountStr = row[9] ? String(row[9]).trim() : '';
+          let discount = 0;
+          if (discountStr && discountStr !== '-') {
+            discount = parseFloat(discountStr.replace('%', '').replace(',', '.')) || 0;
+            if (discount > 0 && discount < 1) discount *= 100;
+          }
+          if (rawRef && quantity > 0) products.push({ ref: rawRef, quantity, priceHT, discount });
+        }
+
+        if (products.length === 0) { setError('Aucun produit trouvé dans le fichier'); return; }
+        setRawLines(products);
+        matchProducts(products);
+      } else if (file.name.endsWith('.pdf')) {
+        showToast('Parsing PDF en cours...', 'info');
+        const arrayBuf = await file.arrayBuffer();
+        const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
+        let text = '';
+        for (let i = 1; i <= pdf.numPages; i++) {
+          const page = await pdf.getPage(i);
+          const content = await page.getTextContent();
+          text += content.items.map(item => item.str).join(' ') + '\n';
+        }
+        // Envoyer au backend pour parsing
+        const res = await api.post('/factures/match-products', { text });
+        if (res.erreur) { setError(res.erreur); return; }
+        setMatchedProducts(res);
+        setStep(2);
+      }
+    } catch (err) {
+      setError('Erreur lecture fichier: ' + err.message);
+    }
+  };
+
+  const handleManualSubmit = async () => {
+    if (!manualText.trim()) return;
+    setError(null);
+    try {
+      const res = await api.post('/factures/match-products', { text: manualText });
+      if (res.erreur) { setError(res.erreur); return; }
+      setMatchedProducts(res);
+      setStep(2);
+    } catch (err) {
+      setError('Erreur: ' + err.message);
+    }
+  };
+
+  const matchProducts = async (lines) => {
+    try {
+      const res = await api.post('/factures/match-products', { lignes: lines });
+      if (res.erreur) { setError(res.erreur); return; }
+      setMatchedProducts(res);
+      setStep(2);
+    } catch (err) {
+      setError('Erreur matching: ' + err.message);
+    }
+  };
+
+  // Step 3: Calculate
+  const doCalculation = async (client) => {
+    try {
+      const res = await api.post('/factures/calculate', {
+        products: matchedProducts,
+        clientName: client?.name,
+        includeShipping,
+      });
+      setCalculation(res);
+    } catch (err) {
+      showToast('Erreur calcul: ' + err.message, 'error');
+    }
+  };
+
+  // Step 4: Create
+  const createInvoice = async () => {
+    setProcessing(true);
+    setError(null);
+    try {
+      const res = await api.post('/factures/invoices', {
+        client: selectedClient,
+        products: calculation?.products || matchedProducts,
+        fraisPort: calculation?.frais_port || [],
+        documentType,
+        orderNumber,
+        sendEmail,
+      });
+      if (res.erreur) throw new Error(res.erreur);
+      setResult(res);
+      setStep(5);
+      showToast('Facture créée avec succès !', 'success');
+
+      // Log GSheets si demandé
+      if (logGSheets) {
+        try {
+          await api.post('/factures/log-gsheets', {
+            invoiceData: { ...res, montant_ht: calculation?.total_ht, client_name: selectedClient?.name, vf_invoice_id: String(res.id) },
+          });
+        } catch (gsErr) {
+          showToast('GSheets: ' + gsErr.message, 'error');
+        }
+      }
+    } catch (err) {
+      setError(err.message);
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    setProcessing(false);
+  };
+
+  const downloadCSV = async () => {
+    try {
+      const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const res = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceData: { ...result, products: calculation?.products || matchedProducts }, client: selectedClient }),
+      });
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url; a.download = `logisticien-${result?.number || 'facture'}.csv`; a.click();
+      URL.revokeObjectURL(url);
+      showToast('CSV téléchargé', 'success');
+    } catch (err) {
+      showToast('Erreur CSV: ' + err.message, 'error');
+    }
+  };
+
+  const steps = [
+    { n: 1, label: 'Upload' }, { n: 2, label: 'Match' },
+    { n: 3, label: 'Client' }, { n: 4, label: 'Review' }, { n: 5, label: 'Terminé' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Step indicator */}
+      <div className="flex items-center gap-2">
+        {steps.map((s, i) => (
+          <React.Fragment key={s.n}>
+            {i > 0 && <div className={`h-px flex-1 ${step >= s.n ? 'bg-slate-900' : 'bg-slate-200'}`} />}
+            <div className={`flex items-center gap-1.5 text-xs font-medium ${step >= s.n ? 'text-slate-900' : 'text-slate-400'}`}>
+              <span className={`w-6 h-6 rounded-full flex items-center justify-center text-xs ${step === s.n ? 'bg-slate-900 text-white' : step > s.n ? 'bg-emerald-500 text-white' : 'bg-slate-100 text-slate-400'}`}>{step > s.n ? '✓' : s.n}</span>
+              <span className="hidden md:inline">{s.label}</span>
+            </div>
+          </React.Fragment>
+        ))}
+      </div>
+
+      {error && <div className="bg-red-50 border border-red-200 rounded-xl p-3 text-sm text-red-700">{error}</div>}
+
+      {/* Step 1: Upload */}
+      {step === 1 && (
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+          <h3 className="text-sm font-semibold text-slate-800">Importer un bon de commande</h3>
+          <div className="border-2 border-dashed border-slate-200 rounded-xl p-8 text-center hover:border-slate-400 transition-colors cursor-pointer"
+               onClick={() => document.getElementById('file-upload-input')?.click()}>
+            <div className="text-3xl mb-2">📁</div>
+            <p className="text-sm text-slate-600 font-medium">Glisser un fichier Excel ou PDF ici</p>
+            <p className="text-xs text-slate-400 mt-1">ou cliquer pour sélectionner</p>
+            <input id="file-upload-input" type="file" accept=".xlsx,.xls,.pdf" onChange={handleFile} className="hidden" />
+          </div>
+
+          <div className="text-center text-xs text-slate-400 font-medium">— ou saisie manuelle —</div>
+          <textarea value={manualText} onChange={e => setManualText(e.target.value)}
+            placeholder={"Collez une commande email ici...\nEx: 10x P008-5000\n4x P007\n2 P011-5000"}
+            className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono h-32 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          <button onClick={handleManualSubmit} disabled={!manualText.trim()}
+            className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-40 transition-colors">
+            Analyser la commande
+          </button>
+        </div>
+      )}
+
+      {/* Step 2: Match */}
+      {step === 2 && (
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-800">{matchedProducts.length} produit(s) reconnu(s)</h3>
+            <button onClick={() => setStep(3)} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">
+              Continuer →
+            </button>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="text-xs text-slate-500 border-b border-slate-100">
+                  <th className="text-left py-2 px-2">Réf</th>
+                  <th className="text-left py-2 px-2">Produit</th>
+                  <th className="text-right py-2 px-2">Prix HT</th>
+                  <th className="text-right py-2 px-2">Qté</th>
+                  <th className="text-right py-2 px-2">Remise</th>
+                  <th className="text-center py-2 px-2">Confiance</th>
+                </tr>
+              </thead>
+              <tbody>
+                {matchedProducts.map((p, i) => (
+                  <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="py-2 px-2 font-mono text-xs">{p.ref}</td>
+                    <td className="py-2 px-2">{p.nom}</td>
+                    <td className="py-2 px-2 text-right font-mono">{(p.prix_ht || 0).toFixed(2)}€</td>
+                    <td className="py-2 px-2 text-right">{p.quantite}</td>
+                    <td className="py-2 px-2 text-right">{p.discount ? `${p.discount}%` : '—'}</td>
+                    <td className="py-2 px-2 text-center">
+                      <span className={`inline-block w-2 h-2 rounded-full ${p.confiance === 'exact' ? 'bg-emerald-500' : p.confiance === 'fuzzy' ? 'bg-amber-400' : 'bg-red-400'}`} />
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+
+      {/* Step 3: Client */}
+      {step === 3 && <FacturesClientSearch onSelect={(client) => { setSelectedClient(client); doCalculation(client); setStep(4); }} onBack={() => setStep(2)} />}
+
+      {/* Step 4: Review */}
+      {step === 4 && (
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="text-sm font-semibold text-slate-800">Récapitulatif</h3>
+            <button onClick={() => setStep(3)} className="text-xs text-slate-500 hover:text-slate-700">← Retour</button>
+          </div>
+
+          {selectedClient && (
+            <div className="bg-slate-50 rounded-xl p-3">
+              <div className="text-sm font-medium text-slate-800">{selectedClient.name}</div>
+              <div className="text-xs text-slate-500">{selectedClient.street}, {selectedClient.city}</div>
+            </div>
+          )}
+
+          {calculation && (
+            <div className="space-y-2">
+              {calculation.products?.map((p, i) => (
+                <div key={i} className="flex justify-between text-sm py-1">
+                  <span>{p.ref} — {p.nom} x{p.quantite || p.quantity}</span>
+                  <span className="font-mono">{p.total_ht?.toFixed(2)}€ HT</span>
+                </div>
+              ))}
+              {calculation.frais_port?.map((f, i) => (
+                <div key={'fp'+i} className="flex justify-between text-sm py-1 text-slate-500">
+                  <span>{f.nom}</span>
+                  <span className="font-mono">{(f.prix_ht * f.quantite).toFixed(2)}€ HT</span>
+                </div>
+              ))}
+              <div className="border-t border-slate-200 pt-2 flex justify-between font-semibold">
+                <span>Total HT</span>
+                <span className="font-mono">{calculation.total_ht?.toFixed(2)}€</span>
+              </div>
+              <div className="flex justify-between text-sm text-slate-600">
+                <span>Total TTC</span>
+                <span className="font-mono">{calculation.total_ttc?.toFixed(2)}€</span>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Type de document</label>
+              <select value={documentType} onChange={e => setDocumentType(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                <option value="vat">Facture</option>
+                <option value="proforma">Proforma</option>
+              </select>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">N° commande (optionnel)</label>
+              <input value={orderNumber} onChange={e => setOrderNumber(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div className="flex items-center gap-4 text-sm">
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)} className="rounded" />
+              Envoyer par email
+            </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={logGSheets} onChange={e => setLogGSheets(e.target.checked)} className="rounded" />
+              Logger dans Google Sheets
+            </label>
+          </div>
+
+          <button onClick={createInvoice} disabled={processing}
+            className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
+            {processing ? 'Création en cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'}`}
+          </button>
+        </div>
+      )}
+
+      {/* Step 5: Done */}
+      {step === 5 && result && (
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4 text-center">
+          <div className="text-4xl">✅</div>
+          <h3 className="text-lg font-semibold text-slate-800">Facture créée !</h3>
+          <p className="text-sm text-slate-500">N° {result.number || result.id}</p>
+
+          <div className="flex flex-wrap gap-2 justify-center">
+            {result.id && (
+              <a href={`https://app.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
+                className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
+                Voir sur VosFactures ↗
+              </a>
+            )}
+            <button onClick={downloadCSV} className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200">
+              Télécharger CSV logisticien
+            </button>
+            <button onClick={() => { setStep(1); setResult(null); setMatchedProducts([]); setSelectedClient(null); setCalculation(null); setError(null); }}
+              className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200">
+              Nouvelle commande
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
+// ─── Client Search sub-component ──────────────────────────────────────────────
+const FacturesClientSearch = ({ onSelect, onBack }) => {
+  const [query, setQuery] = useState('');
+  const [clients, setClients] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const searchTimer = useRef(null);
+
+  const rechercher = (q) => {
+    setQuery(q);
+    clearTimeout(searchTimer.current);
+    if (!q || q.length < 2) { setClients([]); return; }
+    searchTimer.current = setTimeout(async () => {
+      setLoading(true);
+      try {
+        const data = await api.get(`/factures/clients?q=${encodeURIComponent(q)}`);
+        setClients(Array.isArray(data) ? data : []);
+      } catch { setClients([]); }
+      setLoading(false);
+    }, 400);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-slate-800">Sélectionner un client</h3>
+        <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-700">← Retour</button>
+      </div>
+      <input value={query} onChange={e => rechercher(e.target.value)} placeholder="Rechercher un client VosFactures..."
+        className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" autoFocus />
+      {loading && <p className="text-xs text-slate-400">Recherche...</p>}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
+        {clients.map(c => (
+          <button key={c.id} onClick={() => onSelect(c)}
+            className="text-left p-3 border border-slate-200 rounded-xl hover:border-slate-400 hover:bg-slate-50 transition-colors">
+            <div className="text-sm font-medium text-slate-800">{c.name || c.shortcut}</div>
+            {c.city && <div className="text-xs text-slate-400">{c.city}</div>}
+          </button>
+        ))}
+      </div>
+      {query.length >= 2 && !loading && clients.length === 0 && (
+        <p className="text-xs text-slate-400 text-center">Aucun client trouvé</p>
+      )}
+    </div>
+  );
+};
+
+// ─── Factures Batch ───────────────────────────────────────────────────────────
+const FacturesBatch = ({ showToast }) => {
+  const [orders, setOrders] = useState([]);
+  const [nextId, setNextId] = useState(1);
+  const [processing, setProcessing] = useState(false);
+  const [results, setResults] = useState(null);
+  const [manualText, setManualText] = useState('');
+
+  const addOrder = (products) => {
+    setOrders(prev => [...prev, { id: nextId, products, client: null }]);
+    setNextId(n => n + 1);
+  };
+
+  const handleFile = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const data = new Uint8Array(await file.arrayBuffer());
+      const workbook = XLSX.read(data, { type: 'array' });
+      const sheet = workbook.Sheets[workbook.SheetNames[0]];
+      const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+      const products = [];
+      for (const row of json) {
+        if (!row[0] || row[0] === 'Ref 500ml' || row[0] === 'TOTAL') continue;
+        const ref = String(row[0]).trim();
+        const qty = parseFloat(row[6]) || parseFloat(row[5]) || 0;
+        const price = parseFloat(String(row[3] || '0').replace(/[€\s]/g, '').replace(',', '.')) || 0;
+        if (ref && qty > 0) products.push({ ref, quantity: qty, priceHT: price });
+      }
+      if (products.length > 0) addOrder(products);
+      else showToast('Aucun produit trouvé', 'error');
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    e.target.value = '';
+  };
+
+  const addManualOrder = async () => {
+    if (!manualText.trim()) return;
+    try {
+      const res = await api.post('/factures/match-products', { text: manualText });
+      if (res.erreur) { showToast(res.erreur, 'error'); return; }
+      addOrder(res);
+      setManualText('');
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const removeOrder = (id) => setOrders(prev => prev.filter(o => o.id !== id));
+
+  const setOrderClient = (orderId, client) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client } : o));
+  };
+
+  const createAll = async () => {
+    const ready = orders.filter(o => o.client);
+    if (ready.length === 0) { showToast('Attribuez un client à au moins une commande', 'error'); return; }
+    setProcessing(true);
+    const allResults = [];
+    for (const order of ready) {
+      try {
+        const calc = await api.post('/factures/calculate', { products: order.products, clientName: order.client.name });
+        const inv = await api.post('/factures/invoices', {
+          client: order.client,
+          products: calc.products,
+          fraisPort: calc.frais_port,
+          documentType: 'vat',
+        });
+        allResults.push({ ok: true, orderId: order.id, ...inv });
+      } catch (err) {
+        allResults.push({ ok: false, orderId: order.id, erreur: err.message });
+      }
+    }
+    setResults(allResults);
+    setProcessing(false);
+    showToast(`${allResults.filter(r => r.ok).length}/${allResults.length} factures créées`, 'success');
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-800">Commandes batch ({orders.length})</h3>
+
+        <div className="flex gap-2">
+          <label className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200 cursor-pointer">
+            + Fichier Excel
+            <input type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" />
+          </label>
+        </div>
+
+        <div className="flex gap-2">
+          <textarea value={manualText} onChange={e => setManualText(e.target.value)}
+            placeholder="Saisie manuelle (10x P008-5000...)" rows={2}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono resize-none" />
+          <button onClick={addManualOrder} disabled={!manualText.trim()}
+            className="px-3 py-2 bg-slate-900 text-white text-sm rounded-lg disabled:opacity-40">+</button>
+        </div>
+
+        {orders.map(order => (
+          <div key={order.id} className="border border-slate-200 rounded-xl p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium">Commande #{order.id} ({order.products?.length || 0} produits)</span>
+              <button onClick={() => removeOrder(order.id)} className="text-xs text-red-500 hover:text-red-700">Supprimer</button>
+            </div>
+            {order.client ? (
+              <div className="text-xs text-emerald-600 flex items-center gap-1">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {order.client.name}
+              </div>
+            ) : (
+              <FacturesClientSearch onSelect={(c) => setOrderClient(order.id, c)} onBack={() => {}} />
+            )}
+          </div>
+        ))}
+
+        {orders.length > 0 && (
+          <button onClick={createAll} disabled={processing || !orders.some(o => o.client)}
+            className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50">
+            {processing ? 'Création...' : `Créer ${orders.filter(o => o.client).length} facture(s)`}
+          </button>
+        )}
+
+        {results && (
+          <div className="space-y-1">
+            {results.map((r, i) => (
+              <div key={i} className={`text-sm p-2 rounded-lg ${r.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                {r.ok ? `✓ Facture ${r.number || r.id} créée` : `✗ Erreur: ${r.erreur}`}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Factures Échantillons ────────────────────────────────────────────────────
+const FacturesSamples = ({ showToast }) => {
+  const [catalog, setCatalog] = useState([]);
+  const [products, setProducts] = useState([
+    { ref: 'P035-30', quantity: 1 }, { ref: 'P011-30', quantity: 1 },
+    { ref: 'P008-30', quantity: 1 }, { ref: 'P007-30', quantity: 1 },
+    { ref: 'P042-30', quantity: 1 }, { ref: 'P010-30', quantity: 1 },
+  ]);
+  const [clientName, setClientName] = useState('');
+  const [clientAddress, setClientAddress] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [clientPhone, setClientPhone] = useState('');
+  const [processing, setProcessing] = useState(false);
+  const [result, setResult] = useState(null);
+  const [searchRef, setSearchRef] = useState('');
+
+  useEffect(() => {
+    api.get('/factures/produits').then(data => setCatalog(Array.isArray(data) ? data : [])).catch(() => {});
+  }, []);
+
+  const addProduct = (ref) => {
+    const existing = products.find(p => p.ref === ref);
+    if (existing) setProducts(products.map(p => p.ref === ref ? { ...p, quantity: p.quantity + 1 } : p));
+    else setProducts([...products, { ref, quantity: 1 }]);
+    setSearchRef('');
+  };
+
+  const updateQty = (ref, qty) => {
+    if (qty <= 0) setProducts(products.filter(p => p.ref !== ref));
+    else setProducts(products.map(p => p.ref === ref ? { ...p, quantity: qty } : p));
+  };
+
+  const createProforma = async () => {
+    if (!clientName.trim() || products.length === 0) {
+      showToast('Nom du destinataire et produits requis', 'error'); return;
+    }
+    setProcessing(true);
+    try {
+      const res = await api.post('/factures/invoices', {
+        client: { name: clientName, street: clientAddress, email: clientEmail, phone: clientPhone },
+        products: products.map(p => {
+          const cat = catalog.find(c => c.ref === p.ref);
+          return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
+        }),
+        fraisPort: [{ ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20 }],
+        documentType: 'proforma',
+      });
+      if (res.erreur) throw new Error(res.erreur);
+      setResult(res);
+      showToast('Proforma créée !', 'success');
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    setProcessing(false);
+  };
+
+  const filteredCatalog = searchRef
+    ? catalog.filter(c => c.ref.toLowerCase().includes(searchRef.toLowerCase()) || c.nom.toLowerCase().includes(searchRef.toLowerCase()))
+    : [];
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-800">Échantillons — Proforma + CSV</h3>
+
+        {/* Products picker */}
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Produits</label>
+          <div className="space-y-1">
+            {products.map(p => {
+              const cat = catalog.find(c => c.ref === p.ref);
+              return (
+                <div key={p.ref} className="flex items-center gap-2 text-sm">
+                  <span className="font-mono text-xs w-20">{p.ref}</span>
+                  <span className="flex-1 text-slate-600 text-xs truncate">{cat?.nom || '...'}</span>
+                  <input type="number" min={0} value={p.quantity} onChange={e => updateQty(p.ref, parseInt(e.target.value) || 0)}
+                    className="w-16 border border-slate-200 rounded px-2 py-1 text-sm text-center" />
+                </div>
+              );
+            })}
+          </div>
+          <div className="mt-2 relative">
+            <input value={searchRef} onChange={e => setSearchRef(e.target.value)}
+              placeholder="Ajouter un produit (code ou nom)..."
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            {filteredCatalog.length > 0 && (
+              <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
+                {filteredCatalog.slice(0, 10).map(c => (
+                  <button key={c.ref} onClick={() => addProduct(c.ref)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2">
+                    <span className="font-mono text-xs text-slate-500">{c.ref}</span>
+                    <span className="truncate">{c.nom}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Recipient */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Nom destinataire *</label>
+            <input value={clientName} onChange={e => setClientName(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Email</label>
+            <input value={clientEmail} onChange={e => setClientEmail(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Adresse</label>
+            <textarea value={clientAddress} onChange={e => setClientAddress(e.target.value)} rows={2}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Téléphone</label>
+            <input value={clientPhone} onChange={e => setClientPhone(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+
+        <button onClick={createProforma} disabled={processing || !clientName.trim()}
+          className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50">
+          {processing ? 'Création...' : 'Créer proforma échantillons'}
+        </button>
+
+        {result && (
+          <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center space-y-2">
+            <p className="text-sm font-medium text-emerald-700">Proforma N° {result.number || result.id} créée !</p>
+            <div className="flex gap-2 justify-center">
+              {result.id && (
+                <a href={`https://app.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
+                  className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg">Voir ↗</a>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Factures Relances ────────────────────────────────────────────────────────
+const FacturesReminders = ({ showToast }) => {
+  const [input, setInput] = useState('');
+  const [docs, setDocs] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [sending, setSending] = useState(false);
+
+  const resolveDocuments = async () => {
+    if (!input.trim()) return;
+    setLoading(true);
+    const items = input.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+    const resolved = [];
+
+    for (const item of items) {
+      try {
+        // Essayer comme numéro de facture
+        let num = item.replace(/.*\/invoices\//, '').replace(/\.json.*/, '').replace(/[^\w-]/g, '');
+        let data;
+
+        if (/^\d+$/.test(num)) {
+          // C'est un ID numérique
+          data = await api.get(`/factures/invoices/${num}`);
+        } else {
+          // Chercher par numéro
+          const results = await api.get(`/factures/invoices/search?number=${encodeURIComponent(num)}`);
+          data = Array.isArray(results) ? results[0] : results;
+        }
+
+        if (data && data.id) {
+          resolved.push({ ...data, sendEmail: true, status: data.payment_to ? 'impayé' : 'ok' });
+        } else {
+          resolved.push({ input: item, erreur: 'Document non trouvé' });
+        }
+      } catch (err) {
+        resolved.push({ input: item, erreur: err.message });
+      }
+    }
+    setDocs(resolved);
+    setLoading(false);
+  };
+
+  const sendReminders = async () => {
+    setSending(true);
+    let sent = 0;
+    for (let i = 0; i < docs.length; i++) {
+      const doc = docs[i];
+      if (!doc.id || !doc.sendEmail) continue;
+      try {
+        await api.post(`/factures/invoices/${doc.id}/send-reminder`, {});
+        docs[i] = { ...doc, sent: true };
+        sent++;
+      } catch (err) {
+        docs[i] = { ...doc, sendError: err.message };
+      }
+    }
+    setDocs([...docs]);
+    setSending(false);
+    showToast(`${sent} relance(s) envoyée(s)`, 'success');
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-800">Relances de paiement</h3>
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Numéros de facture, URLs ou IDs VosFactures</label>
+          <textarea value={input} onChange={e => setInput(e.target.value)}
+            placeholder={"FV 2024/12/001\n1234567\nhttps://app.vosfactures.fr/invoices/123456"}
+            rows={4} className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono resize-y" />
+        </div>
+        <button onClick={resolveDocuments} disabled={loading || !input.trim()}
+          className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg disabled:opacity-40">
+          {loading ? 'Résolution...' : 'Résoudre les documents'}
+        </button>
+
+        {docs.length > 0 && (
+          <div className="space-y-2">
+            {docs.map((doc, i) => (
+              <div key={i} className={`p-3 rounded-xl border ${doc.erreur ? 'border-red-200 bg-red-50' : doc.sent ? 'border-emerald-200 bg-emerald-50' : 'border-slate-200'}`}>
+                {doc.erreur ? (
+                  <div className="text-sm text-red-700">{doc.input}: {doc.erreur}</div>
+                ) : (
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-medium">{doc.number || doc.id}</div>
+                      <div className="text-xs text-slate-500">{doc.buyer_name} — {doc.price_gross}€</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {doc.sent && <span className="text-xs text-emerald-600 font-medium">Envoyé ✓</span>}
+                      {doc.sendError && <span className="text-xs text-red-600">{doc.sendError}</span>}
+                      {!doc.sent && (
+                        <label className="flex items-center gap-1 text-xs">
+                          <input type="checkbox" checked={doc.sendEmail}
+                            onChange={() => { docs[i].sendEmail = !docs[i].sendEmail; setDocs([...docs]); }} />
+                          Relancer
+                        </label>
+                      )}
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))}
+
+            <button onClick={sendReminders} disabled={sending || !docs.some(d => d.id && d.sendEmail && !d.sent)}
+              className="w-full py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50">
+              {sending ? 'Envoi...' : `Envoyer ${docs.filter(d => d.id && d.sendEmail && !d.sent).length} relance(s)`}
+            </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── VUE PARAMETRES ───────────────────────────────────────────────────────────
 const VueParametres = () => {
   const [brevoKey, setBrevoKey] = useState("");
   const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"], fuseau: "Europe/Paris" });
@@ -2586,6 +3432,89 @@ const VueParametres = () => {
       </button>
 
       <VueHubspot />
+      <VueVosFacturesConfig />
+    </div>
+  );
+};
+
+// ─── Config VosFactures & Google Sheets ───────────────────────────────────────
+const VueVosFacturesConfig = () => {
+  const [vfToken, setVfToken] = useState('');
+  const [gsheetsJson, setGsheetsJson] = useState('');
+  const [spreadsheetId, setSpreadsheetId] = useState('');
+  const [sheetName, setSheetName] = useState('Suivi');
+  const [vfConfigured, setVfConfigured] = useState(false);
+  const [gsConfigured, setGsConfigured] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.vf_api_token_configured) setVfConfigured(true);
+      if (cfg.gsheets_credentials_configured) setGsConfigured(true);
+      if (cfg.gsheets_spreadsheet_id) setSpreadsheetId(cfg.gsheets_spreadsheet_id);
+      if (cfg.gsheets_sheet_name) setSheetName(cfg.gsheets_sheet_name);
+    }).catch(() => {});
+  }, []);
+
+  const sauvegarder = async () => {
+    setSaving(true); setMsg('');
+    try {
+      const payload = {};
+      if (vfToken) { payload.vf_api_token = vfToken; setVfConfigured(true); setVfToken(''); }
+      if (gsheetsJson) { payload.gsheets_credentials = gsheetsJson; setGsConfigured(true); setGsheetsJson(''); }
+      if (spreadsheetId) payload.gsheets_spreadsheet_id = spreadsheetId;
+      if (sheetName) payload.gsheets_sheet_name = sheetName;
+      if (Object.keys(payload).length > 0) {
+        await api.post('/config', payload);
+        setMsg('Paramètres VF/GSheets sauvegardés');
+      }
+    } catch (e) { setMsg('Erreur: ' + e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4 mt-4">
+      <h3 className="text-sm font-semibold text-slate-800">VosFactures & Google Sheets</h3>
+
+      <div>
+        <div className={`flex items-center gap-2 text-xs mb-2 ${vfConfigured ? 'text-emerald-600' : 'text-slate-400'}`}>
+          <span className={`w-2 h-2 rounded-full ${vfConfigured ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+          Token VosFactures {vfConfigured ? 'configuré' : 'non configuré'}
+        </div>
+        <input type="password" value={vfToken} onChange={e => setVfToken(e.target.value)}
+          placeholder={vfConfigured ? "Nouveau token (laisser vide pour conserver)" : "Token API VosFactures"}
+          className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+      </div>
+
+      <div>
+        <div className={`flex items-center gap-2 text-xs mb-2 ${gsConfigured ? 'text-emerald-600' : 'text-slate-400'}`}>
+          <span className={`w-2 h-2 rounded-full ${gsConfigured ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+          Google Sheets {gsConfigured ? 'configuré' : 'non configuré'}
+        </div>
+        <textarea value={gsheetsJson} onChange={e => setGsheetsJson(e.target.value)}
+          placeholder={gsConfigured ? "Nouveau JSON (laisser vide pour conserver)" : "Collez le JSON du service account Google..."}
+          rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono resize-y focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3">
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Spreadsheet ID</label>
+          <input value={spreadsheetId} onChange={e => setSpreadsheetId(e.target.value)}
+            placeholder="1ABC..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Nom de l'onglet</label>
+          <input value={sheetName} onChange={e => setSheetName(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        </div>
+      </div>
+
+      {msg && <p className={`text-sm font-medium ${msg.startsWith('Erreur') ? 'text-red-600' : 'text-emerald-600'}`}>{msg}</p>}
+      <button onClick={sauvegarder} disabled={saving}
+        className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+        {saving ? 'Sauvegarde...' : 'Enregistrer VF/GSheets'}
+      </button>
     </div>
   );
 };
@@ -2882,6 +3811,7 @@ function App() {
     { id: "dashboard", icon: "📊", label: "Dashboard" },
     { id: "leads", icon: "👥", label: "Leads" },
     { id: "sequences", icon: "📧", label: "Séquences" },
+    { id: "factures", icon: "📄", label: "Factures" },
     { id: "blocklist", icon: "🚫", label: "Blocklist" },
     { id: "emails", icon: "✅", label: "Validation Email" },
     { id: "parametres", icon: "⚙️", label: "Paramètres" },
@@ -2963,6 +3893,7 @@ function App() {
               {vue === "sequences" && `${sequences.length} séquences actives`}
               {vue === "blocklist" && "Gestion des emails et domaines bloqués"}
               {vue === "emails" && "Vérification & nettoyage des adresses email"}
+              {vue === "factures" && "Commandes, factures & relances VosFactures"}
               {vue === "parametres" && "Configuration Brevo & envoi"}
             </p>
           </div>
@@ -2979,6 +3910,7 @@ function App() {
           {vue === "dashboard" && <VueDashboard leads={leads} activites={activites} stats={stats} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} showToast={showToast} />}
+          {vue === "factures" && <VueFactures showToast={showToast} />}
           {vue === "blocklist" && <VueBlocklist onRefresh={charger} showToast={showToast} />}
           {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} showToast={showToast} />}
           {vue === "parametres" && <VueParametres />}

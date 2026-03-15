@@ -133,6 +133,74 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_events_lead       ON events(lead_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_blocklist_value   ON email_blocklist(value);
   CREATE INDEX IF NOT EXISTS idx_blocklist_type    ON email_blocklist(type);
+
+  -- ─── Tables Factures / VosFactures ──────────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS vf_catalog (
+    ref TEXT PRIMARY KEY,
+    vf_product_id TEXT,
+    nom TEXT NOT NULL,
+    prix_ht REAL,
+    tva REAL DEFAULT 20,
+    csv_ref TEXT,
+    vf_ref TEXT,
+    actif INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS vf_partners (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    nom TEXT NOT NULL UNIQUE,
+    nom_normalise TEXT NOT NULL,
+    actif INTEGER DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS vf_client_discounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    client_name TEXT NOT NULL,
+    product_code TEXT NOT NULL,
+    discount_pct REAL NOT NULL,
+    UNIQUE(client_name, product_code)
+  );
+
+  CREATE TABLE IF NOT EXISTS vf_client_mappings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vf_name TEXT,
+    file_name TEXT,
+    vf_client_id TEXT,
+    shipping_id TEXT,
+    shipping_name TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS vf_code_mappings (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    code_source TEXT NOT NULL,
+    type TEXT NOT NULL,
+    code_cible TEXT,
+    valeur TEXT,
+    UNIQUE(code_source, type)
+  );
+
+  CREATE TABLE IF NOT EXISTS vf_invoice_logs (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vf_invoice_id TEXT,
+    vf_invoice_number TEXT,
+    client_name TEXT,
+    mode TEXT,
+    montant_ht REAL,
+    montant_ttc REAL,
+    csv_generated INTEGER DEFAULT 0,
+    gsheet_logged INTEGER DEFAULT 0,
+    email_sent INTEGER DEFAULT 0,
+    meta TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_vf_catalog_actif ON vf_catalog(actif);
+  CREATE INDEX IF NOT EXISTS idx_vf_partners_nom ON vf_partners(nom_normalise);
+  CREATE INDEX IF NOT EXISTS idx_vf_discounts_client ON vf_client_discounts(client_name);
+  CREATE INDEX IF NOT EXISTS idx_vf_code_mappings_type ON vf_code_mappings(type);
+  CREATE INDEX IF NOT EXISTS idx_vf_invoice_logs_date ON vf_invoice_logs(created_at);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────

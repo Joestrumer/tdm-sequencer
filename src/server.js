@@ -13,7 +13,7 @@ const app = express();
 const PORT = process.env.PORT || 3001;
 
 app.use(cors({ origin: '*' }));
-app.use(express.json({ limit: '2mb' }));
+app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Santé AVANT auth
@@ -92,6 +92,9 @@ app.use('/api/hubspot',   require('./routes/hubspot')(db));
 app.use('/api/config',    require('./routes/config')(db));
 app.use('/api/blocklist', require('./routes/blocklist')(db));
 app.use('/api/qualification', require('./routes/qualification')(db));
+app.use('/api/factures',      require('./routes/factures')(db));
+app.use('/api/gsheets',       require('./routes/googlesheets')(db));
+app.use('/api/reference',     require('./routes/referenceData')(db));
 
 // Frontend statique
 const publicPath = path.join(__dirname, '..', 'public');
@@ -122,4 +125,5 @@ app.listen(PORT, '0.0.0.0', () => {
   logger.info('🚀 Serveur démarré — http://localhost:' + PORT);
   logger.info('   Brevo  : ' + (process.env.BREVO_API_KEY ? '✅' : '⚠️  non configuré'));
   logger.info('   HubSpot: ' + (process.env.HUBSPOT_API_KEY ? '✅' : '➖ désactivé'));
+  logger.info('   VF     : ' + (process.env.VF_API_TOKEN ? '✅' : '➖ désactivé'));
 });
