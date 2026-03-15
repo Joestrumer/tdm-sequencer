@@ -6,7 +6,9 @@ const VF_BASE_URL = 'https://app.vosfactures.fr';
 
 function getToken(db) {
   const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('vf_api_token');
-  return row?.valeur || process.env.VF_API_TOKEN || '';
+  const token = (row?.valeur || process.env.VF_API_TOKEN || '').trim();
+  if (token) console.log(`🔑 VF token: ${token.substring(0, 6)}... (${token.length} chars)`);
+  return token;
 }
 
 async function vfFetch(path, opts = {}, db) {
