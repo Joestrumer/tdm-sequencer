@@ -120,6 +120,23 @@ function findVFProduct(ref, price, catalog, codeMappings, productIdMapping, prod
       (legacyLookupKey && m.code_source === legacyLookupKey)
     );
     if (idEntry) productId = idEntry.valeur;
+
+    // Fallback : chercher par REF avec n'importe quel prix (prend le premier match)
+    if (!productId) {
+      const prefix = mappedRef + '-';
+      const fallbackEntry = productIdMapping.find(m => m.code_source.startsWith(prefix));
+      if (fallbackEntry) {
+        productId = fallbackEntry.valeur;
+        console.log(`⚠️ findVFProduct fallback: ${lookupKey} non trouvé, utilisation de ${fallbackEntry.code_source} → ${productId}`);
+      }
+    }
+  }
+
+  // Fallback product_name si pas trouvé non plus
+  if (!productName && productNameMapping) {
+    const prefix = mappedRef + '-';
+    const fallbackName = productNameMapping.find(m => m.code_source.startsWith(prefix));
+    if (fallbackName) productName = fallbackName.valeur;
   }
 
   // Fallback au catalogue
