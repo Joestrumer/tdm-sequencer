@@ -268,15 +268,13 @@ module.exports = (db) => {
           quantity: qty,
         };
 
-        // Toujours envoyer price_net
+        // Toujours envoyer price_net et total_price_gross (VF les exige)
         position.price_net = priceToUse.toFixed(2);
+        position.total_price_gross = totalPriceGross.toFixed(2);
 
-        // Remise : discount_percent, et ne PAS envoyer total_price_gross quand discount > 0
+        // Remise en plus si applicable
         if (discount > 0) {
           position.discount_percent = discount;
-        } else {
-          // total_price_gross uniquement quand PAS de discount
-          position.total_price_gross = totalPriceGross.toFixed(2);
         }
 
         // Nettoyer les undefined
@@ -334,6 +332,7 @@ module.exports = (db) => {
 
       if (client.id) invoiceData.client_id = client.id;
 
+      console.log('📤 Payload VF positions:', JSON.stringify(positions, null, 2));
       const result = await vfService.creerFacture(invoiceData);
 
       // Logger dans la DB
