@@ -6,6 +6,22 @@ const fs = require('fs');
 const logger = require('./config/logger');
 
 const db = require('./db/init.js');
+
+// Auto-seed des données factures si la table vf_code_mappings est vide
+try {
+  const count = db.prepare("SELECT COUNT(*) as n FROM vf_code_mappings WHERE type = 'product_id'").get();
+  if (!count || count.n === 0) {
+    console.log('🌱 Données factures absentes, lancement du seed...');
+    require('child_process').execSync('node src/db/seedFactures.js', {
+      cwd: __dirname + '/..',
+      stdio: 'inherit',
+      env: { ...process.env, DB_PATH: process.env.DB_PATH },
+    });
+  }
+} catch (e) {
+  console.error('⚠️ Erreur auto-seed factures:', e.message);
+}
+
 const scheduler = require('./jobs/sequenceScheduler');
 scheduler.initialiser(db);
 
