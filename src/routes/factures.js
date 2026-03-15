@@ -374,6 +374,24 @@ module.exports = (db) => {
       // Log Google Sheets automatique si demandé
       if (logGSheets !== false) {
         try {
+          // Vérifier/réparer credentials avant de tenter le log
+          const credsRow = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
+          let credsOk = false;
+          try {
+            const p = JSON.parse(credsRow?.valeur || '{}');
+            credsOk = !!(p.private_key && p.client_email);
+          } catch {}
+          if (!credsOk && process.env.GSHEETS_CREDENTIALS) {
+            try {
+              const envParsed = JSON.parse(process.env.GSHEETS_CREDENTIALS);
+              if (envParsed.private_key && envParsed.client_email) {
+                db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
+                  .run(process.env.GSHEETS_CREDENTIALS);
+                console.log('🔧 Credentials GSheets réparées depuis env var avant log');
+              }
+            } catch {}
+          }
+
           const gsheetsService = require('../services/googlesheetsService')(db);
           const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
           const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
@@ -576,6 +594,72 @@ module.exports = (db) => {
       const rows = db.prepare('SELECT * FROM vf_invoice_logs ORDER BY created_at DESC LIMIT ?')
         .all(parseInt(limit) || 100);
       res.json(rows);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Diagnostic GSheets ────────────────────────────────────────────────────
+
+  router.get('/gsheets-status', async (req, res) => {
+    try {
+      // 1. Vérifier credentials en DB
+      const credsRow = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
+      let credsValid = false;
+      let credsInfo = 'absentes';
+      if (credsRow?.valeur) {
+        try {
+          const parsed = JSON.parse(credsRow.valeur);
+          if (parsed.private_key && parsed.client_email) {
+            credsValid = true;
+            credsInfo = `OK (${parsed.client_email})`;
+          } else {
+            credsInfo = 'JSON valide mais champs manquants';
+          }
+        } catch {
+          credsInfo = 'JSON invalide en DB';
+        }
+      }
+
+      // 2. Si credentials invalides, tenter réparation depuis env var
+      if (!credsValid && process.env.GSHEETS_CREDENTIALS) {
+        try {
+          const envCreds = JSON.parse(process.env.GSHEETS_CREDENTIALS);
+          if (envCreds.private_key && envCreds.client_email) {
+            db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
+              .run(process.env.GSHEETS_CREDENTIALS);
+            credsValid = true;
+            credsInfo = `Réparé depuis env (${envCreds.client_email})`;
+            console.log('🔧 Credentials GSheets réparées depuis GSHEETS_CREDENTIALS env var');
+          }
+        } catch {
+          credsInfo += ' + env var invalide aussi';
+        }
+      }
+
+      // 3. Vérifier config spreadsheet
+      const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
+      const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
+
+      // 4. Tester la connexion si credentials OK
+      let connectionTest = null;
+      if (credsValid && spreadsheetId) {
+        try {
+          const gsheetsService = require('../services/googlesheetsService')(db);
+          connectionTest = await gsheetsService.getSheetStatus(spreadsheetId);
+        } catch (e) {
+          connectionTest = { ok: false, erreur: e.message };
+        }
+      }
+
+      res.json({
+        credentials: credsInfo,
+        credsValid,
+        spreadsheetId: spreadsheetId || 'NON CONFIGURÉ',
+        sheetName,
+        envVarPresent: !!process.env.GSHEETS_CREDENTIALS,
+        connection: connectionTest,
+      });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
