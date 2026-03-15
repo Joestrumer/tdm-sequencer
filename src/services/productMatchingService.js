@@ -217,45 +217,49 @@ function calculerFraisPort(totalHT, clientRules) {
 
 // ─── CSV Logisticien ──────────────────────────────────────────────────────────
 
-function genererCSVLogisticien(invoiceData, client, shippingNames) {
+function genererCSVLogisticien(invoiceData, client, shippingNames, options = {}) {
   const lines = [];
 
-  // Header
+  // Header 16 colonnes (format identique au HTML standalone)
   lines.push([
-    'Invoice Number', 'Client Name', 'Shipping Method',
-    'Product Ref', 'Product Name', 'Quantity',
-    'Recipient Name', 'Address', 'City', 'Zip', 'Country',
-    'Phone', 'Email', 'Notes',
+    'Numéro de commande', 'Réf. Commande', 'référence de l article', 'quantité de l article',
+    'Nom livraison', 'Nom du client', 'Adresse (rue)', 'Ville', 'Code postal', 'Pays',
+    'id du transporteur', 'Nom du transporteur', 'Commentaire de livraison',
+    'Adresse mail', 'Téléphone 1', 'Téléphone 2',
   ].join(';'));
 
-  const transporterName = (shippingNames && client.shipping_id)
-    ? (shippingNames[client.shipping_id] || '')
+  const shippingId = options.shippingId || client.shipping_id || '';
+  const transporterName = (shippingNames && shippingId)
+    ? (shippingNames[shippingId] || '')
     : '';
 
   const products = invoiceData.products || [];
   for (const p of products) {
-    if (p.ref === 'FP' || p.ref === 'FE') continue; // Skip frais de port
+    if (p.ref === 'FP' || p.ref === 'FE') continue;
 
     const csvRef = p.csv_ref || p.ref;
     lines.push([
-      invoiceData.number || '',
-      client.name || '',
-      transporterName,
-      csvRef,
-      (p.nom || p.name || '').replace(/;/g, ','),
-      p.quantite || p.quantity || 0,
-      client.recipient_name || client.name || '',
-      (client.address || '').replace(/;/g, ',').replace(/\n/g, ' '),
-      client.city || '',
-      client.zip || client.post_code || '',
-      client.country || 'FR',
-      client.phone || '',
-      client.email || '',
-      (invoiceData.notes || '').replace(/;/g, ','),
+      invoiceData.number || '',                                          // Numéro de commande
+      invoiceData.orderNumber || '',                                     // Réf. Commande
+      csvRef,                                                            // référence de l article
+      p.quantite || p.quantity || 0,                                     // quantité de l article
+      client.recipient_name || client.name || '',                        // Nom livraison
+      client.name || '',                                                 // Nom du client
+      (client.street || client.address || '').replace(/;/g, ',').replace(/\n/g, ' '), // Adresse (rue)
+      client.city || '',                                                 // Ville
+      client.zip || client.post_code || '',                              // Code postal
+      client.country || 'FR',                                            // Pays
+      shippingId,                                                        // id du transporteur
+      transporterName,                                                   // Nom du transporteur
+      (invoiceData.notes || '').replace(/;/g, ','),                      // Commentaire de livraison
+      client.email || '',                                                // Adresse mail
+      client.phone || '',                                                // Téléphone 1
+      '',                                                                // Téléphone 2
     ].join(';'));
   }
 
-  return lines.join('\n');
+  // BOM UTF-8 pour Excel
+  return '\uFEFF' + lines.join('\n');
 }
 
 // ─── Parsing adresse ──────────────────────────────────────────────────────────

@@ -2671,20 +2671,66 @@ const FacturesSingle = ({ showToast }) => {
     setProcessing(false);
   };
 
-  const downloadCSV = async () => {
+  const downloadPDF = async () => {
     try {
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const res = await fetch(window.location.origin + '/api/factures/invoices/' + result.id + '/pdf', {
+        headers: { 'Authorization': 'Bearer ' + token },
+      });
+      if (!res.ok) throw new Error('Erreur PDF: ' + res.status);
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      window.open(url, '_blank');
+      showToast('PDF ouvert', 'success');
+    } catch (err) {
+      showToast('Erreur PDF: ' + err.message, 'error');
+    }
+  };
+
+  const downloadCSVAndEmail = async () => {
+    try {
+      const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const invoiceData = { ...result, products: calculation?.products || matchedProducts, orderNumber };
       const res = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceData: { ...result, products: calculation?.products || matchedProducts }, client: selectedClient }),
+        body: JSON.stringify({ invoiceData, client: selectedClient, shippingId }),
       });
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = url; a.download = `logisticien-${result?.number || 'facture'}.csv`; a.click();
-      URL.revokeObjectURL(url);
-      showToast('CSV téléchargé', 'success');
+
+      // Essayer File System Access API (Chrome) pour sauver dans un dossier
+      let saved = false;
+      if (window.showDirectoryPicker) {
+        try {
+          const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+          const fileName = `logisticien-${result?.number || 'facture'}.csv`;
+          const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          showToast(`CSV sauvé dans ${dirHandle.name}/${fileName}`, 'success');
+          saved = true;
+        } catch (fsErr) {
+          if (fsErr.name !== 'AbortError') console.warn('File System Access fallback:', fsErr);
+        }
+      }
+
+      // Fallback : download classique
+      if (!saved) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `logisticien-${result?.number || 'facture'}.csv`; a.click();
+        URL.revokeObjectURL(url);
+        showToast('CSV téléchargé', 'success');
+      }
+
+      // Ouvrir mailto logisticien
+      const clientName = selectedClient?.name || '';
+      const invoiceNum = result?.number || '';
+      const subject = encodeURIComponent(clientName);
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${invoiceNum} (${clientName}).\n\nCordialement`);
+      const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+      window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
     } catch (err) {
       showToast('Erreur CSV: ' + err.message, 'error');
     }
@@ -2740,9 +2786,12 @@ const FacturesSingle = ({ showToast }) => {
         <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800">{matchedProducts.length} produit(s) reconnu(s)</h3>
-            <button onClick={() => setStep(3)} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">
-              Continuer →
-            </button>
+            <div className="flex items-center gap-2">
+              <button onClick={() => setStep(1)} className="text-xs text-slate-500 hover:text-slate-700">← Retour</button>
+              <button onClick={() => setStep(3)} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700">
+                Continuer →
+              </button>
+            </div>
           </div>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
@@ -2776,14 +2825,17 @@ const FacturesSingle = ({ showToast }) => {
       )}
 
       {/* Step 3: Client */}
-      {step === 3 && <FacturesClientSearch onSelect={(client) => { setSelectedClient(client); doCalculation(client); setStep(4); }} onBack={() => setStep(2)} />}
+      {step === 3 && <FacturesClientSearch onSelect={(client) => { setSelectedClient(client); doCalculation(client); setStep(4); }} onBack={() => setStep(2)} onModifySaisie={() => setStep(1)} />}
 
       {/* Step 4: Review */}
       {step === 4 && (
         <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
           <div className="flex items-center justify-between">
             <h3 className="text-sm font-semibold text-slate-800">Récapitulatif</h3>
-            <button onClick={() => setStep(3)} className="text-xs text-slate-500 hover:text-slate-700">← Retour</button>
+            <div className="flex items-center gap-3">
+              <button onClick={() => setStep(1)} className="text-xs text-slate-500 hover:text-slate-700">Modifier la saisie</button>
+              <button onClick={() => setStep(3)} className="text-xs text-slate-500 hover:text-slate-700">Changer de client</button>
+            </div>
           </div>
 
           {selectedClient && (
@@ -2861,15 +2913,20 @@ const FacturesSingle = ({ showToast }) => {
 
           <div className="flex flex-wrap gap-2 justify-center">
             {result.id && (
+              <button onClick={downloadPDF} className="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700">
+                Télécharger PDF
+              </button>
+            )}
+            <button onClick={downloadCSVAndEmail} className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700">
+              CSV + Email Logisticien
+            </button>
+            {result.id && (
               <a href={`https://app.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
                 Voir sur VosFactures ↗
               </a>
             )}
-            <button onClick={downloadCSV} className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200">
-              Télécharger CSV logisticien
-            </button>
-            <button onClick={() => { setStep(1); setResult(null); setMatchedProducts([]); setSelectedClient(null); setCalculation(null); setError(null); }}
+            <button onClick={() => { setStep(1); setResult(null); setMatchedProducts([]); setSelectedClient(null); setCalculation(null); setError(null); setManualText(''); setOrderNumber(''); }}
               className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200">
               Nouvelle commande
             </button>
@@ -2881,7 +2938,7 @@ const FacturesSingle = ({ showToast }) => {
 };
 
 // ─── Client Search sub-component ──────────────────────────────────────────────
-const FacturesClientSearch = ({ onSelect, onBack }) => {
+const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
   const [query, setQuery] = useState('');
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(false);
@@ -2915,7 +2972,10 @@ const FacturesClientSearch = ({ onSelect, onBack }) => {
     <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-800">Sélectionner un client</h3>
-        <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-700">← Retour</button>
+        <div className="flex items-center gap-3">
+          {onModifySaisie && <button onClick={onModifySaisie} className="text-xs text-slate-500 hover:text-slate-700">Modifier la saisie</button>}
+          <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-700">← Retour</button>
+        </div>
       </div>
       <input value={query} onChange={e => rechercher(e.target.value)} placeholder="Rechercher un client VosFactures..."
         className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" autoFocus />

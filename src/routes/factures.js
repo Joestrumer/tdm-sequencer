@@ -378,6 +378,8 @@ module.exports = (db) => {
           const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
           const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
 
+          console.log(`📊 GSheets: spreadsheetId=${spreadsheetId}, sheetName=${sheetName}, produits=${(products || []).length}`);
+
           if (spreadsheetId) {
             const gsProducts = (products || []).map(p => ({
               ref: p.ref,
@@ -396,10 +398,14 @@ module.exports = (db) => {
             console.log('📊 GSheets log:', JSON.stringify(gsResult));
             if (gsResult.ok) {
               db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));
+            } else {
+              console.error('📊 GSheets log échec:', JSON.stringify(gsResult));
             }
+          } else {
+            console.warn('📊 GSheets: pas de spreadsheetId configuré, skip');
           }
         } catch (gsErr) {
-          console.error('⚠️ Erreur log GSheets:', gsErr.message);
+          console.error('⚠️ Erreur log GSheets:', gsErr.message, gsErr.stack?.split('\n').slice(0, 3).join(' '));
         }
       }
 
@@ -484,11 +490,34 @@ module.exports = (db) => {
 
   // ─── CSV Logisticien ────────────────────────────────────────────────────────
 
+  // ─── PDF Proxy ──────────────────────────────────────────────────────────────
+
+  router.get('/invoices/:id/pdf', async (req, res) => {
+    try {
+      const token = (db.prepare("SELECT valeur FROM config WHERE cle = 'vf_api_token'").get()?.valeur || process.env.VF_API_TOKEN || '').trim();
+      if (!token) return res.status(500).json({ erreur: 'Token VosFactures non configuré' });
+
+      const vfBase = process.env.VF_BASE_URL || 'https://terredemars.vosfactures.fr';
+      const pdfUrl = `${vfBase}/invoices/${req.params.id}.pdf?api_token=${token}`;
+      const pdfRes = await fetch(pdfUrl);
+      if (!pdfRes.ok) return res.status(pdfRes.status).json({ erreur: `VF PDF error: ${pdfRes.status}` });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="facture-${req.params.id}.pdf"`);
+      const buffer = Buffer.from(await pdfRes.arrayBuffer());
+      res.send(buffer);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── CSV Logisticien ────────────────────────────────────────────────────────
+
   router.post('/csv-logisticien', (req, res) => {
     try {
-      const { invoiceData, client } = req.body;
+      const { invoiceData, client, shippingId } = req.body;
       const shippingNamesMap = getShippingNames();
-      const csv = genererCSVLogisticien(invoiceData, client, shippingNamesMap);
+      const csv = genererCSVLogisticien(invoiceData, client, shippingNamesMap, { shippingId });
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="logisticien-${invoiceData.number || 'facture'}.csv"`);
       res.send(csv);
