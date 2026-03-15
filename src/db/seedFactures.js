@@ -84,6 +84,8 @@ const masterCatalog = {
   'P007-30': { nom: 'Gel Lavant Mains Insurrection 30ml', prix_ht: 0.78, tva: 20 },
   'P014-100': { nom: 'Irreverence Gel Nettoyant Corps & Cheveux 100ml', prix_ht: 1.80, tva: 20 },
   'P042-5000': { nom: 'Reddition 2 in 1 Recharge 5L', prix_ht: 39.00, tva: 20 },
+  'P037': { nom: 'Gel douche Shampoing 2 en 1 Elégance 500ml', prix_ht: 7.50, tva: 20 },
+  'P037-5000': { nom: 'Gel douche Shampoing 2 en 1 Elégance Recharge 5 L', prix_ht: 41.00, tva: 20 },
 };
 
 // ─── Partenaires canoniques ───────────────────────────────────────────────────
@@ -373,6 +375,8 @@ const productNameMapping = {
   'P035-7.50': 'N-035 ELEGANCE GEL / CLEANSER 500ML...',
   'P035-5000-39.00': '035 ELEGANCE GEL CORPOREL / BODY CLEANSER 5 LITERS',
   'P035-5000-41.00': 'N-035 ELEGANCE GEL / CLEANSER 5 LITERS...',
+  'P037-5000-41.00': '037 Gel douche Shampoing 2 en 1 Elégance Recharge 5 L',
+  'P037-5000-39.00': '037 Gel douche Shampoing 2 en 1 Elégance Recharge 5 L',
   'P039-200-24.00': 'H-039 Intuition Diffuseur 200ml + 5 stick',
   'P039-5000-200.00': 'H-039 Diffuseur Intuition 5 Litres',
   'P041-200-24.00': 'H-039 Intuition Diffuseur 200ml + 5 stick',
@@ -404,6 +408,7 @@ const productIdMapping = {
   'P035-7.00': '108668032', 'P035-7.50': '1115237223',
   'P035-5000-39.00': '108668033', 'P035-5000-41.00': '1115237147',
   'P035-30-0.78': '210085090527',
+  'P037-5000-41.00': '108668037', 'P037-5000-39.00': '108668037',
   'P042-5000-39.00': '1117518210', 'P042-30-0.78': '1117738019',
   'P017-30-0.70': '105488250', 'P017-7.80': '107029956',
   'P038-30-0.84': '222631512',
@@ -566,6 +571,23 @@ const seedAll = db.transaction(() => {
   }
 
   console.log(`  ✅ Code mappings : ${codeCount} entrées`);
+
+  // 6. Config Google Sheets (si pas déjà configuré)
+  const configStmt = db.prepare(`
+    INSERT INTO config (cle, valeur) VALUES (?, ?)
+    ON CONFLICT(cle) DO NOTHING
+  `);
+
+  configStmt.run('gsheets_spreadsheet_id', '1K9N8nHAokQ65p9qTvOqHGIoeErSi_QsVofmuR0cfu5E');
+  configStmt.run('gsheets_sheet_name', 'Log sold');
+
+  // Les credentials GSheets viennent de la variable d'env GSHEETS_CREDENTIALS
+  if (process.env.GSHEETS_CREDENTIALS) {
+    configStmt.run('gsheets_credentials', process.env.GSHEETS_CREDENTIALS);
+    console.log('  ✅ Config Google Sheets seedée (credentials depuis env)');
+  } else {
+    console.log('  ⚠️  GSHEETS_CREDENTIALS non défini — configurer via l\'interface ou la variable d\'env');
+  }
 });
 
 seedAll();
