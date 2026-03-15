@@ -10,7 +10,8 @@ const db = require('./db/init.js');
 // Auto-seed des données factures si manquantes ou incomplètes
 try {
   const check = db.prepare("SELECT COUNT(*) as n FROM vf_code_mappings WHERE type = 'product_id' AND code_source = 'P037-5000-41.00'").get();
-  if (!check || check.n === 0) {
+  const gsheetsCreds = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
+  if (!check || check.n === 0 || !gsheetsCreds?.valeur) {
     console.log('🌱 Données factures manquantes ou incomplètes, lancement du seed...');
     require('child_process').execSync('node src/db/seedFactures.js', {
       cwd: __dirname + '/..',
@@ -19,14 +20,6 @@ try {
     });
   } else {
     console.log('✅ Données factures déjà à jour');
-  }
-  // Injecter credentials GSheets depuis env si pas encore en DB
-  if (process.env.GSHEETS_CREDENTIALS) {
-    const existing = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
-    if (!existing || !existing.valeur) {
-      db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur").run(process.env.GSHEETS_CREDENTIALS);
-      console.log('✅ Credentials GSheets injectées depuis GSHEETS_CREDENTIALS');
-    }
   }
 } catch (e) {
   console.error('⚠️ Erreur auto-seed factures:', e.message);
