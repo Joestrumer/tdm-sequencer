@@ -2895,18 +2895,28 @@ const FacturesClientSearch = ({ onSelect, onBack }) => {
   const [query, setQuery] = useState('');
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(false);
+  const [erreur, setErreur] = useState('');
   const searchTimer = useRef(null);
 
   const rechercher = (q) => {
     setQuery(q);
+    setErreur('');
     clearTimeout(searchTimer.current);
     if (!q || q.length < 2) { setClients([]); return; }
     searchTimer.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const data = await api.get(`/factures/clients?q=${encodeURIComponent(q)}`);
-        setClients(Array.isArray(data) ? data : []);
-      } catch { setClients([]); }
+        const res = await fetch(window.location.origin + '/api/factures/clients?q=' + encodeURIComponent(q), {
+          headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('tdm_token') || '') }
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setErreur(data.erreur || 'Erreur ' + res.status);
+          setClients([]);
+        } else {
+          setClients(Array.isArray(data) ? data : []);
+        }
+      } catch (e) { setErreur('Erreur réseau: ' + e.message); setClients([]); }
       setLoading(false);
     }, 400);
   };
@@ -2919,7 +2929,8 @@ const FacturesClientSearch = ({ onSelect, onBack }) => {
       </div>
       <input value={query} onChange={e => rechercher(e.target.value)} placeholder="Rechercher un client VosFactures..."
         className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" autoFocus />
-      {loading && <p className="text-xs text-slate-400">Recherche...</p>}
+      {loading && <p className="text-xs text-slate-400">Chargement des clients VosFactures...</p>}
+      {erreur && <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{erreur}</p>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
         {clients.map(c => (
           <button key={c.id} onClick={() => onSelect(c)}
@@ -2929,7 +2940,7 @@ const FacturesClientSearch = ({ onSelect, onBack }) => {
           </button>
         ))}
       </div>
-      {query.length >= 2 && !loading && clients.length === 0 && (
+      {query.length >= 2 && !loading && !erreur && clients.length === 0 && (
         <p className="text-xs text-slate-400 text-center">Aucun client trouvé</p>
       )}
     </div>

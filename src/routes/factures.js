@@ -57,11 +57,12 @@ module.exports = (db) => {
 
   router.get('/clients', async (req, res) => {
     try {
-      const { q, page } = req.query;
+      const { q } = req.query;
       if (!q) return res.json([]);
-      const data = await vfService.rechercherClients(q, page || 1);
+      const data = await vfService.rechercherClients(q);
       res.json(data);
     } catch (e) {
+      console.error('Erreur recherche clients VF:', e.message);
       res.status(500).json({ erreur: e.message });
     }
   });
