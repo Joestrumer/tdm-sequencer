@@ -421,7 +421,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-4 flex-shrink-0">
@@ -441,9 +441,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
         </div>
 
-        <div className="flex flex-1 overflow-hidden">
+        <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           {/* Sidebar étapes */}
-          <div className="w-44 border-r border-slate-100 p-3 space-y-1 flex-shrink-0 overflow-y-auto bg-slate-50/50">
+          <div className="md:w-44 border-b md:border-b-0 md:border-r border-slate-100 p-2 md:p-3 flex md:flex-col gap-1 flex-shrink-0 overflow-x-auto md:overflow-y-auto bg-slate-50/50">
             {etapes.map((e, i) => (
               <div key={i} className={`group flex items-center rounded-lg transition-colors ${activeEtape === i ? "bg-slate-900" : "hover:bg-slate-100"}`}>
                 <button onClick={() => { syncCorps(); setActiveEtape(i); }} className="flex-1 text-left px-3 py-2.5">
@@ -1032,37 +1032,39 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
       {editLead && <ModalEditLead lead={editLead} onClose={() => setEditLead(null)} onSave={() => { setEditLead(null); if(onRefresh) onRefresh(); }} />}
 
       {/* ── Filtres ── */}
-      <div className="flex flex-wrap gap-2 items-center bg-white rounded-2xl border border-slate-100 px-4 py-3">
+      <div className="flex flex-col md:flex-row flex-wrap gap-2 md:items-center bg-white rounded-2xl border border-slate-100 px-4 py-3">
         <div className="flex gap-1 flex-wrap">
           {statuts.map(s => (
-            <button key={s} onClick={() => setFilterStatut(s)} className={`px-2.5 py-1 rounded-lg text-xs font-medium transition-colors ${filterStatut === s ? "bg-slate-900 text-white" : "bg-slate-50 border border-slate-200 text-slate-600 hover:border-slate-300"}`}>{s}</button>
+            <button key={s} onClick={() => setFilterStatut(s)} className={`px-2.5 py-1.5 md:py-1 rounded-lg text-xs font-medium transition-colors ${filterStatut === s ? "bg-slate-900 text-white" : "bg-slate-50 border border-slate-200 text-slate-600 hover:border-slate-300"}`}>{s}</button>
           ))}
         </div>
-        <div className="w-px h-4 bg-slate-200 mx-1 hidden sm:block" />
-        <select value={filterSegment} onChange={e => setFilterSegment(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-600 focus:outline-none bg-white">
-          {segments.map(s => <option key={s}>{s}</option>)}
-        </select>
-        <select value={filterVille} onChange={e => setFilterVille(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-600 focus:outline-none bg-white">
-          {villes.map(v => <option key={v}>{v}</option>)}
-        </select>
-        <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1 text-xs text-slate-600 focus:outline-none bg-white">
-          <option value="recent">Plus récents</option>
-          <option value="score">Score ↓</option>
-          <option value="nom">Nom A→Z</option>
-        </select>
-        <span className="ml-auto text-xs text-slate-400">{filtered.length} lead{filtered.length !== 1 ? "s" : ""}</span>
+        <div className="w-px h-4 bg-slate-200 mx-1 hidden md:block" />
+        <div className="flex gap-2 flex-wrap">
+          <select value={filterSegment} onChange={e => setFilterSegment(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
+            {segments.map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select value={filterVille} onChange={e => setFilterVille(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
+            {villes.map(v => <option key={v}>{v}</option>)}
+          </select>
+          <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
+            <option value="recent">Plus récents</option>
+            <option value="score">Score ↓</option>
+            <option value="nom">Nom A→Z</option>
+          </select>
+        </div>
+        <span className="md:ml-auto text-xs text-slate-400">{filtered.length} lead{filtered.length !== 1 ? "s" : ""}</span>
       </div>
 
       {/* ── Barre actions ── */}
-      <div className="flex gap-2 items-center justify-between">
-        <div className="flex gap-2">
+      <div className="flex flex-col md:flex-row gap-2 md:items-center md:justify-between">
+        <div className="flex gap-2 items-center">
           <div className="flex bg-slate-100 rounded-lg p-0.5">
             <button onClick={() => setVueMode("liste")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vueMode === "liste" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>☰ Liste</button>
             <button onClick={() => setVueMode("kanban")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vueMode === "kanban" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>⬛ Kanban</button>
           </div>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
-        <div className="flex gap-2">
+        <div className="flex gap-2 overflow-x-auto">
           <div className="relative group">
             <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
               {importStatus || "📥 Import CSV"}
@@ -1098,14 +1100,50 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
       {vueMode === "liste" && (
         <>
         {selectedIds.size > 0 && (
-          <div className="flex items-center gap-3 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm">
+          <div className="flex flex-wrap items-center gap-2 md:gap-3 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm">
             <span className="font-medium">{selectedIds.size} lead{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
-            <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer une séquence</button>
-            <button onClick={async () => { if(!confirm('Supprimer ' + selectedIds.size + ' leads ?')) return; for(const id of selectedIds) await api.delete('/leads/' + id).catch(()=>{}); setSelectedIds(new Set()); if(onRefresh) onRefresh(); }} className="px-3 py-1 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600">✕ Supprimer</button>
+            <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer</button>
+            <button onClick={async () => { if(!confirm('Supprimer ' + selectedIds.size + ' leads ?')) return; for(const id of selectedIds) await api.delete('/leads/' + id).catch(()=>{}); setSelectedIds(new Set()); if(onRefresh) onRefresh(); }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600">✕ Supprimer</button>
             <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-blue-200 hover:text-white text-xs">Annuler</button>
           </div>
         )}
-        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        {/* Mobile cards */}
+        <div className="md:hidden space-y-2">
+          {filtered.map(lead => {
+            const cfg = STATUT_CONFIG[lead.statut] || STATUT_CONFIG["Nouveau"];
+            return (
+              <div key={lead.id} className={`bg-white rounded-xl border border-slate-100 p-3 cursor-pointer transition-colors ${selectedLead?.id === lead.id ? "ring-1 ring-indigo-200 bg-indigo-50" : "active:bg-slate-50"}`} onClick={() => ouvrirDetail(lead)}>
+                <div className="flex items-center gap-2.5">
+                  <input type="checkbox" className="rounded accent-blue-600 flex-shrink-0" checked={selectedIds.has(lead.id)} onChange={e => { e.stopPropagation(); const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} onClick={e => e.stopPropagation()} />
+                  <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${cfg.bg} ${cfg.text}`}>
+                    {lead.prenom?.[0]}{lead.nom?.[0]}
+                  </div>
+                  <div className="min-w-0 flex-1">
+                    <div className="font-medium text-slate-800 text-sm truncate">{lead.prenom} {lead.nom}
+                      {lead.hubspot_id && <span className="ml-1 text-orange-300 text-xs">⬡</span>}
+                    </div>
+                    <div className="text-xs text-slate-400 truncate">{lead.hotel} · {[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
+                  </div>
+                  <Badge statut={lead.statut} />
+                </div>
+                <div className="flex items-center justify-between mt-2 pl-[42px]">
+                  <div className="flex items-center gap-3 text-xs text-slate-400">
+                    {lead.sequence && <span className="bg-blue-50 text-blue-600 font-medium px-2 py-0.5 rounded-full">E{(lead.etape||0)+1}</span>}
+                    <span>Score {lead.score}</span>
+                    {lead.ouvertures > 0 && <span>👁 {lead.ouvertures}</span>}
+                  </div>
+                  <div className="flex gap-1" onClick={e => e.stopPropagation()}>
+                    {lead.statut !== "Désabonné" && <button onClick={() => setShowLaunch(lead)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs bg-blue-600 text-white rounded-lg">▶</button>}
+                    <button onClick={() => setEditLead(lead)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs border border-slate-200 text-slate-500 rounded-lg">✏️</button>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
+          {filtered.length === 0 && <div className="text-center py-12 text-slate-400 text-sm">Aucun lead trouvé</div>}
+        </div>
+        {/* Desktop table */}
+        <div className="hidden md:block bg-white rounded-2xl border border-slate-100 overflow-hidden">
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
@@ -1189,12 +1227,12 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 
       {/* ── VUE KANBAN ── */}
       {vueMode === "kanban" && (
-        <div className="flex gap-2 overflow-x-auto pb-4">
+        <div className="flex gap-2 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none">
           {KANBAN_COLS.map(col => {
             const colLeads = filtered.filter(l => l.statut === col);
             const cfg = STATUT_CONFIG[col] || STATUT_CONFIG["Nouveau"];
             return (
-              <div key={col} className="flex-shrink-0 w-48">
+              <div key={col} className="flex-shrink-0 w-[75vw] md:w-48 snap-start">
                 <div className={`flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg mb-2 ${cfg.bg}`}>
                   <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
                   <span className={`text-xs font-semibold ${cfg.text}`}>{col}</span>
@@ -1229,7 +1267,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
 
           {/* ── Header ── */}
-          <div className="flex items-start justify-between p-5 border-b border-slate-100">
+          <div className="flex flex-col md:flex-row md:items-start justify-between p-4 md:p-5 border-b border-slate-100 gap-3">
             <div>
               <div className="flex items-center gap-3 flex-wrap">
                 <h3 className="text-base font-semibold text-slate-900">{selectedLead.prenom} {selectedLead.nom}</h3>
@@ -1245,7 +1283,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               <p className="text-sm text-slate-500 mt-0.5">{selectedLead.hotel} · {selectedLead.ville} · {selectedLead.segment}</p>
               <p className="text-xs text-slate-400 mt-0.5">{selectedLead.email}</p>
             </div>
-            <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
               <button onClick={() => setEditLead(selectedLead)} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50">✏️ Éditer</button>
               {selectedLead.sequence_active && (
                 <button onClick={async () => {
@@ -1277,7 +1315,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           </div>
 
           {/* ── KPIs rapides ── */}
-          <div className="grid grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 bg-slate-50/50">
+          <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 bg-slate-50/50">
             {[
               ["Score engagement", selectedLead.score || 50],
               ["Ouvertures", selectedLead.total_ouvertures || 0],
@@ -1679,7 +1717,7 @@ const VueSequences = ({ sequences, onNew, onEdit, showToast }) => {
               </button>
             </div>
           </div>
-          <div className="overflow-hidden rounded-lg border border-slate-100">
+          <div className="overflow-x-auto rounded-lg border border-slate-100">
             <table className="w-full text-xs">
               <thead className="bg-slate-50">
                 <tr>
@@ -2266,8 +2304,8 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
                   <h4 className="text-xs font-medium text-slate-500">Historique ({validationHistory.length})</h4>
                   <button onClick={() => setValidationHistory([])} className="text-xs text-slate-400 hover:text-slate-600">Effacer</button>
                 </div>
-                <div className="overflow-hidden rounded-lg border border-slate-100">
-                  <table className="w-full text-xs">
+                <div className="overflow-x-auto rounded-lg border border-slate-100">
+                  <table className="w-full text-xs min-w-[400px]">
                     <thead className="bg-slate-50">
                       <tr>
                         <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400">Email</th>
@@ -2386,8 +2424,8 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
                     </button>
                   ))}
                 </div>
-                <div className="overflow-hidden rounded-xl border border-slate-100">
-                  <table className="w-full text-sm">
+                <div className="overflow-x-auto rounded-xl border border-slate-100">
+                  <table className="w-full text-sm min-w-[600px]">
                     <thead className="bg-slate-50 border-b border-slate-100">
                       <tr>
                         {["Lead", "Email", "Statut", "Score", "Sous-statut", "Domaine"].map(h => (
@@ -2704,16 +2742,16 @@ const VueBlocklist = ({ onRefresh, showToast }) => {
       )}
 
       {/* Liste */}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-x-auto">
+        <table className="w-full min-w-[640px]">
           <thead className="bg-slate-50 border-b border-slate-200">
             <tr>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Type</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Valeur</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Raison</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Permission expresse</th>
-              <th className="px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Ajouté le</th>
-              <th className="px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase">Actions</th>
+              <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Type</th>
+              <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Valeur</th>
+              <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Raison</th>
+              <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Permission expresse</th>
+              <th className="px-4 md:px-6 py-3 text-left text-xs font-medium text-slate-600 uppercase">Ajouté le</th>
+              <th className="px-4 md:px-6 py-3 text-right text-xs font-medium text-slate-600 uppercase">Actions</th>
             </tr>
           </thead>
           <tbody>
@@ -2729,7 +2767,7 @@ const VueBlocklist = ({ onRefresh, showToast }) => {
                       {entry.type === 'email' ? '📧 Email' : '🌐 Domaine'}
                     </span>
                   </td>
-                  <td className="px-6 py-4 text-sm font-mono text-slate-900">{entry.value}</td>
+                  <td className="px-4 md:px-6 py-4 text-sm font-mono text-slate-900">{entry.value}</td>
                   <td className="px-6 py-4 text-sm text-slate-600">{entry.raison || '—'}</td>
                   <td className="px-6 py-4">
                     <label className="flex items-center gap-2 cursor-pointer">
@@ -2861,14 +2899,19 @@ function App() {
         [contenteditable] li { margin: 2px 0; }
         @keyframes fade-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fade-in 0.2s ease-out; }
+        .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
+        @media (max-width: 767px) {
+          button, select, [type="checkbox"] { min-height: 36px; }
+          .touch-target { min-height: 44px; min-width: 44px; }
+        }
       `}</style>
 
       <Toast toast={toast} onDismiss={() => setToast(t => ({ ...t, visible: false }))} />
 
       {showSeqEditor && <ModalEmailEditor seq={editSeq} onClose={() => { setShowSeqEditor(false); setEditSeq(null); }} onSave={saveSeq} />}
 
-      {/* Sidebar */}
-      <div className="fixed left-0 top-0 h-full w-56 bg-white border-r border-slate-100 flex flex-col z-40">
+      {/* Sidebar — desktop only */}
+      <div className="hidden md:flex fixed left-0 top-0 h-full w-56 bg-white border-r border-slate-100 flex-col z-40">
         <div className="p-5 border-b border-slate-100">
           <div className="flex items-center gap-2.5">
             <div className="w-8 h-8 rounded-lg bg-slate-900 flex items-center justify-center text-white text-xs font-bold">TM</div>
@@ -2897,9 +2940,19 @@ function App() {
         </div>
       </div>
 
+      {/* Bottom tab bar — mobile only */}
+      <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-40 flex justify-around items-center px-1 py-1 safe-area-bottom">
+        {NAV.map(({ id, icon, label }) => (
+          <button key={id} onClick={() => setVue(id)} className={`flex flex-col items-center justify-center min-w-0 flex-1 py-2 rounded-lg transition-colors ${vue === id ? "text-slate-900" : "text-slate-400"}`}>
+            <span className="text-lg leading-none">{icon}</span>
+            {vue === id && <span className="text-[10px] font-medium mt-0.5 truncate max-w-full px-1">{label}</span>}
+          </button>
+        ))}
+      </div>
+
       {/* Main */}
-      <div className="ml-56 min-h-screen">
-        <header className="bg-white border-b border-slate-100 shadow-sm px-8 py-4 flex items-center justify-between sticky top-0 z-30">
+      <div className="md:ml-56 min-h-screen">
+        <header className="bg-white border-b border-slate-100 shadow-sm px-4 py-3 md:px-8 md:py-4 flex items-center justify-between sticky top-0 z-30">
           <div>
             <h1 className="text-base font-semibold text-slate-900">
               {NAV.find(n => n.id === vue)?.label}
@@ -2921,7 +2974,7 @@ function App() {
           )}
         </header>
 
-        <main className="p-8">
+        <main className="p-4 pb-24 md:p-8 md:pb-8">
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
           {vue === "dashboard" && <VueDashboard leads={leads} activites={activites} stats={stats} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
