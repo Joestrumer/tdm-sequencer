@@ -268,18 +268,15 @@ module.exports = (db) => {
           quantity: qty,
         };
 
-        // Remise : discount_percent, JAMAIS total_price_gross quand discount > 0
+        // Toujours envoyer price_net
+        position.price_net = priceToUse.toFixed(2);
+
+        // Remise : discount_percent, et ne PAS envoyer total_price_gross quand discount > 0
         if (discount > 0) {
           position.discount_percent = discount;
-        }
-
-        // Forcer le prix explicitement si : prix forcé TTC, ou mode prix commande
-        if (forcedPriceTTC || priceMode === 'order') {
-          position.price_net = priceToUse.toFixed(2);
-          // Ne passer total_price_gross QUE s'il n'y a PAS de discount
-          if (discount === 0) {
-            position.total_price_gross = totalPriceGross.toFixed(2);
-          }
+        } else {
+          // total_price_gross uniquement quand PAS de discount
+          position.total_price_gross = totalPriceGross.toFixed(2);
         }
 
         // Nettoyer les undefined
