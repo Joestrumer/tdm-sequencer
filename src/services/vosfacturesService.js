@@ -60,9 +60,11 @@ async function vfFetch(path, opts = {}, db) {
   }
 }
 
-// Cache mémoire pour les produits VF
+// Cache mémoire
 let productsCache = null;
 let productsCacheTime = 0;
+let clientsCache = null;
+let clientsCacheTime = 0;
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
 module.exports = (db) => ({
@@ -75,8 +77,33 @@ module.exports = (db) => ({
     }
   },
 
-  async rechercherClients(query, page = 1) {
-    return vfFetch(`/clients.json?page=${page}&input_place=${encodeURIComponent(query)}`, {}, db);
+  async getAllClients(forceRefresh = false) {
+    if (!forceRefresh && clientsCache && Date.now() - clientsCacheTime < CACHE_TTL) {
+      return clientsCache;
+    }
+    const allClients = [];
+    for (let page = 1; page <= 10; page++) {
+      const data = await vfFetch(`/clients.json?page=${page}&per_page=100`, {}, db);
+      if (!Array.isArray(data) || data.length === 0) break;
+      allClients.push(...data);
+      if (data.length < 100) break;
+    }
+    allClients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+    clientsCache = allClients;
+    clientsCacheTime = Date.now();
+    console.log(`📇 ${allClients.length} clients VF chargés en cache`);
+    return allClients;
+  },
+
+  async rechercherClients(query) {
+    const all = await this.getAllClients();
+    if (!query || query.length < 2) return all.slice(0, 50);
+    const term = query.toLowerCase();
+    return all.filter(c =>
+      (c.name || '').toLowerCase().includes(term) ||
+      (c.shortcut || '').toLowerCase().includes(term) ||
+      (c.city || '').toLowerCase().includes(term)
+    ).slice(0, 30);
   },
 
   async getClient(id) {
