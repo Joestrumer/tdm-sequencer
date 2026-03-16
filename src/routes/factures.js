@@ -777,5 +777,18 @@ module.exports = (db) => {
     }
   });
 
+  // ─── TEMPORAIRE : Forcer utilisation env var au lieu de DB ──────────────────
+  router.post('/force-env-tokens', async (req, res) => {
+    try {
+      // Supprimer les tokens de la DB pour forcer l'utilisation des env vars
+      db.prepare("DELETE FROM config WHERE cle = 'vf_api_token'").run();
+      db.prepare("DELETE FROM config WHERE cle = 'brevo_api_key'").run();
+      db.prepare("DELETE FROM config WHERE cle = 'hubspot_api_key'").run();
+      res.json({ ok: true, message: 'Tokens supprimés de la DB, les env vars seront utilisées' });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   return router;
 };
