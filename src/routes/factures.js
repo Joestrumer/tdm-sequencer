@@ -784,7 +784,8 @@ module.exports = (db) => {
       db.prepare("DELETE FROM config WHERE cle = 'vf_api_token'").run();
       db.prepare("DELETE FROM config WHERE cle = 'brevo_api_key'").run();
       db.prepare("DELETE FROM config WHERE cle = 'hubspot_api_key'").run();
-      res.json({ ok: true, message: 'Tokens supprimés de la DB, les env vars seront utilisées' });
+      db.prepare("DELETE FROM config WHERE cle = 'gsheets_credentials'").run();
+      res.json({ ok: true, message: 'Tous les tokens supprimés de la DB, les env vars seront utilisées' });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
