@@ -97,8 +97,7 @@ module.exports = (db) => {
 
         const invoiceNumber = (row['Invoice'] || '').trim();
         const clientName = (row['Hotel name'] || '').trim();
-        const factureYear = String(row['facture year'] || '').trim();
-        const factureMonth = String(row['facture month'] || '').trim();
+        const dateFacturation = (row['Date HM Facturation T2M'] || '').trim();
         const montantHT = parseFloat(row['Prix Total HT'] || 0);
         const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
 
@@ -107,8 +106,31 @@ module.exports = (db) => {
           continue;
         }
 
+        // Extraire l'année de la date de facturation
+        let invoiceYear = '';
+        let invoiceMonth = '';
+        if (dateFacturation) {
+          // Format attendu: DD/MM/YYYY ou YYYY-MM-DD
+          let parsedDate;
+          if (dateFacturation.includes('/')) {
+            const parts = dateFacturation.split('/');
+            if (parts.length === 3) {
+              // DD/MM/YYYY
+              invoiceYear = parts[2];
+              invoiceMonth = parts[1];
+            }
+          } else if (dateFacturation.includes('-')) {
+            const parts = dateFacturation.split('-');
+            if (parts.length === 3 && parts[0].length === 4) {
+              // YYYY-MM-DD
+              invoiceYear = parts[0];
+              invoiceMonth = parts[1];
+            }
+          }
+        }
+
         // Filtrer par année si demandé
-        if (year && factureYear && factureYear != year) {
+        if (year && invoiceYear && invoiceYear != year) {
           linesSkippedYear++;
           continue;
         }
@@ -118,8 +140,9 @@ module.exports = (db) => {
           invoicesMap.set(invoiceNumber, {
             number: invoiceNumber,
             client: clientName,
-            year: factureYear,
-            month: factureMonth,
+            date: dateFacturation,
+            year: invoiceYear,
+            month: invoiceMonth,
             totalHT: 0,
             totalTTC: 0,
             productCount: 0,
@@ -178,7 +201,7 @@ module.exports = (db) => {
           stats.recentInvoices.push({
             number: invoice.number,
             client: invoice.client,
-            date: invoice.year && invoice.month ? `${invoice.month}/${invoice.year}` : '',
+            date: invoice.date || (invoice.year && invoice.month ? `${invoice.month}/${invoice.year}` : ''),
             amount_ht: invoice.totalHT,
             amount_ttc: invoice.totalTTC,
           });
@@ -230,8 +253,7 @@ module.exports = (db) => {
         if (rowClient.toLowerCase() !== clientName.toLowerCase()) continue;
 
         const invoiceNumber = (row['Invoice'] || '').trim();
-        const factureYear = String(row['facture year'] || '').trim();
-        const factureMonth = String(row['facture month'] || '').trim();
+        const dateFacturation = (row['Date HM Facturation T2M'] || '').trim();
         const productRef = (row['Ref'] || '').trim();
         const productName = (row['Produit'] || '').trim();
         const quantity = parseFloat(row['Nb Items'] || 0);
@@ -239,14 +261,26 @@ module.exports = (db) => {
         const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
 
         if (!invoiceNumber) continue;
-        if (year && factureYear && factureYear != year) continue;
+
+        // Extraire l'année de la date de facturation
+        let invoiceYear = '';
+        if (dateFacturation) {
+          if (dateFacturation.includes('/')) {
+            const parts = dateFacturation.split('/');
+            if (parts.length === 3) invoiceYear = parts[2];
+          } else if (dateFacturation.includes('-')) {
+            const parts = dateFacturation.split('-');
+            if (parts.length === 3 && parts[0].length === 4) invoiceYear = parts[0];
+          }
+        }
+
+        if (year && invoiceYear && invoiceYear != year) continue;
 
         // Grouper par facture
         if (!clientInvoices.has(invoiceNumber)) {
           clientInvoices.set(invoiceNumber, {
             number: invoiceNumber,
-            year: factureYear,
-            month: factureMonth,
+            date: dateFacturation,
             totalHT: 0,
             totalTTC: 0,
             products: [],
@@ -315,7 +349,7 @@ module.exports = (db) => {
         topProducts,
         invoices: invoices.map(i => ({
           number: i.number,
-          date: i.year && i.month ? `${i.month}/${i.year}` : '',
+          date: i.date || '',
           totalHT: Math.round(i.totalHT * 100) / 100,
           totalTTC: Math.round(i.totalTTC * 100) / 100,
           productCount: i.products.length,
