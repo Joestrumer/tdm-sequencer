@@ -733,13 +733,7 @@ module.exports = (db) => {
     try {
       const { year, limit } = req.query;
 
-      // Récupérer toutes les factures (ou filtrer par année)
-      let query = 'kind:vat'; // Seulement les vraies factures, pas proforma
-      if (year) {
-        query += ` AND issue_year:${year}`;
-      }
-
-      // Récupérer via API VF (avec pagination si nécessaire)
+      // Récupérer toutes les factures via API VF (avec pagination)
       const allInvoices = [];
       let page = 1;
       const perPage = 100;
@@ -749,7 +743,25 @@ module.exports = (db) => {
         const invoices = await vfService.rechercherFacture('', { page, per_page: perPage });
         if (!invoices || invoices.length === 0) break;
 
-        allInvoices.push(...invoices);
+        // Filtrer uniquement les vraies factures (kind=vat) et exclure les proformas
+        const validInvoices = invoices.filter(inv => {
+          // Vérifier que c'est une vraie facture (kind=vat)
+          if (inv.kind !== 'vat') return false;
+
+          // Exclure les numéros qui commencent par P (proforma) ou d'autres préfixes non-facture
+          const num = String(inv.number || '');
+          if (num.startsWith('P') || num.startsWith('D') || num.startsWith('F')) return false;
+
+          // Si filtre par année, vérifier l'année
+          if (year && inv.issue_date) {
+            const invoiceYear = new Date(inv.issue_date).getFullYear();
+            if (invoiceYear !== parseInt(year)) return false;
+          }
+
+          return true;
+        });
+
+        allInvoices.push(...validInvoices);
 
         if (invoices.length < perPage) break; // Dernière page
         page++;
