@@ -115,6 +115,7 @@ module.exports = (db) => {
       let totalLinesProcessed = 0;
       let linesSkippedNoInvoice = 0;
       let linesSkippedYear = 0;
+      const sampleValues = [];
 
       for (const row of data) {
         totalLinesProcessed++;
@@ -133,8 +134,20 @@ module.exports = (db) => {
 
         const clientName = (row['Hotel name'] || '').trim();
         const dateFacturation = (row['Date facturation'] || '').trim();
-        const montantHT = parseFloat(row['Prix Total HT'] || 0);
-        const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
+        const montantHTRaw = row['Prix Total HT'] || '';
+        const montantTTCRaw = row['Prix Total TTC'] || '';
+        const montantHT = parseFloat(montantHTRaw || 0);
+        const montantTTC = parseFloat(montantTTCRaw || 0);
+
+        // Log quelques exemples
+        if (sampleValues.length < 10) {
+          sampleValues.push({
+            invoice: invoiceNumber,
+            htRaw: montantHTRaw,
+            htParsed: montantHT,
+            client: clientName
+          });
+        }
 
         // Extraire année et mois pour la première ligne de chaque facture
         let invoiceYear = '';
@@ -176,9 +189,19 @@ module.exports = (db) => {
       }
 
       console.log(`📊 Traitement: ${totalLinesProcessed} lignes, ${linesSkippedNoInvoice} sans Invoice, ${linesSkippedYear} lignes exclues (factures autres années)`);
+      console.log(`📊 Exemples de valeurs HT lues:`, sampleValues);
       console.log(`📊 ${invoicesMap.size} factures uniques trouvées`);
       const invoicesList = Array.from(invoicesMap.keys()).sort();
       console.log(`📊 Factures trouvées: ${invoicesList.join(', ')}`);
+
+      // Log totaux de quelques factures
+      const sampleInvoiceTotals = [];
+      for (const [num, inv] of invoicesMap) {
+        if (sampleInvoiceTotals.length < 5) {
+          sampleInvoiceTotals.push({ num, totalHT: inv.totalHT, products: inv.productCount });
+        }
+      }
+      console.log(`📊 Exemples de totaux factures:`, sampleInvoiceTotals);
 
       // Calculer les statistiques
       const stats = {
