@@ -727,6 +727,31 @@ module.exports = (db) => {
     }
   });
 
+  // ─── DEBUG Analytics ─────────────────────────────────────────────────────────
+  router.get('/analytics/debug', async (req, res) => {
+    try {
+      const page1 = await vfService.rechercherFacture('', { page: 1, per_page: 20 });
+      const sample = page1.slice(0, 5).map(inv => ({
+        id: inv.id,
+        number: inv.number,
+        kind: inv.kind,
+        date: inv.issue_date,
+        buyer: inv.buyer_name,
+        ht: inv.price_net,
+        ttc: inv.price_gross,
+      }));
+
+      res.json({
+        total_returned: page1.length,
+        sample_invoices: sample,
+        kinds: [...new Set(page1.map(i => i.kind))],
+        number_formats: page1.slice(0, 10).map(i => ({ number: i.number, kind: i.kind })),
+      });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Analytics / Dashboard CA ───────────────────────────────────────────────
 
   router.get('/analytics', async (req, res) => {
