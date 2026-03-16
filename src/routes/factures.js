@@ -749,6 +749,11 @@ module.exports = (db) => {
           // kind peut être: 'vat' (facture), 'proforma', 'estimate' (devis), etc.
           if (inv.kind !== 'vat') return false;
 
+          // Les vraies factures ont un numéro uniquement composé de chiffres (ex: 7158)
+          // Les proformas ont un préfixe (ex: P4478)
+          const num = String(inv.number || '').trim();
+          if (!/^\d+$/.test(num)) return false; // Exclure si contient des lettres
+
           // Si filtre par année, vérifier l'année
           if (year && inv.issue_date) {
             const invoiceYear = new Date(inv.issue_date).getFullYear();
