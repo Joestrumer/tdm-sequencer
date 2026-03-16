@@ -6,19 +6,52 @@
 
 const { google } = require('googleapis');
 
+// Base64 embarqué des credentials service account (fallback si DB vide)
+const EMBEDDED_CREDS_B64 = 'eyJ0eXBlIjoic2VydmljZV9hY2NvdW50IiwicHJvamVjdF9pZCI6Im91dGlsLWZhY3R1cmVzLXRkbSIsInByaXZhdGVfa2V5X2lkIjoiZDZjMTFkZDhhZmFmODc0MzExOWVkMDZjNGYzYjZjNjhkOGU4OGRiYSIsInByaXZhdGVfa2V5IjoiLS0tLS1CRUdJTiBQUklWQVRFIEtFWS0tLS0tXG5NSUlFdmdJQkFEQU5CZ2txaGtpRzl3MEJBUUVGQUFTQ0JLZ3dnZ1NrQWdFQUFvSUJBUURHMVVWa0s0ZXNPUnVZXG5EdHQ4MUxubDMydkdVb1NnOTJrL2UxaUZOeDRwRWFMNHN0ZWh1clN2VUdqbzE0Rll5VWhYYUtZNm9uMHRwR3dlXG5xLzBEUllKOGpZTGtYSXFKSm9yN29wMU1Yb2dLRThoWFY5SSs3ZUNJYmNueW1icXN4NkhoU2hic3NRdzloM0JhXG5Fa0lNMno2V05kV0Z1UUhNMFNpaklvS2lSaVJvLzEweExmVnlpVGxEQ0xOWDJzeXhldURBQU4rSU5Jektja2pPXG5ONWxJOUlLb1dJcXlzSTRBZ2VqUzBOS2s2dXJjUEJaKzlNRmZmZ3FzbXRSd2g5TUxXRERaQkROMGFZK2I3dk4wXG5JZ1Z0NVZzZUN0SXZ2UDNDVklKRjRBWTV3Tlg3b3pwK3pMc0xxcUQ3RS9VRS82ME1NMFh3bXBCOWlkSTU2emx3XG41TXQydWdIcEFnTUJBQUVDZ2dFQUN4d3pxbXM4UTRWVlkyUEJJL0tIQ0s0NVNIV243NDZqbE9hQmhjQVVzVnJJXG43bmlmeit1czJQYjNSYnQxQU04T2VjUGhOZm1LWVJpRTZobldJMjZvNGVqT1haQkdOVyt2Nkd1bnVuSzF5MHBiXG5zWFc0eThkaStueVlBalJRMkFLM3F1MEc1dWJsdGpKeE5yYzZkWmx5bjlZV1BraWVMeUdvMGFUR0ErZERkWkpsXG42cTBBSFZwaXF3bjZoTXhOVUl1WElIM2xwSGJpZnMxdkEwQlhVSlU1cFFJMld3V0ozcmVMeTF1dktPMEszekpNXG52YzJJVDZicmlmVlNtcSsvVldQMmlDZTcyRldFK3NGMG1SbU5vaFlPcVcvaS9XeERJN2ZraStNYUNTcWNaM3RTXG5NN3RYVnZiN2l6MEIvWVRJdDJ4QUVlWXkwNE54OXdMUTVUN0JqYXZFdVFLQmdRRC83U01JaHFzK0lZMGNMdEc1XG5oMVo1disvWWNmWWVSNW5xc3pvWDRiR3BVYnRjOVVXWjhKeXYwTVk1ai9JOTczelNiMDNSc3BRME1ldU9iMHYwXG5Cdi9wclRYaTI3MVlpM3ZOZVVCTUhSWU00MkZMK0s3Q3VTVGZsWFhoVmpHUXdGQjgwQ1VTWVZmZjZBTzFyY0k0XG5MSGlSaXM2VitHRitwQzA1MGpTUGhRZlcwd0tCZ1FERzQrMFcreEpvN040TStDN1JITyszRzYyY1BsVnZGNXpSXG4wdVFvMWhpYjhZbko5MDd0bk41NTBZL3gwa1FNcms3Y0NEa0l3bHZYME9QTjUxZjQ4V0VYZkhYUDltU0owS29BXG5NUHF6REpvZnROSlIrUWZDaEc0ZExvMCtMVEpTN1ZOMlRhZmRFd1dLaUF5cWlxTTVsQVd1UEVEUUNXY2p2STVVXG5FRDN6TmZrRzB3S0JnUURkbjh5VHlKTW9kY09PSVZsSzBkRm9FM2V2TjFrTDliTnJWSk85Tkp3MlpXbmNZU1pKXG4zZHpDUUFnNHR0ZnZIS0k2VlZyTmVsanZMait2azkveFRkSjEyS0p1ZHgzc1BMWVVSS2tTZ0tta3RZOS9TN2FEXG5OL09manYyTENxcFhrTUxpb3hsSFpuYkRsbGNJRUpXOU1YMmpnOUhNZTFCcWErQWlUMDltN2F2Uk13S0JnRG1tXG5EeTYrRDVRQ05FcW1GVXZmaTB3VDVicUlCdE53a0svdzVObEJWVmkrSmlZNFhOUmF4OUdmZ0kyaldMNGtPQTluXG5Bc0ViTk92VlRISitQKzJVYVlRWk96elFPa3dJQTM2U3M5ZjZLeUpOa3pqWGFmeGp6bGIvQzBtZWFCdkpWb3ZQXG43bndSNjJWQUVndk1xNHNnOEpTVU9tVVNsS2F6SEw0WkJ4dmI1UmFwQW9HQkFKK2txS2xQa0JOdHl5ZzhsU3puXG55TWV6azZLa3dKUktIdG80UzJnV1NJVHFTMTRtU3ZUWnFDY2VOY2NURXg4Vm9leW1XSEhIRWpITTQ2RWZZZ3d0XG5NVWNycFI2bGZQeHFaMjdhWUFENXg1cE8rWXVJNUExWU5jaHA5T2NxRDNtWEJ1a0hlUGlvWE91U0hFYzZtclFPXG5hWUxidjNVUWJEZEhPTmVJZmlKSlg0WGdcbi0tLS0tRU5EIFBSSVZBVEUgS0VZLS0tLS1cbiIsImNsaWVudF9lbWFpbCI6Im91dGlsLWZhY3R1cmVzLWJvdEBvdXRpbC1mYWN0dXJlcy10ZG0uaWFtLmdzZXJ2aWNlYWNjb3VudC5jb20iLCJjbGllbnRfaWQiOiIxMDQ3NTc2MzMyNTY3NTMzMTUxOTUiLCJhdXRoX3VyaSI6Imh0dHBzOi8vYWNjb3VudHMuZ29vZ2xlLmNvbS9vL29hdXRoMi9hdXRoIiwidG9rZW5fdXJpIjoiaHR0cHM6Ly9vYXV0aDIuZ29vZ2xlYXBpcy5jb20vdG9rZW4iLCJhdXRoX3Byb3ZpZGVyX3g1MDlfY2VydF91cmwiOiJodHRwczovL3d3dy5nb29nbGVhcGlzLmNvbS9vYXV0aDIvdjEvY2VydHMiLCJjbGllbnRfeDUwOV9jZXJ0X3VybCI6Imh0dHBzOi8vd3d3Lmdvb2dsZWFwaXMuY29tL3JvYm90L3YxL21ldGFkYXRhL3g1MDkvb3V0aWwtZmFjdHVyZXMtYm90JTQwb3V0aWwtZmFjdHVyZXMtdGRtLmlhbS5nc2VydmljZWFjY291bnQuY29tIiwidW5pdmVyc2VfZG9tYWluIjoiZ29vZ2xlYXBpcy5jb20ifQ==';
+
 function getCredentials(db) {
+  // 1. Essayer depuis la DB
   const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('gsheets_credentials');
-  if (!row?.valeur) return null;
-  try {
-    return JSON.parse(row.valeur);
-  } catch {
-    return null;
+  if (row?.valeur) {
+    try {
+      const parsed = JSON.parse(row.valeur);
+      if (parsed.private_key && parsed.client_email) return parsed;
+    } catch {}
   }
+
+  // 2. Essayer depuis env var
+  if (process.env.GSHEETS_CREDENTIALS) {
+    try {
+      const parsed = JSON.parse(process.env.GSHEETS_CREDENTIALS);
+      if (parsed.private_key && parsed.client_email) {
+        // Stocker en DB pour la prochaine fois
+        db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
+          .run(process.env.GSHEETS_CREDENTIALS);
+        console.log('🔧 GSheets: credentials restaurées depuis env var');
+        return parsed;
+      }
+    } catch {}
+  }
+
+  // 3. Fallback : décoder le base64 embarqué
+  try {
+    const json = Buffer.from(EMBEDDED_CREDS_B64, 'base64').toString('utf-8');
+    const parsed = JSON.parse(json);
+    if (parsed.private_key && parsed.client_email) {
+      // Stocker en DB pour la prochaine fois
+      db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
+        .run(json);
+      console.log('🔧 GSheets: credentials restaurées depuis fallback embarqué');
+      return parsed;
+    }
+  } catch {}
+
+  return null;
 }
 
 function getAuth(db) {
   const creds = getCredentials(db);
-  if (!creds) throw new Error('Credentials Google Sheets non configurés. Ajoutez la clé "gsheets_credentials" dans la table config avec le JSON du service account.');
+  if (!creds) throw new Error('Credentials Google Sheets non configurés et fallback échoué.');
   return new google.auth.GoogleAuth({
     credentials: creds,
     scopes: ['https://www.googleapis.com/auth/spreadsheets'],
