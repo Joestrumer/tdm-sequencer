@@ -76,6 +76,9 @@ async function callSoap(method, params, db) {
     throw new Error(`WMS HTTP ${res.status}: ${text.substring(0, 200)}`);
   }
 
+  // Log pour debug
+  console.log(`WMS ${method} (${params.delivery_order}):`, text.substring(0, 500));
+
   return parseResponse(text);
 }
 
@@ -115,10 +118,38 @@ async function getFullInfo(db, deliveryOrder) {
   };
 }
 
+// Endpoint de debug pour voir la réponse XML brute
+async function debugCall(db, deliveryOrder, method = 'getStatus') {
+  const { user, pass } = getCredentials(db);
+  const auth = Buffer.from(`${user}:${pass}`).toString('base64');
+  const body = buildSoapEnvelope(method, { id: 0, delivery_order: deliveryOrder });
+
+  const res = await fetch(ENDPOINT, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'text/xml; charset=utf-8',
+      'SOAPAction': `${NAMESPACE}#${method}`,
+      'Authorization': `Basic ${auth}`,
+    },
+    body,
+  });
+
+  const text = await res.text();
+
+  return {
+    ok: res.ok,
+    status: res.status,
+    xmlRequest: body,
+    xmlResponse: text,
+    parsed: parseResponse(text),
+  };
+}
+
 module.exports = {
   getStatus,
   getTracking,
   getRupture,
   getHistorique,
   getFullInfo,
+  debugCall,
 };
