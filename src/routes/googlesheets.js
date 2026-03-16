@@ -84,10 +84,44 @@ module.exports = (db) => {
       console.log(`📊 GSheets Analytics: ${result.totalRows} lignes lues`);
       console.log(`📊 Headers: ${result.headers.join(', ')}`);
 
+      // Grouper par facture (chaque ligne = 1 produit, on doit grouper par Invoice)
+      const invoicesMap = new Map();
+      const data = result.data || [];
+
+      for (const row of data) {
+        const invoiceNumber = (row['Invoice'] || '').trim();
+        const clientName = (row['Hotel name'] || '').trim();
+        const factureYear = row['facture year'] || '';
+        const factureMonth = row['facture month'] || '';
+        const montantHT = parseFloat(row['Prix Total HT'] || 0);
+        const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
+
+        if (!invoiceNumber) continue;
+
+        // Filtrer par année si demandé
+        if (year && factureYear && factureYear != year) continue;
+
+        // Grouper par numéro de facture
+        if (!invoicesMap.has(invoiceNumber)) {
+          invoicesMap.set(invoiceNumber, {
+            number: invoiceNumber,
+            client: clientName,
+            year: factureYear,
+            month: factureMonth,
+            totalHT: 0,
+            totalTTC: 0,
+          });
+        }
+
+        const invoice = invoicesMap.get(invoiceNumber);
+        invoice.totalHT += montantHT;
+        invoice.totalTTC += montantTTC;
+      }
+
       // Calculer les statistiques
       const stats = {
         total: {
-          invoices: 0,
+          invoices: invoicesMap.size,
           ca_ht: 0,
           ca_ttc: 0,
         },
@@ -97,71 +131,40 @@ module.exports = (db) => {
         recentInvoices: [],
       };
 
-      // Parser les données
-      const invoices = new Set();
-      const data = result.data || [];
+      for (const [_, invoice] of invoicesMap) {
+        stats.total.ca_ht += invoice.totalHT;
+        stats.total.ca_ttc += invoice.totalTTC;
 
-      for (const row of data) {
-        // Chercher les colonnes pertinentes (adapter selon ton Excel)
-        const invoiceNumber = row['Invoice Number'] || row['N° facture'] || row['Facture'] || '';
-        const clientName = row['Hotel name'] || row['Client'] || row['Nom'] || '';
-        const date = row['Date facture'] || row['Date'] || '';
-        const montantHT = parseFloat(row['Montant HT'] || row['CA HT'] || row['Total HT'] || 0);
-        const montantTTC = parseFloat(row['Montant TTC'] || row['CA TTC'] || row['Total TTC'] || 0);
-
-        // Filtrer par année si demandé
-        if (year && date) {
-          const dateYear = date.includes('/')
-            ? date.split('/')[2]
-            : new Date(date).getFullYear();
-          if (dateYear != year) continue;
+        // Par mois
+        if (invoice.year && invoice.month) {
+          const monthKey = `${invoice.year}-${String(invoice.month).padStart(2, '0')}`;
+          if (!stats.byMonth[monthKey]) {
+            stats.byMonth[monthKey] = { ca_ht: 0, ca_ttc: 0, count: 0 };
+          }
+          stats.byMonth[monthKey].ca_ht += invoice.totalHT;
+          stats.byMonth[monthKey].ca_ttc += invoice.totalTTC;
+          stats.byMonth[monthKey].count++;
         }
 
-        // Ne compter qu'une fois chaque facture
-        if (invoiceNumber && !invoices.has(invoiceNumber)) {
-          invoices.add(invoiceNumber);
-          stats.total.invoices++;
-          stats.total.ca_ht += montantHT;
-          stats.total.ca_ttc += montantTTC;
-
-          // Par mois
-          if (date) {
-            let month;
-            if (date.includes('/')) {
-              const parts = date.split('/');
-              month = `${parts[2]}-${parts[1].padStart(2, '0')}`;
-            } else {
-              month = date.substring(0, 7);
-            }
-
-            if (!stats.byMonth[month]) {
-              stats.byMonth[month] = { ca_ht: 0, ca_ttc: 0, count: 0 };
-            }
-            stats.byMonth[month].ca_ht += montantHT;
-            stats.byMonth[month].ca_ttc += montantTTC;
-            stats.byMonth[month].count++;
+        // Par client
+        if (invoice.client) {
+          if (!stats.byClient[invoice.client]) {
+            stats.byClient[invoice.client] = { ca_ht: 0, ca_ttc: 0, count: 0 };
           }
+          stats.byClient[invoice.client].ca_ht += invoice.totalHT;
+          stats.byClient[invoice.client].ca_ttc += invoice.totalTTC;
+          stats.byClient[invoice.client].count++;
+        }
 
-          // Par client
-          if (clientName) {
-            if (!stats.byClient[clientName]) {
-              stats.byClient[clientName] = { ca_ht: 0, ca_ttc: 0, count: 0 };
-            }
-            stats.byClient[clientName].ca_ht += montantHT;
-            stats.byClient[clientName].ca_ttc += montantTTC;
-            stats.byClient[clientName].count++;
-          }
-
-          // Factures récentes
-          if (stats.recentInvoices.length < 10) {
-            stats.recentInvoices.push({
-              number: invoiceNumber,
-              client: clientName,
-              date: date,
-              amount_ht: montantHT,
-              amount_ttc: montantTTC,
-            });
-          }
+        // Factures récentes
+        if (stats.recentInvoices.length < 10) {
+          stats.recentInvoices.push({
+            number: invoice.number,
+            client: invoice.client,
+            date: invoice.year && invoice.month ? `${invoice.month}/${invoice.year}` : '',
+            amount_ht: invoice.totalHT,
+            amount_ttc: invoice.totalTTC,
+          });
         }
       }
 
