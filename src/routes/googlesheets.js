@@ -130,9 +130,11 @@ module.exports = (db) => {
         }
 
         // Filtrer par année si demandé
-        if (year && invoiceYear && invoiceYear != year) {
-          linesSkippedYear++;
-          continue;
+        if (year) {
+          if (!invoiceYear || invoiceYear != year) {
+            linesSkippedYear++;
+            continue;
+          }
         }
 
         // Grouper par numéro de facture
@@ -274,7 +276,7 @@ module.exports = (db) => {
           }
         }
 
-        if (year && invoiceYear && invoiceYear != year) continue;
+        if (year && (!invoiceYear || invoiceYear != year)) continue;
 
         // Grouper par facture
         if (!clientInvoices.has(invoiceNumber)) {
