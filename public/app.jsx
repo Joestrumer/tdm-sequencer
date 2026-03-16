@@ -2538,6 +2538,7 @@ const VueFactures = ({ showToast }) => {
     { id: "echantillons", label: "Échantillons", icon: "🎁" },
     { id: "relances", label: "Relances", icon: "📨" },
     { id: "tracking", label: "Tracking", icon: "🚚" },
+    { id: "envois", label: "Envois", icon: "📮" },
   ];
 
   return (
@@ -2570,6 +2571,7 @@ const VueFactures = ({ showToast }) => {
       {tab === "echantillons" && <FacturesSamples showToast={showToast} />}
       {tab === "relances" && <FacturesReminders showToast={showToast} />}
       {tab === "tracking" && <FacturesTracking showToast={showToast} />}
+      {tab === "envois" && <FacturesShipments showToast={showToast} />}
     </div>
   );
 };
@@ -3754,6 +3756,238 @@ const FacturesReminders = ({ showToast }) => {
               className="w-full py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50">
               {sending ? 'Envoi...' : `Envoyer ${docs.filter(d => d.id && d.sendEmail && !d.sent).length} relance(s)`}
             </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Factures Envois (Dashboard tous les envois) ──────────────────────────────
+const FacturesShipments = ({ showToast }) => {
+  const [shipments, setShipments] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [filter, setFilter] = useState('all'); // all, commande, echantillon
+  const [search, setSearch] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+
+  const loadShipments = async () => {
+    setLoading(true);
+    try {
+      const params = filter !== 'all' ? `?type=${filter}` : '';
+      const data = await api.get(`/shipments${params}`);
+      setShipments(data.shipments || []);
+    } catch (err) {
+      showToast('Erreur chargement envois: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  const loadStats = async () => {
+    try {
+      const data = await api.get('/shipments/stats');
+      setStats(data);
+    } catch (err) {
+      console.error('Erreur stats:', err);
+    }
+  };
+
+  useEffect(() => {
+    loadShipments();
+    loadStats();
+  }, [filter]);
+
+  const refreshWMS = async (id) => {
+    try {
+      await api.post(`/shipments/${id}/refresh-wms`, {});
+      showToast('Statut WMS mis à jour', 'success');
+      loadShipments();
+    } catch (err) {
+      showToast('Erreur refresh WMS: ' + err.message, 'error');
+    }
+  };
+
+  const refreshAll = async () => {
+    setRefreshing(true);
+    try {
+      const data = await api.post('/shipments/refresh-all', {});
+      showToast(`${data.updated} envoi(s) mis à jour`, 'success');
+      loadShipments();
+      loadStats();
+    } catch (err) {
+      showToast('Erreur refresh: ' + err.message, 'error');
+    }
+    setRefreshing(false);
+  };
+
+  const deleteShipment = async (id) => {
+    if (!confirm('Supprimer cet envoi ?')) return;
+    try {
+      await api.delete(`/shipments/${id}`);
+      showToast('Envoi supprimé', 'success');
+      loadShipments();
+      loadStats();
+    } catch (err) {
+      showToast('Erreur suppression: ' + err.message, 'error');
+    }
+  };
+
+  const trackingUrl = (transporteur, numero) => {
+    if (!numero) return null;
+    const t = (transporteur || '').toLowerCase();
+    if (t.includes('chronopost')) return `https://www.chronopost.fr/tracking-no-powerful/tracking/suivi?listeNumerosLT=${numero}`;
+    if (t.includes('colissimo')) return `https://www.laposte.fr/outils/suivre-vos-envois?code=${numero}`;
+    if (t.includes('ups')) return `https://www.ups.com/track?tracknum=${numero}`;
+    if (t.includes('dhl')) return `https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=${numero}`;
+    if (t.includes('tnt') || t.includes('fedex')) return `https://www.fedex.com/fedextrack/?trknbr=${numero}`;
+    return null;
+  };
+
+  const filtered = shipments.filter(s => {
+    if (!search) return true;
+    const q = search.toLowerCase();
+    return (
+      s.order_ref?.toLowerCase().includes(q) ||
+      s.client_name?.toLowerCase().includes(q) ||
+      s.invoice_number?.toLowerCase().includes(q) ||
+      s.tracking_number?.toLowerCase().includes(q)
+    );
+  });
+
+  return (
+    <div className="space-y-4">
+      {/* Stats */}
+      {stats && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-4 border border-blue-200">
+            <div className="text-xs font-medium text-blue-600 mb-1">Commandes</div>
+            <div className="text-2xl font-bold text-blue-900">{stats.commandes.total}</div>
+            <div className="text-xs text-blue-700 mt-1">CA: {stats.commandes.ca_ht.toFixed(2)}€ HT</div>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-4 border border-emerald-200">
+            <div className="text-xs font-medium text-emerald-600 mb-1">Échantillons</div>
+            <div className="text-2xl font-bold text-emerald-900">{stats.echantillons.total}</div>
+            <div className="text-xs text-emerald-700 mt-1">CA: {stats.echantillons.ca_ht.toFixed(2)}€ HT</div>
+          </div>
+          <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl p-4 border border-slate-200">
+            <div className="text-xs font-medium text-slate-600 mb-1">Total</div>
+            <div className="text-2xl font-bold text-slate-900">{stats.total.envois}</div>
+            <div className="text-xs text-slate-700 mt-1">CA: {stats.total.ca_ht.toFixed(2)}€ HT</div>
+          </div>
+        </div>
+      )}
+
+      {/* Filtres */}
+      <div className="bg-white rounded-xl border border-slate-100 p-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex gap-2">
+            <button onClick={() => setFilter('all')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${filter === 'all' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              Tous
+            </button>
+            <button onClick={() => setFilter('commande')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${filter === 'commande' ? 'bg-blue-600 text-white' : 'bg-blue-50 text-blue-600 hover:bg-blue-100'}`}>
+              Commandes
+            </button>
+            <button onClick={() => setFilter('echantillon')}
+              className={`px-3 py-1.5 rounded-lg text-xs font-medium transition ${filter === 'echantillon' ? 'bg-emerald-600 text-white' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
+              Échantillons
+            </button>
+          </div>
+
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher (ref, client, facture, tracking)..."
+            className="flex-1 min-w-[200px] border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+          />
+
+          <button onClick={refreshAll} disabled={refreshing}
+            className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-medium hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1.5">
+            {refreshing ? '⏳' : '🔄'} Rafraîchir tous
+          </button>
+        </div>
+      </div>
+
+      {/* Liste des envois */}
+      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+        {loading ? (
+          <div className="p-8 text-center text-sm text-slate-400">Chargement...</div>
+        ) : filtered.length === 0 ? (
+          <div className="p-8 text-center text-sm text-slate-400">Aucun envoi trouvé</div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-100">
+                <tr>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Type</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Référence</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Client</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Transporteur</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Statut WMS</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Tracking</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Montant</th>
+                  <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
+                  <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Actions</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {filtered.map(s => (
+                  <tr key={s.id} className="hover:bg-slate-50">
+                    <td className="px-4 py-3">
+                      <span className={`inline-block px-2 py-1 rounded text-xs font-medium ${s.type === 'commande' ? 'bg-blue-100 text-blue-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                        {s.type === 'commande' ? '📦 Commande' : '🎁 Échantillon'}
+                      </span>
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-sm font-medium text-slate-900">{s.order_ref}</div>
+                      {s.invoice_number && <div className="text-xs text-slate-500">{s.invoice_number}</div>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="text-sm text-slate-900">{s.client_name}</div>
+                      {s.client_city && <div className="text-xs text-slate-500">{s.client_city}, {s.client_country}</div>}
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-600">{s.shipping_name || `ID ${s.shipping_id}`}</td>
+                    <td className="px-4 py-3">
+                      {s.wms_status ? (
+                        <span className="text-xs text-slate-700">{s.wms_status}</span>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">Non vérifié</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {s.tracking_number ? (
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-mono text-slate-700">{s.tracking_number}</span>
+                          {trackingUrl(s.carrier_name, s.tracking_number) && (
+                            <a href={trackingUrl(s.carrier_name, s.tracking_number)} target="_blank" rel="noopener"
+                              className="text-blue-600 hover:text-blue-800 text-xs">🔗</a>
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400 italic">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3 text-sm font-medium text-slate-900">{s.montant_ht?.toFixed(2) || '0.00'}€</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{new Date(s.created_at).toLocaleDateString('fr-FR')}</td>
+                    <td className="px-4 py-3 text-right">
+                      <div className="flex items-center justify-end gap-2">
+                        <button onClick={() => refreshWMS(s.id)}
+                          className="text-xs text-blue-600 hover:text-blue-800" title="Rafraîchir WMS">
+                          🔄
+                        </button>
+                        <button onClick={() => deleteShipment(s.id)}
+                          className="text-xs text-red-600 hover:text-red-800" title="Supprimer">
+                          🗑️
+                        </button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         )}
       </div>
