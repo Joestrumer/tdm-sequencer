@@ -743,14 +743,11 @@ module.exports = (db) => {
         const invoices = await vfService.rechercherFacture('', { page, per_page: perPage });
         if (!invoices || invoices.length === 0) break;
 
-        // Filtrer uniquement les vraies factures (kind=vat) et exclure les proformas
+        // Filtrer uniquement les vraies factures (kind=vat, pas proforma/devis)
         const validInvoices = invoices.filter(inv => {
           // Vérifier que c'est une vraie facture (kind=vat)
+          // kind peut être: 'vat' (facture), 'proforma', 'estimate' (devis), etc.
           if (inv.kind !== 'vat') return false;
-
-          // Exclure les numéros qui commencent par P (proforma) ou d'autres préfixes non-facture
-          const num = String(inv.number || '');
-          if (num.startsWith('P') || num.startsWith('D') || num.startsWith('F')) return false;
 
           // Si filtre par année, vérifier l'année
           if (year && inv.issue_date) {
