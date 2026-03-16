@@ -135,7 +135,10 @@ async function lancerVerification() {
   for (const inscription of inscriptions) {
     try {
       await traiterInscription(inscription);
-      await new Promise(r => setTimeout(r, 1500 + Math.random() * 1000));
+      // Délai configurable entre chaque email (défaut 2s + jitter)
+      const delaiConfig = db.prepare("SELECT valeur FROM config WHERE cle = 'delai_entre_emails'").get();
+      const delaiMs = ((delaiConfig ? parseFloat(delaiConfig.valeur) : 2) * 1000) + Math.random() * 500;
+      await new Promise(r => setTimeout(r, delaiMs));
     } catch (err) {
       if (err.message === 'QUOTA_ATTEINT') break;
     }

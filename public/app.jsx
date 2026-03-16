@@ -379,6 +379,8 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   // Initialiser le contenu de l'éditeur quand on change d'étape
   useEffect(() => {
     if (editorRef.current && mode === "edit") {
+      // Forcer <br> au lieu de <p> pour les retours à la ligne
+      try { document.execCommand("defaultParagraphSeparator", false, "div"); } catch {}
       const etape = etapes[activeEtape];
       editorRef.current.innerHTML = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
     }
@@ -500,6 +502,25 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                 {/* Toolbar */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden">
                   <div className="flex flex-wrap items-center gap-1 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                    {/* Police et taille */}
+                    <select onChange={e => { if (e.target.value) fmt("fontName", e.target.value); }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none">
+                      <option value="" disabled>Police</option>
+                      <option value="Arial, sans-serif">Arial</option>
+                      <option value="Georgia, serif">Georgia</option>
+                      <option value="Times New Roman, serif">Times</option>
+                      <option value="Verdana, sans-serif">Verdana</option>
+                      <option value="Trebuchet MS, sans-serif">Trebuchet</option>
+                      <option value="Courier New, monospace">Courier</option>
+                    </select>
+                    <select onChange={e => { if (e.target.value) fmt("fontSize", e.target.value); }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none w-14">
+                      <option value="" disabled>Taille</option>
+                      <option value="1">Petit</option>
+                      <option value="2">Normal</option>
+                      <option value="3">Moyen</option>
+                      <option value="4">Grand</option>
+                      <option value="5">Très grand</option>
+                    </select>
+                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Formatage texte */}
                     {TOOLBAR.map(t => (
                       <button key={t.cmd} title={t.cmd} onMouseDown={e => { e.preventDefault(); fmt(t.cmd); }} className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 ${t.style}`}>{t.label}</button>
@@ -1649,10 +1670,21 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   );
 };
 
-const VueSequences = ({ sequences, onNew, onEdit, showToast }) => {
+const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
   const [testModal, setTestModal] = useState(null); // seq id
   const [testEmail, setTestEmail] = useState("");
   const [testLoading, setTestLoading] = useState(false);
+
+  const supprimerSequence = async (seq) => {
+    if (!confirm(`Supprimer la séquence "${seq.nom}" ? Cette action est irréversible.`)) return;
+    try {
+      await api.delete(`/sequences/${seq.id}`);
+      showToast('Séquence supprimée', 'success');
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      showToast('Erreur: ' + (err.message || 'impossible de supprimer'), 'error');
+    }
+  };
 
   const envoyerTest = async (seqId) => {
     if (!testEmail.trim()) return;
@@ -1714,6 +1746,9 @@ const VueSequences = ({ sequences, onNew, onEdit, showToast }) => {
               </button>
               <button onClick={() => onEdit(seq)} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
                 Modifier
+              </button>
+              <button onClick={() => supprimerSequence(seq)} className="px-3 py-1.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors">
+                Supprimer
               </button>
             </div>
           </div>
@@ -3435,7 +3470,7 @@ const FacturesReminders = ({ showToast }) => {
 // ─── VUE PARAMETRES ───────────────────────────────────────────────────────────
 const VueParametres = () => {
   const [brevoKey, setBrevoKey] = useState("");
-  const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"], fuseau: "Europe/Paris" });
+  const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"], fuseau: "Europe/Paris", delaiEntreEmails: 2 });
   const [brevoConfigured, setBrevoConfigured] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
@@ -3456,6 +3491,7 @@ const VueParametres = () => {
       if (cfg.heure_fin) setLimites(l => ({ ...l, heureFin: cfg.heure_fin }));
       if (cfg.jours_actifs) setLimites(l => ({ ...l, joursActifs: cfg.jours_actifs.split(',') }));
       if (cfg.fuseau) setLimites(l => ({ ...l, fuseau: cfg.fuseau }));
+      if (cfg.delai_entre_emails) setLimites(l => ({ ...l, delaiEntreEmails: +cfg.delai_entre_emails }));
     }).catch(() => {});
   }, []);
 
@@ -3469,6 +3505,7 @@ const VueParametres = () => {
         heure_fin: limites.heureFin,
         jours_actifs: limites.joursActifs.join(','),
         fuseau: limites.fuseau,
+        delai_entre_emails: String(limites.delaiEntreEmails),
       };
       if (brevoKey) {
         payload.brevo_api_key = brevoKey;
@@ -3500,9 +3537,16 @@ const VueParametres = () => {
 
       <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
         <h3 className="text-sm font-semibold text-slate-800">Limites d'envoi</h3>
-        <div>
-          <label className="text-xs font-medium text-slate-500 mb-1 block">Maximum d'emails par jour</label>
-          <input type="number" value={limites.maxParJour} onChange={e => setLimites(l => ({ ...l, maxParJour: +e.target.value }))} className="w-32 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Maximum d'emails par jour</label>
+            <input type="number" value={limites.maxParJour} onChange={e => setLimites(l => ({ ...l, maxParJour: +e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Délai entre chaque email (secondes)</label>
+            <input type="number" min="1" max="300" value={limites.delaiEntreEmails} onChange={e => setLimites(l => ({ ...l, delaiEntreEmails: +e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+            <p className="text-xs text-slate-400 mt-1">Temps d'attente entre chaque envoi (1-300s, défaut: 2s)</p>
+          </div>
         </div>
         <div className="grid grid-cols-2 gap-3">
           {[["heureDebut","Heure de début"],["heureFin","Heure de fin"]].map(([k,l]) => (
@@ -4011,7 +4055,7 @@ function App() {
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
           {vue === "dashboard" && <VueDashboard leads={leads} activites={activites} stats={stats} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
-          {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} showToast={showToast} />}
+          {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} />}
           {vue === "factures" && <VueFactures showToast={showToast} />}
           {vue === "blocklist" && <VueBlocklist onRefresh={charger} showToast={showToast} />}
           {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} showToast={showToast} />}

@@ -103,11 +103,17 @@ function nettoyerHtml(html) {
     .replace(/\s*data-fr-[^=\s]+="[^"]*"/g, '')
     // Nettoyer styles inline verbeux sur p/span pour garder uniquement font-size utile
     .replace(/<(p|div|span)([^>]*)\sstyle="[^"]*caret-color:[^"]*"([^>]*)>/g, (m, tag, before, after) => {
-      // Garder uniquement font-size si présent
+      // Garder uniquement font-size et font-family si présents
       const fs = m.match(/font-size:\s*([^;'"]+)/);
-      const style = fs ? ` style="font-size:${fs[1]}"` : '';
+      const ff = m.match(/font-family:\s*([^;'"]+)/);
+      const parts = [fs && `font-size:${fs[1]}`, ff && `font-family:${ff[1]}`].filter(Boolean);
+      const style = parts.length ? ` style="${parts.join(';')}"` : '';
       return `<${tag}${style}>`;
-    });
+    })
+    // Convertir <div><br></div> (Chrome line breaks) en simple <br>
+    .replace(/<div><br\s*\/?><\/div>/gi, '<br>')
+    // Convertir <p><br></p> en <br>
+    .replace(/<p><br\s*\/?><\/p>/gi, '<br>');
 }
 
 const SENDER = {
@@ -193,8 +199,8 @@ function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
   return `<!DOCTYPE html>
 <html lang="fr"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"></head>
 <body style="margin:0;padding:0;background:#ffffff;">
-<style>ul,ol{margin:8px 0 8px 0;padding-left:20px}li{margin:3px 0;font-size:14px;line-height:1.5;color:#1a1a1a}a{color:#aa8d3e}</style>
-<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.5;color:#1a1a1a;text-align:left;padding:16px 20px;max-width:680px;">
+<style>p{margin:0 0 2px 0}ul,ol{margin:4px 0;padding-left:20px}li{margin:2px 0;font-size:14px;line-height:1.45;color:#1a1a1a}a{color:#aa8d3e}div{line-height:1.45}</style>
+<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.45;color:#1a1a1a;text-align:left;padding:16px 20px;max-width:680px;">
   <div style="text-align:left;">${html}</div>
   <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:16px;">
     ${SIGNATURE_HUGO}
