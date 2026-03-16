@@ -749,5 +749,33 @@ module.exports = (db) => {
     }
   });
 
+  // ─── WMS Tracking ────────────────────────────────────────────────────────────
+
+  const wmsService = require('../services/wmsService');
+
+  router.get('/wms/tracking/:orderRef', async (req, res) => {
+    try {
+      const info = await wmsService.getFullInfo(db, req.params.orderRef);
+      res.json(info);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.post('/wms/tracking-batch', async (req, res) => {
+    try {
+      const { orderRefs } = req.body;
+      if (!Array.isArray(orderRefs) || !orderRefs.length) {
+        return res.status(400).json({ erreur: 'orderRefs requis (tableau)' });
+      }
+      const results = await Promise.allSettled(
+        orderRefs.map(ref => wmsService.getFullInfo(db, ref))
+      );
+      res.json(results.map((r, i) => r.status === 'fulfilled' ? r.value : { delivery_order: orderRefs[i], error: r.reason?.message }));
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   return router;
 };

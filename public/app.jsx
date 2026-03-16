@@ -2537,6 +2537,7 @@ const VueFactures = ({ showToast }) => {
     { id: "batch", label: "Batch", icon: "📦" },
     { id: "echantillons", label: "Échantillons", icon: "🎁" },
     { id: "relances", label: "Relances", icon: "📨" },
+    { id: "tracking", label: "Tracking", icon: "🚚" },
   ];
 
   return (
@@ -2568,6 +2569,7 @@ const VueFactures = ({ showToast }) => {
       {tab === "batch" && <FacturesBatch showToast={showToast} />}
       {tab === "echantillons" && <FacturesSamples showToast={showToast} />}
       {tab === "relances" && <FacturesReminders showToast={showToast} />}
+      {tab === "tracking" && <FacturesTracking showToast={showToast} />}
     </div>
   );
 };
@@ -3689,6 +3691,127 @@ const FacturesReminders = ({ showToast }) => {
               className="w-full py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50">
               {sending ? 'Envoi...' : `Envoyer ${docs.filter(d => d.id && d.sendEmail && !d.sent).length} relance(s)`}
             </button>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+// ─── Factures Tracking (WMS Endurance) ────────────────────────────────────────
+const FacturesTracking = ({ showToast }) => {
+  const [searchInput, setSearchInput] = useState('');
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  const trackOrders = async () => {
+    const refs = searchInput.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean);
+    if (!refs.length) { showToast('Entrez au moins un n° de commande', 'error'); return; }
+    setLoading(true);
+    try {
+      if (refs.length === 1) {
+        const data = await api.get('/factures/wms/tracking/' + encodeURIComponent(refs[0]));
+        setResults([data]);
+      } else {
+        const data = await api.post('/factures/wms/tracking-batch', { orderRefs: refs });
+        setResults(data);
+      }
+    } catch (err) {
+      showToast('Erreur tracking: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  const statusColor = (code) => {
+    if (!code) return 'bg-slate-100 text-slate-600';
+    const c = String(code).toLowerCase();
+    if (c.includes('livr') || c === '9' || c === '10') return 'bg-emerald-100 text-emerald-700';
+    if (c.includes('expedi') || c === '7' || c === '8') return 'bg-blue-100 text-blue-700';
+    if (c.includes('prepar') || c === '3' || c === '4' || c === '5') return 'bg-amber-100 text-amber-700';
+    if (c.includes('rupture') || c.includes('erreur')) return 'bg-red-100 text-red-700';
+    return 'bg-slate-100 text-slate-600';
+  };
+
+  const trackingUrl = (transporteur, numero) => {
+    if (!numero) return null;
+    const t = (transporteur || '').toLowerCase();
+    if (t.includes('chronopost')) return `https://www.chronopost.fr/tracking-no-powerful/tracking/suivi?listeNumerosLT=${numero}`;
+    if (t.includes('colissimo')) return `https://www.laposte.fr/outils/suivre-vos-envois?code=${numero}`;
+    if (t.includes('ups')) return `https://www.ups.com/track?tracknum=${numero}`;
+    if (t.includes('dhl')) return `https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=${numero}`;
+    if (t.includes('tnt') || t.includes('fedex')) return `https://www.fedex.com/fedextrack/?trknbr=${numero}`;
+    if (t.includes('coursier')) return null;
+    return null;
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-800">Tracking WMS Endurance Logistique</h3>
+
+        <div className="flex gap-2">
+          <textarea value={searchInput} onChange={e => setSearchInput(e.target.value)}
+            placeholder="N° de commande (un par ligne ou séparés par virgule)..."
+            rows={2} className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono resize-none" />
+          <button onClick={trackOrders} disabled={loading || !searchInput.trim()}
+            className="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 disabled:opacity-40 self-end">
+            {loading ? '...' : 'Suivre'}
+          </button>
+        </div>
+
+        {results.length > 0 && (
+          <div className="space-y-3">
+            {results.map((r, i) => (
+              <div key={i} className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <span className="font-mono text-sm font-medium text-slate-800">{r.delivery_order}</span>
+                  {r.status?.code_etat && (
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${statusColor(r.status.code_etat)}`}>
+                      {r.status.libelle_etat || `Code ${r.status.code_etat}`}
+                    </span>
+                  )}
+                  {r.error && <span className="text-xs text-red-500">{r.error}</span>}
+                </div>
+
+                {r.tracking && !r.tracking.error && (r.tracking.tracking || r.tracking.transporteur) && (
+                  <div className="bg-blue-50 rounded-lg p-3 space-y-1">
+                    <div className="text-xs text-blue-600 font-medium">Suivi</div>
+                    {r.tracking.transporteur && (
+                      <div className="text-sm text-slate-700">Transporteur : <span className="font-medium">{r.tracking.transporteur}</span></div>
+                    )}
+                    {r.tracking.tracking && (
+                      <div className="text-sm text-slate-700 flex items-center gap-2">
+                        <span>N° suivi : <span className="font-mono font-medium">{r.tracking.tracking}</span></span>
+                        {trackingUrl(r.tracking.transporteur, r.tracking.tracking) && (
+                          <a href={trackingUrl(r.tracking.transporteur, r.tracking.tracking)} target="_blank" rel="noopener"
+                            className="text-blue-600 hover:text-blue-800 text-xs underline">Suivre le colis</a>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {r.historique && !r.historique.error && (
+                  <div className="bg-slate-50 rounded-lg p-3">
+                    <div className="text-xs text-slate-500 font-medium mb-1">Historique</div>
+                    <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+                      {r.historique.date_creation && <><span className="text-slate-500">Création</span><span className="font-mono">{r.historique.date_creation}</span></>}
+                      {r.historique.date_integration && <><span className="text-slate-500">Intégration</span><span className="font-mono">{r.historique.date_integration}</span></>}
+                      {r.historique.date_validation && <><span className="text-slate-500">Validation</span><span className="font-mono">{r.historique.date_validation}</span></>}
+                      {r.historique.date_enlevement_transporteur && <><span className="text-slate-500">Enlèvement</span><span className="font-mono">{r.historique.date_enlevement_transporteur}</span></>}
+                    </div>
+                  </div>
+                )}
+
+                {r.rupture && !r.rupture.error && r.rupture.retour && (
+                  <div className="bg-red-50 rounded-lg p-3">
+                    <div className="text-xs text-red-600 font-medium">Rupture</div>
+                    <div className="text-sm text-red-700">{r.rupture.retour}</div>
+                    {r.rupture.cause && <div className="text-xs text-red-500 mt-1">Cause : {r.rupture.cause}</div>}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
         )}
       </div>
