@@ -3634,6 +3634,29 @@ const FacturesSamples = ({ showToast }) => {
       if (res.erreur) throw new Error(res.erreur);
       setResult(res);
       showToast('Proforma créée !', 'success');
+
+      // Ajouter automatiquement à la table shipments
+      try {
+        await api.post('/shipments', {
+          type: 'echantillon',
+          order_ref: res.number || `ECH-${Date.now()}`,
+          invoice_id: res.id,
+          invoice_number: res.number,
+          client_name: clientName,
+          client_email: clientEmail || '',
+          client_address: clientAddress || '',
+          client_city: clientCity || '',
+          client_country: clientCountry || 'FR',
+          shipping_id: shippingId,
+          shipping_name: '', // Sera rempli si nécessaire
+          montant_ht: res.price_net || 0,
+          montant_ttc: res.price_gross || 0,
+          notes: 'Proforma échantillon',
+        });
+      } catch (shipErr) {
+        console.warn('Erreur ajout shipment:', shipErr);
+        // Ne pas bloquer si l'ajout échoue
+      }
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
     }
@@ -3954,6 +3977,215 @@ const FacturesReminders = ({ showToast }) => {
   );
 };
 
+// ─── Modal Ajout Manuel d'Envoi ──────────────────────────────────────────────
+const ModalAddShipment = ({ isOpen, onClose, onAdded, showToast }) => {
+  const [type, setType] = useState('echantillon');
+  const [orderRef, setOrderRef] = useState('');
+  const [invoiceNumber, setInvoiceNumber] = useState('');
+  const [clientName, setClientName] = useState('');
+  const [clientEmail, setClientEmail] = useState('');
+  const [clientAddress, setClientAddress] = useState('');
+  const [clientCity, setClientCity] = useState('');
+  const [clientCountry, setClientCountry] = useState('FR');
+  const [shippingId, setShippingId] = useState('300');
+  const [montantHT, setMontantHT] = useState('0');
+  const [montantTTC, setMontantTTC] = useState('0');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  if (!isOpen) return null;
+
+  const handleSubmit = async () => {
+    if (!orderRef.trim() || !clientName.trim()) {
+      showToast('Référence commande et nom client requis', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      await api.post('/shipments', {
+        type,
+        order_ref: orderRef,
+        invoice_number: invoiceNumber || null,
+        client_name: clientName,
+        client_email: clientEmail || '',
+        client_address: clientAddress || '',
+        client_city: clientCity || '',
+        client_country: clientCountry || 'FR',
+        shipping_id: shippingId,
+        montant_ht: parseFloat(montantHT) || 0,
+        montant_ttc: parseFloat(montantTTC) || 0,
+        notes: notes || '',
+      });
+
+      showToast('Envoi ajouté avec succès', 'success');
+      onAdded();
+      onClose();
+
+      // Reset form
+      setOrderRef('');
+      setInvoiceNumber('');
+      setClientName('');
+      setClientEmail('');
+      setClientAddress('');
+      setClientCity('');
+      setClientCountry('FR');
+      setShippingId('300');
+      setMontantHT('0');
+      setMontantTTC('0');
+      setNotes('');
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-slate-100 flex-shrink-0">
+          <h2 className="text-lg font-semibold text-slate-900">Ajouter un envoi</h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+        </div>
+
+        {/* Content */}
+        <div className="overflow-y-auto flex-1 p-6 space-y-4">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Type d'envoi *</label>
+            <select value={type} onChange={e => setType(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+              <option value="echantillon">🎁 Échantillon</option>
+              <option value="commande">📦 Commande</option>
+            </select>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Référence commande *</label>
+              <input value={orderRef} onChange={e => setOrderRef(e.target.value)}
+                placeholder="Ex: ECH001, P4456..."
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">N° facture</label>
+              <input value={invoiceNumber} onChange={e => setInvoiceNumber(e.target.value)}
+                placeholder="Optionnel"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Nom client *</label>
+            <input value={clientName} onChange={e => setClientName(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Email client</label>
+              <input value={clientEmail} onChange={e => setClientEmail(e.target.value)}
+                type="email"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Ville</label>
+              <input value={clientCity} onChange={e => setClientCity(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Adresse</label>
+            <input value={clientAddress} onChange={e => setClientAddress(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Pays</label>
+              <input value={clientCountry} onChange={e => setClientCountry(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
+              <select value={shippingId} onChange={e => setShippingId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="1">1 - Enlevement Colis</option>
+                <option value="2">2 - Enlevement Palette</option>
+                <option value="4">4 - Lettre Suivie</option>
+                <option value="101">101 - Coursier Colis</option>
+                <option value="102">102 - Coursier Palettes</option>
+                <option value="103">103 - Affretement</option>
+                <option value="200">200 - Affranchissement</option>
+                <option value="300">300 - Colissimo Expert France</option>
+                <option value="301">301 - Colissimo Expert DOM</option>
+                <option value="302">302 - Colissimo Expert International</option>
+                <option value="303">303 - SO Colissimo Avec Signature</option>
+                <option value="304">304 - SO Colissimo Sans Signature</option>
+                <option value="306">306 - SO Colissimo Bureau de Poste</option>
+                <option value="307">307 - SO Colissimo Cityssimo</option>
+                <option value="308">308 - SO Colissimo ACP</option>
+                <option value="309">309 - SO Colissimo A2P</option>
+                <option value="311">311 - SO Colissimo CDI</option>
+                <option value="312">312 - Colissimo Access France</option>
+                <option value="600">600 - TNT Avant 13H France</option>
+                <option value="601">601 - TNT Relais Colis France</option>
+                <option value="900">900 - UPS Inter Standard</option>
+                <option value="901">901 - UPS Inter Express</option>
+                <option value="902">902 - UPS Inter Express Saver</option>
+                <option value="903">903 - UPS Express Plus</option>
+                <option value="904">904 - UPS Expedited</option>
+                <option value="1000">1000 - DHL</option>
+                <option value="1100">1100 - GEODIS</option>
+                <option value="1300">1300 - Chronopost 13H</option>
+                <option value="1301">1301 - Chronopost Classic - intl</option>
+                <option value="1302">1302 - Chronopost 13H Instance Agence</option>
+                <option value="1303">1303 - Chronopost Relais 13H</option>
+                <option value="1304">1304 - Chronopost Express - intl</option>
+              </select>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Montant HT (€)</label>
+              <input value={montantHT} onChange={e => setMontantHT(e.target.value)}
+                type="number" step="0.01"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Montant TTC (€)</label>
+              <input value={montantTTC} onChange={e => setMontantTTC(e.target.value)}
+                type="number" step="0.01"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)}
+              rows={2}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none" />
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="flex items-center justify-end gap-3 p-6 border-t border-slate-100 flex-shrink-0">
+          <button onClick={onClose}
+            className="px-4 py-2 text-sm font-medium text-slate-600 hover:text-slate-800">
+            Annuler
+          </button>
+          <button onClick={handleSubmit} disabled={saving || !orderRef.trim() || !clientName.trim()}
+            className="px-6 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800 disabled:opacity-50">
+            {saving ? 'Ajout...' : 'Ajouter'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Factures Envois (Dashboard tous les envois) ──────────────────────────────
 const FacturesShipments = ({ showToast }) => {
   const [shipments, setShipments] = useState([]);
@@ -3962,6 +4194,7 @@ const FacturesShipments = ({ showToast }) => {
   const [filter, setFilter] = useState('all'); // all, commande, echantillon
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [showAddModal, setShowAddModal] = useState(false);
 
   const loadShipments = async () => {
     setLoading(true);
@@ -4095,12 +4328,25 @@ const FacturesShipments = ({ showToast }) => {
             className="flex-1 min-w-[200px] border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
           />
 
+          <button onClick={() => setShowAddModal(true)}
+            className="px-4 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700 flex items-center gap-1.5">
+            ➕ Ajouter un envoi
+          </button>
+
           <button onClick={refreshAll} disabled={refreshing}
             className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-xs font-medium hover:bg-slate-800 disabled:opacity-50 flex items-center gap-1.5">
             {refreshing ? '⏳' : '🔄'} Rafraîchir tous
           </button>
         </div>
       </div>
+
+      {/* Modal Ajout */}
+      <ModalAddShipment
+        isOpen={showAddModal}
+        onClose={() => setShowAddModal(false)}
+        onAdded={() => { loadShipments(); loadStats(); }}
+        showToast={showToast}
+      />
 
       {/* Liste des envois */}
       <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
