@@ -40,8 +40,8 @@ function buildSoapEnvelope(method, params) {
 
 function parseResponse(xml) {
   const result = {};
-  // Extract all elements from the response body
-  const matches = xml.matchAll(/<([a-z_]+)\s[^>]*>([^<]*)<\/\1>/gi);
+  // Extract all elements from the response body (with or without attributes)
+  const matches = xml.matchAll(/<([a-z_]+)(?:\s[^>]*)?>([^<]*)<\/\1>/gi);
   for (const m of matches) {
     const key = m[1];
     // Skip SOAP envelope elements
