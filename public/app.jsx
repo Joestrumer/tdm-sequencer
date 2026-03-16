@@ -2710,6 +2710,198 @@ const FacturesAnalytics = ({ showToast }) => {
   );
 };
 
+// ─── Analytics Spreadsheet (depuis Google Sheets log sold) ───────────────────
+const AnalyticsSpreadsheet = ({ showToast }) => {
+  const [analytics, setAnalytics] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [year, setYear] = useState(new Date().getFullYear());
+
+  const loadAnalytics = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get(`/gsheets/analytics?year=${year}`);
+      setAnalytics(data);
+    } catch (err) {
+      showToast('Erreur chargement analytics: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadAnalytics();
+  }, [year]);
+
+  if (loading) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="w-8 h-8 border-3 border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-500">Chargement des analytics depuis Excel...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!analytics) return null;
+
+  const monthsData = Object.entries(analytics.byMonth || {})
+    .sort((a, b) => a[0].localeCompare(b[0]))
+    .slice(-12); // 12 derniers mois
+
+  return (
+    <div className="space-y-6">
+      {/* Filtres */}
+      <div className="bg-white rounded-xl border border-slate-100 p-4">
+        <div className="flex items-center gap-3">
+          <label className="text-sm font-medium text-slate-700">Année :</label>
+          <select value={year} onChange={e => setYear(e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm">
+            <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
+            <option value={new Date().getFullYear() - 1}>{new Date().getFullYear() - 1}</option>
+            <option value={new Date().getFullYear() - 2}>{new Date().getFullYear() - 2}</option>
+            <option value="">Toutes les années</option>
+          </select>
+          <button onClick={loadAnalytics}
+            className="ml-auto px-4 py-1.5 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-800">
+            🔄 Rafraîchir
+          </button>
+          <div className="text-xs text-emerald-600 font-medium">
+            📊 Source : Google Sheets "log sold"
+          </div>
+        </div>
+      </div>
+
+      {/* Stats principales */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+          <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">Chiffre d'Affaires HT</div>
+          <div className="text-3xl font-bold text-blue-900">{analytics.total.ca_ht.toLocaleString('fr-FR')}€</div>
+          <div className="text-sm text-blue-700 mt-2">{analytics.total.invoices} factures</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
+          <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">Chiffre d'Affaires TTC</div>
+          <div className="text-3xl font-bold text-emerald-900">{analytics.total.ca_ttc.toLocaleString('fr-FR')}€</div>
+          <div className="text-sm text-emerald-700 mt-2">TVA: {(analytics.total.ca_ttc - analytics.total.ca_ht).toLocaleString('fr-FR')}€</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
+          <div className="text-xs font-medium text-purple-600 mb-2 uppercase tracking-wide">Facture Moyenne</div>
+          <div className="text-3xl font-bold text-purple-900">
+            {analytics.total.invoices > 0 ? Math.round(analytics.total.ca_ht / analytics.total.invoices).toLocaleString('fr-FR') : 0}€
+          </div>
+          <div className="text-sm text-purple-700 mt-2">HT par facture</div>
+        </div>
+      </div>
+
+      {/* CA par mois */}
+      <div className="bg-white rounded-xl border border-slate-100 p-6">
+        <h3 className="text-sm font-semibold text-slate-800 mb-4">Évolution mensuelle</h3>
+        <div className="space-y-2">
+          {monthsData.map(([month, data]) => {
+            const maxCA = Math.max(...monthsData.map(([, d]) => d.ca_ht));
+            const widthPercent = (data.ca_ht / maxCA) * 100;
+            return (
+              <div key={month} className="flex items-center gap-3">
+                <div className="text-xs font-mono text-slate-500 w-20">{month}</div>
+                <div className="flex-1 bg-slate-100 rounded-full h-8 overflow-hidden">
+                  <div
+                    className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-full rounded-full flex items-center px-3"
+                    style={{ width: `${widthPercent}%` }}
+                  >
+                    {widthPercent > 15 && (
+                      <span className="text-xs font-medium text-white">
+                        {data.ca_ht.toLocaleString('fr-FR')}€
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <div className="text-xs text-slate-500 w-16 text-right">{data.count} fact.</div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Top clients */}
+      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+        <div className="p-6 border-b border-slate-100">
+          <h3 className="text-sm font-semibold text-slate-800">Top 10 Clients</h3>
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-slate-50">
+              <tr>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">#</th>
+                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Client</th>
+                <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
+                <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA TTC</th>
+                <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Factures</th>
+                <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Panier moyen</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {analytics.topClients.map((client, i) => (
+                <tr key={i} className="hover:bg-slate-50">
+                  <td className="px-6 py-3 text-sm font-medium text-slate-500">{i + 1}</td>
+                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{client.name}</td>
+                  <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
+                    {client.ca_ht.toLocaleString('fr-FR')}€
+                  </td>
+                  <td className="px-6 py-3 text-sm text-right text-slate-600">
+                    {client.ca_ttc.toLocaleString('fr-FR')}€
+                  </td>
+                  <td className="px-6 py-3 text-sm text-right text-slate-600">{client.count}</td>
+                  <td className="px-6 py-3 text-sm text-right text-slate-600">
+                    {Math.round(client.ca_ht / client.count).toLocaleString('fr-FR')}€
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* Factures récentes */}
+      {analytics.recentInvoices.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+          <div className="p-6 border-b border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-800">Dernières factures</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Numéro</th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Client</th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
+                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant HT</th>
+                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant TTC</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {analytics.recentInvoices.map((inv, i) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{inv.number}</td>
+                    <td className="px-6 py-3 text-sm text-slate-700">{inv.client}</td>
+                    <td className="px-6 py-3 text-sm text-slate-500">{inv.date}</td>
+                    <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
+                      {inv.amount_ht.toLocaleString('fr-FR')}€
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right text-slate-600">
+                      {inv.amount_ttc.toLocaleString('fr-FR')}€
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Vue Factures ─────────────────────────────────────────────────────────────
 const VueFactures = ({ showToast }) => {
   const [tab, setTab] = useState("commande");
@@ -2729,6 +2921,7 @@ const VueFactures = ({ showToast }) => {
     { id: "tracking", label: "Tracking", icon: "🚚" },
     { id: "envois", label: "Envois", icon: "📮" },
     { id: "analytics", label: "Analytics", icon: "📊" },
+    { id: "analytics-sheet", label: "Analytics Excel", icon: "📈" },
   ];
 
   return (
@@ -2763,6 +2956,7 @@ const VueFactures = ({ showToast }) => {
       {tab === "tracking" && <FacturesTracking showToast={showToast} />}
       {tab === "envois" && <FacturesShipments showToast={showToast} />}
       {tab === "analytics" && <FacturesAnalytics showToast={showToast} />}
+      {tab === "analytics-sheet" && <AnalyticsSpreadsheet showToast={showToast} />}
     </div>
   );
 };

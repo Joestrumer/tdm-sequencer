@@ -252,4 +252,48 @@ module.exports = (db) => ({
       updatedCells: writeResult.data.totalUpdatedCells,
     };
   },
+
+  /**
+   * Lit toutes les données de l'onglet "log sold" pour générer des analytics CA
+   * Structure attendue : colonnes avec headers en ligne 1
+   */
+  async getLogSoldData(spreadsheetId, sheetName = 'log sold') {
+    const auth = getAuth(db);
+    const sheets = google.sheets({ version: 'v4', auth });
+
+    // Lire toutes les données de la feuille (jusqu'à colonne Z)
+    const range = `${sheetName}!A:Z`;
+    const res = await sheets.spreadsheets.values.get({ spreadsheetId, range });
+    const rows = res.data.values || [];
+
+    if (rows.length === 0) {
+      return { ok: false, erreur: 'Onglet vide' };
+    }
+
+    // La première ligne contient les headers
+    const headers = rows[0].map(h => String(h || '').trim());
+    const data = [];
+
+    // Parser les lignes suivantes
+    for (let i = 1; i < rows.length; i++) {
+      const row = rows[i];
+      const obj = {};
+
+      headers.forEach((header, idx) => {
+        obj[header] = row[idx] || '';
+      });
+
+      // Ignorer les lignes vides
+      if (Object.values(obj).some(v => v)) {
+        data.push(obj);
+      }
+    }
+
+    return {
+      ok: true,
+      headers,
+      data,
+      totalRows: data.length,
+    };
+  },
 });
