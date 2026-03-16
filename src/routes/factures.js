@@ -787,6 +787,27 @@ module.exports = (db) => {
     }
   });
 
+  // ─── DEBUG WMS INFO : Tester le 2ème WSDL ───────────────────────────────────
+  const wmsInfoService = require('../services/wmsInfoService');
+
+  router.get('/wms-info/debug/:orderRef', async (req, res) => {
+    try {
+      const result = await wmsInfoService.debugCall(db, req.params.orderRef, req.query.method || 'getOrderInfo');
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.get('/wms-info/try-all/:orderRef', async (req, res) => {
+    try {
+      const result = await wmsInfoService.tryAllMethods(db, req.params.orderRef);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── TEMPORAIRE : Forcer utilisation env var au lieu de DB ──────────────────
   router.post('/force-env-tokens', async (req, res) => {
     try {
