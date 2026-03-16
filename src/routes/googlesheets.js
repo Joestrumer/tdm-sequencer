@@ -91,6 +91,7 @@ module.exports = (db) => {
       let totalLinesProcessed = 0;
       let linesSkippedNoInvoice = 0;
       let linesSkippedYear = 0;
+      const sampleDates = [];
 
       for (const row of data) {
         totalLinesProcessed++;
@@ -129,6 +130,16 @@ module.exports = (db) => {
           }
         }
 
+        // Log quelques exemples pour debug
+        if (sampleDates.length < 5) {
+          sampleDates.push({
+            invoice: invoiceNumber,
+            dateRaw: dateFacturation,
+            yearExtracted: invoiceYear,
+            willBeFiltered: year && (!invoiceYear || invoiceYear != year)
+          });
+        }
+
         // Filtrer par année si demandé
         if (year) {
           if (!invoiceYear || invoiceYear != year) {
@@ -158,7 +169,10 @@ module.exports = (db) => {
       }
 
       console.log(`📊 Traitement: ${totalLinesProcessed} lignes, ${linesSkippedNoInvoice} sans Invoice, ${linesSkippedYear} filtrées par année`);
+      console.log(`📊 Exemples de dates:`, sampleDates);
       console.log(`📊 ${invoicesMap.size} factures uniques trouvées`);
+      const invoicesList = Array.from(invoicesMap.keys()).sort();
+      console.log(`📊 Factures trouvées: ${invoicesList.join(', ')}`);
 
       // Calculer les statistiques
       const stats = {
