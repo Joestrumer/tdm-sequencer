@@ -37,7 +37,7 @@ const masterCatalog = {
   'P041-5000': { nom: 'Diffuseur Révélation Recharge 5 L', prix_ht: 200.00, tva: 20 },
   'P041': { nom: 'Diffuseur Révélation 200ml', prix_ht: 24.00, tva: 20 },
   'P041-500': { nom: 'Diffuseur Révélation 500ml', prix_ht: 48.00, tva: 20 },
-  'COFFRETS': { nom: 'COFFRETS KRAFTS', prix_ht: 0, tva: 20, vfId: '223790875' },
+  'COFFRETS': { nom: 'COFFRETS KRAFTS', prix_ht: 2.02, tva: 20, vfId: '223790875' },
   'SPRAY-VIDE': { nom: 'Spray vide', prix_ht: 0.50, tva: 20 },
   'P039': { nom: 'Diffuseur Intuition 200ml', prix_ht: 24.00, tva: 20 },
   'P039-500': { nom: 'Diffuseur Intuition 500ml', prix_ht: 48.00, tva: 20 },
@@ -432,7 +432,7 @@ const productIdMapping = {
   'P018-10.00': '103691212', 'P018-5000-55.00': '114309732',
   'P018-50-0.90': '112182816',
   'FP-25.00': '8719085866480', 'FE-80.00': '47317391',
-  'COFFRETS-0.00': '223790875',
+  'COFFRETS-2.02': '223790875',
 };
 
 const forcedPricesTTC = {
