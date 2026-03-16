@@ -84,67 +84,74 @@ module.exports = (db) => {
       console.log(`📊 GSheets Analytics: ${result.totalRows} lignes lues`);
       console.log(`📊 Headers: ${result.headers.join(', ')}`);
 
-      // Grouper par facture (chaque ligne = 1 produit, on doit grouper par Invoice)
-      const invoicesMap = new Map();
       const data = result.data || [];
 
+      // Première passe: identifier les factures de l'année demandée
+      const validInvoices = new Set();
+      if (year) {
+        for (const row of data) {
+          const invoiceNumber = (row['Invoice'] || '').trim();
+          if (!invoiceNumber) continue;
+
+          const dateFacturation = (row['Date facturation'] || '').trim();
+          let invoiceYear = '';
+          if (dateFacturation && dateFacturation.includes('/')) {
+            const parts = dateFacturation.split('/');
+            if (parts.length === 3) invoiceYear = parts[2];
+          } else if (dateFacturation && dateFacturation.includes('-')) {
+            const parts = dateFacturation.split('-');
+            if (parts.length === 3 && parts[0].length === 4) invoiceYear = parts[0];
+          }
+
+          if (invoiceYear == year) {
+            validInvoices.add(invoiceNumber);
+          }
+        }
+        console.log(`📊 ${validInvoices.size} factures trouvées pour ${year}`);
+      }
+
+      // Deuxième passe: grouper par facture et inclure toutes les lignes des factures valides
+      const invoicesMap = new Map();
       let totalLinesProcessed = 0;
       let linesSkippedNoInvoice = 0;
       let linesSkippedYear = 0;
-      const sampleDates = [];
 
       for (const row of data) {
         totalLinesProcessed++;
 
         const invoiceNumber = (row['Invoice'] || '').trim();
-        const clientName = (row['Hotel name'] || '').trim();
-        const dateFacturation = (row['Date facturation'] || '').trim();
-        const montantHT = parseFloat(row['Prix Total HT'] || 0);
-        const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
-
         if (!invoiceNumber) {
           linesSkippedNoInvoice++;
           continue;
         }
 
-        // Extraire l'année de la date de facturation
+        // Si filtre année actif, vérifier que la facture est dans la liste valide
+        if (year && !validInvoices.has(invoiceNumber)) {
+          linesSkippedYear++;
+          continue;
+        }
+
+        const clientName = (row['Hotel name'] || '').trim();
+        const dateFacturation = (row['Date facturation'] || '').trim();
+        const montantHT = parseFloat(row['Prix Total HT'] || 0);
+        const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
+
+        // Extraire année et mois pour la première ligne de chaque facture
         let invoiceYear = '';
         let invoiceMonth = '';
         if (dateFacturation) {
-          // Format attendu: DD/MM/YYYY ou YYYY-MM-DD
-          let parsedDate;
           if (dateFacturation.includes('/')) {
             const parts = dateFacturation.split('/');
             if (parts.length === 3) {
-              // DD/MM/YYYY
               invoiceYear = parts[2];
               invoiceMonth = parts[1];
             }
           } else if (dateFacturation.includes('-')) {
             const parts = dateFacturation.split('-');
             if (parts.length === 3 && parts[0].length === 4) {
-              // YYYY-MM-DD
               invoiceYear = parts[0];
               invoiceMonth = parts[1];
             }
-          }
-        }
-
-        // Log quelques exemples pour debug
-        if (sampleDates.length < 5) {
-          sampleDates.push({
-            invoice: invoiceNumber,
-            dateRaw: dateFacturation,
-            yearExtracted: invoiceYear,
-            willBeFiltered: year && (!invoiceYear || invoiceYear != year)
-          });
-        }
-
-        // Filtrer par année si demandé
-        if (year) {
-          if (!invoiceYear || invoiceYear != year) {
-            linesSkippedYear++;
-            continue;
           }
         }
 
@@ -168,8 +175,7 @@ module.exports = (db) => {
         invoice.productCount++;
       }
 
-      console.log(`📊 Traitement: ${totalLinesProcessed} lignes, ${linesSkippedNoInvoice} sans Invoice, ${linesSkippedYear} filtrées par année`);
-      console.log(`📊 Exemples de dates:`, sampleDates);
+      console.log(`📊 Traitement: ${totalLinesProcessed} lignes, ${linesSkippedNoInvoice} sans Invoice, ${linesSkippedYear} lignes exclues (factures autres années)`);
       console.log(`📊 ${invoicesMap.size} factures uniques trouvées`);
       const invoicesList = Array.from(invoicesMap.keys()).sort();
       console.log(`📊 Factures trouvées: ${invoicesList.join(', ')}`);
@@ -261,6 +267,34 @@ module.exports = (db) => {
       }
 
       const data = result.data || [];
+
+      // Première passe: identifier les factures de l'année demandée pour ce client
+      const validInvoices = new Set();
+      if (year) {
+        for (const row of data) {
+          const rowClient = (row['Hotel name'] || '').trim();
+          if (rowClient.toLowerCase() !== clientName.toLowerCase()) continue;
+
+          const invoiceNumber = (row['Invoice'] || '').trim();
+          if (!invoiceNumber) continue;
+
+          const dateFacturation = (row['Date facturation'] || '').trim();
+          let invoiceYear = '';
+          if (dateFacturation && dateFacturation.includes('/')) {
+            const parts = dateFacturation.split('/');
+            if (parts.length === 3) invoiceYear = parts[2];
+          } else if (dateFacturation && dateFacturation.includes('-')) {
+            const parts = dateFacturation.split('-');
+            if (parts.length === 3 && parts[0].length === 4) invoiceYear = parts[0];
+          }
+
+          if (invoiceYear == year) {
+            validInvoices.add(invoiceNumber);
+          }
+        }
+      }
+
+      // Deuxième passe: grouper toutes les lignes des factures valides
       const clientInvoices = new Map();
       const productStats = {};
 
@@ -269,28 +303,17 @@ module.exports = (db) => {
         if (rowClient.toLowerCase() !== clientName.toLowerCase()) continue;
 
         const invoiceNumber = (row['Invoice'] || '').trim();
+        if (!invoiceNumber) continue;
+
+        // Si filtre année actif, vérifier que la facture est dans la liste valide
+        if (year && !validInvoices.has(invoiceNumber)) continue;
+
         const dateFacturation = (row['Date facturation'] || '').trim();
         const productRef = (row['Ref'] || '').trim();
         const productName = (row['Produit'] || '').trim();
         const quantity = parseFloat(row['Nb Items'] || 0);
         const montantHT = parseFloat(row['Prix Total HT'] || 0);
         const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
-
-        if (!invoiceNumber) continue;
-
-        // Extraire l'année de la date de facturation
-        let invoiceYear = '';
-        if (dateFacturation) {
-          if (dateFacturation.includes('/')) {
-            const parts = dateFacturation.split('/');
-            if (parts.length === 3) invoiceYear = parts[2];
-          } else if (dateFacturation.includes('-')) {
-            const parts = dateFacturation.split('-');
-            if (parts.length === 3 && parts[0].length === 4) invoiceYear = parts[0];
-          }
-        }
-
-        if (year && (!invoiceYear || invoiceYear != year)) continue;
 
         // Grouper par facture
         if (!clientInvoices.has(invoiceNumber)) {
