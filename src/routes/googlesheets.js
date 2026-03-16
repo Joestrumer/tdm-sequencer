@@ -97,7 +97,7 @@ module.exports = (db) => {
 
         const invoiceNumber = (row['Invoice'] || '').trim();
         const clientName = (row['Hotel name'] || '').trim();
-        const dateFacturation = (row['Date HM Facturation T2M'] || '').trim();
+        const dateFacturation = (row['Date facturation'] || '').trim();
         const montantHT = parseFloat(row['Prix Total HT'] || 0);
         const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
 
@@ -255,7 +255,7 @@ module.exports = (db) => {
         if (rowClient.toLowerCase() !== clientName.toLowerCase()) continue;
 
         const invoiceNumber = (row['Invoice'] || '').trim();
-        const dateFacturation = (row['Date HM Facturation T2M'] || '').trim();
+        const dateFacturation = (row['Date facturation'] || '').trim();
         const productRef = (row['Ref'] || '').trim();
         const productName = (row['Produit'] || '').trim();
         const quantity = parseFloat(row['Nb Items'] || 0);
