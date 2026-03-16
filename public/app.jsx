@@ -506,6 +506,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                     <select onChange={e => { if (e.target.value) fmt("fontName", e.target.value); }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none">
                       <option value="" disabled>Police</option>
                       <option value="Arial, sans-serif">Arial</option>
+                      <option value="Helvetica, Arial, sans-serif">Helvetica</option>
                       <option value="Georgia, serif">Georgia</option>
                       <option value="Times New Roman, serif">Times</option>
                       <option value="Verdana, sans-serif">Verdana</option>
@@ -3080,6 +3081,7 @@ const FacturesBatch = ({ showToast }) => {
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
   const [manualText, setManualText] = useState('');
+  const [shippingId] = useState('1302');
 
   const addOrder = (products) => {
     setOrders(prev => [...prev, { id: nextId, products, client: null }]);
@@ -3152,6 +3154,53 @@ const FacturesBatch = ({ showToast }) => {
     showToast(`${allResults.filter(r => r.ok).length}/${allResults.length} factures créées`, 'success');
   };
 
+  const downloadCSVBatch = async (r) => {
+    try {
+      const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const order = orders.find(o => o.id === r.orderId);
+      const invoiceData = { ...r, products: order?.products || [] };
+      const client = order?.client || {};
+      const res2 = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceData, client, shippingId }),
+      });
+      const blob = await res2.blob();
+
+      let saved = false;
+      if (window.showDirectoryPicker) {
+        try {
+          const dirHandle = await window.showDirectoryPicker({ id: 'endurance-imports', mode: 'readwrite', startIn: 'documents' });
+          const fileName = `logisticien-${r.number || 'facture'}.csv`;
+          const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          showToast(`CSV sauvé dans ${dirHandle.name}/${fileName}`, 'success');
+          saved = true;
+        } catch (fsErr) {
+          if (fsErr.name !== 'AbortError') console.warn('File System Access fallback:', fsErr);
+        }
+      }
+
+      if (!saved) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `logisticien-${r.number || 'facture'}.csv`; a.click();
+        URL.revokeObjectURL(url);
+        showToast('CSV téléchargé', 'success');
+      }
+
+      const clientName = client.name || '';
+      const subject = encodeURIComponent(clientName);
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${r.number || ''} (${clientName}).\n\nCordialement`);
+      const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+      window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
+    } catch (err) {
+      showToast('Erreur CSV: ' + err.message, 'error');
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
@@ -3198,8 +3247,14 @@ const FacturesBatch = ({ showToast }) => {
         {results && (
           <div className="space-y-1">
             {results.map((r, i) => (
-              <div key={i} className={`text-sm p-2 rounded-lg ${r.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                {r.ok ? `✓ Facture ${r.number || r.id} créée` : `✗ Erreur: ${r.erreur}`}
+              <div key={i} className={`text-sm p-2 rounded-lg flex items-center justify-between ${r.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                <span>{r.ok ? `Facture ${r.number || r.id} créée` : `Erreur: ${r.erreur}`}</span>
+                {r.ok && (
+                  <button onClick={() => downloadCSVBatch(r)}
+                    className="ml-2 px-2 py-1 bg-emerald-600 text-white text-xs rounded hover:bg-emerald-700">
+                    CSV + Email
+                  </button>
+                )}
               </div>
             ))}
           </div>
@@ -3224,6 +3279,7 @@ const FacturesSamples = ({ showToast }) => {
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [searchRef, setSearchRef] = useState('');
+  const [shippingId, setShippingId] = useState('1302');
 
   useEffect(() => {
     api.get('/factures/produits').then(data => setCatalog(Array.isArray(data) ? data : [])).catch(() => {});
@@ -3268,6 +3324,61 @@ const FacturesSamples = ({ showToast }) => {
   const filteredCatalog = searchRef
     ? catalog.filter(c => c.ref.toLowerCase().includes(searchRef.toLowerCase()) || c.nom.toLowerCase().includes(searchRef.toLowerCase()))
     : [];
+
+  const downloadCSVAndEmailSamples = async () => {
+    if (!result) return;
+    try {
+      const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const invoiceData = {
+        ...result,
+        products: products.map(p => {
+          const cat = catalog.find(c => c.ref === p.ref);
+          return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
+        }),
+      };
+      const client = { name: clientName, street: clientAddress, email: clientEmail, phone: clientPhone };
+      const res = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ invoiceData, client, shippingId }),
+      });
+      const blob = await res.blob();
+
+      // Essayer sauvegarde directe dans le dossier Google Drive
+      let saved = false;
+      if (window.showDirectoryPicker) {
+        try {
+          const dirHandle = await window.showDirectoryPicker({ id: 'endurance-imports', mode: 'readwrite', startIn: 'documents' });
+          const fileName = `logisticien-${result?.number || 'proforma'}.csv`;
+          const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+          const writable = await fileHandle.createWritable();
+          await writable.write(blob);
+          await writable.close();
+          showToast(`CSV sauvé dans ${dirHandle.name}/${fileName}`, 'success');
+          saved = true;
+        } catch (fsErr) {
+          if (fsErr.name !== 'AbortError') console.warn('File System Access fallback:', fsErr);
+        }
+      }
+
+      if (!saved) {
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url; a.download = `logisticien-${result?.number || 'proforma'}.csv`; a.click();
+        URL.revokeObjectURL(url);
+        showToast('CSV téléchargé', 'success');
+      }
+
+      // Ouvrir mailto logisticien
+      const subject = encodeURIComponent(clientName);
+      const invoiceNum = result?.number || '';
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${invoiceNum} (${clientName}).\n\nCordialement`);
+      const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+      window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
+    } catch (err) {
+      showToast('Erreur CSV: ' + err.message, 'error');
+    }
+  };
 
   return (
     <div className="space-y-4">
@@ -3340,11 +3451,15 @@ const FacturesSamples = ({ showToast }) => {
         {result && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center space-y-2">
             <p className="text-sm font-medium text-emerald-700">Proforma N° {result.number || result.id} créée !</p>
-            <div className="flex gap-2 justify-center">
+            <div className="flex gap-2 justify-center flex-wrap">
               {result.id && (
                 <a href={`https://app.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
                   className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg">Voir ↗</a>
               )}
+              <button onClick={downloadCSVAndEmailSamples}
+                className="px-3 py-1.5 bg-emerald-600 text-white text-xs rounded-lg hover:bg-emerald-700">
+                CSV + Email Logisticien
+              </button>
             </div>
           </div>
         )}
