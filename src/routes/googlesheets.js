@@ -136,8 +136,16 @@ module.exports = (db) => {
         const dateFacturation = (row['Date facturation'] || '').trim();
         const montantHTRaw = row['Prix Total HT'] || '';
         const montantTTCRaw = row['Prix Total TTC'] || '';
-        const montantHT = parseFloat(montantHTRaw || 0);
-        const montantTTC = parseFloat(montantTTCRaw || 0);
+
+        // Parser les montants (format européen: virgule = décimale, € = symbole)
+        const parseEuroAmount = (str) => {
+          if (!str) return 0;
+          // Enlever €, espaces, puis remplacer virgule par point
+          return parseFloat(String(str).replace(/€/g, '').replace(/\s/g, '').replace(',', '.')) || 0;
+        };
+
+        const montantHT = parseEuroAmount(montantHTRaw);
+        const montantTTC = parseEuroAmount(montantTTCRaw);
 
         // Log quelques exemples
         if (sampleValues.length < 10) {
@@ -335,8 +343,15 @@ module.exports = (db) => {
         const productRef = (row['Ref'] || '').trim();
         const productName = (row['Produit'] || '').trim();
         const quantity = parseFloat(row['Nb Items'] || 0);
-        const montantHT = parseFloat(row['Prix Total HT'] || 0);
-        const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
+
+        // Parser les montants (format européen)
+        const parseEuroAmount = (str) => {
+          if (!str) return 0;
+          return parseFloat(String(str).replace(/€/g, '').replace(/\s/g, '').replace(',', '.')) || 0;
+        };
+
+        const montantHT = parseEuroAmount(row['Prix Total HT']);
+        const montantTTC = parseEuroAmount(row['Prix Total TTC']);
 
         // Grouper par facture
         if (!clientInvoices.has(invoiceNumber)) {
