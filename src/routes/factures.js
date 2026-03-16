@@ -764,11 +764,16 @@ module.exports = (db) => {
       const allInvoices = [];
       let page = 1;
       const perPage = 100;
-      const maxInvoices = limit ? parseInt(limit) : 1000; // Limite par défaut
+      const maxPages = 50; // Limiter à 50 pages max pour éviter boucle infinie
 
-      while (allInvoices.length < maxInvoices) {
+      while (page <= maxPages) {
         const invoices = await vfService.rechercherFacture('', { page, per_page: perPage });
-        if (!invoices || invoices.length === 0) break;
+
+        // Arrêter si plus aucune facture
+        if (!invoices || invoices.length === 0) {
+          console.log(`🛑 Page ${page}: Aucune facture, fin de pagination`);
+          break;
+        }
 
         console.log(`📄 Page ${page}: ${invoices.length} factures retournées par VF`);
 
@@ -799,7 +804,7 @@ module.exports = (db) => {
 
         allInvoices.push(...validInvoices);
 
-        if (invoices.length < perPage) break; // Dernière page
+        // Continuer à la page suivante
         page++;
       }
 
