@@ -2990,17 +2990,38 @@ const FacturesSingle = ({ showToast }) => {
             <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
             <select value={shippingId} onChange={e => setShippingId(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-              <option value="1302">1302 - Chronopost 13H Instance Agence</option>
-              <option value="101">101 - Coursier Colis (IDF/Paris)</option>
+              <option value="1">1 - Enlevement Colis</option>
+              <option value="2">2 - Enlevement Palette</option>
+              <option value="4">4 - Lettre Suivie</option>
+              <option value="101">101 - Coursier Colis</option>
+              <option value="102">102 - Coursier Palettes</option>
+              <option value="103">103 - Affretement</option>
+              <option value="200">200 - Affranchissement</option>
               <option value="300">300 - Colissimo Expert France</option>
-              <option value="1300">1300 - Chronopost 13H</option>
-              <option value="1301">1301 - Chronopost Classic (intl)</option>
-              <option value="1304">1304 - Chronopost Express (intl)</option>
               <option value="301">301 - Colissimo Expert DOM</option>
               <option value="302">302 - Colissimo Expert International</option>
+              <option value="303">303 - SO Colissimo Avec Signature</option>
+              <option value="304">304 - SO Colissimo Sans Signature</option>
+              <option value="306">306 - SO Colissimo Bureau de Poste</option>
+              <option value="307">307 - SO Colissimo Cityssimo</option>
+              <option value="308">308 - SO Colissimo ACP</option>
+              <option value="309">309 - SO Colissimo A2P</option>
+              <option value="311">311 - SO Colissimo CDI</option>
+              <option value="312">312 - Colissimo Access France</option>
               <option value="600">600 - TNT Avant 13H France</option>
-              <option value="1000">1000 - DHL</option>
+              <option value="601">601 - TNT Relais Colis France</option>
               <option value="900">900 - UPS Inter Standard</option>
+              <option value="901">901 - UPS Inter Express</option>
+              <option value="902">902 - UPS Inter Express Saver</option>
+              <option value="903">903 - UPS Express Plus</option>
+              <option value="904">904 - UPS Expedited</option>
+              <option value="1000">1000 - DHL</option>
+              <option value="1100">1100 - GEODIS</option>
+              <option value="1300">1300 - Chronopost 13H</option>
+              <option value="1301">1301 - Chronopost Classic - intl</option>
+              <option value="1302">1302 - Chronopost 13H Instance Agence</option>
+              <option value="1303">1303 - Chronopost Relais 13H</option>
+              <option value="1304">1304 - Chronopost Express - intl</option>
             </select>
           </div>
 
@@ -3304,17 +3325,38 @@ const FacturesBatch = ({ showToast }) => {
               <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
               <select value={shippingId} onChange={e => setShippingId(e.target.value)}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-                <option value="1302">1302 - Chronopost 13H Instance Agence</option>
-                <option value="101">101 - Coursier Colis (IDF/Paris)</option>
+                <option value="1">1 - Enlevement Colis</option>
+                <option value="2">2 - Enlevement Palette</option>
+                <option value="4">4 - Lettre Suivie</option>
+                <option value="101">101 - Coursier Colis</option>
+                <option value="102">102 - Coursier Palettes</option>
+                <option value="103">103 - Affretement</option>
+                <option value="200">200 - Affranchissement</option>
                 <option value="300">300 - Colissimo Expert France</option>
-                <option value="1300">1300 - Chronopost 13H</option>
-                <option value="1301">1301 - Chronopost Classic (intl)</option>
-                <option value="1304">1304 - Chronopost Express (intl)</option>
                 <option value="301">301 - Colissimo Expert DOM</option>
                 <option value="302">302 - Colissimo Expert International</option>
+                <option value="303">303 - SO Colissimo Avec Signature</option>
+                <option value="304">304 - SO Colissimo Sans Signature</option>
+                <option value="306">306 - SO Colissimo Bureau de Poste</option>
+                <option value="307">307 - SO Colissimo Cityssimo</option>
+                <option value="308">308 - SO Colissimo ACP</option>
+                <option value="309">309 - SO Colissimo A2P</option>
+                <option value="311">311 - SO Colissimo CDI</option>
+                <option value="312">312 - Colissimo Access France</option>
                 <option value="600">600 - TNT Avant 13H France</option>
-                <option value="1000">1000 - DHL</option>
+                <option value="601">601 - TNT Relais Colis France</option>
                 <option value="900">900 - UPS Inter Standard</option>
+                <option value="901">901 - UPS Inter Express</option>
+                <option value="902">902 - UPS Inter Express Saver</option>
+                <option value="903">903 - UPS Express Plus</option>
+                <option value="904">904 - UPS Expedited</option>
+                <option value="1000">1000 - DHL</option>
+                <option value="1100">1100 - GEODIS</option>
+                <option value="1300">1300 - Chronopost 13H</option>
+                <option value="1301">1301 - Chronopost Classic - intl</option>
+                <option value="1302">1302 - Chronopost 13H Instance Agence</option>
+                <option value="1303">1303 - Chronopost Relais 13H</option>
+                <option value="1304">1304 - Chronopost Express - intl</option>
               </select>
             </div>
             <button onClick={createAll} disabled={processing || !orders.some(o => o.client)}
@@ -3544,17 +3586,38 @@ const FacturesSamples = ({ showToast }) => {
             <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
             <select value={shippingId} onChange={e => setShippingId(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+              <option value="1">1 - Enlevement Colis</option>
+              <option value="2">2 - Enlevement Palette</option>
+              <option value="4">4 - Lettre Suivie</option>
+              <option value="101">101 - Coursier Colis</option>
+              <option value="102">102 - Coursier Palettes</option>
+              <option value="103">103 - Affretement</option>
+              <option value="200">200 - Affranchissement</option>
               <option value="300">300 - Colissimo Expert France</option>
-              <option value="101">101 - Coursier Colis (IDF/Paris)</option>
-              <option value="1302">1302 - Chronopost 13H Instance Agence</option>
-              <option value="1300">1300 - Chronopost 13H</option>
-              <option value="1301">1301 - Chronopost Classic (intl)</option>
-              <option value="1304">1304 - Chronopost Express (intl)</option>
               <option value="301">301 - Colissimo Expert DOM</option>
               <option value="302">302 - Colissimo Expert International</option>
+              <option value="303">303 - SO Colissimo Avec Signature</option>
+              <option value="304">304 - SO Colissimo Sans Signature</option>
+              <option value="306">306 - SO Colissimo Bureau de Poste</option>
+              <option value="307">307 - SO Colissimo Cityssimo</option>
+              <option value="308">308 - SO Colissimo ACP</option>
+              <option value="309">309 - SO Colissimo A2P</option>
+              <option value="311">311 - SO Colissimo CDI</option>
+              <option value="312">312 - Colissimo Access France</option>
               <option value="600">600 - TNT Avant 13H France</option>
-              <option value="1000">1000 - DHL</option>
+              <option value="601">601 - TNT Relais Colis France</option>
               <option value="900">900 - UPS Inter Standard</option>
+              <option value="901">901 - UPS Inter Express</option>
+              <option value="902">902 - UPS Inter Express Saver</option>
+              <option value="903">903 - UPS Express Plus</option>
+              <option value="904">904 - UPS Expedited</option>
+              <option value="1000">1000 - DHL</option>
+              <option value="1100">1100 - GEODIS</option>
+              <option value="1300">1300 - Chronopost 13H</option>
+              <option value="1301">1301 - Chronopost Classic - intl</option>
+              <option value="1302">1302 - Chronopost 13H Instance Agence</option>
+              <option value="1303">1303 - Chronopost Relais 13H</option>
+              <option value="1304">1304 - Chronopost Express - intl</option>
             </select>
           </div>
         </div>
