@@ -2715,6 +2715,8 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [year, setYear] = useState(new Date().getFullYear());
+  const [selectedClient, setSelectedClient] = useState(null);
+  const [clientDetails, setClientDetails] = useState(null);
 
   const loadAnalytics = async () => {
     setLoading(true);
@@ -2727,8 +2729,22 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     setLoading(false);
   };
 
+  const loadClientDetails = async (clientName) => {
+    setLoading(true);
+    try {
+      const data = await api.get(`/gsheets/analytics/client/${encodeURIComponent(clientName)}?year=${year}`);
+      setClientDetails(data);
+      setSelectedClient(clientName);
+    } catch (err) {
+      showToast('Erreur chargement client: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
   useEffect(() => {
     loadAnalytics();
+    setSelectedClient(null);
+    setClientDetails(null);
   }, [year]);
 
   if (loading) {
@@ -2742,9 +2758,118 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     );
   }
 
-  if (!analytics) return null;
+  if (!analytics && !clientDetails) return null;
 
-  const monthsData = Object.entries(analytics.byMonth || {})
+  // Vue détaillée d'un client
+  if (selectedClient && clientDetails) {
+    return (
+      <div className="space-y-6">
+        {/* Header */}
+        <div className="bg-white rounded-xl border border-slate-100 p-4">
+          <div className="flex items-center gap-3">
+            <button onClick={() => { setSelectedClient(null); setClientDetails(null); }}
+              className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200">
+              ← Retour
+            </button>
+            <h2 className="text-lg font-semibold text-slate-900">{selectedClient}</h2>
+            <div className="ml-auto text-xs text-emerald-600 font-medium">
+              📊 Source : Google Sheets "log sold"
+            </div>
+          </div>
+        </div>
+
+        {/* Stats client */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+            <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">CA Total HT</div>
+            <div className="text-3xl font-bold text-blue-900">{clientDetails.total.ca_ht.toLocaleString('fr-FR')}€</div>
+            <div className="text-sm text-blue-700 mt-2">{clientDetails.total.invoices} factures</div>
+          </div>
+          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
+            <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">CA Total TTC</div>
+            <div className="text-3xl font-bold text-emerald-900">{clientDetails.total.ca_ttc.toLocaleString('fr-FR')}€</div>
+          </div>
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
+            <div className="text-xs font-medium text-purple-600 mb-2 uppercase tracking-wide">Panier Moyen</div>
+            <div className="text-3xl font-bold text-purple-900">
+              {Math.round(clientDetails.total.ca_ht / clientDetails.total.invoices).toLocaleString('fr-FR')}€
+            </div>
+          </div>
+        </div>
+
+        {/* Produits consommés */}
+        <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+          <div className="p-6 border-b border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-800">Produits consommés</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Référence</th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Produit</th>
+                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Quantité</th>
+                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
+                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Factures</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {clientDetails.topProducts.map((p, i) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="px-6 py-3 text-sm font-mono text-slate-700">{p.ref}</td>
+                    <td className="px-6 py-3 text-sm text-slate-900">{p.name}</td>
+                    <td className="px-6 py-3 text-sm text-right text-slate-600">{p.totalQuantity}</td>
+                    <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
+                      {p.totalHT.toLocaleString('fr-FR')}€
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right text-slate-600">{p.invoiceCount}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        {/* Factures */}
+        <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+          <div className="p-6 border-b border-slate-100">
+            <h3 className="text-sm font-semibold text-slate-800">Historique factures</h3>
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50">
+                <tr>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Numéro</th>
+                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
+                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Produits</th>
+                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant HT</th>
+                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant TTC</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {clientDetails.invoices.map((inv, i) => (
+                  <tr key={i} className="hover:bg-slate-50">
+                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{inv.number}</td>
+                    <td className="px-6 py-3 text-sm text-slate-500">{inv.date}</td>
+                    <td className="px-6 py-3 text-sm text-right text-slate-600">{inv.productCount}</td>
+                    <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
+                      {inv.totalHT.toLocaleString('fr-FR')}€
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right text-slate-600">
+                      {inv.totalTTC.toLocaleString('fr-FR')}€
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Vue globale
+  const monthsData = Object.entries(analytics?.byMonth || {})
     .sort((a, b) => a[0].localeCompare(b[0]))
     .slice(-12); // 12 derniers mois
 
@@ -2826,7 +2951,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
       {/* Top clients */}
       <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
         <div className="p-6 border-b border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-800">Top 10 Clients</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Top 10 Clients (cliquez pour voir le détail)</h3>
         </div>
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -2842,9 +2967,12 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
             </thead>
             <tbody className="divide-y divide-slate-100">
               {analytics.topClients.map((client, i) => (
-                <tr key={i} className="hover:bg-slate-50">
+                <tr key={i} onClick={() => loadClientDetails(client.name)}
+                  className="hover:bg-blue-50 cursor-pointer transition-colors">
                   <td className="px-6 py-3 text-sm font-medium text-slate-500">{i + 1}</td>
-                  <td className="px-6 py-3 text-sm font-medium text-slate-900">{client.name}</td>
+                  <td className="px-6 py-3 text-sm font-medium text-blue-600 hover:text-blue-800">
+                    {client.name} →
+                  </td>
                   <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
                     {client.ca_ht.toLocaleString('fr-FR')}€
                   </td>

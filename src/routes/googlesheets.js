@@ -88,18 +88,30 @@ module.exports = (db) => {
       const invoicesMap = new Map();
       const data = result.data || [];
 
+      let totalLinesProcessed = 0;
+      let linesSkippedNoInvoice = 0;
+      let linesSkippedYear = 0;
+
       for (const row of data) {
+        totalLinesProcessed++;
+
         const invoiceNumber = (row['Invoice'] || '').trim();
         const clientName = (row['Hotel name'] || '').trim();
-        const factureYear = row['facture year'] || '';
-        const factureMonth = row['facture month'] || '';
+        const factureYear = String(row['facture year'] || '').trim();
+        const factureMonth = String(row['facture month'] || '').trim();
         const montantHT = parseFloat(row['Prix Total HT'] || 0);
         const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
 
-        if (!invoiceNumber) continue;
+        if (!invoiceNumber) {
+          linesSkippedNoInvoice++;
+          continue;
+        }
 
         // Filtrer par année si demandé
-        if (year && factureYear && factureYear != year) continue;
+        if (year && factureYear && factureYear != year) {
+          linesSkippedYear++;
+          continue;
+        }
 
         // Grouper par numéro de facture
         if (!invoicesMap.has(invoiceNumber)) {
@@ -110,13 +122,18 @@ module.exports = (db) => {
             month: factureMonth,
             totalHT: 0,
             totalTTC: 0,
+            productCount: 0,
           });
         }
 
         const invoice = invoicesMap.get(invoiceNumber);
         invoice.totalHT += montantHT;
         invoice.totalTTC += montantTTC;
+        invoice.productCount++;
       }
+
+      console.log(`📊 Traitement: ${totalLinesProcessed} lignes, ${linesSkippedNoInvoice} sans Invoice, ${linesSkippedYear} filtrées par année`);
+      console.log(`📊 ${invoicesMap.size} factures uniques trouvées`);
 
       // Calculer les statistiques
       const stats = {
@@ -183,6 +200,129 @@ module.exports = (db) => {
       res.json(stats);
     } catch (e) {
       console.error('Erreur analytics GSheets:', e);
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Détails d'un client spécifique
+  router.get('/analytics/client/:clientName', async (req, res) => {
+    try {
+      const { clientName } = req.params;
+      const { year } = req.query;
+      const spreadsheetId = getSpreadsheetId();
+      if (!spreadsheetId) {
+        return res.status(400).json({ erreur: 'Spreadsheet ID non configuré' });
+      }
+
+      const service = getGsheetsService();
+      const result = await service.getLogSoldData(spreadsheetId, 'log sold');
+
+      if (!result.ok) {
+        return res.status(500).json({ erreur: result.erreur });
+      }
+
+      const data = result.data || [];
+      const clientInvoices = new Map();
+      const productStats = {};
+
+      for (const row of data) {
+        const rowClient = (row['Hotel name'] || '').trim();
+        if (rowClient.toLowerCase() !== clientName.toLowerCase()) continue;
+
+        const invoiceNumber = (row['Invoice'] || '').trim();
+        const factureYear = String(row['facture year'] || '').trim();
+        const factureMonth = String(row['facture month'] || '').trim();
+        const productRef = (row['Ref'] || '').trim();
+        const productName = (row['Produit'] || '').trim();
+        const quantity = parseFloat(row['Nb Items'] || 0);
+        const montantHT = parseFloat(row['Prix Total HT'] || 0);
+        const montantTTC = parseFloat(row['Prix Total TTC'] || 0);
+
+        if (!invoiceNumber) continue;
+        if (year && factureYear && factureYear != year) continue;
+
+        // Grouper par facture
+        if (!clientInvoices.has(invoiceNumber)) {
+          clientInvoices.set(invoiceNumber, {
+            number: invoiceNumber,
+            year: factureYear,
+            month: factureMonth,
+            totalHT: 0,
+            totalTTC: 0,
+            products: [],
+          });
+        }
+
+        const invoice = clientInvoices.get(invoiceNumber);
+        invoice.totalHT += montantHT;
+        invoice.totalTTC += montantTTC;
+        invoice.products.push({
+          ref: productRef,
+          name: productName,
+          quantity,
+          amountHT: montantHT,
+          amountTTC: montantTTC,
+        });
+
+        // Stats produits
+        if (productRef) {
+          if (!productStats[productRef]) {
+            productStats[productRef] = {
+              ref: productRef,
+              name: productName,
+              totalQuantity: 0,
+              totalHT: 0,
+              totalTTC: 0,
+              invoiceCount: new Set(),
+            };
+          }
+          productStats[productRef].totalQuantity += quantity;
+          productStats[productRef].totalHT += montantHT;
+          productStats[productRef].totalTTC += montantTTC;
+          productStats[productRef].invoiceCount.add(invoiceNumber);
+        }
+      }
+
+      // Convertir les stats produits
+      const topProducts = Object.values(productStats)
+        .map(p => ({
+          ref: p.ref,
+          name: p.name,
+          totalQuantity: p.totalQuantity,
+          totalHT: Math.round(p.totalHT * 100) / 100,
+          totalTTC: Math.round(p.totalTTC * 100) / 100,
+          invoiceCount: p.invoiceCount.size,
+        }))
+        .sort((a, b) => b.totalHT - a.totalHT);
+
+      // Stats globales
+      let totalHT = 0;
+      let totalTTC = 0;
+      const invoices = Array.from(clientInvoices.values());
+
+      for (const inv of invoices) {
+        totalHT += inv.totalHT;
+        totalTTC += inv.totalTTC;
+      }
+
+      res.json({
+        clientName,
+        total: {
+          invoices: clientInvoices.size,
+          ca_ht: Math.round(totalHT * 100) / 100,
+          ca_ttc: Math.round(totalTTC * 100) / 100,
+        },
+        topProducts,
+        invoices: invoices.map(i => ({
+          number: i.number,
+          date: i.year && i.month ? `${i.month}/${i.year}` : '',
+          totalHT: Math.round(i.totalHT * 100) / 100,
+          totalTTC: Math.round(i.totalTTC * 100) / 100,
+          productCount: i.products.length,
+        })),
+      });
+    } catch (e) {
+      console.error('Erreur analytics client:', e);
       res.status(500).json({ erreur: e.message });
     }
   });
