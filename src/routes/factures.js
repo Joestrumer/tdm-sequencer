@@ -791,5 +791,32 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Mettre à jour credentials Google Sheets directement via API ───────────
+  router.post('/update-gsheets-creds', async (req, res) => {
+    try {
+      const { credentials } = req.body;
+      if (!credentials) {
+        return res.status(400).json({ erreur: 'Le champ credentials est requis (objet JSON complet)' });
+      }
+
+      // Vérifier que c'est un objet valide avec les champs requis
+      if (!credentials.private_key || !credentials.client_email) {
+        return res.status(400).json({ erreur: 'Credentials invalides : private_key et client_email requis' });
+      }
+
+      // Stocker en DB
+      db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
+        .run(JSON.stringify(credentials));
+
+      res.json({
+        ok: true,
+        message: 'Credentials Google Sheets mis à jour',
+        client_email: credentials.client_email
+      });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   return router;
 };
