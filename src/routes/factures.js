@@ -758,6 +758,8 @@ module.exports = (db) => {
     try {
       const { year, limit } = req.query;
 
+      console.log(`📊 Analytics: year=${year}, limit=${limit}`);
+
       // Récupérer toutes les factures via API VF (avec pagination)
       const allInvoices = [];
       let page = 1;
@@ -767,6 +769,8 @@ module.exports = (db) => {
       while (allInvoices.length < maxInvoices) {
         const invoices = await vfService.rechercherFacture('', { page, per_page: perPage });
         if (!invoices || invoices.length === 0) break;
+
+        console.log(`📄 Page ${page}: ${invoices.length} factures retournées par VF`);
 
         // Filtrer uniquement les vraies factures (kind=vat, pas proforma/devis)
         const validInvoices = invoices.filter(inv => {
@@ -788,11 +792,18 @@ module.exports = (db) => {
           return true;
         });
 
+        console.log(`✅ Page ${page}: ${validInvoices.length} factures valides (kind=vat, numéro chiffres uniquement)`);
+        if (validInvoices.length > 0) {
+          console.log(`   Exemples: ${validInvoices.slice(0, 3).map(i => `${i.number} (${i.issue_date})`).join(', ')}`);
+        }
+
         allInvoices.push(...validInvoices);
 
         if (invoices.length < perPage) break; // Dernière page
         page++;
       }
+
+      console.log(`🎯 Total factures valides: ${allInvoices.length}`);
 
       // Calculer les statistiques
       const stats = {
