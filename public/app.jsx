@@ -2671,6 +2671,27 @@ const FacturesSingle = ({ showToast }) => {
     setProcessing(false);
   };
 
+  // Log only (Google Sheets sans facture)
+  const logOnly = async () => {
+    setProcessing(true);
+    setError(null);
+    try {
+      const res = await api.post('/factures/log-only', {
+        client: selectedClient,
+        products: calculation?.products || matchedProducts,
+        orderNumber,
+      });
+      if (res.erreur) throw new Error(res.erreur);
+      setResult({ logOnly: true, ...res });
+      setStep(5);
+      showToast(`Log Google Sheets OK (${res.writtenLines} lignes, partenaire: ${res.partnerName})`, 'success');
+    } catch (err) {
+      setError(err.message);
+      showToast('Erreur log GSheets: ' + err.message, 'error');
+    }
+    setProcessing(false);
+  };
+
   const downloadPDF = async () => {
     try {
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
@@ -2897,10 +2918,16 @@ const FacturesSingle = ({ showToast }) => {
             </label>
           </div>
 
-          <button onClick={createInvoice} disabled={processing}
-            className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
-            {processing ? 'Création en cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'}`}
-          </button>
+          <div className="flex gap-2">
+            <button onClick={createInvoice} disabled={processing}
+              className="flex-1 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
+              {processing ? 'En cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'}`}
+            </button>
+            <button onClick={logOnly} disabled={processing}
+              className="py-3 px-4 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors whitespace-nowrap">
+              {processing ? '...' : 'Logger uniquement'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -2908,19 +2935,33 @@ const FacturesSingle = ({ showToast }) => {
       {step === 5 && result && (
         <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4 text-center">
           <div className="text-4xl">✅</div>
-          <h3 className="text-lg font-semibold text-slate-800">Facture créée !</h3>
-          <p className="text-sm text-slate-500">N° {result.number || result.id}</p>
+          {result.logOnly ? (
+            <>
+              <h3 className="text-lg font-semibold text-slate-800">Log Google Sheets OK</h3>
+              <p className="text-sm text-slate-500">
+                {result.writtenLines} ligne(s) ajoutée(s) — Partenaire: {result.partnerName}
+                {result.startRow && <span className="text-xs text-slate-400"> (lignes {result.startRow}-{result.endRow})</span>}
+              </p>
+            </>
+          ) : (
+            <>
+              <h3 className="text-lg font-semibold text-slate-800">Facture créée !</h3>
+              <p className="text-sm text-slate-500">N° {result.number || result.id}</p>
+            </>
+          )}
 
           <div className="flex flex-wrap gap-2 justify-center">
-            {result.id && (
+            {result.id && !result.logOnly && (
               <button onClick={downloadPDF} className="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700">
                 Télécharger PDF
               </button>
             )}
-            <button onClick={downloadCSVAndEmail} className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700">
-              CSV + Email Logisticien
-            </button>
-            {result.id && (
+            {!result.logOnly && (
+              <button onClick={downloadCSVAndEmail} className="px-4 py-2 bg-emerald-600 text-white text-sm rounded-lg hover:bg-emerald-700">
+                CSV + Email Logisticien
+              </button>
+            )}
+            {result.id && !result.logOnly && (
               <a href={`https://app.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
                 Voir sur VosFactures ↗

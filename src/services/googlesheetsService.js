@@ -119,8 +119,9 @@ module.exports = (db) => ({
 
     // Résoudre le nom canonique si nécessaire
     const mappedPartnerName = partnerName || resolveCanonicalClientName(db, invoiceData.clientName || '');
+    console.log(`📊 GSheets logInvoice: partnerName="${partnerName}", clientName="${invoiceData.clientName}", mapped="${mappedPartnerName}"`);
     if (!mappedPartnerName) {
-      return { ok: false, erreur: 'Impossible de résoudre le nom du partenaire' };
+      return { ok: false, erreur: 'Impossible de résoudre le nom du partenaire', status: 'failed_mapping' };
     }
 
     // 1) Lire les colonnes B→D pour trouver la prochaine ligne vide et compter les commandes existantes
@@ -138,6 +139,7 @@ module.exports = (db) => ({
       if (b && !b.startsWith('=')) lastDataRow = i + 1;
     }
     const nextRow = lastDataRow + 1;
+    console.log(`📊 GSheets: ${bdRows.length} lignes lues, lastDataRow=${lastDataRow}, nextRow=${nextRow}`);
 
     // Compter les factures distinctes de ce partenaire (pour le Order #)
     const existingInvoices = new Set();
@@ -155,7 +157,7 @@ module.exports = (db) => ({
     // 2) Construire les lignes à écrire
     const products = Array.isArray(invoiceData.products) ? invoiceData.products : [];
     if (!products.length) {
-      return { ok: false, erreur: 'Aucun produit à logger' };
+      return { ok: false, erreur: 'Aucun produit à logger', status: 'failed_payload' };
     }
 
     const invoiceNumber = cleanCell(invoiceData.invoiceNumber || '');
@@ -179,13 +181,15 @@ module.exports = (db) => ({
     }
 
     if (!valuesBF.length) {
-      return { ok: false, erreur: 'Aucune ligne produit à logger (tous FP/FE)' };
+      return { ok: false, erreur: 'Aucune ligne produit à logger (tous FP/FE)', status: 'failed_payload' };
     }
 
-    // 3) Écrire B→F et Q en batch
+    // 3) Écrire B→F et Q en batch (ne touche PAS A ni G-P qui ont des formules)
     const endRow = nextRow + valuesBF.length - 1;
+    console.log(`📊 GSheets: écriture ${valuesBF.length} lignes, range B${nextRow}:F${endRow} + Q${nextRow}:Q${endRow}`);
+    console.log(`📊 GSheets: première ligne = ${JSON.stringify(valuesBF[0])}, date = ${invoiceDate}`);
 
-    await sheets.spreadsheets.values.batchUpdate({
+    const writeResult = await sheets.spreadsheets.values.batchUpdate({
       spreadsheetId,
       requestBody: {
         valueInputOption: 'USER_ENTERED',
@@ -202,13 +206,17 @@ module.exports = (db) => ({
       },
     });
 
+    console.log(`📊 GSheets: batchUpdate réponse: ${writeResult.data.totalUpdatedCells} cellules mises à jour`);
+
     return {
       ok: true,
+      status: 'logged',
       writtenLines: valuesBF.length,
       startRow: nextRow,
       endRow,
       partnerName: mappedPartnerName,
       orderNumber,
+      updatedCells: writeResult.data.totalUpdatedCells,
     };
   },
 });

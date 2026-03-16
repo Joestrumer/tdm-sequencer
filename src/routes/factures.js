@@ -529,6 +529,68 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Log Only (GSheets sans créer de facture) ──────────────────────────────
+
+  router.post('/log-only', async (req, res) => {
+    try {
+      const { client, products, orderNumber } = req.body;
+      if (!client || !products || !products.length) {
+        return res.status(400).json({ erreur: 'Client et produits requis' });
+      }
+
+      // Vérifier/réparer credentials
+      const credsRow = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
+      let credsOk = false;
+      try {
+        const p = JSON.parse(credsRow?.valeur || '{}');
+        credsOk = !!(p.private_key && p.client_email);
+      } catch {}
+      if (!credsOk && process.env.GSHEETS_CREDENTIALS) {
+        try {
+          const envParsed = JSON.parse(process.env.GSHEETS_CREDENTIALS);
+          if (envParsed.private_key && envParsed.client_email) {
+            db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
+              .run(process.env.GSHEETS_CREDENTIALS);
+            console.log('🔧 Credentials GSheets réparées depuis env var (log-only)');
+          }
+        } catch {}
+      }
+
+      const gsheetsService = require('../services/googlesheetsService')(db);
+      const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
+      const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
+
+      if (!spreadsheetId) {
+        return res.status(400).json({ erreur: 'Spreadsheet ID non configuré' });
+      }
+
+      const catalog = getCatalogMap();
+      const canonicalClientName = resolveCanonicalClientName(client.name);
+
+      const gsProducts = products.map(p => ({
+        ref: p.ref,
+        quantity: p.quantite || p.quantity || 1,
+        priceHT: p.prix_ht || catalog[normalizeRef(p.ref)]?.prix_ht || 0,
+        csvRef: catalog[normalizeRef(p.ref)]?.csv_ref,
+      }));
+
+      console.log(`📊 Log-only: client="${client.name}", canonical="${canonicalClientName}", produits=${gsProducts.length}`);
+
+      const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
+        clientName: client.name,
+        invoiceNumber: orderNumber || 'LOG-' + Date.now(),
+        invoiceDate: new Date().toISOString().split('T')[0],
+        products: gsProducts,
+      }, canonicalClientName);
+
+      console.log('📊 Log-only result:', JSON.stringify(gsResult));
+      res.json(gsResult);
+    } catch (e) {
+      console.error('⚠️ Erreur log-only:', e.message, e.stack?.split('\n').slice(0, 3).join(' '));
+      res.status(500).json({ erreur: e.message, status: 'failed_write' });
+    }
+  });
+
   // ─── CSV Logisticien ────────────────────────────────────────────────────────
 
   router.post('/csv-logisticien', (req, res) => {
