@@ -85,19 +85,19 @@ async function callSoap(method, params, db) {
 // ─── API publique ────────────────────────────────────────────────────────────
 
 async function getStatus(db, deliveryOrder) {
-  return callSoap('getStatus', { id: 0, delivery_order: deliveryOrder }, db);
+  return callSoap('getStatus', { id: 165, delivery_order: deliveryOrder }, db);
 }
 
 async function getTracking(db, deliveryOrder) {
-  return callSoap('getTracking', { id: 0, delivery_order: deliveryOrder }, db);
+  return callSoap('getTracking', { id: 165, delivery_order: deliveryOrder }, db);
 }
 
 async function getRupture(db, deliveryOrder) {
-  return callSoap('getRupture', { id: 0, delivery_order: deliveryOrder }, db);
+  return callSoap('getRupture', { id: 165, delivery_order: deliveryOrder }, db);
 }
 
 async function getHistorique(db, deliveryOrder) {
-  return callSoap('getHistorique', { id: 0, delivery_order: deliveryOrder }, db);
+  return callSoap('getHistorique', { id: 165, delivery_order: deliveryOrder }, db);
 }
 
 // Récupérer toutes les infos d'une commande en un appel
