@@ -2882,7 +2882,17 @@ const FacturesSingle = ({ showToast }) => {
       )}
 
       {/* Step 3: Client */}
-      {step === 3 && <FacturesClientSearch onSelect={(client) => { setSelectedClient(client); doCalculation(client); setStep(4); }} onBack={() => setStep(2)} onModifySaisie={() => setStep(1)} />}
+      {step === 3 && <FacturesClientSearch onSelect={(client) => {
+        setSelectedClient(client);
+        doCalculation(client);
+        // Auto-sélection transporteur : IDF/Paris → Coursier Colis, sinon Chronopost 13H Instance
+        const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
+        const zip = client.zip || client.post_code || '';
+        const city = (client.city || '').toLowerCase();
+        const isIDF = idfDepts.some(d => zip.startsWith(d)) || city.includes('paris');
+        setShippingId(isIDF ? '101' : '1302');
+        setStep(4);
+      }} onBack={() => setStep(2)} onModifySaisie={() => setStep(1)} />}
 
       {/* Step 4: Review */}
       {step === 4 && (
@@ -2941,6 +2951,24 @@ const FacturesSingle = ({ showToast }) => {
               <input value={orderNumber} onChange={e => setOrderNumber(e.target.value)}
                 className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
+            <select value={shippingId} onChange={e => setShippingId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+              <option value="1302">1302 - Chronopost 13H Instance Agence</option>
+              <option value="101">101 - Coursier Colis (IDF/Paris)</option>
+              <option value="300">300 - Colissimo Expert France</option>
+              <option value="1300">1300 - Chronopost 13H</option>
+              <option value="1301">1301 - Chronopost Classic (intl)</option>
+              <option value="1304">1304 - Chronopost Express (intl)</option>
+              <option value="301">301 - Colissimo Expert DOM</option>
+              <option value="302">302 - Colissimo Expert International</option>
+              <option value="600">600 - TNT Avant 13H France</option>
+              <option value="1000">1000 - DHL</option>
+              <option value="900">900 - UPS Inter Standard</option>
+            </select>
           </div>
 
           <div className="flex items-center gap-4 text-sm">
@@ -3081,7 +3109,7 @@ const FacturesBatch = ({ showToast }) => {
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
   const [manualText, setManualText] = useState('');
-  const [shippingId] = useState('1302');
+  const [shippingId, setShippingId] = useState('1302');
 
   const addOrder = (products) => {
     setOrders(prev => [...prev, { id: nextId, products, client: null }]);
@@ -3238,10 +3266,29 @@ const FacturesBatch = ({ showToast }) => {
         ))}
 
         {orders.length > 0 && (
-          <button onClick={createAll} disabled={processing || !orders.some(o => o.client)}
-            className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50">
-            {processing ? 'Création...' : `Créer ${orders.filter(o => o.client).length} facture(s)`}
-          </button>
+          <>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
+              <select value={shippingId} onChange={e => setShippingId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+                <option value="1302">1302 - Chronopost 13H Instance Agence</option>
+                <option value="101">101 - Coursier Colis (IDF/Paris)</option>
+                <option value="300">300 - Colissimo Expert France</option>
+                <option value="1300">1300 - Chronopost 13H</option>
+                <option value="1301">1301 - Chronopost Classic (intl)</option>
+                <option value="1304">1304 - Chronopost Express (intl)</option>
+                <option value="301">301 - Colissimo Expert DOM</option>
+                <option value="302">302 - Colissimo Expert International</option>
+                <option value="600">600 - TNT Avant 13H France</option>
+                <option value="1000">1000 - DHL</option>
+                <option value="900">900 - UPS Inter Standard</option>
+              </select>
+            </div>
+            <button onClick={createAll} disabled={processing || !orders.some(o => o.client)}
+              className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50">
+              {processing ? 'Création...' : `Créer ${orders.filter(o => o.client).length} facture(s)`}
+            </button>
+          </>
         )}
 
         {results && (
@@ -3274,12 +3321,15 @@ const FacturesSamples = ({ showToast }) => {
   ]);
   const [clientName, setClientName] = useState('');
   const [clientAddress, setClientAddress] = useState('');
+  const [clientCity, setClientCity] = useState('');
+  const [clientZip, setClientZip] = useState('');
+  const [clientCountry, setClientCountry] = useState('FR');
   const [clientEmail, setClientEmail] = useState('');
   const [clientPhone, setClientPhone] = useState('');
   const [processing, setProcessing] = useState(false);
   const [result, setResult] = useState(null);
   const [searchRef, setSearchRef] = useState('');
-  const [shippingId, setShippingId] = useState('1302');
+  const [shippingId, setShippingId] = useState('300');
 
   useEffect(() => {
     api.get('/factures/produits').then(data => setCatalog(Array.isArray(data) ? data : [])).catch(() => {});
@@ -3304,7 +3354,7 @@ const FacturesSamples = ({ showToast }) => {
     setProcessing(true);
     try {
       const res = await api.post('/factures/invoices', {
-        client: { name: clientName, street: clientAddress, email: clientEmail, phone: clientPhone },
+        client: { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone },
         products: products.map(p => {
           const cat = catalog.find(c => c.ref === p.ref);
           return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
@@ -3336,7 +3386,7 @@ const FacturesSamples = ({ showToast }) => {
           return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
         }),
       };
-      const client = { name: clientName, street: clientAddress, email: clientEmail, phone: clientPhone };
+      const client = { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone };
       const res = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -3432,14 +3482,46 @@ const FacturesSamples = ({ showToast }) => {
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div className="md:col-span-2">
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Adresse</label>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Adresse (rue)</label>
             <textarea value={clientAddress} onChange={e => setClientAddress(e.target.value)} rows={2}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Ville</label>
+            <input value={clientCity} onChange={e => setClientCity(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Code postal</label>
+            <input value={clientZip} onChange={e => setClientZip(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Pays</label>
+            <input value={clientCountry} onChange={e => setClientCountry(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
             <label className="text-xs font-medium text-slate-500 mb-1 block">Téléphone</label>
             <input value={clientPhone} onChange={e => setClientPhone(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
+            <select value={shippingId} onChange={e => setShippingId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+              <option value="300">300 - Colissimo Expert France</option>
+              <option value="101">101 - Coursier Colis (IDF/Paris)</option>
+              <option value="1302">1302 - Chronopost 13H Instance Agence</option>
+              <option value="1300">1300 - Chronopost 13H</option>
+              <option value="1301">1301 - Chronopost Classic (intl)</option>
+              <option value="1304">1304 - Chronopost Express (intl)</option>
+              <option value="301">301 - Colissimo Expert DOM</option>
+              <option value="302">302 - Colissimo Expert International</option>
+              <option value="600">600 - TNT Avant 13H France</option>
+              <option value="1000">1000 - DHL</option>
+              <option value="900">900 - UPS Inter Standard</option>
+            </select>
           </div>
         </div>
 
