@@ -2912,7 +2912,14 @@ const FacturesSingle = ({ showToast }) => {
             </div>
           )}
 
-          {calculation && (
+          {calculation && (() => {
+            const productsHT = calculation.products?.reduce((s, p) => s + (p.total_ht || 0), 0) || 0;
+            const fraisHT = (calculation.frais_port || []).reduce((s, f) => s + f.prix_ht * f.quantite, 0);
+            const totalHT = productsHT + fraisHT;
+            const productsTTC = calculation.products?.reduce((s, p) => s + (p.total_ttc || 0), 0) || 0;
+            const fraisTTC = (calculation.frais_port || []).reduce((s, f) => s + f.prix_ht * f.quantite * 1.2, 0);
+            const totalTTC = productsTTC + fraisTTC;
+            return (
             <div className="space-y-2">
               {calculation.products?.map((p, i) => (
                 <div key={i} className="flex justify-between text-sm py-1">
@@ -2921,21 +2928,45 @@ const FacturesSingle = ({ showToast }) => {
                 </div>
               ))}
               {calculation.frais_port?.map((f, i) => (
-                <div key={'fp'+i} className="flex justify-between text-sm py-1 text-slate-500">
-                  <span>{f.nom}</span>
-                  <span className="font-mono">{(f.prix_ht * f.quantite).toFixed(2)}€ HT</span>
+                <div key={'fp'+i} className="flex items-center justify-between text-sm py-1 text-slate-500">
+                  <span className="flex-1">{f.nom}</span>
+                  <div className="flex items-center gap-1">
+                    <input type="number" step="0.01" min="0" value={f.prix_ht}
+                      onChange={e => {
+                        const newFrais = [...calculation.frais_port];
+                        newFrais[i] = { ...newFrais[i], prix_ht: parseFloat(e.target.value) || 0 };
+                        setCalculation({ ...calculation, frais_port: newFrais });
+                      }}
+                      className="w-20 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
+                    <span className="text-xs">€ HT</span>
+                    <button onClick={() => {
+                      const newFrais = calculation.frais_port.filter((_, idx) => idx !== i);
+                      setCalculation({ ...calculation, frais_port: newFrais });
+                    }} className="ml-1 text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
+                  </div>
                 </div>
               ))}
+              <div className="flex gap-2">
+                <button onClick={() => {
+                  const newFrais = [...(calculation.frais_port || []), { ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20 }];
+                  setCalculation({ ...calculation, frais_port: newFrais });
+                }} className="text-xs text-blue-600 hover:text-blue-800">+ Frais préparation</button>
+                <button onClick={() => {
+                  const newFrais = [...(calculation.frais_port || []), { ref: 'FE', nom: 'FRAIS EXPEDITION', prix_ht: 80, quantite: 1, tva: 20 }];
+                  setCalculation({ ...calculation, frais_port: newFrais });
+                }} className="text-xs text-blue-600 hover:text-blue-800">+ Frais expédition</button>
+              </div>
               <div className="border-t border-slate-200 pt-2 flex justify-between font-semibold">
                 <span>Total HT</span>
-                <span className="font-mono">{calculation.total_ht?.toFixed(2)}€</span>
+                <span className="font-mono">{totalHT.toFixed(2)}€</span>
               </div>
               <div className="flex justify-between text-sm text-slate-600">
                 <span>Total TTC</span>
-                <span className="font-mono">{calculation.total_ttc?.toFixed(2)}€</span>
+                <span className="font-mono">{totalTTC.toFixed(2)}€</span>
               </div>
             </div>
-          )}
+            );
+          })()}
 
           <div className="grid grid-cols-2 gap-3">
             <div>
