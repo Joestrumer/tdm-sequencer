@@ -12,7 +12,7 @@ function stripDiacritics(s) {
 function normalizeRef(raw) {
   if (!raw) return '';
   let r = String(raw).trim().toUpperCase().replace(/\s+/g, '');
-  const specials = new Set(['FP', 'FE', 'P5L', 'SPFS', 'PFS', 'PFD', 'PFT']);
+  const specials = new Set(['FP', 'FE', 'P5L', 'SPFS', 'PFS', 'PFD', 'PFT', 'COFFRETS']);
   if (specials.has(r)) return r;
   if (r.startsWith('NP')) r = 'P' + r.slice(2);
   if (r.startsWith('H-') || r.startsWith('N-')) r = r.slice(2);
@@ -441,6 +441,7 @@ function parseOrderText(text) {
     { re: /(?=.*insurrection)(?=.*(hand|mains|wash))/, ref: 'P007' },
     { re: /(?=.*(gel|wash|nettoyant|lavant))(?=.*(corps|corporel|body))(?=.*(cheveu|hair))(?=.*(irrever|irr[eé]ver))(?=.*5\s*l)/, ref: 'P014-5000' },
     { re: /(?=.*(gel|wash|nettoyant|lavant))(?=.*(corps|corporel|body))(?=.*(cheveu|hair))(?=.*(irrever|irr[eé]ver))/, ref: 'P014' },
+    { re: /coffret/, ref: 'COFFRETS' },
   ];
 
   const lines = cleaned.split('\n')
