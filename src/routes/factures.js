@@ -727,6 +727,98 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Analytics / Dashboard CA ───────────────────────────────────────────────
+
+  router.get('/analytics', async (req, res) => {
+    try {
+      const { year, limit } = req.query;
+
+      // Récupérer toutes les factures (ou filtrer par année)
+      let query = 'kind:vat'; // Seulement les vraies factures, pas proforma
+      if (year) {
+        query += ` AND issue_year:${year}`;
+      }
+
+      // Récupérer via API VF (avec pagination si nécessaire)
+      const allInvoices = [];
+      let page = 1;
+      const perPage = 100;
+      const maxInvoices = limit ? parseInt(limit) : 1000; // Limite par défaut
+
+      while (allInvoices.length < maxInvoices) {
+        const invoices = await vfService.rechercherFacture('', { page, per_page: perPage });
+        if (!invoices || invoices.length === 0) break;
+
+        allInvoices.push(...invoices);
+
+        if (invoices.length < perPage) break; // Dernière page
+        page++;
+      }
+
+      // Calculer les statistiques
+      const stats = {
+        total: {
+          invoices: allInvoices.length,
+          ca_ht: 0,
+          ca_ttc: 0,
+        },
+        byMonth: {},
+        byClient: {},
+        topClients: [],
+        recentInvoices: allInvoices.slice(0, 10).map(inv => ({
+          number: inv.number,
+          client: inv.buyer_name,
+          date: inv.issue_date,
+          amount_ht: parseFloat(inv.price_net || 0),
+          amount_ttc: parseFloat(inv.price_gross || 0),
+        })),
+      };
+
+      // Parcourir les factures
+      for (const inv of allInvoices) {
+        const amountHT = parseFloat(inv.price_net || 0);
+        const amountTTC = parseFloat(inv.price_gross || 0);
+
+        // Total
+        stats.total.ca_ht += amountHT;
+        stats.total.ca_ttc += amountTTC;
+
+        // Par mois
+        const month = inv.issue_date?.substring(0, 7) || 'unknown'; // YYYY-MM
+        if (!stats.byMonth[month]) {
+          stats.byMonth[month] = { ca_ht: 0, ca_ttc: 0, count: 0 };
+        }
+        stats.byMonth[month].ca_ht += amountHT;
+        stats.byMonth[month].ca_ttc += amountTTC;
+        stats.byMonth[month].count += 1;
+
+        // Par client
+        const client = inv.buyer_name || 'Inconnu';
+        if (!stats.byClient[client]) {
+          stats.byClient[client] = { ca_ht: 0, ca_ttc: 0, count: 0 };
+        }
+        stats.byClient[client].ca_ht += amountHT;
+        stats.byClient[client].ca_ttc += amountTTC;
+        stats.byClient[client].count += 1;
+      }
+
+      // Top 10 clients
+      stats.topClients = Object.entries(stats.byClient)
+        .map(([name, data]) => ({ name, ...data }))
+        .sort((a, b) => b.ca_ht - a.ca_ht)
+        .slice(0, 10);
+
+      // Arrondir les montants
+      stats.total.ca_ht = Math.round(stats.total.ca_ht * 100) / 100;
+      stats.total.ca_ttc = Math.round(stats.total.ca_ttc * 100) / 100;
+
+      res.json(stats);
+    } catch (e) {
+      console.error('Erreur analytics:', e);
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Données auxiliaires ────────────────────────────────────────────────────
 
   router.get('/shipping-names', (req, res) => {
