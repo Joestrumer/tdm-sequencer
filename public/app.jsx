@@ -3792,14 +3792,23 @@ const FacturesSingle = ({ showToast }) => {
       if (!res.ok) throw new Error('Erreur PDF: ' + res.status);
       const blob = await res.blob();
       const url = URL.createObjectURL(blob);
-      window.open(url, '_blank');
-      showToast('PDF ouvert', 'success');
+
+      // Téléchargement automatique avec le bon nom
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `facture-invoice-${result.number || result.id}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+
+      showToast('PDF téléchargé', 'success');
     } catch (err) {
       showToast('Erreur PDF: ' + err.message, 'error');
     }
   };
 
-  const downloadCSVAndEmail = async () => {
+  const downloadCSVAndEmail = async (isSample = false) => {
     try {
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
       const invoiceData = { ...result, products: calculation?.products || matchedProducts, orderNumber };
@@ -3809,21 +3818,50 @@ const FacturesSingle = ({ showToast }) => {
         body: JSON.stringify({ invoiceData, client: selectedClient, shippingId }),
       });
       const blob = await res.blob();
+      const fileName = `logisticien-${result?.number || 'facture'}.csv`;
 
-      // Essayer File System Access API (Chrome) pour sauver dans un dossier
+      // Essayer File System Access API avec mémorisation du dossier
       let saved = false;
       if (window.showDirectoryPicker) {
         try {
-          const dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-          const fileName = `logisticien-${result?.number || 'facture'}.csv`;
+          // Essayer de récupérer le handle sauvegardé
+          let dirHandle = null;
+          const savedHandleName = localStorage.getItem('csvDirHandleName');
+
+          if (savedHandleName && window.savedCSVDirHandle) {
+            try {
+              // Vérifier les permissions
+              const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
+              if (permission === 'granted' || await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+                dirHandle = window.savedCSVDirHandle;
+                console.log('📁 Réutilisation du dossier:', savedHandleName);
+              }
+            } catch (e) {
+              console.log('📁 Handle sauvegardé invalide, demande nouveau dossier');
+            }
+          }
+
+          // Si pas de handle valide, demander à l'utilisateur
+          if (!dirHandle) {
+            dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            window.savedCSVDirHandle = dirHandle;
+            localStorage.setItem('csvDirHandleName', dirHandle.name);
+            console.log('📁 Nouveau dossier mémorisé:', dirHandle.name);
+          }
+
+          // Sauvegarder le fichier
           const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
           const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
-          showToast(`CSV sauvé dans ${dirHandle.name}/${fileName}`, 'success');
+          showToast(`✅ CSV sauvé: ${dirHandle.name}/${fileName}`, 'success');
           saved = true;
         } catch (fsErr) {
-          if (fsErr.name !== 'AbortError') console.warn('File System Access fallback:', fsErr);
+          if (fsErr.name !== 'AbortError') {
+            console.warn('File System Access fallback:', fsErr);
+            delete window.savedCSVDirHandle;
+            localStorage.removeItem('csvDirHandleName');
+          }
         }
       }
 
@@ -3831,16 +3869,17 @@ const FacturesSingle = ({ showToast }) => {
       if (!saved) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = `logisticien-${result?.number || 'facture'}.csv`; a.click();
+        a.href = url; a.download = fileName; a.click();
         URL.revokeObjectURL(url);
         showToast('CSV téléchargé', 'success');
       }
 
-      // Ouvrir mailto logisticien
+      // Ouvrir mailto logisticien avec bon objet
       const clientName = selectedClient?.name || '';
-      const invoiceNum = result?.number || '';
-      const subject = encodeURIComponent(clientName);
-      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${invoiceNum} (${clientName}).\n\nCordialement`);
+      const invoiceNum = orderNumber || result?.number || '';
+      const subjectPrefix = isSample ? 'Échantillons' : 'Commande';
+      const subject = encodeURIComponent(`${subjectPrefix} : ${clientName} ${invoiceNum}`);
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la ${isSample ? 'demande d\'échantillons' : 'commande'} ${invoiceNum} (${clientName}).\n\nCordialement`);
       const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
       window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
     } catch (err) {
@@ -4601,36 +4640,63 @@ const FacturesSamples = ({ showToast }) => {
         body: JSON.stringify({ invoiceData, client, shippingId }),
       });
       const blob = await res.blob();
+      const fileName = `logisticien-${result?.number || 'proforma'}.csv`;
 
-      // Essayer sauvegarde directe dans le dossier Google Drive
+      // Essayer File System Access API avec mémorisation du dossier
       let saved = false;
       if (window.showDirectoryPicker) {
         try {
-          const dirHandle = await window.showDirectoryPicker({ id: 'endurance-imports', mode: 'readwrite', startIn: 'documents' });
-          const fileName = `logisticien-${result?.number || 'proforma'}.csv`;
+          // Essayer de récupérer le handle sauvegardé
+          let dirHandle = null;
+          const savedHandleName = localStorage.getItem('csvDirHandleName');
+
+          if (savedHandleName && window.savedCSVDirHandle) {
+            try {
+              const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
+              if (permission === 'granted' || await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+                dirHandle = window.savedCSVDirHandle;
+                console.log('📁 Réutilisation du dossier:', savedHandleName);
+              }
+            } catch (e) {
+              console.log('📁 Handle sauvegardé invalide, demande nouveau dossier');
+            }
+          }
+
+          // Si pas de handle valide, demander à l'utilisateur
+          if (!dirHandle) {
+            dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            window.savedCSVDirHandle = dirHandle;
+            localStorage.setItem('csvDirHandleName', dirHandle.name);
+            console.log('📁 Nouveau dossier mémorisé:', dirHandle.name);
+          }
+
           const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
           const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
-          showToast(`CSV sauvé dans ${dirHandle.name}/${fileName}`, 'success');
+          showToast(`✅ CSV sauvé: ${dirHandle.name}/${fileName}`, 'success');
           saved = true;
         } catch (fsErr) {
-          if (fsErr.name !== 'AbortError') console.warn('File System Access fallback:', fsErr);
+          if (fsErr.name !== 'AbortError') {
+            console.warn('File System Access fallback:', fsErr);
+            delete window.savedCSVDirHandle;
+            localStorage.removeItem('csvDirHandleName');
+          }
         }
       }
 
       if (!saved) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = `logisticien-${result?.number || 'proforma'}.csv`; a.click();
+        a.href = url; a.download = fileName; a.click();
         URL.revokeObjectURL(url);
         showToast('CSV téléchargé', 'success');
       }
 
-      // Ouvrir mailto logisticien
-      const subject = encodeURIComponent(clientName);
+      // Ouvrir mailto logisticien avec bon objet pour échantillons
       const invoiceNum = result?.number || '';
-      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${invoiceNum} (${clientName}).\n\nCordialement`);
+      const subject = encodeURIComponent(`Échantillons : ${clientName} ${invoiceNum}`);
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la demande d'échantillons ${invoiceNum} (${clientName}).\n\nCordialement`);
       const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
       window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
     } catch (err) {
