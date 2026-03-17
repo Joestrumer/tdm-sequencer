@@ -75,6 +75,17 @@ function resolveCanonicalClientName(db, vfName) {
 function mapPartnerNameToCanon(vfName, canonList = []) {
   if (!vfName) return vfName;
 
+  // Helpers de normalisation (définis en premier pour être utilisés partout)
+  const stripDiacritics = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const norm = (s) => stripDiacritics(String(s || '').toLowerCase())
+    .replace(/[''`]/g, ' ')
+    .replace(/&/g, ' and ')
+    .replace(/[()\[\]{}]/g, ' ')
+    .replace(/[\-_/.,:;!?\\"|\\]+/g, ' ')
+    .replace(/\b(hotel|hôtel)\b/g, 'hotel')
+    .replace(/\s+/g, ' ')
+    .trim();
+
   // Normaliser la liste canon et filtrer les doublons (préférer noms courts)
   let cleanCanonList = (Array.isArray(canonList) ? canonList : [])
     .map(n => String(n || '').trim())
@@ -89,17 +100,6 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
     }
   }
   cleanCanonList = Array.from(dedupeMap.values());
-
-  // Helpers de normalisation
-  const stripDiacritics = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  const norm = (s) => stripDiacritics(String(s || '').toLowerCase())
-    .replace(/[''`]/g, ' ')
-    .replace(/&/g, ' and ')
-    .replace(/[()\[\]{}]/g, ' ')
-    .replace(/[\-_/.,:;!?\\"|\\]+/g, ' ')
-    .replace(/\b(hotel|hôtel)\b/g, 'hotel')
-    .replace(/\s+/g, ' ')
-    .trim();
 
   const vfNorm = norm(vfName);
 
