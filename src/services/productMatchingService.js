@@ -476,6 +476,27 @@ function parseOrderText(text) {
     const lineNorm = norm(line);
 
     let foundAny = false;
+
+    // Format tabulaire: P039 Description... 12 ( 24,00)
+    // Ligne commence par une référence, quantité plus loin
+    const tabularMatch = line.match(/^([Pp]\d{3}(?:-\d+)?|P5L|[HhNn]\s*-?\s*\d{3})\s+(.+?)(\d{1,4})\s+[\(\[]?\s*[\d,\.]+\s*[\)\]]?\s*€/);
+    if (tabularMatch) {
+      const ref = tabularMatch[1];
+      const quantity = parseInt(tabularMatch[3], 10);
+      if (quantity > 0 && quantity < 9999) {
+        const normalizedRef = localNormalizeRef(ref, lineNorm);
+        if (normalizedRef) {
+          const existing = products.find(p => p.ref === normalizedRef);
+          if (existing) existing.quantity += quantity;
+          else products.push({ ref: normalizedRef, quantity });
+          foundAny = true;
+          console.log(`📋 Format tabulaire détecté: ${normalizedRef} x${quantity}`);
+          return;
+        }
+      }
+    }
+
+    // Patterns standards (10x P008, P008 x 10, etc.)
     for (const pattern of refPatterns) {
       let match;
       while ((match = pattern.exec(line)) !== null) {
