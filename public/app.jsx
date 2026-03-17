@@ -347,14 +347,12 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [activeEtape, setActiveEtape] = useState(0);
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
-  const [mode, setMode] = useState("edit"); // "edit" | "preview"
   const [testEmail, setTestEmail] = useState("");
   const [testLoading, setTestLoading] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
   const [testInProgress, setTestInProgress] = useState(false);
-  const editorRef = useRef(null);
+  const corpsRef = useRef(null);
   const objetRef = useRef(null);
-  const colorInputRef = useRef(null);
   const pjRef = useRef(null);
   const [pieceJointe, setPieceJointe] = useState(etapes[0]?.piece_jointe || null);
 
@@ -366,11 +364,35 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
   const chargerPj = (file) => {
     if (!file) return;
+    if (file.size > 5000000) {
+      alert("❌ Fichier trop volumineux (max 5 MB)");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = (e) => {
       setPjEtape({ nom: file.name, taille: file.size, type: file.type, data: e.target.result.split(",")[1] });
     };
     reader.readAsDataURL(file);
+  };
+
+  // Insertion rapide de formatage
+  const insererFormat = (avant, apres = '') => {
+    const textarea = corpsRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selectedText = text.substring(start, end);
+
+    const newText = text.substring(0, start) + avant + selectedText + apres + text.substring(end);
+    updateEtape(activeEtape, "corps", newText);
+
+    // Restaurer focus et sélection
+    setTimeout(() => {
+      textarea.focus();
+      textarea.setSelectionRange(start + avant.length, end + avant.length);
+    }, 0);
   };
 
   const envoyerTestEmail = async () => {
