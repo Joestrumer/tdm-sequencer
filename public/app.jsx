@@ -1776,7 +1776,6 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               }} className="px-3 py-1.5 text-xs border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50">🚫 Bloquer</button>
               <button onClick={(e) => supprimerLead(selectedLead, e)} className="px-3 py-1.5 text-xs border border-red-100 text-red-400 rounded-lg hover:bg-red-50">Supprimer</button>
               <button onClick={() => { setSelectedLead(null); setDetailData(null); }} className="text-slate-400 hover:text-slate-600 text-xl ml-1">×</button>
-            </div>
           </div>
 
           {/* ── KPIs rapides ── */}
