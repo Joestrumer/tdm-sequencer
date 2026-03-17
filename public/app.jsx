@@ -3615,6 +3615,377 @@ const VueFactures = ({ showToast }) => {
   );
 };
 
+// ─── PDF Parsing Helpers (position-based) ────────────────────────────────────
+const _parseFloatFR = (v) => {
+  const s = (v ?? '').toString()
+    .replace(/\u00A0/g, ' ')
+    .replace(/[€\s]/g, '')
+    .replace(/[^\d,\.\-]/g, '')
+    .replace(/,/g, '.')
+    .trim();
+  const n = parseFloat(s);
+  return isNaN(n) ? NaN : n;
+};
+
+const _splitRefPriceToken = (token) => {
+  const t = (token ?? '').toString().replace(/\s/g, '').trim();
+  const idx = t.lastIndexOf('-');
+  if (idx < 0) return { ref: t, price: NaN };
+  const ref = t.slice(0, idx);
+  const price = _parseFloatFR(t.slice(idx + 1));
+  return { ref, price };
+};
+
+const _guessDiscountFromPdfRow = (items) => {
+  const percentItems = (items || [])
+    .map(it => ({ ...it, s: (it.str || '').toString().trim() }))
+    .filter(it => /^\d+(?:[.,]\d+)?%$/.test(it.s));
+  if (percentItems.length === 0) return 0;
+  percentItems.sort((a, b) => (b.x - a.x));
+  const p = _parseFloatFR(percentItems[0].s.replace('%', ''));
+  return (isNaN(p) || p < 0) ? 0 : p;
+};
+
+const _guessQtyFromPdfRow = (rowText, rowItems, colHints) => {
+  if (!rowItems || rowItems.length === 0) return NaN;
+
+  try {
+    const t = String(rowText || '');
+    const m = t.match(/\b(\d{1,4})\b\s*\(\s*([0-9]+(?:[.,][0-9]{1,2})?)\s*\)\s*€\)*\s*([0-9]+(?:[.,][0-9]{1,2})?)\s*€\s*(\d+)(?:\s+(\d+))?/);
+    if (m) {
+      const qty1 = parseInt(m[4], 10);
+      const qty2 = (m[5] != null) ? parseInt(m[5], 10) : null;
+      if (Number.isFinite(qty2)) return qty2;
+      if (Number.isFinite(qty1)) return qty1;
+    }
+  } catch (e) { }
+
+  const isDecimalFragment = (items, i) => {
+    const cur = String(items[i]?.str || '').trim();
+    if (!/^\d+$/.test(cur)) return false;
+    const prev = String(items[i - 1]?.str || '').trim();
+    const next = String(items[i + 1]?.str || '').trim();
+    if (next === ',' || next === '.' || /^[.,]$/.test(next) || /^[.,]\d+$/.test(next)) return true;
+    if (prev === ',' || prev === '.' || /^[.,]$/.test(prev) || /^[.,]\d+$/.test(prev) || /[.,]$/.test(prev)) return true;
+    if (/[.,]$/.test(cur) && /^\d+$/.test(next)) return true;
+    if (/^\d{1,2}$/.test(cur) && (prev === ',' || prev === '.' || /[.,]$/.test(prev) || /^[.,]\d+$/.test(prev))) return true;
+    return false;
+  };
+
+  const numTokens = [];
+  for (let i = 0; i < rowItems.length; i++) {
+    const tok = String(rowItems[i]?.str || '').trim();
+    if (!/^\d+$/.test(tok)) continue;
+    if (isDecimalFragment(rowItems, i)) continue;
+    const refTokenMatch = (colHints && colHints.refTokenRe && colHints.refTokenRe.test(tok)) || false;
+    if (refTokenMatch) continue;
+    const v = parseInt(tok, 10);
+    if (Number.isNaN(v)) continue;
+    if (v < 0 || v > 50000) continue;
+    numTokens.push({ x: rowItems[i].x, n: v });
+  }
+
+  if (colHints && typeof colHints.qtyX === 'number' && numTokens.length > 0) {
+    let best = null;
+    let bestDx = Infinity;
+    for (const t of numTokens) {
+      const dx = Math.abs(t.x - colHints.qtyX);
+      if (dx < bestDx) { bestDx = dx; best = t; }
+    }
+    if (best) return best.n;
+  }
+
+  const safeText = String(rowText || '').replace(/\b\d+\s*[.,]\s*\d+\b/g, ' ');
+  const ints = [];
+  safeText.replace(/\b\d+\b/g, (m, idx) => {
+    const n = parseInt(m, 10);
+    if (!Number.isNaN(n) && n >= 0 && n <= 50000) ints.push({ idx, n });
+    return m;
+  });
+
+  if (ints.length > 0) {
+    for (let i = ints.length - 1; i >= 0; i--) {
+      if (ints[i].n > 0) return ints[i].n;
+    }
+    return ints[ints.length - 1].n;
+  }
+
+  if (numTokens.length > 0) {
+    const sorted = numTokens.slice().sort((a, b) => a.n - b.n);
+    const plausible = sorted.find(t => t.n >= 2) || sorted[0];
+    return plausible ? plausible.n : NaN;
+  }
+  return NaN;
+};
+
+const _guessUnitPriceFromPdfRow = (items, ref, colHints, quantity) => {
+  if (!items || items.length === 0) return NaN;
+
+  const qty = Number(quantity);
+  const hasQty = Number.isFinite(qty) && qty > 0;
+
+  const refNorm = (ref ?? '').toString().replace(/\s/g, '').trim().toUpperCase();
+  let refX = NaN;
+  for (const it of items) {
+    const s = (it?.str ?? '').toString().replace(/\s/g, '').trim().toUpperCase();
+    if (s === refNorm) { refX = it.x; break; }
+  }
+
+  const floats = [];
+  const refRe = /^(?:P\d{3}[A-Z0-9]{0,10}(?:-[A-Za-z0-9]{1,12}){0,4}|SPFS|PFS|PFD|PFT|P5L|FP|FE)$/i;
+
+  for (const it of items) {
+    const raw = (it?.str ?? '').toString();
+    if (!raw) continue;
+    const sTrim = raw.trim();
+    if (!sTrim) continue;
+    if (/^\d+(?:[.,]\d+)?%$/.test(sTrim)) continue;
+
+    const sCompact = sTrim.replace(/\s/g, '');
+    if (refRe.test(sCompact)) continue;
+
+    const m = sCompact.match(/-?\d+(?:[.,]\d{1,2})/);
+    if (!m) continue;
+
+    const v = _parseFloatFR(m[0]);
+    if (!Number.isFinite(v) || v <= 0) continue;
+    if (v > 10000) continue;
+
+    floats.push({ x: it.x, v });
+  }
+
+  if (floats.length === 0) return NaN;
+
+  let candidates = floats;
+  if (Number.isFinite(refX)) {
+    const right = floats.filter(f => f.x > (refX - 2));
+    if (right.length > 0) candidates = right;
+  }
+
+  const nearly = (a, b, eps = 0.03) => Math.abs(Number(a) - Number(b)) <= eps;
+
+  if (hasQty && qty > 1) {
+    const vals = [...new Set(candidates.map(c => c.v).filter(Number.isFinite))].sort((a, b) => a - b);
+    for (const u of vals) {
+      for (const t of vals) {
+        if (t <= u) continue;
+        if (nearly(t, u * qty)) {
+          return u;
+        }
+      }
+    }
+  }
+
+  if (colHints && typeof colHints.priceHTX === 'number' && Number.isFinite(colHints.priceHTX)) {
+    let best = candidates[0];
+    let bestDx = Math.abs(best.x - colHints.priceHTX);
+    for (const c of candidates) {
+      const dx = Math.abs(c.x - colHints.priceHTX);
+      if (dx < bestDx) { bestDx = dx; best = c; }
+    }
+
+    if (best && Number.isFinite(best.v)) {
+      if (hasQty && qty > 1) {
+        const unitGuess = best.v / qty;
+        const hasUnitCandidate = candidates.some(c => nearly(c.v, unitGuess));
+        if (hasUnitCandidate) return unitGuess;
+      }
+      return best.v;
+    }
+  }
+
+  const small = candidates.filter(c => c.v <= 500);
+  if (small.length > 0) {
+    small.sort((a, b) => a.v - b.v);
+    return small[0].v;
+  }
+
+  candidates.sort((a, b) => a.v - b.v);
+  return candidates[0].v;
+};
+
+const inferPdfColHints = (rows) => {
+  try {
+    const headers = [];
+    for (const r of (rows || [])) {
+      const t = (r && r.text ? r.text : '').toString();
+      const items = (r && r.items) ? r.items : [];
+      const y = (r && Number.isFinite(r.y)) ? r.y : (items && items[0] ? items[0].y : null);
+
+      const tt = t.toLowerCase();
+      const looksLikeHeader = (
+        tt.includes('ref') ||
+        (tt.includes('prix') && tt.includes('unit')) ||
+        (tt.includes('nb') && tt.includes('unit'))
+      );
+      if (!looksLikeHeader) continue;
+
+      const qtyItem = items.find(x => /D'?unit/i.test((x.str || ''))) || items.find(x => /unit/i.test((x.str || '')));
+      const htItem  = items.find(x => /^HT$/i.test(((x.str || '')).trim())) || items.find(x => /\bHT\b/i.test((x.str || '')));
+
+      const qtyX = (qtyItem && Number.isFinite(qtyItem.x)) ? qtyItem.x : null;
+      const priceHTX = (htItem && Number.isFinite(htItem.x)) ? htItem.x : null;
+
+      if (qtyX !== null || priceHTX !== null) {
+        headers.push({ y, qtyX, priceHTX });
+      }
+    }
+
+    headers.sort((a, b) => (Number(a.y || 0) - Number(b.y || 0)));
+
+    const first = headers[0] || {};
+    return {
+      headers,
+      qtyX: Number.isFinite(first.qtyX) ? first.qtyX : null,
+      priceHTX: Number.isFinite(first.priceHTX) ? first.priceHTX : null,
+      qtyTolX: 55,
+      priceTolX: 80
+    };
+  } catch (_) {}
+  return null;
+};
+
+const pickPdfColHints = (colHints, rowY) => {
+  if (!colHints) return null;
+  const headers = colHints.headers || [];
+  if (!headers.length || !Number.isFinite(rowY)) return colHints;
+
+  let chosen = null;
+  for (const h of headers) {
+    if (!Number.isFinite(h.y)) continue;
+    if (h.y <= rowY) chosen = h;
+    else break;
+  }
+  if (!chosen) chosen = headers[0];
+
+  return {
+    qtyX: Number.isFinite(chosen.qtyX) ? chosen.qtyX : colHints.qtyX,
+    priceHTX: Number.isFinite(chosen.priceHTX) ? chosen.priceHTX : colHints.priceHTX,
+    qtyTolX: colHints.qtyTolX,
+    priceTolX: colHints.priceTolX,
+    headers
+  };
+};
+
+const _parsePdfRowToProduct = (row, colHints) => {
+  const text = (row && row.text) ? row.text : '';
+  const items = (row && row.items) ? row.items : [];
+  if (!text || text.length < 2) return null;
+  if (/^(total|totaux)\b/i.test(text)) return null;
+  if (/^(ref\b|menu\b)/i.test(text)) return null;
+
+  const tokenRe = /^(?:(?:P\d{3}[A-Z0-9]{0,10}(?:-[A-Za-z0-9]{1,12}){0,4}|SPFS|PFS|PFD|PFT|P5L|FP|FE))-\d+(?:[.,]\d{1,2})$/;
+  const baseRe  = /^(?:P\d{3}[A-Z0-9]{0,10}(?:-[A-Za-z0-9]{1,12}){0,4}|SPFS|PFS|PFD|PFT|P5L|FP|FE)$/;
+
+  let token = null;
+  for (const it of items) {
+    const s = (it.str || '').toString().replace(/\s/g, '').trim();
+    if (tokenRe.test(s)) { token = s; break; }
+  }
+
+  const quantity = _guessQtyFromPdfRow(text, items, colHints);
+  if (!Number.isFinite(quantity) || quantity <= 0) return null;
+
+  let ref = '';
+  let priceHT = NaN;
+
+  if (token) {
+    const sp = _splitRefPriceToken(token);
+    ref = sp.ref;
+    priceHT = sp.price;
+    const altUnit = _guessUnitPriceFromPdfRow(items, ref, colHints, quantity);
+    if (Number.isFinite(altUnit) && altUnit > 0) priceHT = altUnit;
+  } else {
+    let base = null;
+    for (const it of items) {
+      const s = (it.str || '').toString().replace(/\s/g, '').trim();
+      if (baseRe.test(s)) { base = s; break; }
+    }
+    if (!base) return null;
+    ref = base;
+    priceHT = _guessUnitPriceFromPdfRow(items, ref, colHints, quantity);
+  }
+
+  if (!ref || !Number.isFinite(priceHT) || priceHT <= 0) return null;
+
+  const discount = _guessDiscountFromPdfRow(items) || 0;
+
+  return { ref, quantity, priceHT, discount };
+};
+
+const parsePdfOrder = async (file) => {
+  if (!file) throw new Error('Aucun fichier PDF');
+  if (!window.pdfjsLib) {
+    throw new Error('Lecture PDF indisponible (PDF.js non chargé). Vérifiez votre connexion internet ou utilisez le fichier Excel.');
+  }
+
+  const ab = await file.arrayBuffer();
+  let pdf;
+  try {
+    pdf = await pdfjsLib.getDocument({ data: ab }).promise;
+  } catch (e) {
+    throw new Error('Impossible de lire ce PDF.');
+  }
+
+  const rows = [];
+  for (let p = 1; p <= pdf.numPages; p++) {
+    const page = await pdf.getPage(p);
+    const content = await page.getTextContent();
+
+    const items = (content.items || [])
+      .map(it => ({
+        str: (it.str || '').toString().trim(),
+        x: (it.transform && it.transform.length >= 6) ? it.transform[4] : 0,
+        y: (it.transform && it.transform.length >= 6) ? it.transform[5] : 0
+      }))
+      .filter(it => it.str);
+
+    items.sort((a, b) => (b.y - a.y) || (a.x - b.x));
+
+    const tol = 1.2;
+    let current = null;
+    const pageRows = [];
+    for (const it of items) {
+      if (!current || Math.abs(it.y - current.y) > tol) {
+        if (current) pageRows.push(current);
+        current = { y: it.y, items: [] };
+      }
+      current.items.push(it);
+    }
+    if (current) pageRows.push(current);
+
+    for (const r of pageRows) {
+      r.items.sort((a, b) => a.x - b.x);
+      const text = r.items.map(t => t.str).join(' ').replace(/\s+/g, ' ').trim();
+      rows.push({ text, items: r.items, y: r.y });
+    }
+  }
+
+  const colHints = inferPdfColHints(rows);
+
+  const map = new Map();
+  for (const row of rows) {
+    const rowHints = pickPdfColHints(colHints, row.y);
+    const prod = _parsePdfRowToProduct(row, rowHints);
+    if (!prod) continue;
+    const k = `${prod.ref}__${prod.priceHT.toFixed(2)}__${(prod.discount || 0).toFixed(2)}`;
+    if (map.has(k)) {
+      map.get(k).quantity += prod.quantity;
+    } else {
+      map.set(k, prod);
+    }
+  }
+
+  const products = Array.from(map.values())
+    .filter(p => p && p.quantity > 0 && Number.isFinite(p.priceHT) && p.priceHT > 0);
+
+  if (!products.length) {
+    throw new Error("Aucun produit détecté dans le PDF. Si c'est un PDF scanné (image), il faut l'Excel ou un PDF texte.");
+  }
+
+  return { products };
+};
+
 // ─── Factures Single (Step Wizard) ────────────────────────────────────────────
 const FacturesSingle = ({ showToast }) => {
   const [step, setStep] = useState(1); // 1=upload, 2=match, 3=client, 4=review, 5=done
@@ -3668,31 +4039,24 @@ const FacturesSingle = ({ showToast }) => {
         setRawLines(products);
         matchProducts(products);
       } else if (file.name.endsWith('.pdf')) {
-        showToast('Parsing PDF en cours...', 'info');
-        const arrayBuf = await file.arrayBuffer();
-        const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
-        let text = '';
-        console.log(`📄 PDF: ${pdf.numPages} page(s) détectée(s)`);
+        showToast('Parsing PDF position-based en cours...', 'info');
+        console.log('📄 Parsing PDF avec logique position-based (X/Y)');
 
-        for (let i = 1; i <= pdf.numPages; i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          const pageText = content.items.map(item => item.str).join(' ');
-          text += pageText + '\n';
-          console.log(`📄 Page ${i} texte extrait (${pageText.length} caractères):`, pageText.substring(0, 200));
+        const data = await parsePdfOrder(file);
+        console.log(`📄 parsePdfOrder: ${data.products.length} produit(s) détecté(s)`);
+
+        if (data.products.length === 0) {
+          setError('Aucun produit trouvé dans le PDF');
+          return;
         }
 
-        console.log(`📄 Texte total extrait: ${text.length} caractères`);
-        if (text.length < 10) {
-          throw new Error('PDF illisible - pas assez de texte extrait. Le PDF pourrait être une image scannée.');
-        }
+        // Afficher les produits détectés pour debug
+        data.products.forEach((p, i) => {
+          console.log(`  ${i+1}. ${p.ref} - Qty: ${p.quantity}, Prix HT: ${p.priceHT.toFixed(2)}€, Remise: ${p.discount}%`);
+        });
 
-        // Envoyer au backend pour parsing
-        const res = await api.post('/factures/match-products', { text, useCurrentPrices });
-        if (res.erreur) { setError(res.erreur); return; }
-        console.log(`✅ ${res.length} produit(s) identifié(s)`);
-        setMatchedProducts(res);
-        setStep(2);
+        setRawLines(data.products);
+        matchProducts(data.products);
       }
     } catch (err) {
       setError('Erreur lecture fichier: ' + err.message);

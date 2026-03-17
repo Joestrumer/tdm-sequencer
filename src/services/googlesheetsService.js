@@ -65,6 +65,124 @@ function resolveCanonicalClientName(db, vfName) {
 }
 
 /**
+ * Mappe un nom client VosFactures vers un nom "canonique" (liste du spreadsheet)
+ * Logique portée depuis l'ancien outil HTML (lignes 272-364)
+ *
+ * @param {string} vfName - Nom du client dans VosFactures
+ * @param {string[]} canonList - Liste des noms canoniques depuis le spreadsheet (colonne "Hotel name")
+ * @returns {string} - Nom canonique mappé ou nom VF original si pas de match
+ */
+function mapPartnerNameToCanon(vfName, canonList = []) {
+  if (!vfName) return vfName;
+
+  // Normaliser la liste canon
+  const cleanCanonList = (Array.isArray(canonList) ? canonList : [])
+    .map(n => String(n || '').trim())
+    .filter(Boolean);
+
+  // Helpers de normalisation
+  const stripDiacritics = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  const norm = (s) => stripDiacritics(String(s || '').toLowerCase())
+    .replace(/[''`]/g, ' ')
+    .replace(/&/g, ' and ')
+    .replace(/[()\[\]{}]/g, ' ')
+    .replace(/[\-_/.,:;!?\\"|\\]+/g, ' ')
+    .replace(/\b(hotel|hôtel)\b/g, 'hotel')
+    .replace(/\s+/g, ' ')
+    .trim();
+
+  const vfNorm = norm(vfName);
+
+  // Règle spéciale: hôtels Korner -> noms "HK ..." (nouveau format de suivi)
+  if (vfNorm.includes('korner')) {
+    const kornerRules = [
+      {k: 'montmartre', v: 'HK MONTMARTRE'},
+      {k: 'montparnasse', v: 'HK Montparnasse'},
+      {k: 'eiffel', v: 'HK Eiffel'},
+      {k: 'saint marcel', v: 'HK Saint Marcel'},
+      {k: 'saintmarcel', v: 'HK Saint Marcel'},
+      {k: 'sorbonne', v: 'HK Sorbonne'},
+      {k: 'opera', v: 'HK OPERA'},
+      {k: 'opéra', v: 'HK OPERA'},
+      {k: 'etoile', v: 'HK Etoile'},
+      {k: 'étoile', v: 'HK Etoile'},
+      {k: 'louvre', v: 'HK LOUVRE'},
+      {k: 'chatelet', v: 'HK CHÂTELET'},
+      {k: 'châtelet', v: 'HK CHÂTELET'},
+      {k: 'republique', v: 'HK République'},
+      {k: 'république', v: 'HK République'},
+    ];
+    // Prendre le match le plus spécifique (clé la plus longue)
+    let best = null;
+    let bestLen = 0;
+    for (const r of kornerRules) {
+      if (vfNorm.includes(r.k) && r.k.length > bestLen) {
+        best = r.v;
+        bestLen = r.k.length;
+      }
+    }
+    if (best) {
+      console.log(`🏨 Korner mapping: "${vfName}" → "${best}"`);
+      return best;
+    }
+  }
+
+  // VF_NAME_ALIASES vide pour l'instant (peut être renseigné plus tard en DB si besoin)
+  // if (vfNorm && VF_NAME_ALIASES && VF_NAME_ALIASES[vfNorm]) return VF_NAME_ALIASES[vfNorm];
+
+  // 2) Match exact (normalisé)
+  const canonByNorm = new Map(cleanCanonList.map(c => [norm(c), c]));
+  if (canonByNorm.has(vfNorm)) {
+    const matched = canonByNorm.get(vfNorm);
+    console.log(`✅ Match exact: "${vfName}" → "${matched}"`);
+    return matched;
+  }
+
+  // 3) Inclusion "contient" (prend le match le plus long)
+  let best = null;
+  let bestLen = 0;
+  for (const c of cleanCanonList) {
+    const cNorm = norm(c);
+    if (!cNorm) continue;
+    if (vfNorm.includes(cNorm)) {
+      if (cNorm.length > bestLen) {
+        best = c;
+        bestLen = cNorm.length;
+      }
+    }
+  }
+  if (best) {
+    console.log(`🔍 Match contient: "${vfName}" → "${best}" (longueur: ${bestLen})`);
+    return best;
+  }
+
+  // 4) Overlap tokens (fallback)
+  const vfTokens = new Set(vfNorm.split(' ').filter(Boolean));
+  let bestScore = 0;
+  let bestName = null;
+  for (const c of cleanCanonList) {
+    const cTokens = norm(c).split(' ').filter(Boolean);
+    if (!cTokens.length) continue;
+    let hit = 0;
+    for (const t of cTokens) if (vfTokens.has(t)) hit++;
+    const score = hit / Math.max(1, Math.min(cTokens.length, vfTokens.size));
+    if (score > bestScore) {
+      bestScore = score;
+      bestName = c;
+    }
+  }
+  // Seuil volontairement conservateur pour éviter les faux positifs
+  if (bestName && bestScore >= 0.75) {
+    console.log(`🎯 Match tokens: "${vfName}" → "${bestName}" (score: ${bestScore.toFixed(2)})`);
+    return bestName;
+  }
+
+  // 5) Aucun match sûr -> renvoyer le VF brut
+  console.log(`⚠️ Aucun match trouvé pour "${vfName}", utilisation du nom VF brut`);
+  return String(vfName || '').trim();
+}
+
+/**
  * Détermine si un produit utilise les "nouveaux prix" (N-prefixed)
  */
 function isNewPriceLine(ref, priceHT) {
@@ -150,8 +268,28 @@ module.exports = (db) => ({
     const auth = getAuth(db);
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // Résoudre le nom canonique si nécessaire
-    const mappedPartnerName = partnerName || resolveCanonicalClientName(db, invoiceData.clientName || '');
+    // 1) Lire les noms canoniques depuis le spreadsheet (colonne B "Hotel name")
+    let canonicalNames = [];
+    try {
+      const partnersResult = await this.getPartners(spreadsheetId, sheetName);
+      canonicalNames = partnersResult || [];
+      console.log(`📊 GSheets: ${canonicalNames.length} noms canoniques lus depuis spreadsheet`);
+    } catch (e) {
+      console.warn(`⚠️ Impossible de lire les noms canoniques: ${e.message}`);
+    }
+
+    // 2) Résoudre le nom canonique via mapPartnerNameToCanon si partnerName non fourni
+    let mappedPartnerName = partnerName;
+    if (!mappedPartnerName) {
+      const vfName = invoiceData.clientName || '';
+      // D'abord essayer le mapping DB
+      mappedPartnerName = resolveCanonicalClientName(db, vfName);
+      // Si pas de mapping DB, utiliser mapPartnerNameToCanon avec la liste du spreadsheet
+      if (mappedPartnerName === vfName && canonicalNames.length > 0) {
+        mappedPartnerName = mapPartnerNameToCanon(vfName, canonicalNames);
+      }
+    }
+
     console.log(`📊 GSheets logInvoice: partnerName="${partnerName}", clientName="${invoiceData.clientName}", mapped="${mappedPartnerName}"`);
     if (!mappedPartnerName) {
       return { ok: false, erreur: 'Impossible de résoudre le nom du partenaire', status: 'failed_mapping' };
