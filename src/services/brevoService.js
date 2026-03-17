@@ -323,10 +323,18 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
 
   // Pièce jointe si présente
   if (etape.piece_jointe?.data) {
+    logger.info('📎 Pièce jointe détectée', {
+      nom: etape.piece_jointe.nom,
+      taille: etape.piece_jointe.taille,
+      type: etape.piece_jointe.type,
+      dataLength: etape.piece_jointe.data?.length || 0
+    });
     payload.attachment = [{
       content: etape.piece_jointe.data,
       name: etape.piece_jointe.nom,
     }];
+  } else {
+    logger.debug('Pas de pièce jointe pour cet email', { etapeId: etape.id });
   }
 
   // 8. Envoyer via fetch natif
