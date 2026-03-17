@@ -179,15 +179,15 @@ module.exports = (db) => {
       let crees = 0, ignores = 0, erreurs = [];
 
       const inserer = db.prepare(`
-        INSERT OR IGNORE INTO leads (id, prenom, nom, email, hotel, ville, segment, tags)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const importerTous = db.transaction((leads) => {
         for (const l of leads) {
           if (!l.email || !l.hotel) { ignores++; continue; }
           try {
-            const result = inserer.run(uuidv4(), l.prenom || '', l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', JSON.stringify(l.tags || []));
+            const result = inserer.run(uuidv4(), l.prenom || '', l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', JSON.stringify(l.tags || []), l.poste || null);
             if (result.changes) crees++;
             else ignores++;
           } catch (e) {

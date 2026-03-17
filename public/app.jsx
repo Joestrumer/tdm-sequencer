@@ -965,6 +965,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         hotel: obj.hotel || obj.company || obj.etablissement || obj["etablissement"] || obj.societe || "",
         ville: obj.ville || obj.city || "",
         segment: obj.segment || "5*",
+        poste: obj.poste || obj.position || obj.title || obj.job || "",
       };
     }).filter(l => l.email && l.hotel);
     try {
@@ -1091,11 +1092,12 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
               {importStatus || "📥 Import CSV"}
             </button>
-            <div className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block w-72 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-xl">
+            <div className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block w-80 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-xl">
               <div className="font-semibold mb-1.5">Format CSV attendu</div>
-              <div className="font-mono text-slate-300 text-xs leading-relaxed">prenom,nom,email,hotel,ville,segment</div>
-              <div className="font-mono text-slate-400 text-xs mt-1">Hugo,Montiel,hugo@hotel.com,Le Bristol,Paris,5*</div>
+              <div className="font-mono text-slate-300 text-xs leading-relaxed">prenom,nom,email,hotel,ville,segment,poste</div>
+              <div className="font-mono text-slate-400 text-xs mt-1">Hugo,Montiel,hugo@hotel.com,Le Bristol,Paris,5*,General Manager</div>
               <div className="mt-2 text-slate-400">Séparateur <span className="text-white">,</span> ou <span className="text-white">;</span> · Encoding UTF-8</div>
+              <div className="mt-1 text-slate-400">Champs requis : <span className="text-white">email, hotel, prenom</span></div>
               <div className="mt-1 text-slate-400">Segments : 5*, 4*, Boutique, Retail, SPA, Concept Store</div>
             </div>
           </div>
