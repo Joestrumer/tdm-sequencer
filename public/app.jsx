@@ -1114,25 +1114,25 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
         <div className="flex gap-2 overflow-x-auto">
-          <div className="relative group">
-            <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap" title="Import CSV - Survoler pour voir le format">
+          <div className="relative">
+            <button onClick={() => csvRef.current?.click()} className="group px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap" title="Import CSV&#10;Format: prenom,nom,email,hotel,ville,segment,poste,langue&#10;Champs requis: email, hotel, prenom">
               {importStatus || "📥 Import CSV"}
+              <div className="absolute left-0 top-full mt-2 z-[9999] invisible group-hover:visible w-80 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-2xl">
+                <div className="font-semibold mb-1.5">Format CSV attendu</div>
+                <div className="font-mono text-slate-300 text-xs leading-relaxed">prenom,nom,email,hotel,ville,segment,poste,langue</div>
+                <div className="font-mono text-slate-400 text-xs mt-1">Hugo,Montiel,hugo@hotel.com,Le Bristol,Paris,5*,GM,fr</div>
+                <div className="mt-2 text-slate-400">Séparateur <span className="text-white">,</span> ou <span className="text-white">;</span> · Encoding UTF-8</div>
+                <div className="mt-1 text-slate-400">Champs requis : <span className="text-white">email, hotel, prenom</span></div>
+                <div className="mt-1 text-slate-400">Segments : 5*, 4*, Boutique, Retail, SPA</div>
+                <div className="mt-1 text-slate-400">Langues : fr, en, de, es, it</div>
+              </div>
             </button>
-            <div className="absolute left-0 top-full mt-2 z-[9999] hidden group-hover:block w-80 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-2xl pointer-events-none">
-              <div className="font-semibold mb-1.5">Format CSV attendu</div>
-              <div className="font-mono text-slate-300 text-xs leading-relaxed">prenom,nom,email,hotel,ville,segment,poste,langue</div>
-              <div className="font-mono text-slate-400 text-xs mt-1">Hugo,Montiel,hugo@hotel.com,Le Bristol,Paris,5*,GM,fr</div>
-              <div className="mt-2 text-slate-400">Séparateur <span className="text-white">,</span> ou <span className="text-white">;</span> · Encoding UTF-8</div>
-              <div className="mt-1 text-slate-400">Champs requis : <span className="text-white">email, hotel, prenom</span></div>
-              <div className="mt-1 text-slate-400">Segments : 5*, 4*, Boutique, Retail, SPA</div>
-              <div className="mt-1 text-slate-400">Langues : fr, en, de, es, it</div>
-            </div>
           </div>
           <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
           <button onClick={async () => {
             const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
             if (r && onRefresh) onRefresh();
-          }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 whitespace-nowrap">
+          }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 whitespace-nowrap" title="Synchroniser tous les leads avec HubSpot">
             🔄 Sync HS
           </button>
           <button onClick={async () => {
