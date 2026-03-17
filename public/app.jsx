@@ -547,8 +547,26 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   };
 
   const etapeCourante = etapes[activeEtape] || {};
-  // Le corps pour la preview - on n'affiche QUE ce qui est dans l'éditeur
-  const corpsPreview = etapeCourante.corps_html || texteVersHtmlPreview(etapeCourante.corps || "");
+  // Le corps pour la preview - détecter et enlever duplication
+  let corpsPreview = etapeCourante.corps_html || texteVersHtmlPreview(etapeCourante.corps || "");
+
+  // Si le contenu semble dupliqué (même texte apparaît deux fois), prendre seulement la première moitié
+  const tempDiv = document.createElement('div');
+  tempDiv.innerHTML = corpsPreview;
+  const textContent = tempDiv.textContent || '';
+  const halfLength = Math.floor(textContent.length / 2);
+  const firstHalf = textContent.substring(0, halfLength);
+  const secondHalf = textContent.substring(halfLength);
+
+  // Si les deux moitiés sont très similaires (80%+), c'est probablement une duplication
+  if (firstHalf.length > 50 && secondHalf.includes(firstHalf.substring(0, 50))) {
+    // Prendre seulement la première moitié du HTML
+    const allNodes = Array.from(tempDiv.childNodes);
+    const midPoint = Math.floor(allNodes.length / 2);
+    tempDiv.innerHTML = '';
+    allNodes.slice(0, midPoint).forEach(node => tempDiv.appendChild(node.cloneNode(true)));
+    corpsPreview = tempDiv.innerHTML;
+  }
 
   const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
   const TOOLBAR = [
@@ -653,12 +671,24 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       if (e.target.value) {
                         const selection = window.getSelection();
                         if (selection.rangeCount > 0 && !selection.isCollapsed) {
-                          // Si du texte est sélectionné, l'appliquer seulement à la sélection
-                          fmt("fontName", e.target.value);
+                          // Appliquer la police à la sélection
+                          const range = selection.getRangeAt(0);
+                          const span = document.createElement('span');
+                          span.style.fontFamily = e.target.value;
+                          try {
+                            range.surroundContents(span);
+                          } catch {
+                            const selectedText = range.extractContents();
+                            span.appendChild(selectedText);
+                            range.insertNode(span);
+                          }
+                          syncCorps();
                         } else {
-                          // Sinon, appliquer à tout le contenu de l'éditeur
+                          // Sinon, appliquer à tout le contenu
                           if (editorRef.current) {
-                            editorRef.current.style.fontFamily = e.target.value;
+                            // Wrapper tout le contenu existant dans un div avec la police
+                            const content = editorRef.current.innerHTML;
+                            editorRef.current.innerHTML = `<div style="font-family: ${e.target.value}">${content}</div>`;
                             syncCorps();
                           }
                         }
@@ -673,15 +703,33 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       <option value="Trebuchet MS, sans-serif">Trebuchet</option>
                       <option value="Courier New, monospace">Courier</option>
                     </select>
-                    <select onChange={e => { if (e.target.value) fmt("fontSize", e.target.value); }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none w-12">
+                    <select onChange={e => {
+                      if (e.target.value) {
+                        const selection = window.getSelection();
+                        if (selection.rangeCount > 0 && !selection.isCollapsed) {
+                          // Appliquer la taille à la sélection
+                          const range = selection.getRangeAt(0);
+                          const span = document.createElement('span');
+                          span.style.fontSize = e.target.value;
+                          try {
+                            range.surroundContents(span);
+                          } catch {
+                            const selectedText = range.extractContents();
+                            span.appendChild(selectedText);
+                            range.insertNode(span);
+                          }
+                          syncCorps();
+                        }
+                      }
+                    }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none w-12">
                       <option value="" disabled>Taille</option>
-                      <option value="1">10</option>
-                      <option value="2">12</option>
-                      <option value="3">14</option>
-                      <option value="4">16</option>
-                      <option value="5">18</option>
-                      <option value="6">20</option>
-                      <option value="7">24</option>
+                      <option value="10px">10</option>
+                      <option value="12px">12</option>
+                      <option value="14px">14</option>
+                      <option value="16px">16</option>
+                      <option value="18px">18</option>
+                      <option value="20px">20</option>
+                      <option value="24px">24</option>
                     </select>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Formatage texte */}
@@ -753,7 +801,8 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                     contentEditable
                     suppressContentEditableWarning
                     onInput={syncCorps}
-                    className="min-h-64 max-h-96 overflow-y-auto p-5 text-sm text-slate-800 focus:outline-none leading-relaxed bg-white"
+                    className="min-h-64 max-h-96 overflow-y-auto p-5 text-slate-800 focus:outline-none leading-relaxed bg-white"
+                    style={{ fontSize: '14px', fontFamily: 'Arial, sans-serif' }}
                   />
                   {/* Pièce jointe */}
                   <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
