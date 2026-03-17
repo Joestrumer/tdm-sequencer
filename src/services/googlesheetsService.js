@@ -344,18 +344,29 @@ module.exports = (db) => ({
     const nextRow = lastDataRow + 1;
     console.log(`📊 GSheets: ${bdRows.length} lignes lues, lastDataRow=${lastDataRow}, nextRow=${nextRow}`);
 
-    // Compter les factures distinctes de ce partenaire (pour le Order #)
-    const existingInvoices = new Set();
+    // Calculer Order # : max Order # existant + 1 pour ce partenaire canonique
+    // Logique métier: 0 = implantation, 1+ = réappro
     const targetNorm = norm(mappedPartnerName);
+    let maxOrderNum = -1; // -1 signifie aucune commande existante
+
     for (let i = 1; i < bdRows.length; i++) {
       const b = cleanCell(bdRows[i]?.[0] || '');
-      const d = cleanCell(bdRows[i]?.[2] || '');
-      if (!b || b.startsWith('=') || !d || d.startsWith('=')) continue;
+      const c = cleanCell(bdRows[i]?.[1] || ''); // Colonne C = Order #
+      if (!b || b.startsWith('=')) continue;
+
+      // Si c'est le même partenaire canonique
       if (norm(b) === targetNorm) {
-        existingInvoices.add(d.toUpperCase());
+        // Lire Order # de cette ligne
+        const orderNum = parseInt(c, 10);
+        if (!isNaN(orderNum) && orderNum > maxOrderNum) {
+          maxOrderNum = orderNum;
+        }
       }
     }
-    const orderNumber = existingInvoices.size;
+
+    // Si aucune commande existante, c'est l'implantation (0), sinon max + 1
+    const orderNumber = maxOrderNum === -1 ? 0 : maxOrderNum + 1;
+    console.log(`📊 Order # calculé pour "${mappedPartnerName}": maxOrderNum=${maxOrderNum}, nouveau orderNumber=${orderNumber}`);
 
     // 2) Construire les lignes à écrire
     const products = Array.isArray(invoiceData.products) ? invoiceData.products : [];
