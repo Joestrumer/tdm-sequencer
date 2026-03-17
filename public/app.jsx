@@ -73,7 +73,7 @@ function relTime(iso) {
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 
 const ModalAddLead = ({ onClose, onAdd }) => {
-  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "" });
+  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "", langue: "fr" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -197,11 +197,23 @@ const ModalAddLead = ({ onClose, onAdd }) => {
                 <input type={k === "email" ? "email" : "text"} value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
               </div>
             ))}
-            <div className="mt-3">
-              <label className="text-xs font-medium text-slate-500 mb-1 block">Segment</label>
-              <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
-                {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
-              </select>
+            <div className="grid grid-cols-2 gap-3 mt-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Segment</label>
+                <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                  {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Langue</label>
+                <select value={form.langue} onChange={e => set("langue", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                  <option value="fr">🇫🇷 Français</option>
+                  <option value="en">🇬🇧 English</option>
+                  <option value="de">🇩🇪 Deutsch</option>
+                  <option value="es">🇪🇸 Español</option>
+                  <option value="it">🇮🇹 Italiano</option>
+                </select>
+              </div>
             </div>
           </div>
         </div>
@@ -573,7 +585,6 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                     suppressContentEditableWarning
                     onInput={syncCorps}
                     className="min-h-48 p-4 text-sm text-slate-800 focus:outline-none leading-relaxed"
-                    style={{ fontFamily: "Arial, sans-serif" }}
                   />
                   {/* Pièce jointe */}
                   <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/50">
@@ -797,7 +808,7 @@ const VueDashboard = ({ leads, activites, stats }) => {
 
 // ─── Modal édition lead ────────────────────────────────────────────────────
 const ModalEditLead = ({ lead, onClose, onSave }) => {
-  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"" });
+  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"", langue: lead.langue||"fr" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -828,7 +839,7 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
             <div key={k}><label className="text-xs text-slate-500 mb-1 block">{l}</label>
             <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
           ))}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
             <div><label className="text-xs text-slate-500 mb-1 block">Segment</label>
             <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
               {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
@@ -836,6 +847,14 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
             <div><label className="text-xs text-slate-500 mb-1 block">Statut</label>
             <select value={form.statut} onChange={e => set("statut", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
               {Object.keys(STATUT_CONFIG).map(s => <option key={s}>{s}</option>)}
+            </select></div>
+            <div><label className="text-xs text-slate-500 mb-1 block">Langue</label>
+            <select value={form.langue} onChange={e => set("langue", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
+              <option value="fr">🇫🇷 FR</option>
+              <option value="en">🇬🇧 EN</option>
+              <option value="de">🇩🇪 DE</option>
+              <option value="es">🇪🇸 ES</option>
+              <option value="it">🇮🇹 IT</option>
             </select></div>
           </div>
           {err && <p className="text-xs text-red-500">{err}</p>}
@@ -966,6 +985,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         ville: obj.ville || obj.city || "",
         segment: obj.segment || "5*",
         poste: obj.poste || obj.position || obj.title || obj.job || "",
+        langue: obj.langue || obj.language || obj.lang || "fr",
       };
     }).filter(l => l.email && l.hotel);
     try {
@@ -1094,11 +1114,12 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             </button>
             <div className="absolute left-0 top-full mt-2 z-[9999] hidden group-hover:block w-80 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-2xl pointer-events-none">
               <div className="font-semibold mb-1.5">Format CSV attendu</div>
-              <div className="font-mono text-slate-300 text-xs leading-relaxed">prenom,nom,email,hotel,ville,segment,poste</div>
-              <div className="font-mono text-slate-400 text-xs mt-1">Hugo,Montiel,hugo@hotel.com,Le Bristol,Paris,5*,General Manager</div>
+              <div className="font-mono text-slate-300 text-xs leading-relaxed">prenom,nom,email,hotel,ville,segment,poste,langue</div>
+              <div className="font-mono text-slate-400 text-xs mt-1">Hugo,Montiel,hugo@hotel.com,Le Bristol,Paris,5*,GM,fr</div>
               <div className="mt-2 text-slate-400">Séparateur <span className="text-white">,</span> ou <span className="text-white">;</span> · Encoding UTF-8</div>
               <div className="mt-1 text-slate-400">Champs requis : <span className="text-white">email, hotel, prenom</span></div>
-              <div className="mt-1 text-slate-400">Segments : 5*, 4*, Boutique, Retail, SPA, Concept Store</div>
+              <div className="mt-1 text-slate-400">Segments : 5*, 4*, Boutique, Retail, SPA</div>
+              <div className="mt-1 text-slate-400">Langues : fr, en, de, es, it</div>
             </div>
           </div>
           <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />

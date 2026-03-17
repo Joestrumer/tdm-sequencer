@@ -81,7 +81,7 @@ module.exports = (db) => {
   // POST /api/leads — Créer un lead
   router.post('/', async (req, res) => {
     try {
-      const { prenom, nom, email, hotel, ville, segment, tags, poste, company_hubspot_id } = req.body;
+      const { prenom, nom, email, hotel, ville, segment, tags, poste, langue, company_hubspot_id } = req.body;
       if (!email || !hotel || !prenom) return res.status(400).json({ erreur: 'prenom, email et hotel sont requis' });
 
       // Normaliser tags : accepte string JSON ou tableau
@@ -89,9 +89,9 @@ module.exports = (db) => {
 
       const id = uuidv4();
       db.prepare(`
-        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', tagsStr, poste || null);
+        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', tagsStr, poste || null, langue || 'fr');
 
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
 
@@ -119,7 +119,7 @@ module.exports = (db) => {
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
       if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
 
-      const { prenom, nom, email, hotel, ville, segment, tags, statut, score, poste } = req.body;
+      const { prenom, nom, email, hotel, ville, segment, tags, statut, score, poste, langue } = req.body;
       db.prepare(`
         UPDATE leads SET
           prenom = COALESCE(?, prenom),
@@ -132,9 +132,10 @@ module.exports = (db) => {
           statut = COALESCE(?, statut),
           score = COALESCE(?, score),
           poste = COALESCE(?, poste),
+          langue = COALESCE(?, langue),
           updated_at = datetime('now')
         WHERE id = ?
-      `).run(prenom, nom, email, hotel, ville, segment, tags ? JSON.stringify(tags) : null, statut, score, poste, req.params.id);
+      `).run(prenom, nom, email, hotel, ville, segment, tags ? JSON.stringify(tags) : null, statut, score, poste, langue, req.params.id);
 
       res.json(db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id));
     } catch (err) {
@@ -179,15 +180,15 @@ module.exports = (db) => {
       let crees = 0, ignores = 0, erreurs = [];
 
       const inserer = db.prepare(`
-        INSERT OR IGNORE INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const importerTous = db.transaction((leads) => {
         for (const l of leads) {
           if (!l.email || !l.hotel) { ignores++; continue; }
           try {
-            const result = inserer.run(uuidv4(), l.prenom || '', l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', JSON.stringify(l.tags || []), l.poste || null);
+            const result = inserer.run(uuidv4(), l.prenom || '', l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', JSON.stringify(l.tags || []), l.poste || null, l.langue || 'fr');
             if (result.changes) crees++;
             else ignores++;
           } catch (e) {
