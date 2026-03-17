@@ -37,10 +37,10 @@ function prochaineDateEnvoi(joursDelai) {
 }
 
 // ─── Avancer l'inscription à l'étape suivante ─────────────────────────────────
-async function avancerInscription(inscription, etapes, lead) {
+async function avancerInscription(inscription, etapesParsed, lead) {
   const prochainIndex = inscription.etape_courante + 1;
 
-  if (prochainIndex >= etapes.length) {
+  if (prochainIndex >= etapesParsed.length) {
     db.prepare(`UPDATE inscriptions SET etape_courante=?, statut='terminé', prochain_envoi=NULL WHERE id=?`)
       .run(prochainIndex, inscription.id);
     logger.info(`📭 Séquence terminée pour ${lead.email}`);
@@ -50,7 +50,7 @@ async function avancerInscription(inscription, etapes, lead) {
       await hubspot.creerTaskFinSequence(db, lead, seq?.nom || 'Séquence').catch(() => {});
     }
   } else {
-    const prochainEtape = etapes[prochainIndex];
+    const prochainEtape = etapesParsed[prochainIndex];
     const prochainDate  = prochaineDateEnvoi(prochainEtape.jour_delai);
     db.prepare(`UPDATE inscriptions SET etape_courante=?, prochain_envoi=? WHERE id=?`)
       .run(prochainIndex, prochainDate, inscription.id);
@@ -71,13 +71,26 @@ async function _traiter(inscription) {
   const etapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(inscription.sequence_id);
   if (!etapes.length) return;
 
+  // Parser les pièces jointes JSON
+  const etapesParsed = etapes.map(e => {
+    let pieceJointe = null;
+    if (e.piece_jointe) {
+      try {
+        pieceJointe = JSON.parse(e.piece_jointe);
+      } catch (err) {
+        logger.warn('Erreur parsing piece_jointe dans scheduler', { etapeId: e.id });
+      }
+    }
+    return { ...e, piece_jointe: pieceJointe };
+  });
+
   const index = inscription.etape_courante;
-  if (index >= etapes.length) {
+  if (index >= etapesParsed.length) {
     db.prepare(`UPDATE inscriptions SET statut='terminé' WHERE id=?`).run(inscription.id);
     return;
   }
 
-  const etape = etapes[index];
+  const etape = etapesParsed[index];
 
   try {
     await envoyerEmail(db, { lead, etape, inscriptionId: inscription.id });
@@ -87,7 +100,7 @@ async function _traiter(inscription) {
       if (index === 0) await hubspot.mettreAJourLifecycle(db, lead, 'lead').catch(() => {});
     }
 
-    await avancerInscription(inscription, etapes, lead);
+    await avancerInscription(inscription, etapesParsed, lead);
   } catch (err) {
     logger.error(`❌ Erreur envoi email pour ${lead.email}`, { error: err.message });
 

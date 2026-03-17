@@ -454,7 +454,29 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   }));
 
   // Toolbar de mise en forme
-  const fmt = (cmd, val) => { editorRef.current?.focus(); document.execCommand(cmd, false, val); syncCorps(); };
+  const fmt = (cmd, val) => {
+    editorRef.current?.focus();
+    if (cmd === 'fontName') {
+      // Pour fontName, utiliser une approche plus robuste
+      const selection = window.getSelection();
+      if (selection.rangeCount > 0) {
+        const range = selection.getRangeAt(0);
+        const span = document.createElement('span');
+        span.style.fontFamily = val;
+        try {
+          range.surroundContents(span);
+        } catch (e) {
+          // Si surroundContents échoue, essayer insertHTML
+          const selectedText = range.extractContents();
+          span.appendChild(selectedText);
+          range.insertNode(span);
+        }
+      }
+    } else {
+      document.execCommand(cmd, false, val);
+    }
+    syncCorps();
+  };
   const syncCorps = () => {
     if (editorRef.current) updateEtape(activeEtape, "corps_html", editorRef.current.innerHTML);
   };
