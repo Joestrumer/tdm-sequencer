@@ -476,51 +476,32 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     return { ...et, [k]: v, ...extra };
   }));
 
-  // Insertion de balises HTML dans le textarea
-  const insererBalise = (avant, apres = '') => {
-    const textarea = corpsRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selectedText = text.substring(start, end);
-
-    const newText = text.substring(0, start) + avant + selectedText + apres + text.substring(end);
-    updateEtape(activeEtape, "corps_html", newText);
-
-    // Restaurer focus et sélection
-    setTimeout(() => {
-      textarea.focus();
-      const newCursorPos = start + avant.length + selectedText.length + apres.length;
-      textarea.setSelectionRange(newCursorPos, newCursorPos);
-    }, 0);
+  // Fonction de formatage pour contentEditable
+  const fmt = (cmd, val = null) => {
+    corpsRef.current?.focus();
+    document.execCommand(cmd, false, val);
+    syncCorps();
   };
 
   const syncCorps = () => {
-    if (corpsRef.current) updateEtape(activeEtape, "corps_html", corpsRef.current.value);
+    if (corpsRef.current) updateEtape(activeEtape, "corps_html", corpsRef.current.innerHTML);
+  };
+
+  // Insérer une variable à la position du curseur
+  const insererVar = (v) => {
+    corpsRef.current?.focus();
+    document.execCommand('insertText', false, v);
+    syncCorps();
   };
 
   // Initialiser le contenu de l'éditeur quand on change d'étape
   useEffect(() => {
     if (corpsRef.current && mode === "edit") {
       const etape = etapes[activeEtape];
-      // Ne rien faire si la valeur est déjà correcte pour éviter de perdre la position du curseur
-      const currentValue = corpsRef.current.value;
-      const newValue = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
-      if (currentValue !== newValue) {
-        corpsRef.current.value = newValue;
-      }
-
-      // Synchroniser l'état pieceJointe avec l'étape courante
+      corpsRef.current.innerHTML = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
       setPieceJointe(etape?.piece_jointe || null);
     }
   }, [activeEtape, mode]);
-
-  // Insérer une variable à la position du curseur
-  const insererVar = (v) => {
-    insererBalise(v, '');
-  };
 
   const handleSave = async () => {
     if (!nom.trim()) { setErrMsg("Donnez un nom à la séquence"); return; }
@@ -673,67 +654,63 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                   </div>
                 </div>
 
-                {/* Toolbar simplifié */}
+                {/* Toolbar WYSIWYG simplifié */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                   <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200">
-                    {/* Bouton paragraphe */}
-                    <button
-                      title="Insérer un paragraphe"
-                      onClick={() => insererBalise('<p style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6">', '</p>')}
-                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-medium"
-                    >
-                      &lt;p&gt;
-                    </button>
-                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Formatage texte */}
                     <button
+                      type="button"
                       title="Gras"
-                      onClick={() => insererBalise('<b>', '</b>')}
-                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 font-bold"
+                      onClick={() => fmt('bold')}
+                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 font-bold transition-colors"
                     >
                       B
                     </button>
                     <button
+                      type="button"
                       title="Italique"
-                      onClick={() => insererBalise('<i>', '</i>')}
-                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 italic"
+                      onClick={() => fmt('italic')}
+                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 italic transition-colors"
                     >
                       I
                     </button>
                     <button
+                      type="button"
                       title="Souligné"
-                      onClick={() => insererBalise('<u>', '</u>')}
-                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 underline"
+                      onClick={() => fmt('underline')}
+                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 underline transition-colors"
                     >
                       U
                     </button>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                    {/* Saut de ligne */}
-                    <button
-                      title="Saut de ligne"
-                      onClick={() => insererBalise('<br>', '')}
-                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-medium"
-                    >
-                      &lt;br&gt;
-                    </button>
-                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Lien hypertexte */}
                     <button
+                      type="button"
                       title="Ajouter un lien"
                       onClick={() => {
                         const url = prompt("URL du lien :", "https://");
-                        if (!url) return;
-                        insererBalise(`<a href="${url}" style="color:#1a56db;text-decoration:underline">`, '</a>');
+                        if (url && url.trim()) fmt('createLink', url);
                       }}
-                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs gap-1"
+                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs transition-colors"
                     >
                       🔗
                     </button>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                    {/* Saut de ligne */}
+                    <button
+                      type="button"
+                      title="Saut de ligne"
+                      onClick={() => fmt('insertLineBreak')}
+                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-medium transition-colors"
+                    >
+                      ↵
+                    </button>
+                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Variables corps */}
-                    <span className="text-xs text-slate-400">Var :</span>
+                    <span className="text-xs text-slate-400">Variables :</span>
                     {VARS.map(v => (
                       <button
+                        type="button"
                         key={v}
                         onClick={() => insererVar(v)}
                         className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200"
@@ -742,12 +719,14 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       </button>
                     ))}
                   </div>
-                  {/* Éditeur textarea HTML */}
-                  <textarea
+                  {/* Éditeur contentEditable WYSIWYG */}
+                  <div
                     ref={corpsRef}
-                    onChange={syncCorps}
-                    placeholder="Écrivez votre email en HTML...&#10;&#10;Exemple :&#10;<p style=&quot;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6&quot;>&#10;  Bonjour <b>{{prenom}}</b>,<br>&#10;  Découvrez notre offre pour <i>{{hotel}}</i>...&#10;</p>"
-                    className="min-h-64 max-h-96 overflow-y-auto p-5 text-slate-800 focus:outline-none leading-relaxed bg-white font-mono text-xs resize-none w-full"
+                    contentEditable
+                    suppressContentEditableWarning
+                    onInput={syncCorps}
+                    className="min-h-64 max-h-96 overflow-y-auto p-4 text-slate-800 focus:outline-none leading-relaxed bg-white border-t border-slate-100"
+                    style={{ fontSize: '14px', fontFamily: 'Helvetica, Arial, sans-serif' }}
                   />
                   {/* Pièce jointe */}
                   <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
