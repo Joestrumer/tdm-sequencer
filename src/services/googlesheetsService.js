@@ -108,6 +108,9 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
     'hotel litteraire le swann': 'Le Swann',
     'litteraire le swann': 'Le Swann',
     'swann litteraire': 'Le Swann',
+    'groupe franck putelat attn aurore': 'Hôtel Le Parc',
+    'groupe franck putelat': 'Hôtel Le Parc',
+    'franck putelat': 'Hôtel Le Parc',
   };
   if (manualAliases[vfNorm]) {
     console.log(`🎯 Alias manuel: "${vfName}" → "${manualAliases[vfNorm]}"`);
