@@ -3882,17 +3882,6 @@ const FacturesSingle = ({ showToast }) => {
             <input id="file-upload-input" type="file" accept=".xlsx,.xls,.pdf" onChange={handleFile} className="hidden" />
           </div>
 
-          {/* Option prix */}
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
-            <label className="flex items-center gap-2 text-sm text-amber-900 cursor-pointer">
-              <input type="checkbox" checked={useCurrentPrices} onChange={e => setUseCurrentPrices(e.target.checked)} className="rounded" />
-              <span className="font-medium">Utiliser les prix actuels du catalogue</span>
-            </label>
-            <p className="text-xs text-amber-700 ml-6 mt-1">
-              Si le fichier contient des anciens prix, cochez cette option pour utiliser les prix actuels de votre catalogue
-            </p>
-          </div>
-
           <div className="text-center text-xs text-slate-400 font-medium">— ou saisie manuelle —</div>
           <textarea value={manualText} onChange={e => setManualText(e.target.value)}
             placeholder={"Collez une commande email ici...\nEx: 10x P008-5000\n4x P007\n2 P011-5000"}
@@ -3986,13 +3975,69 @@ const FacturesSingle = ({ showToast }) => {
             const fraisTTC = (calculation.frais_port || []).reduce((s, f) => s + f.prix_ht * f.quantite * 1.2, 0);
             const totalTTC = productsTTC + fraisTTC;
             return (
-            <div className="space-y-2">
-              {calculation.products?.map((p, i) => (
-                <div key={i} className="flex justify-between text-sm py-1">
-                  <span>{p.ref} — {p.nom} x{p.quantite || p.quantity}</span>
-                  <span className="font-mono">{p.total_ht?.toFixed(2)}€ HT</span>
+            <div className="space-y-3">
+              {/* Option recalcul avec prix actuels */}
+              <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex-1">
+                    <p className="text-sm font-medium text-amber-900">Les prix vous semblent incorrects ?</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Si les prix du fichier sont anciens, recalculez avec les prix actuels du catalogue
+                    </p>
+                  </div>
+                  <button onClick={async () => {
+                    try {
+                      const res = await api.post('/factures/calculate', {
+                        products: calculation.products.map(p => ({ ...p, prix_ht: undefined, priceHT: undefined })),
+                        clientName: selectedClient?.name,
+                        includeShipping,
+                      });
+                      setCalculation(res);
+                      showToast('Prix recalculés avec le catalogue actuel', 'success');
+                    } catch (err) {
+                      showToast('Erreur recalcul: ' + err.message, 'error');
+                    }
+                  }}
+                    className="px-3 py-1.5 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 whitespace-nowrap">
+                    Recalculer avec prix actuels
+                  </button>
                 </div>
-              ))}
+              </div>
+
+              {/* Tableau produits avec prix unitaires */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <table className="w-full text-sm">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="text-left px-3 py-2 text-xs font-semibold text-slate-500">Produit</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Qté</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">P.U. HT</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Remise</th>
+                      <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Total HT</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {calculation.products?.map((p, i) => {
+                      const qty = p.quantite || p.quantity || 1;
+                      const unitPrice = (p.total_ht || 0) / qty;
+                      const discount = p.discount || 0;
+                      return (
+                        <tr key={i} className="hover:bg-slate-50">
+                          <td className="px-3 py-2">
+                            <div className="font-medium text-slate-900">{p.ref}</div>
+                            <div className="text-xs text-slate-500">{p.nom}</div>
+                          </td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-700">{qty}</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-700">{unitPrice.toFixed(2)}€</td>
+                          <td className="px-3 py-2 text-right font-mono text-slate-500">{discount > 0 ? `-${discount}%` : '—'}</td>
+                          <td className="px-3 py-2 text-right font-mono font-medium text-slate-900">{(p.total_ht || 0).toFixed(2)}€</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+
               {calculation.frais_port?.map((f, i) => (
                 <div key={'fp'+i} className="flex items-center justify-between text-sm py-1 text-slate-500">
                   <span className="flex-1">{f.nom}</span>
