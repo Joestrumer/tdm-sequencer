@@ -351,6 +351,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [testEmail, setTestEmail] = useState("");
   const [testLoading, setTestLoading] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
+  const [testInProgress, setTestInProgress] = useState(false);
   const editorRef = useRef(null);
   const objetRef = useRef(null);
   const colorInputRef = useRef(null);
@@ -373,7 +374,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   };
 
   const envoyerTestEmail = async () => {
-    if (!testEmail.trim()) return;
+    if (!testEmail.trim() || testInProgress) return;
 
     // Si la séquence n'est pas encore sauvegardée, sauvegarder d'abord
     if (!seq?.id) {
@@ -389,6 +390,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
     const emailToSend = testEmail.trim();
     const etapeIndex = activeEtape;
+
+    // Verrou pour empêcher double clic
+    setTestInProgress(true);
 
     // Fermer le modal immédiatement et lancer en background
     setShowTestModal(false);
@@ -446,6 +450,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
       } catch(err) {
         console.error(err);
         alert('❌ Erreur : ' + (err.message || 'impossible d\'envoyer le test'));
+      } finally {
+        // Libérer le verrou après 3 secondes pour permettre un nouveau test
+        setTimeout(() => setTestInProgress(false), 3000);
       }
     })();
   };
@@ -615,8 +622,12 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                   {e.piece_jointe && <div className={`text-xs mt-1 ${activeEtape === i ? "text-amber-300" : "text-amber-600"}`}>📎 Pièce jointe</div>}
                 </button>
                 {seq?.id && (
-                  <button onClick={() => { setActiveEtape(i); setShowTestModal(true); }} className={`w-full px-3 py-1.5 text-xs font-medium transition-colors border-t ${activeEtape === i ? "border-slate-700 text-blue-300 hover:bg-white/10" : "border-slate-100 text-blue-600 hover:bg-blue-50"}`}>
-                    ⚡ Tester cet email
+                  <button
+                    onClick={() => { if (!testInProgress) { setActiveEtape(i); setShowTestModal(true); } }}
+                    disabled={testInProgress}
+                    className={`w-full px-3 py-1.5 text-xs font-medium transition-colors border-t disabled:opacity-50 disabled:cursor-not-allowed ${activeEtape === i ? "border-slate-700 text-blue-300 hover:bg-white/10" : "border-slate-100 text-blue-600 hover:bg-blue-50"}`}
+                  >
+                    {testInProgress ? "⏳ Envoi..." : "⚡ Tester cet email"}
                   </button>
                 )}
               </div>
