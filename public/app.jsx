@@ -355,7 +355,6 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const corpsRef = useRef(null);
   const objetRef = useRef(null);
   const pjRef = useRef(null);
-  const colorInputRef = useRef(null);
   const [pieceJointe, setPieceJointe] = useState(etapes[0]?.piece_jointe || null);
 
   // Sync pj dans l'étape courante
@@ -375,26 +374,6 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
       setPjEtape({ nom: file.name, taille: file.size, type: file.type, data: e.target.result.split(",")[1] });
     };
     reader.readAsDataURL(file);
-  };
-
-  // Insertion rapide de formatage
-  const insererFormat = (avant, apres = '') => {
-    const textarea = corpsRef.current;
-    if (!textarea) return;
-
-    const start = textarea.selectionStart;
-    const end = textarea.selectionEnd;
-    const text = textarea.value;
-    const selectedText = text.substring(start, end);
-
-    const newText = text.substring(0, start) + avant + selectedText + apres + text.substring(end);
-    updateEtape(activeEtape, "corps", newText);
-
-    // Restaurer focus et sélection
-    setTimeout(() => {
-      textarea.focus();
-      textarea.setSelectionRange(start + avant.length, end + avant.length);
-    }, 0);
   };
 
   const envoyerTestEmail = async () => {
@@ -497,41 +476,41 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     return { ...et, [k]: v, ...extra };
   }));
 
-  // Toolbar de mise en forme
-  const fmt = (cmd, val) => {
-    corpsRef.current?.focus();
-    if (cmd === 'fontName') {
-      // Pour fontName, utiliser une approche plus robuste
-      const selection = window.getSelection();
-      if (selection.rangeCount > 0) {
-        const range = selection.getRangeAt(0);
-        const span = document.createElement('span');
-        span.style.fontFamily = val;
-        try {
-          range.surroundContents(span);
-        } catch (e) {
-          // Si surroundContents échoue, essayer insertHTML
-          const selectedText = range.extractContents();
-          span.appendChild(selectedText);
-          range.insertNode(span);
-        }
-      }
-    } else {
-      document.execCommand(cmd, false, val);
-    }
-    syncCorps();
+  // Insertion de balises HTML dans le textarea
+  const insererBalise = (avant, apres = '') => {
+    const textarea = corpsRef.current;
+    if (!textarea) return;
+
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    const selectedText = text.substring(start, end);
+
+    const newText = text.substring(0, start) + avant + selectedText + apres + text.substring(end);
+    updateEtape(activeEtape, "corps_html", newText);
+
+    // Restaurer focus et sélection
+    setTimeout(() => {
+      textarea.focus();
+      const newCursorPos = start + avant.length + selectedText.length + apres.length;
+      textarea.setSelectionRange(newCursorPos, newCursorPos);
+    }, 0);
   };
+
   const syncCorps = () => {
-    if (corpsRef.current) updateEtape(activeEtape, "corps_html", corpsRef.current.innerHTML);
+    if (corpsRef.current) updateEtape(activeEtape, "corps_html", corpsRef.current.value);
   };
 
   // Initialiser le contenu de l'éditeur quand on change d'étape
   useEffect(() => {
     if (corpsRef.current && mode === "edit") {
-      // Forcer <br> au lieu de <p> pour les retours à la ligne
-      try { document.execCommand("defaultParagraphSeparator", false, "div"); } catch {}
       const etape = etapes[activeEtape];
-      corpsRef.current.innerHTML = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
+      // Ne rien faire si la valeur est déjà correcte pour éviter de perdre la position du curseur
+      const currentValue = corpsRef.current.value;
+      const newValue = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
+      if (currentValue !== newValue) {
+        corpsRef.current.value = newValue;
+      }
 
       // Synchroniser l'état pieceJointe avec l'étape courante
       setPieceJointe(etape?.piece_jointe || null);
@@ -540,9 +519,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
   // Insérer une variable à la position du curseur
   const insererVar = (v) => {
-    corpsRef.current?.focus();
-    document.execCommand("insertText", false, v);
-    syncCorps();
+    insererBalise(v, '');
   };
 
   const handleSave = async () => {
@@ -603,11 +580,6 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   }
 
   const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
-  const TOOLBAR = [
-    { cmd: "bold", label: "B", style: "font-bold" },
-    { cmd: "italic", label: "I", style: "italic" },
-    { cmd: "underline", label: "U", style: "underline" },
-  ];
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
@@ -701,146 +673,81 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                   </div>
                 </div>
 
-                {/* Toolbar */}
+                {/* Toolbar simplifié */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                  <div className="flex flex-wrap items-center gap-1.5 px-3 py-2.5 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200">
-                    {/* Police et taille */}
-                    <select onChange={e => {
-                      if (e.target.value) {
-                        const selection = window.getSelection();
-                        if (selection.rangeCount > 0 && !selection.isCollapsed) {
-                          // Appliquer la police à la sélection
-                          const range = selection.getRangeAt(0);
-                          const span = document.createElement('span');
-                          span.style.fontFamily = e.target.value;
-                          try {
-                            range.surroundContents(span);
-                          } catch {
-                            const selectedText = range.extractContents();
-                            span.appendChild(selectedText);
-                            range.insertNode(span);
-                          }
-                          syncCorps();
-                        } else {
-                          // Sinon, appliquer à tout le contenu
-                          if (corpsRef.current) {
-                            // Wrapper tout le contenu existant dans un div avec la police
-                            const content = corpsRef.current.innerHTML;
-                            corpsRef.current.innerHTML = `<div style="font-family: ${e.target.value}">${content}</div>`;
-                            syncCorps();
-                          }
-                        }
-                      }
-                    }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none">
-                      <option value="" disabled>Police</option>
-                      <option value="Arial, sans-serif">Arial</option>
-                      <option value="Helvetica, Arial, sans-serif">Helvetica</option>
-                      <option value="Georgia, serif">Georgia</option>
-                      <option value="Times New Roman, serif">Times</option>
-                      <option value="Verdana, sans-serif">Verdana</option>
-                      <option value="Trebuchet MS, sans-serif">Trebuchet</option>
-                      <option value="Courier New, monospace">Courier</option>
-                    </select>
-                    <select onChange={e => {
-                      if (e.target.value) {
-                        const selection = window.getSelection();
-                        if (selection.rangeCount > 0 && !selection.isCollapsed) {
-                          // Appliquer la taille à la sélection
-                          const range = selection.getRangeAt(0);
-                          const span = document.createElement('span');
-                          span.style.fontSize = e.target.value;
-                          try {
-                            range.surroundContents(span);
-                          } catch {
-                            const selectedText = range.extractContents();
-                            span.appendChild(selectedText);
-                            range.insertNode(span);
-                          }
-                          syncCorps();
-                        }
-                      }
-                    }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none w-12">
-                      <option value="" disabled>Taille</option>
-                      <option value="10px">10</option>
-                      <option value="12px">12</option>
-                      <option value="14px">14</option>
-                      <option value="16px">16</option>
-                      <option value="18px">18</option>
-                      <option value="20px">20</option>
-                      <option value="24px">24</option>
-                    </select>
+                  <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200">
+                    {/* Bouton paragraphe */}
+                    <button
+                      title="Insérer un paragraphe"
+                      onClick={() => insererBalise('<p style="font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6">', '</p>')}
+                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-medium"
+                    >
+                      &lt;p&gt;
+                    </button>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Formatage texte */}
-                    {TOOLBAR.map(t => (
-                      <button key={t.cmd} title={t.cmd} onMouseDown={e => { e.preventDefault(); fmt(t.cmd); }} className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 ${t.style}`}>{t.label}</button>
-                    ))}
+                    <button
+                      title="Gras"
+                      onClick={() => insererBalise('<b>', '</b>')}
+                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 font-bold"
+                    >
+                      B
+                    </button>
+                    <button
+                      title="Italique"
+                      onClick={() => insererBalise('<i>', '</i>')}
+                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 italic"
+                    >
+                      I
+                    </button>
+                    <button
+                      title="Souligné"
+                      onClick={() => insererBalise('<u>', '</u>')}
+                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 underline"
+                    >
+                      U
+                    </button>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                    {/* Listes et alignement */}
-                    <button title="Liste à puces" onMouseDown={e => { e.preventDefault(); fmt("insertUnorderedList"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-bold">• —</button>
-                    <button title="Liste numérotée" onMouseDown={e => { e.preventDefault(); fmt("insertOrderedList"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-bold">1.</button>
-                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                    <button title="Aligner à gauche" onMouseDown={e => { e.preventDefault(); fmt("justifyLeft"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs">⬅</button>
-                    <button title="Centrer" onMouseDown={e => { e.preventDefault(); fmt("justifyCenter"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs">↔</button>
-                    <button title="Aligner à droite" onMouseDown={e => { e.preventDefault(); fmt("justifyRight"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs">➡</button>
+                    {/* Saut de ligne */}
+                    <button
+                      title="Saut de ligne"
+                      onClick={() => insererBalise('<br>', '')}
+                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-medium"
+                    >
+                      &lt;br&gt;
+                    </button>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Lien hypertexte */}
-                    <button title="Ajouter un lien" onMouseDown={e => {
-                      e.preventDefault();
-                      const sel = window.getSelection();
-                      const texteSelec = sel?.toString();
-                      const url = prompt("URL du lien :", "https://");
-                      if (!url) return;
-                      if (texteSelec) {
-                        // Remplacer la sélection par un lien souligné
-                        document.execCommand("insertHTML", false, `<a href="${url}" style="color:#1a56db;text-decoration:underline">${texteSelec}</a>`);
-                      } else {
-                        const label = prompt("Texte du lien :", url) || url;
-                        document.execCommand("insertHTML", false, `<a href="${url}" style="color:#1a56db;text-decoration:underline">${label}</a>`);
-                      }
-                      syncCorps();
-                    }} className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs gap-1">
-                      🔗 <span className="text-slate-400">Lien</span>
+                    <button
+                      title="Ajouter un lien"
+                      onClick={() => {
+                        const url = prompt("URL du lien :", "https://");
+                        if (!url) return;
+                        insererBalise(`<a href="${url}" style="color:#1a56db;text-decoration:underline">`, '</a>');
+                      }}
+                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs gap-1"
+                    >
+                      🔗
                     </button>
-                    {/* Couleur du texte */}
-                    <div className="relative group">
-                      <button title="Couleur du texte" onMouseDown={e => e.preventDefault()} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-sm">
-                        <span style={{ borderBottom: "3px solid #e11d48" }}>A</span>
-                      </button>
-                      <div className="hidden group-hover:flex absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-2 gap-1 flex-wrap w-44 z-50">
-                        {["#000000", "#e11d48", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7", "#64748b"].map(c => (
-                          <button
-                            key={c}
-                            onMouseDown={e => { e.preventDefault(); document.execCommand("foreColor", false, c); syncCorps(); }}
-                            className="w-6 h-6 rounded border border-slate-200 hover:scale-110 transition-transform"
-                            style={{ backgroundColor: c }}
-                            title={c}
-                          />
-                        ))}
-                        <button
-                          onMouseDown={e => { e.preventDefault(); colorInputRef.current?.click(); }}
-                          className="w-6 h-6 rounded border border-dashed border-slate-300 hover:bg-slate-50 flex items-center justify-center text-xs text-slate-400"
-                        >+</button>
-                        <input ref={colorInputRef} type="color"
-                          onChange={e => { corpsRef.current?.focus(); document.execCommand("foreColor", false, e.target.value); syncCorps(); }}
-                          className="absolute opacity-0 w-0 h-0 pointer-events-none"
-                        />
-                      </div>
-                    </div>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Variables corps */}
                     <span className="text-xs text-slate-400">Var :</span>
                     {VARS.map(v => (
-                      <button key={v} onMouseDown={e => { e.preventDefault(); insererVar(v); }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
+                      <button
+                        key={v}
+                        onClick={() => insererVar(v)}
+                        className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200"
+                      >
+                        {v}
+                      </button>
                     ))}
                   </div>
-                  {/* Éditeur contentEditable */}
-                  <div
+                  {/* Éditeur textarea HTML */}
+                  <textarea
                     ref={corpsRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    onInput={syncCorps}
-                    className="min-h-64 max-h-96 overflow-y-auto p-5 text-slate-800 focus:outline-none leading-relaxed bg-white"
-                    style={{ fontSize: '12px', fontFamily: 'Helvetica, Arial, sans-serif' }}
+                    onChange={syncCorps}
+                    placeholder="Écrivez votre email en HTML...&#10;&#10;Exemple :&#10;<p style=&quot;font-family:Helvetica,Arial,sans-serif;font-size:14px;line-height:1.6&quot;>&#10;  Bonjour <b>{{prenom}}</b>,<br>&#10;  Découvrez notre offre pour <i>{{hotel}}</i>...&#10;</p>"
+                    className="min-h-64 max-h-96 overflow-y-auto p-5 text-slate-800 focus:outline-none leading-relaxed bg-white font-mono text-xs resize-none w-full"
                   />
                   {/* Pièce jointe */}
                   <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
