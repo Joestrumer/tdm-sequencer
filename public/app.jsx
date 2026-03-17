@@ -1153,25 +1153,51 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
         <div className="flex gap-2 overflow-x-auto">
-          <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap" title="Format CSV: prenom,nom,email,hotel,ville,segment,poste,langue (champs requis: email, hotel, prenom)">
-            {importStatus || "📥 Import CSV"}
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
+              {importStatus || "📥 Import CSV"}
+            </button>
+            <div className="group relative">
+              <button className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs flex items-center justify-center">?</button>
+              <div className="absolute left-0 top-full mt-1 w-72 bg-slate-900 text-white text-xs rounded-lg p-2.5 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                <div className="font-semibold mb-1">Format CSV</div>
+                <div className="font-mono text-slate-300">prenom,nom,email,hotel,ville,segment,poste,langue</div>
+                <div className="text-slate-400 mt-1">Champs requis: email, hotel, prenom</div>
+              </div>
+            </div>
+          </div>
           <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
-          <button onClick={async () => {
-            const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
-            if (r && onRefresh) onRefresh();
-          }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 whitespace-nowrap" title="Synchroniser tous les leads avec HubSpot">
-            🔄 Sync HS
-          </button>
-          <button onClick={async () => {
-            if (!confirm('Forcer l\'envoi immédiat des emails en attente ?\n\nCela enverra tous les emails planifiés pour aujourd\'hui.')) return;
-            setTriggerStatus("sending");
-            try { const r = await api.post("/sequences/trigger-now", {}); setTriggerStatus(r.erreur ? "error" : "done"); }
-            catch(e) { setTriggerStatus("error"); }
-            setTimeout(() => setTriggerStatus(null), 3000);
-          }} className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${triggerStatus === "sending" ? "bg-amber-50 border-amber-300 text-amber-700" : triggerStatus === "done" ? "bg-emerald-50 border-emerald-300 text-emerald-700" : triggerStatus === "error" ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"}`} title="Force l'envoi des emails déjà planifiés (bypass fenêtre horaire)">
-            {triggerStatus === "sending" ? "⟳ Envoi..." : triggerStatus === "done" ? "✓ Envoyé" : triggerStatus === "error" ? "✗ Erreur" : "⚡ Envoyer"}
-          </button>
+          <div className="flex items-center gap-1">
+            <button onClick={async () => {
+              const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
+              if (r && onRefresh) onRefresh();
+            }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 whitespace-nowrap">
+              🔄 Sync HS
+            </button>
+            <div className="group relative">
+              <button className="w-5 h-5 rounded-full bg-orange-100 text-orange-400 hover:bg-orange-200 text-xs flex items-center justify-center">?</button>
+              <div className="absolute left-0 top-full mt-1 w-56 bg-slate-900 text-white text-xs rounded-lg p-2.5 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                Synchroniser tous les leads avec HubSpot
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-1">
+            <button onClick={async () => {
+              if (!confirm('Forcer l\'envoi immédiat des emails en attente ?\n\nCela enverra tous les emails planifiés pour aujourd\'hui.')) return;
+              setTriggerStatus("sending");
+              try { const r = await api.post("/sequences/trigger-now", {}); setTriggerStatus(r.erreur ? "error" : "done"); }
+              catch(e) { setTriggerStatus("error"); }
+              setTimeout(() => setTriggerStatus(null), 3000);
+            }} className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${triggerStatus === "sending" ? "bg-amber-50 border-amber-300 text-amber-700" : triggerStatus === "done" ? "bg-emerald-50 border-emerald-300 text-emerald-700" : triggerStatus === "error" ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"}`}>
+              {triggerStatus === "sending" ? "⟳ Envoi..." : triggerStatus === "done" ? "✓ Envoyé" : triggerStatus === "error" ? "✗ Erreur" : "⚡ Envoyer"}
+            </button>
+            <div className="group relative">
+              <button className="w-5 h-5 rounded-full bg-amber-100 text-amber-400 hover:bg-amber-200 text-xs flex items-center justify-center">?</button>
+              <div className="absolute right-0 top-full mt-1 w-56 bg-slate-900 text-white text-xs rounded-lg p-2.5 shadow-xl opacity-0 invisible group-hover:opacity-100 group-hover:visible transition-all z-50">
+                Force l'envoi des emails déjà planifiés pour aujourd'hui (bypass fenêtre horaire)
+              </div>
+            </div>
+          </div>
           <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors whitespace-nowrap">+ Ajouter</button>
         </div>
       </div>
