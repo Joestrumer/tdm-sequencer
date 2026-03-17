@@ -1629,16 +1629,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                   <tr>
                     <td colSpan="8" className="p-0 bg-gradient-to-b from-blue-50/50 to-transparent">
                       <div className="p-4 border-t-2 border-blue-400">
-                        <div className="flex items-start justify-between mb-3">
-                          <div className="flex items-center gap-3">
-                            <div className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold ${STATUT_CONFIG[lead.statut]?.bg} ${STATUT_CONFIG[lead.statut]?.text}`}>
-                              {lead.prenom?.[0]}{lead.nom?.[0]}
-                            </div>
-                            <div>
-                              <h4 className="font-semibold text-slate-800">{lead.prenom} {lead.nom}</h4>
-                              <div className="text-xs text-slate-500">{lead.email} {lead.poste && `· ${lead.poste}`}</div>
-                            </div>
-                          </div>
+                        <div className="flex justify-end mb-2">
                           <button onClick={() => { setSelectedLead(null); setDetailData(null); }} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
                         </div>
 
@@ -1757,23 +1748,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
 
           {/* ── Header ── */}
-          <div className="flex flex-col md:flex-row md:items-start justify-between p-4 md:p-5 border-b border-slate-100 gap-3">
-            <div>
-              <div className="flex items-center gap-3 flex-wrap">
-                <h3 className="text-base font-semibold text-slate-900">{selectedLead.prenom} {selectedLead.nom}</h3>
-                <Badge statut={selectedLead.statut} />
-                {selectedLead.hubspot_id && (
-                  <a href={`https://app.hubspot.com/contacts/26199813/contact/${selectedLead.hubspot_id}`}
-                    target="_blank"
-                    className="text-xs text-orange-600 bg-orange-50 px-2 py-0.5 rounded-full hover:bg-orange-100">
-                    HubSpot ↗
-                  </a>
-                )}
-              </div>
-              <p className="text-sm text-slate-500 mt-0.5">{selectedLead.hotel} · {selectedLead.ville} · {selectedLead.segment}</p>
-              <p className="text-xs text-slate-400 mt-0.5">{selectedLead.email}</p>
-            </div>
-            <div className="flex items-center gap-2 flex-shrink-0 flex-wrap">
+          <div className="flex items-center justify-end p-4 md:p-5 border-b border-slate-100 gap-2 flex-wrap">
               <button onClick={() => setEditLead(selectedLead)} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50">✏️ Éditer</button>
               {selectedLead.sequence_active && (
                 <button onClick={async () => {
