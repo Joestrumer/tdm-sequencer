@@ -157,10 +157,35 @@ module.exports = (db) => {
   // DELETE /api/sequences/:id
   router.delete('/:id', (req, res) => {
     try {
-      const result = db.prepare('DELETE FROM sequences WHERE id = ?').run(req.params.id);
-      if (!result.changes) return res.status(404).json({ erreur: 'Séquence introuvable' });
-      res.json({ message: 'Séquence supprimée' });
+      const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
+      if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
+
+      // Supprimer dans une transaction pour garantir la cohérence
+      db.transaction(() => {
+        // 1. Supprimer les inscriptions (et leurs emails via CASCADE si configuré)
+        const inscriptions = db.prepare('SELECT id FROM inscriptions WHERE sequence_id = ?').all(req.params.id);
+        inscriptions.forEach(inscription => {
+          // Supprimer les emails liés à cette inscription
+          db.prepare('DELETE FROM emails WHERE inscription_id = ?').run(inscription.id);
+        });
+        db.prepare('DELETE FROM inscriptions WHERE sequence_id = ?').run(req.params.id);
+
+        // 2. Supprimer les étapes
+        const etapes = db.prepare('SELECT id FROM etapes WHERE sequence_id = ?').all(req.params.id);
+        etapes.forEach(etape => {
+          // Supprimer les emails liés à cette étape (au cas où)
+          db.prepare('DELETE FROM emails WHERE etape_id = ?').run(etape.id);
+        });
+        db.prepare('DELETE FROM etapes WHERE sequence_id = ?').run(req.params.id);
+
+        // 3. Supprimer la séquence
+        db.prepare('DELETE FROM sequences WHERE id = ?').run(req.params.id);
+      })();
+
+      logger.info('🗑️  Séquence supprimée', { nom: seq.nom, id: req.params.id });
+      res.json({ message: 'Séquence supprimée avec succès' });
     } catch (err) {
+      logger.error('Erreur suppression séquence', { error: err.message });
       res.status(500).json({ erreur: err.message });
     }
   });
