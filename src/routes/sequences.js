@@ -162,30 +162,37 @@ module.exports = (db) => {
 
       // Supprimer dans une transaction pour garantir la cohérence
       db.transaction(() => {
-        // 1. Supprimer les inscriptions (et leurs emails via CASCADE si configuré)
-        const inscriptions = db.prepare('SELECT id FROM inscriptions WHERE sequence_id = ?').all(req.params.id);
-        inscriptions.forEach(inscription => {
-          // Supprimer les emails liés à cette inscription
-          db.prepare('DELETE FROM emails WHERE inscription_id = ?').run(inscription.id);
-        });
+        // 1. Récupérer tous les IDs des inscriptions et étapes
+        const inscriptionIds = db.prepare('SELECT id FROM inscriptions WHERE sequence_id = ?').all(req.params.id).map(i => i.id);
+        const etapeIds = db.prepare('SELECT id FROM etapes WHERE sequence_id = ?').all(req.params.id).map(e => e.id);
+
+        // 2. Supprimer TOUS les emails liés à cette séquence en une seule fois
+        if (inscriptionIds.length > 0) {
+          const placeholders = inscriptionIds.map(() => '?').join(',');
+          db.prepare(`DELETE FROM emails WHERE inscription_id IN (${placeholders})`).run(...inscriptionIds);
+        }
+        if (etapeIds.length > 0) {
+          const placeholders = etapeIds.map(() => '?').join(',');
+          db.prepare(`DELETE FROM emails WHERE etape_id IN (${placeholders})`).run(...etapeIds);
+        }
+
+        // 3. Supprimer les events liés aux emails (déjà supprimés, mais par sécurité)
+        // Les events avec email_id NULL sont conservés
+
+        // 4. Supprimer les inscriptions
         db.prepare('DELETE FROM inscriptions WHERE sequence_id = ?').run(req.params.id);
 
-        // 2. Supprimer les étapes
-        const etapes = db.prepare('SELECT id FROM etapes WHERE sequence_id = ?').all(req.params.id);
-        etapes.forEach(etape => {
-          // Supprimer les emails liés à cette étape (au cas où)
-          db.prepare('DELETE FROM emails WHERE etape_id = ?').run(etape.id);
-        });
+        // 5. Supprimer les étapes
         db.prepare('DELETE FROM etapes WHERE sequence_id = ?').run(req.params.id);
 
-        // 3. Supprimer la séquence
+        // 6. Supprimer la séquence
         db.prepare('DELETE FROM sequences WHERE id = ?').run(req.params.id);
       })();
 
       logger.info('🗑️  Séquence supprimée', { nom: seq.nom, id: req.params.id });
       res.json({ message: 'Séquence supprimée avec succès' });
     } catch (err) {
-      logger.error('Erreur suppression séquence', { error: err.message });
+      logger.error('Erreur suppression séquence', { error: err.message, stack: err.stack });
       res.status(500).json({ erreur: err.message });
     }
   });
