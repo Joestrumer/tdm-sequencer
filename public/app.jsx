@@ -1215,7 +1215,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               {filtered.map((lead, i) => {
                 const cfg = STATUT_CONFIG[lead.statut] || STATUT_CONFIG["Nouveau"];
                 return (
-                <tr key={lead.id} className={`group border-b border-slate-50 border-l-2 transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200 border-l-indigo-400" : selectedIds.has(lead.id) ? "bg-slate-100 border-l-transparent" : "hover:bg-slate-50/80 border-l-transparent hover:border-l-blue-400"} ${i === filtered.length-1 ? "border-b-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
+                <React.Fragment key={lead.id}>
+                <tr className={`group border-b border-slate-50 border-l-2 transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200 border-l-indigo-400" : selectedIds.has(lead.id) ? "bg-slate-100 border-l-transparent" : "hover:bg-slate-50/80 border-l-transparent hover:border-l-blue-400"} ${i === filtered.length-1 ? "border-b-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
                   <td className="px-3 py-3 w-8" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.has(lead.id)} onChange={e => { const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} />
                   </td>
@@ -1353,7 +1354,17 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     </td>
                   </tr>
                 )}
+                </React.Fragment>
+                );
+              })}
+            </tbody>
+          </table>
+          {filtered.length === 0 && <div className="text-center py-12 text-slate-400 text-sm">Aucun lead trouvé</div>}
+        </div>
+        </>
+      )}
 
+      {/* ── VUE KANBAN ── */}
       {vueMode === "kanban" && (
         <div className="flex gap-2 overflow-x-auto pb-4 snap-x snap-mandatory md:snap-none">
           {KANBAN_COLS.map(col => {
