@@ -1089,10 +1089,10 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         </div>
         <div className="flex gap-2 overflow-x-auto">
           <div className="relative group">
-            <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
+            <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap" title="Import CSV - Survoler pour voir le format">
               {importStatus || "📥 Import CSV"}
             </button>
-            <div className="absolute left-0 top-full mt-1 z-20 hidden group-hover:block w-80 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-xl">
+            <div className="absolute left-0 top-full mt-2 z-[9999] hidden group-hover:block w-80 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-2xl pointer-events-none">
               <div className="font-semibold mb-1.5">Format CSV attendu</div>
               <div className="font-mono text-slate-300 text-xs leading-relaxed">prenom,nom,email,hotel,ville,segment,poste</div>
               <div className="font-mono text-slate-400 text-xs mt-1">Hugo,Montiel,hugo@hotel.com,Le Bristol,Paris,5*,General Manager</div>
