@@ -1540,26 +1540,26 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <table className="w-full">
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
-                <th className="px-3 py-3 w-8">
+                <th className="px-2 py-2 w-8">
                   <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={e => setSelectedIds(e.target.checked ? new Set(filtered.map(l => l.id)) : new Set())} />
                 </th>
-                <th onClick={() => handleColumnSort("nom")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                <th onClick={() => handleColumnSort("nom")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
                   Contact {sortColumn === "nom" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleColumnSort("hotel")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                <th onClick={() => handleColumnSort("hotel")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
                   Établissement {sortColumn === "hotel" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleColumnSort("langue")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-16 cursor-pointer hover:text-slate-700 select-none">
+                <th onClick={() => handleColumnSort("langue")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-12 cursor-pointer hover:text-slate-700 select-none">
                   Langue {sortColumn === "langue" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Séquence</th>
-                <th onClick={() => handleColumnSort("score")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28 cursor-pointer hover:text-slate-700 select-none">
+                <th className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Séquence</th>
+                <th onClick={() => handleColumnSort("score")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-20 cursor-pointer hover:text-slate-700 select-none">
                   Engagement {sortColumn === "score" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th onClick={() => handleColumnSort("statut")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                <th onClick={() => handleColumnSort("statut")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
                   Statut {sortColumn === "statut" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
-                <th className="px-3 py-3 w-32"></th>
+                <th className="px-2 py-2 w-24"></th>
               </tr>
             </thead>
             <tbody>
@@ -1568,53 +1568,48 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 return (
                 <React.Fragment key={lead.id}>
                 <tr className={`group border-b border-slate-50 border-l-2 transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200 border-l-indigo-400" : selectedIds.has(lead.id) ? "bg-slate-100 border-l-transparent" : "hover:bg-slate-50/80 border-l-transparent hover:border-l-blue-400"} ${i === filtered.length-1 ? "border-b-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
-                  <td className="px-3 py-3 w-8" onClick={e => e.stopPropagation()}>
+                  <td className="px-2 py-1.5 w-8" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.has(lead.id)} onChange={e => { const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} />
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="flex items-center gap-2">
-                      <div className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${cfg.bg} ${cfg.text}`}>
+                  <td className="px-2 py-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${cfg.bg} ${cfg.text}`}>
                         {lead.prenom?.[0]}{lead.nom?.[0]}
                       </div>
-                      <div>
-                        <div className="font-medium text-slate-800 text-sm leading-tight">{lead.prenom} {lead.nom}
-                          {lead.hubspot_id && <span title="Synchronisé HubSpot" className="ml-1 text-orange-300 text-xs">⬡</span>}
+                      <div className="min-w-0">
+                        <div className="font-medium text-slate-800 text-xs leading-tight truncate">{lead.prenom} {lead.nom}
+                          {lead.hubspot_id && <span title="Synchronisé HubSpot" className="ml-1 text-orange-300 text-[10px]">⬡</span>}
                         </div>
-                        <div className="text-xs text-slate-400 leading-tight">{lead.email}</div>
+                        <div className="text-[10px] text-slate-400 leading-tight truncate">{lead.email}</div>
                       </div>
                     </div>
                   </td>
-                  <td className="px-3 py-3">
-                    <div className="text-sm text-slate-700 font-medium leading-tight">{lead.hotel}</div>
-                    <div className="text-xs text-slate-400 leading-tight">{[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
+                  <td className="px-2 py-1.5">
+                    <div className="text-xs text-slate-700 font-medium leading-tight truncate">{lead.hotel} · {[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
                   </td>
-                  <td className="px-3 py-3 w-16">
-                    <span className="text-xs text-slate-600">{lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : lead.langue || '—'}</span>
+                  <td className="px-2 py-1.5 w-12 text-center">
+                    <span className="text-xs">{lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : lead.langue || '—'}</span>
                   </td>
-                  <td className="px-3 py-3">
+                  <td className="px-2 py-1.5">
                     {lead.sequence
-                      ? <div>
-                          <span className="text-xs bg-blue-50 text-blue-600 font-medium px-2 py-0.5 rounded-full">Étape {(lead.etape||0)+1}</span>
-                          <div className="text-xs text-slate-400 mt-0.5 truncate max-w-[120px]">{lead.sequence}</div>
-                        </div>
+                      ? <div className="text-[10px] text-blue-600 font-medium truncate max-w-[100px]">E{(lead.etape||0)+1} · {lead.sequence}</div>
                       : <span className="text-xs text-slate-300">—</span>}
                   </td>
-                  <td className="px-3 py-3 w-28">
-                    <div className="flex items-center gap-1.5">
-                      <div className="flex-1 h-1.5 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full transition-all ${lead.score >= 80 ? "bg-emerald-500" : lead.score >= 50 ? "bg-amber-400" : "bg-slate-300"}`} style={{width: lead.score + "%"}} />
+                  <td className="px-2 py-1.5 w-20">
+                    <div className="flex items-center gap-1">
+                      <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
+                        <div className={`h-full rounded-full ${lead.score >= 80 ? "bg-emerald-500" : lead.score >= 50 ? "bg-amber-400" : "bg-slate-300"}`} style={{width: lead.score + "%"}} />
                       </div>
-                      <span className="text-xs font-medium text-slate-500 w-7 text-right">{lead.score}</span>
+                      <span className="text-[10px] font-medium text-slate-500 w-6 text-right">{lead.score}</span>
                     </div>
-                    {lead.ouvertures > 0 && <div className="text-xs text-slate-400 mt-0.5">👁 {lead.ouvertures}</div>}
                   </td>
-                  <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                  <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
                     <select value={lead.statut} onChange={e => changerStatut(lead, e.target.value)}
-                      className={`text-xs font-medium px-2 py-1 rounded-full border-0 cursor-pointer focus:outline-none ${cfg.bg} ${cfg.text}`}>
+                      className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border-0 cursor-pointer focus:outline-none ${cfg.bg} ${cfg.text}`}>
                       {Object.keys(STATUT_CONFIG).map(s => <option key={s}>{s}</option>)}
                     </select>
                   </td>
-                  <td className="px-3 py-3" onClick={e => e.stopPropagation()}>
+                  <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
                       {lead.statut !== "Désabonné" && (
                         <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 whitespace-nowrap">▶</button>
