@@ -351,6 +351,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [testLoading, setTestLoading] = useState(false);
   const [showTestModal, setShowTestModal] = useState(false);
   const [testInProgress, setTestInProgress] = useState(false);
+  const [mode, setMode] = useState("edit");
   const corpsRef = useRef(null);
   const objetRef = useRef(null);
   const pjRef = useRef(null);
