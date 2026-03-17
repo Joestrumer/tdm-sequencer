@@ -24,10 +24,17 @@ module.exports = (db) => {
       const result = sequences.map(s => {
         const etapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(s.id);
         // Parser les pièces jointes JSON
-        const etapesParsed = etapes.map(e => ({
-          ...e,
-          piece_jointe: e.piece_jointe ? JSON.parse(e.piece_jointe) : null
-        }));
+        const etapesParsed = etapes.map(e => {
+          let pieceJointe = null;
+          if (e.piece_jointe) {
+            try {
+              pieceJointe = JSON.parse(e.piece_jointe);
+            } catch (err) {
+              logger.warn('Erreur parsing piece_jointe', { etapeId: e.id, error: err.message });
+            }
+          }
+          return { ...e, piece_jointe: pieceJointe };
+        });
         return { ...s, etapes: etapesParsed };
       });
 
@@ -44,10 +51,17 @@ module.exports = (db) => {
       if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
       const etapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(req.params.id);
       // Parser les pièces jointes JSON
-      const etapesParsed = etapes.map(e => ({
-        ...e,
-        piece_jointe: e.piece_jointe ? JSON.parse(e.piece_jointe) : null
-      }));
+      const etapesParsed = etapes.map(e => {
+        let pieceJointe = null;
+        if (e.piece_jointe) {
+          try {
+            pieceJointe = JSON.parse(e.piece_jointe);
+          } catch (err) {
+            logger.warn('Erreur parsing piece_jointe', { etapeId: e.id, error: err.message });
+          }
+        }
+        return { ...e, piece_jointe: pieceJointe };
+      });
       res.json({ ...seq, etapes: etapesParsed });
     } catch (err) {
       res.status(500).json({ erreur: err.message });

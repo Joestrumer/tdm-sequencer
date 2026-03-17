@@ -387,47 +387,57 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
       return;
     }
 
-    setTestLoading(true);
-    try {
-      // Créer ou trouver le lead de test
-      const search = await api.get(`/leads?search=${encodeURIComponent(testEmail)}`);
-      const existing = (Array.isArray(search) ? search : search.leads || []).find(l => l.email === testEmail);
-      let leadId;
-      if (existing) {
-        leadId = existing.id;
-      } else {
-        const created = await api.post('/leads', { email: testEmail, prenom: 'Test', nom: 'Email', hotel: 'Test Hotel', segment: '5*' });
-        leadId = created.id || created.lead?.id;
-      }
+    const emailToSend = testEmail.trim();
+    const etapeIndex = activeEtape;
 
-      // Créer une inscription à la séquence
-      await api.post(`/sequences/${seq.id}/inscrire`, { lead_id: leadId });
-
-      // Mettre à jour l'étape courante de l'inscription pour qu'elle pointe vers notre email spécifique
-      const db = await api.get(`/sequences/${seq.id}/inscriptions`);
-      const inscription = db.inscriptions?.find(i => i.lead_id === leadId);
-
-      if (inscription) {
-        // Mettre à jour l'étape courante pour pointer vers l'email qu'on veut tester
-        await api.patch(`/sequences/inscriptions/${inscription.id}`, {
-          etape_courante: activeEtape,
-          prochain_envoi: new Date().toISOString()
-        });
-
-        // Forcer l'envoi immédiat
-        await api.post('/sequences/trigger-now', {});
-
-        setShowTestModal(false);
-        setTestEmail("");
-        alert(`✅ Test envoyé à ${testEmail} pour l'email ${activeEtape + 1}`);
-      } else {
-        throw new Error("Inscription non trouvée");
-      }
-    } catch(err) {
-      console.error(err);
-      alert('❌ Erreur : ' + (err.message || 'impossible d\'envoyer le test'));
-    }
+    // Fermer le modal immédiatement et lancer en background
+    setShowTestModal(false);
+    setTestEmail("");
     setTestLoading(false);
+
+    // Toast de confirmation
+    alert(`⏳ Envoi du test en cours vers ${emailToSend}...`);
+
+    // Lancer l'envoi en background
+    (async () => {
+      try {
+        // Créer ou trouver le lead de test
+        const search = await api.get(`/leads?search=${encodeURIComponent(emailToSend)}`);
+        const existing = (Array.isArray(search) ? search : search.leads || []).find(l => l.email === emailToSend);
+        let leadId;
+        if (existing) {
+          leadId = existing.id;
+        } else {
+          const created = await api.post('/leads', { email: emailToSend, prenom: 'Test', nom: 'Email', hotel: 'Test Hotel', segment: '5*' });
+          leadId = created.id || created.lead?.id;
+        }
+
+        // Créer une inscription à la séquence
+        await api.post(`/sequences/${seq.id}/inscrire`, { lead_id: leadId });
+
+        // Mettre à jour l'étape courante de l'inscription pour qu'elle pointe vers notre email spécifique
+        const db = await api.get(`/sequences/${seq.id}/inscriptions`);
+        const inscription = db.inscriptions?.find(i => i.lead_id === leadId);
+
+        if (inscription) {
+          // Mettre à jour l'étape courante pour pointer vers l'email qu'on veut tester
+          await api.patch(`/sequences/inscriptions/${inscription.id}`, {
+            etape_courante: etapeIndex,
+            prochain_envoi: new Date().toISOString()
+          });
+
+          // Forcer l'envoi immédiat
+          await api.post('/sequences/trigger-now', {});
+
+          alert(`✅ Test envoyé avec succès à ${emailToSend}`);
+        } else {
+          throw new Error("Inscription non trouvée");
+        }
+      } catch(err) {
+        console.error(err);
+        alert('❌ Erreur : ' + (err.message || 'impossible d\'envoyer le test'));
+      }
+    })();
   };
 
   const addEtape = () => {
@@ -485,10 +495,14 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const etapeCourante = etapes[activeEtape] || {};
   // Retirer la signature du corps pour la preview (on l'affiche séparément)
   const corpsHtmlBrut = etapeCourante.corps_html || texteVersHtmlPreview(etapeCourante.corps || "");
-  // Nettoyer le corps : enlever toute trace de signature existante
-  const corpsPreview = corpsHtmlBrut
-    .replace(/<div[^>]*class="[^"]*border-t[^"]*"[^>]*>[\s\S]*?Hugo Montiel[\s\S]*?<\/div>/gi, '')
-    .replace(/<table[^>]*>[\s\S]*?Hugo Montiel[\s\S]*?<\/table>/gi, '');
+  // Nettoyer le corps : enlever toute trace de signature existante (plusieurs patterns possibles)
+  let corpsPreview = corpsHtmlBrut;
+  // Enlever les tables de signature (format backend)
+  corpsPreview = corpsPreview.replace(/<br>\s*<table[^>]*>[\s\S]*?Hugo Montiel[\s\S]*?<\/table>/gi, '');
+  corpsPreview = corpsPreview.replace(/<table[^>]*>[\s\S]*?Hugo Montiel[\s\S]*?<\/table>/gi, '');
+  // Enlever les divs avec signature (format frontend)
+  corpsPreview = corpsPreview.replace(/<div[^>]*border-t[^>]*>[\s\S]*?Signature automatique[\s\S]*?<\/div>/gi, '');
+  corpsPreview = corpsPreview.replace(/<div[^>]*>[\s\S]*?Hugo Montiel[\s\S]*?terredemars\.com[\s\S]*?<\/div>/gi, '');
 
   const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
   const TOOLBAR = [
@@ -599,13 +613,15 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       <option value="Trebuchet MS, sans-serif">Trebuchet</option>
                       <option value="Courier New, monospace">Courier</option>
                     </select>
-                    <select onChange={e => { if (e.target.value) fmt("fontSize", e.target.value); }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none w-14">
+                    <select onChange={e => { if (e.target.value) fmt("fontSize", e.target.value); }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none w-12">
                       <option value="" disabled>Taille</option>
-                      <option value="1">Petit</option>
-                      <option value="2">Normal</option>
-                      <option value="3">Moyen</option>
-                      <option value="4">Grand</option>
-                      <option value="5">Très grand</option>
+                      <option value="1">10</option>
+                      <option value="2">12</option>
+                      <option value="3">14</option>
+                      <option value="4">16</option>
+                      <option value="5">18</option>
+                      <option value="6">20</option>
+                      <option value="7">24</option>
                     </select>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Formatage texte */}
@@ -1283,14 +1299,16 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
               {importStatus || "📥 Import CSV"}
             </button>
-            <div className="relative inline-block">
-              <button
-                onMouseEnter={() => setShowTooltip('csv')}
-                onMouseLeave={() => setShowTooltip(null)}
-                className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs flex items-center justify-center font-bold"
-              >?</button>
+            <div
+              className="relative inline-block"
+              onMouseEnter={() => setShowTooltip('csv')}
+              onMouseLeave={() => setShowTooltip(null)}
+            >
+              <button className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs flex items-center justify-center font-bold">
+                ?
+              </button>
               {showTooltip === 'csv' && (
-                <div className="absolute left-0 top-full mt-2 w-80 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[9999] border border-slate-700">
+                <div className="absolute left-0 top-full mt-2 w-80 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[9999] border border-slate-700 pointer-events-auto">
                   <div className="font-bold mb-2 text-white">Format CSV</div>
                   <div className="font-mono text-slate-200 bg-slate-900 p-1.5 rounded mb-2">prenom,nom,email,hotel,ville,segment,poste,langue</div>
                   <div className="text-slate-300">Champs requis: <span className="text-white font-semibold">email, hotel, prenom</span></div>
@@ -1306,14 +1324,16 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 whitespace-nowrap">
               🔄 Sync HS
             </button>
-            <div className="relative inline-block">
-              <button
-                onMouseEnter={() => setShowTooltip('sync')}
-                onMouseLeave={() => setShowTooltip(null)}
-                className="w-5 h-5 rounded-full bg-orange-100 text-orange-500 hover:bg-orange-200 text-xs flex items-center justify-center font-bold"
-              >?</button>
+            <div
+              className="relative inline-block"
+              onMouseEnter={() => setShowTooltip('sync')}
+              onMouseLeave={() => setShowTooltip(null)}
+            >
+              <button className="w-5 h-5 rounded-full bg-orange-100 text-orange-500 hover:bg-orange-200 text-xs flex items-center justify-center font-bold">
+                ?
+              </button>
               {showTooltip === 'sync' && (
-                <div className="absolute left-0 top-full mt-2 w-64 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[9999] border border-slate-700">
+                <div className="absolute left-0 top-full mt-2 w-64 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[9999] border border-slate-700 pointer-events-auto">
                   <div className="text-slate-100">Synchroniser tous les leads avec HubSpot</div>
                 </div>
               )}
@@ -1329,14 +1349,16 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             }} className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${triggerStatus === "sending" ? "bg-amber-50 border-amber-300 text-amber-700" : triggerStatus === "done" ? "bg-emerald-50 border-emerald-300 text-emerald-700" : triggerStatus === "error" ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"}`}>
               {triggerStatus === "sending" ? "⟳ Envoi..." : triggerStatus === "done" ? "✓ Envoyé" : triggerStatus === "error" ? "✗ Erreur" : "⚡ Envoyer"}
             </button>
-            <div className="relative inline-block">
-              <button
-                onMouseEnter={() => setShowTooltip('envoyer')}
-                onMouseLeave={() => setShowTooltip(null)}
-                className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 text-xs flex items-center justify-center font-bold"
-              >?</button>
+            <div
+              className="relative inline-block"
+              onMouseEnter={() => setShowTooltip('envoyer')}
+              onMouseLeave={() => setShowTooltip(null)}
+            >
+              <button className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 text-xs flex items-center justify-center font-bold">
+                ?
+              </button>
               {showTooltip === 'envoyer' && (
-                <div className="absolute right-0 top-full mt-2 w-72 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[9999] border border-slate-700">
+                <div className="absolute right-0 top-full mt-2 w-72 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[9999] border border-slate-700 pointer-events-auto">
                   <div className="text-slate-100"><span className="font-bold text-amber-300">⚠️ Attention :</span> Force l'envoi immédiat des emails déjà planifiés pour aujourd'hui (bypass la fenêtre horaire normale)</div>
                 </div>
               )}
