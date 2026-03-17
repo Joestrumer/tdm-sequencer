@@ -150,9 +150,11 @@ function inscrireLead(leadId, sequenceId) {
   const premiereEtape = db.prepare(`SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC LIMIT 1`).get(sequenceId);
   if (!premiereEtape) throw new Error('Séquence vide ou introuvable');
 
+  // Respecter le jour_delai de la première étape
+  // En dev : toujours 1 minute pour tester rapidement
   const prochainEnvoi = process.env.NODE_ENV === 'development'
     ? new Date(Date.now() + 60_000).toISOString()
-    : prochaineDateEnvoi(0);
+    : prochaineDateEnvoi(premiereEtape.jour_delai || 0);
 
   const id = uuidv4();
   db.prepare(`
@@ -163,7 +165,7 @@ function inscrireLead(leadId, sequenceId) {
   `).run(id, leadId, sequenceId, prochainEnvoi);
 
   db.prepare(`UPDATE leads SET statut='En séquence', updated_at=datetime('now') WHERE id=?`).run(leadId);
-  logger.info('🚀 Lead inscrit à la séquence', { leadId, sequenceId, prochainEnvoi });
+  logger.info('🚀 Lead inscrit à la séquence', { leadId, sequenceId, prochainEnvoi, delai: premiereEtape.jour_delai });
   return { id, prochainEnvoi };
 }
 
