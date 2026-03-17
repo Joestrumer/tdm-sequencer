@@ -75,10 +75,20 @@ function resolveCanonicalClientName(db, vfName) {
 function mapPartnerNameToCanon(vfName, canonList = []) {
   if (!vfName) return vfName;
 
-  // Normaliser la liste canon
-  const cleanCanonList = (Array.isArray(canonList) ? canonList : [])
+  // Normaliser la liste canon et filtrer les doublons (préférer noms courts)
+  let cleanCanonList = (Array.isArray(canonList) ? canonList : [])
     .map(n => String(n || '').trim())
     .filter(Boolean);
+
+  // Supprimer les doublons: si "Le Swann" et "HOTEL LITTERAIRE LE SWANN", garder "Le Swann"
+  const dedupeMap = new Map();
+  for (const name of cleanCanonList) {
+    const n = norm(name);
+    if (!dedupeMap.has(n) || name.length < dedupeMap.get(n).length) {
+      dedupeMap.set(n, name);
+    }
+  }
+  cleanCanonList = Array.from(dedupeMap.values());
 
   // Helpers de normalisation
   const stripDiacritics = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -92,6 +102,16 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
     .trim();
 
   const vfNorm = norm(vfName);
+
+  // Aliases manuels (priorité la plus haute)
+  const manualAliases = {
+    'hotel litteraire swann': 'Le Swann',
+    'swann litteraire': 'Le Swann',
+  };
+  if (manualAliases[vfNorm]) {
+    console.log(`🎯 Alias manuel: "${vfName}" → "${manualAliases[vfNorm]}"`);
+    return manualAliases[vfNorm];
+  }
 
   // Règle spéciale: hôtels Korner -> noms "HK ..." (nouveau format de suivi)
   if (vfNorm.includes('korner')) {
