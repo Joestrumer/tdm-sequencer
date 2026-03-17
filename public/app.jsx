@@ -348,6 +348,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
   const [mode, setMode] = useState("edit"); // "edit" | "preview"
+  const [testEmail, setTestEmail] = useState("");
+  const [testLoading, setTestLoading] = useState(false);
+  const [showTestModal, setShowTestModal] = useState(false);
   const editorRef = useRef(null);
   const objetRef = useRef(null);
   const colorInputRef = useRef(null);
@@ -367,6 +370,64 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
       setPjEtape({ nom: file.name, taille: file.size, type: file.type, data: e.target.result.split(",")[1] });
     };
     reader.readAsDataURL(file);
+  };
+
+  const envoyerTestEmail = async () => {
+    if (!testEmail.trim()) return;
+
+    // Si la séquence n'est pas encore sauvegardée, sauvegarder d'abord
+    if (!seq?.id) {
+      if (!confirm("La séquence doit être sauvegardée avant de pouvoir tester un email. Sauvegarder maintenant ?")) {
+        setShowTestModal(false);
+        return;
+      }
+      await handleSave();
+      setShowTestModal(false);
+      alert("✅ Séquence sauvegardée. Veuillez rouvrir et cliquer à nouveau sur 'Tester cet email'");
+      return;
+    }
+
+    setTestLoading(true);
+    try {
+      // Créer ou trouver le lead de test
+      const search = await api.get(`/leads?search=${encodeURIComponent(testEmail)}`);
+      const existing = (Array.isArray(search) ? search : search.leads || []).find(l => l.email === testEmail);
+      let leadId;
+      if (existing) {
+        leadId = existing.id;
+      } else {
+        const created = await api.post('/leads', { email: testEmail, prenom: 'Test', nom: 'Email', hotel: 'Test Hotel', segment: '5*' });
+        leadId = created.id || created.lead?.id;
+      }
+
+      // Créer une inscription à la séquence
+      await api.post(`/sequences/${seq.id}/inscrire`, { lead_id: leadId });
+
+      // Mettre à jour l'étape courante de l'inscription pour qu'elle pointe vers notre email spécifique
+      const db = await api.get(`/sequences/${seq.id}/inscriptions`);
+      const inscription = db.inscriptions?.find(i => i.lead_id === leadId);
+
+      if (inscription) {
+        // Mettre à jour l'étape courante pour pointer vers l'email qu'on veut tester
+        await api.patch(`/sequences/inscriptions/${inscription.id}`, {
+          etape_courante: activeEtape,
+          prochain_envoi: new Date().toISOString()
+        });
+
+        // Forcer l'envoi immédiat
+        await api.post('/sequences/trigger-now', {});
+
+        setShowTestModal(false);
+        setTestEmail("");
+        alert(`✅ Test envoyé à ${testEmail} pour l'email ${activeEtape + 1}`);
+      } else {
+        throw new Error("Inscription non trouvée");
+      }
+    } catch(err) {
+      console.error(err);
+      alert('❌ Erreur : ' + (err.message || 'impossible d\'envoyer le test'));
+    }
+    setTestLoading(false);
   };
 
   const addEtape = () => {
@@ -457,20 +518,30 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
         <div className="flex flex-col md:flex-row flex-1 overflow-hidden">
           {/* Sidebar étapes */}
-          <div className="md:w-44 border-b md:border-b-0 md:border-r border-slate-100 p-2 md:p-3 flex md:flex-col gap-1 flex-shrink-0 overflow-x-auto md:overflow-y-auto bg-slate-50/50">
+          <div className="md:w-52 border-b md:border-b-0 md:border-r border-slate-100 p-2 md:p-3 flex md:flex-col gap-1.5 flex-shrink-0 overflow-x-auto md:overflow-y-auto bg-slate-50/50">
             {etapes.map((e, i) => (
-              <div key={i} className={`group flex items-center rounded-lg transition-colors ${activeEtape === i ? "bg-slate-900" : "hover:bg-slate-100"}`}>
-                <button onClick={() => { syncCorps(); setActiveEtape(i); }} className="flex-1 text-left px-3 py-2.5">
-                  <div className={`font-medium text-sm ${activeEtape === i ? "text-white" : "text-slate-700"}`}>Email {i + 1}</div>
-                  <div className={`text-xs ${activeEtape === i ? "text-slate-300" : "text-slate-400"}`}>J+{e.jour || 0}</div>
+              <div key={i} className={`group rounded-lg transition-all ${activeEtape === i ? "bg-gradient-to-br from-slate-900 to-slate-800 shadow-lg" : "hover:bg-white hover:shadow-sm"}`}>
+                <button onClick={() => { syncCorps(); setActiveEtape(i); }} className="w-full text-left px-3 py-2.5">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className={`font-semibold text-sm ${activeEtape === i ? "text-white" : "text-slate-800"}`}>Email {i + 1}</span>
+                    {etapes.length > 1 && (
+                      <button onClick={(ev) => { ev.stopPropagation(); removeEtape(i); }} className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs w-5 h-5 rounded flex items-center justify-center ${activeEtape === i ? "text-slate-400 hover:text-red-300 hover:bg-white/10" : "text-slate-400 hover:text-red-500 hover:bg-red-50"}`}>✕</button>
+                    )}
+                  </div>
+                  <div className={`text-xs ${activeEtape === i ? "text-slate-300" : "text-slate-500"}`}>
+                    <span className="font-medium">J+{e.jour || 0}</span> · {e.sujet ? e.sujet.substring(0, 25) + (e.sujet.length > 25 ? '...' : '') : 'Sans objet'}
+                  </div>
+                  {e.piece_jointe && <div className={`text-xs mt-1 ${activeEtape === i ? "text-amber-300" : "text-amber-600"}`}>📎 Pièce jointe</div>}
                 </button>
-                {etapes.length > 1 && (
-                  <button onClick={() => removeEtape(i)} className={`pr-2 opacity-0 group-hover:opacity-100 transition-opacity text-xs ${activeEtape === i ? "text-slate-400 hover:text-red-300" : "text-slate-400 hover:text-red-500"}`}>✕</button>
+                {seq?.id && (
+                  <button onClick={() => { setActiveEtape(i); setShowTestModal(true); }} className={`w-full px-3 py-1.5 text-xs font-medium transition-colors border-t ${activeEtape === i ? "border-slate-700 text-blue-300 hover:bg-white/10" : "border-slate-100 text-blue-600 hover:bg-blue-50"}`}>
+                    ⚡ Tester cet email
+                  </button>
                 )}
               </div>
             ))}
-            <button onClick={() => { syncCorps(); addEtape(); }} className="w-full px-3 py-2.5 rounded-lg text-xs text-slate-400 hover:bg-slate-100 hover:text-slate-600 transition-colors border border-dashed border-slate-200 mt-1 text-center">
-              + Email
+            <button onClick={() => { syncCorps(); addEtape(); }} className="w-full px-3 py-3 rounded-lg text-xs font-medium text-slate-500 hover:bg-white hover:text-slate-700 hover:shadow-sm transition-all border-2 border-dashed border-slate-200 hover:border-slate-300 mt-1">
+              + Ajouter un email
             </button>
           </div>
 
@@ -512,8 +583,8 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                 </div>
 
                 {/* Toolbar */}
-                <div className="border border-slate-200 rounded-xl overflow-hidden">
-                  <div className="flex flex-wrap items-center gap-1 px-3 py-2 bg-slate-50 border-b border-slate-200">
+                <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
+                  <div className="flex flex-wrap items-center gap-1.5 px-3 py-2.5 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200">
                     {/* Police et taille */}
                     <select onChange={e => { if (e.target.value) fmt("fontName", e.target.value); }} defaultValue="" className="h-7 text-xs border border-slate-200 rounded px-1 bg-white text-slate-600 focus:outline-none">
                       <option value="" disabled>Police</option>
@@ -539,9 +610,13 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       <button key={t.cmd} title={t.cmd} onMouseDown={e => { e.preventDefault(); fmt(t.cmd); }} className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 ${t.style}`}>{t.label}</button>
                     ))}
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                    {/* Listes */}
-                    <button title="Liste à puces" onMouseDown={e => { e.preventDefault(); fmt("insertUnorderedList"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs font-bold">• —</button>
-                    <button title="Liste numérotée" onMouseDown={e => { e.preventDefault(); fmt("insertOrderedList"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs font-bold">1.</button>
+                    {/* Listes et alignement */}
+                    <button title="Liste à puces" onMouseDown={e => { e.preventDefault(); fmt("insertUnorderedList"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-bold">• —</button>
+                    <button title="Liste numérotée" onMouseDown={e => { e.preventDefault(); fmt("insertOrderedList"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-bold">1.</button>
+                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                    <button title="Aligner à gauche" onMouseDown={e => { e.preventDefault(); fmt("justifyLeft"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs">⬅</button>
+                    <button title="Centrer" onMouseDown={e => { e.preventDefault(); fmt("justifyCenter"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs">↔</button>
+                    <button title="Aligner à droite" onMouseDown={e => { e.preventDefault(); fmt("justifyRight"); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs">➡</button>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Lien hypertexte */}
                     <button title="Ajouter un lien" onMouseDown={e => {
@@ -584,19 +659,26 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                     contentEditable
                     suppressContentEditableWarning
                     onInput={syncCorps}
-                    className="min-h-48 p-4 text-sm text-slate-800 focus:outline-none leading-relaxed"
+                    className="min-h-64 max-h-96 overflow-y-auto p-5 text-sm text-slate-800 focus:outline-none leading-relaxed bg-white"
+                    style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
                   />
                   {/* Pièce jointe */}
-                  <div className="px-4 py-2 border-t border-slate-100 bg-slate-50/50">
+                  <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
                     {etapeCourante.piece_jointe ? (
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs">📎</span>
-                        <span className="text-xs font-medium text-slate-700">{etapeCourante.piece_jointe.nom}</span>
-                        <span className="text-xs text-slate-400">({Math.round(etapeCourante.piece_jointe.taille / 1024)} ko)</span>
-                        <button onClick={() => setPjEtape(null)} className="ml-auto text-xs text-red-400 hover:text-red-600">✕ Supprimer</button>
+                      <div className="flex items-center gap-2.5 bg-white border border-slate-200 rounded-lg px-3 py-2">
+                        <span className="text-base">📎</span>
+                        <div className="flex-1 min-w-0">
+                          <div className="text-xs font-medium text-slate-700 truncate">{etapeCourante.piece_jointe.nom || 'Fichier'}</div>
+                          <div className="text-xs text-slate-400">
+                            {etapeCourante.piece_jointe.taille ? `${Math.round(etapeCourante.piece_jointe.taille / 1024)} ko` : 'Taille inconnue'}
+                          </div>
+                        </div>
+                        <button onClick={() => setPjEtape(null)} className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded transition-colors">
+                          ✕
+                        </button>
                       </div>
                     ) : (
-                      <button onClick={() => pjRef.current?.click()} className="flex items-center gap-1.5 text-xs text-slate-400 hover:text-slate-600 transition-colors">
+                      <button onClick={() => pjRef.current?.click()} className="w-full flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors py-2 rounded-lg border border-dashed border-slate-200">
                         <span>📎</span> Ajouter une pièce jointe
                       </button>
                     )}
@@ -653,6 +735,32 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
           </div>
         </div>
       </div>
+
+      {/* Modal de test pour un email spécifique */}
+      {showTestModal && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
+            <h3 className="text-base font-semibold text-slate-900 mb-2">Tester l'email {activeEtape + 1}</h3>
+            <p className="text-xs text-slate-500 mb-4">Cet email sera envoyé immédiatement à l'adresse indiquée.</p>
+            <input
+              value={testEmail}
+              onChange={e => setTestEmail(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && envoyerTestEmail()}
+              placeholder="email@test.com"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm mb-4 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              autoFocus
+            />
+            <div className="flex justify-end gap-2">
+              <button onClick={() => { setShowTestModal(false); setTestEmail(""); }} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">
+                Annuler
+              </button>
+              <button onClick={envoyerTestEmail} disabled={testLoading || !testEmail.trim()} className="px-5 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                {testLoading ? "Envoi..." : "⚡ Envoyer le test"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

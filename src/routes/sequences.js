@@ -189,6 +189,36 @@ module.exports = (db) => {
     }
   });
 
+  // PATCH /api/sequences/inscriptions/:id — Modifier une inscription (pour tests)
+  router.patch('/inscriptions/:id', (req, res) => {
+    try {
+      const { etape_courante, prochain_envoi } = req.body;
+      const updates = [];
+      const params = [];
+
+      if (etape_courante !== undefined) {
+        updates.push('etape_courante = ?');
+        params.push(etape_courante);
+      }
+      if (prochain_envoi !== undefined) {
+        updates.push('prochain_envoi = ?');
+        params.push(prochain_envoi);
+      }
+
+      if (updates.length === 0) {
+        return res.status(400).json({ erreur: 'Aucune mise à jour fournie' });
+      }
+
+      params.push(req.params.id);
+      db.prepare(`UPDATE inscriptions SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+      const updated = db.prepare('SELECT * FROM inscriptions WHERE id = ?').get(req.params.id);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // POST /api/sequences/stop-lead/:leadId — Arrêter toutes les séquences d'un lead
   router.post('/stop-lead/:leadId', (req, res) => {
     try {
