@@ -2177,14 +2177,8 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
       setTestEmail("");
       setTestLoading(false);
       showToast(`Test lancé : ${nbEtapes} email(s) vers ${email}`, 'success');
-      // Envoyer tous les emails en background avec 20s de délai
-      for (let i = 0; i < nbEtapes; i++) {
-        try {
-          await api.post('/sequences/trigger-now', { lead_ids: [leadId] });
-        } catch {}
-        if (i < nbEtapes - 1) await new Promise(r => setTimeout(r, 20000));
-      }
-      return;
+      // Les emails seront envoyés automatiquement par le scheduler
+      // (pas besoin de trigger manuel)
     } catch (err) {
       showToast(err.message || 'Erreur lors du test', 'error');
     }
