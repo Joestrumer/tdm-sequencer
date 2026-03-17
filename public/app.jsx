@@ -922,6 +922,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [filterVille, setFilterVille] = useState("Tous");
   const [filterLangue, setFilterLangue] = useState("Tous");
   const [sortBy, setSortBy] = useState("recent"); // "recent"|"score"|"nom"
+  const [sortColumn, setSortColumn] = useState(null); // colonne active pour tri
+  const [sortDirection, setSortDirection] = useState("asc"); // "asc"|"desc"
   const [vueMode, setVueMode] = useState("liste"); // "liste"|"kanban"
   const [selectedLead, setSelectedLead] = useState(null);
   const [editLead, setEditLead] = useState(null);
@@ -953,6 +955,16 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const langues = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.langue).filter(Boolean))).sort()];
   const statuts = ["Tous", ...Object.keys(STATUT_CONFIG)];
 
+  const handleColumnSort = (column) => {
+    if (sortColumn === column) {
+      setSortDirection(sortDirection === "asc" ? "desc" : "asc");
+    } else {
+      setSortColumn(column);
+      setSortDirection("asc");
+    }
+    setSortBy(null); // Désactiver le tri par dropdown
+  };
+
   const filtered = leadsNorm.filter(l => {
     const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email}`.toLowerCase().includes(search.toLowerCase());
     const matchStatut = filterStatut === "Tous" || l.statut === filterStatut;
@@ -961,6 +973,33 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     const matchLangue = filterLangue === "Tous" || l.langue === filterLangue;
     return matchSearch && matchStatut && matchSegment && matchVille && matchLangue;
   }).sort((a, b) => {
+    // Tri par colonne (prioritaire)
+    if (sortColumn) {
+      let aVal, bVal;
+      if (sortColumn === "nom") {
+        aVal = `${a.nom} ${a.prenom}`.toLowerCase();
+        bVal = `${b.nom} ${b.prenom}`.toLowerCase();
+      } else if (sortColumn === "hotel") {
+        aVal = (a.hotel || "").toLowerCase();
+        bVal = (b.hotel || "").toLowerCase();
+      } else if (sortColumn === "ville") {
+        aVal = (a.ville || "").toLowerCase();
+        bVal = (b.ville || "").toLowerCase();
+      } else if (sortColumn === "langue") {
+        aVal = (a.langue || "").toLowerCase();
+        bVal = (b.langue || "").toLowerCase();
+      } else if (sortColumn === "score") {
+        aVal = a.score || 0;
+        bVal = b.score || 0;
+      } else if (sortColumn === "statut") {
+        aVal = (a.statut || "").toLowerCase();
+        bVal = (b.statut || "").toLowerCase();
+      }
+
+      const comparison = typeof aVal === "number" ? aVal - bVal : aVal.localeCompare(bVal);
+      return sortDirection === "asc" ? comparison : -comparison;
+    }
+    // Tri par dropdown (ancien système)
     if (sortBy === "score") return (b.score||0) - (a.score||0);
     if (sortBy === "nom") return `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`);
     return 0; // recent = ordre API
@@ -1114,20 +1153,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
         <div className="flex gap-2 overflow-x-auto">
-          <div className="relative">
-            <button onClick={() => csvRef.current?.click()} className="group px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap" title="Import CSV&#10;Format: prenom,nom,email,hotel,ville,segment,poste,langue&#10;Champs requis: email, hotel, prenom">
-              {importStatus || "📥 Import CSV"}
-              <div className="absolute left-0 top-full mt-2 z-[9999] invisible group-hover:visible w-80 bg-slate-900 text-white text-xs rounded-xl p-3 shadow-2xl">
-                <div className="font-semibold mb-1.5">Format CSV attendu</div>
-                <div className="font-mono text-slate-300 text-xs leading-relaxed">prenom,nom,email,hotel,ville,segment,poste,langue</div>
-                <div className="font-mono text-slate-400 text-xs mt-1">Hugo,Montiel,hugo@hotel.com,Le Bristol,Paris,5*,GM,fr</div>
-                <div className="mt-2 text-slate-400">Séparateur <span className="text-white">,</span> ou <span className="text-white">;</span> · Encoding UTF-8</div>
-                <div className="mt-1 text-slate-400">Champs requis : <span className="text-white">email, hotel, prenom</span></div>
-                <div className="mt-1 text-slate-400">Segments : 5*, 4*, Boutique, Retail, SPA</div>
-                <div className="mt-1 text-slate-400">Langues : fr, en, de, es, it</div>
-              </div>
-            </button>
-          </div>
+          <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap" title="Format CSV: prenom,nom,email,hotel,ville,segment,poste,langue (champs requis: email, hotel, prenom)">
+            {importStatus || "📥 Import CSV"}
+          </button>
           <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
           <button onClick={async () => {
             const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
@@ -1202,12 +1230,22 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 <th className="px-3 py-3 w-8">
                   <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={e => setSelectedIds(e.target.checked ? new Set(filtered.map(l => l.id)) : new Set())} />
                 </th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Contact</th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Établissement</th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-16">Langue</th>
+                <th onClick={() => handleColumnSort("nom")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                  Contact {sortColumn === "nom" && (sortDirection === "asc" ? "↑" : "↓")}
+                </th>
+                <th onClick={() => handleColumnSort("hotel")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                  Établissement {sortColumn === "hotel" && (sortDirection === "asc" ? "↑" : "↓")}
+                </th>
+                <th onClick={() => handleColumnSort("langue")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-16 cursor-pointer hover:text-slate-700 select-none">
+                  Langue {sortColumn === "langue" && (sortDirection === "asc" ? "↑" : "↓")}
+                </th>
                 <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Séquence</th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Engagement</th>
-                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Statut</th>
+                <th onClick={() => handleColumnSort("score")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28 cursor-pointer hover:text-slate-700 select-none">
+                  Engagement {sortColumn === "score" && (sortDirection === "asc" ? "↑" : "↓")}
+                </th>
+                <th onClick={() => handleColumnSort("statut")} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                  Statut {sortColumn === "statut" && (sortDirection === "asc" ? "↑" : "↓")}
+                </th>
                 <th className="px-3 py-3 w-32"></th>
               </tr>
             </thead>
