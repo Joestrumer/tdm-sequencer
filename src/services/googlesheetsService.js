@@ -382,7 +382,7 @@ module.exports = (db) => ({
 
     for (const p of products) {
       const ref = String(p.ref || '').trim();
-      if (ref === 'FP' || ref === 'FE') continue; // Skip frais de port
+      if (!ref) continue; // Skip lignes vides
 
       valuesBF.push([
         mappedPartnerName,                           // B: Hotel name

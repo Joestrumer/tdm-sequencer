@@ -577,7 +577,6 @@ module.exports = (db) => {
       }
 
       const catalog = getCatalogMap();
-      const canonicalClientName = resolveCanonicalClientName(client.name);
 
       const gsProducts = products.map(p => ({
         ref: p.ref,
@@ -586,14 +585,15 @@ module.exports = (db) => {
         csvRef: catalog[normalizeRef(p.ref)]?.csv_ref,
       }));
 
-      console.log(`📊 Log-only: client="${client.name}", canonical="${canonicalClientName}", produits=${gsProducts.length}`);
+      console.log(`📊 Log-only: client="${client.name}", produits=${gsProducts.length}`);
 
+      // Ne pas passer partnerName, laisser logInvoice le résoudre avec mapPartnerNameToCanon
       const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
         clientName: client.name,
         invoiceNumber: orderNumber || 'LOG-' + Date.now(),
         invoiceDate: new Date().toISOString().split('T')[0],
         products: gsProducts,
-      }, canonicalClientName);
+      });
 
       console.log('📊 Log-only result:', JSON.stringify(gsResult));
       res.json(gsResult);
