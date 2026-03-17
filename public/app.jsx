@@ -498,6 +498,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
       try { document.execCommand("defaultParagraphSeparator", false, "div"); } catch {}
       const etape = etapes[activeEtape];
       editorRef.current.innerHTML = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
+
+      // Synchroniser l'état pieceJointe avec l'étape courante
+      setPieceJointe(etape?.piece_jointe || null);
     }
   }, [activeEtape, mode]);
 
@@ -511,13 +514,32 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const handleSave = async () => {
     if (!nom.trim()) { setErrMsg("Donnez un nom à la séquence"); return; }
     if (etapes.length === 0) { setErrMsg("Ajoutez au moins un email"); return; }
+
+    // Synchroniser le corps_html de l'étape courante avant sauvegarde
+    syncCorps();
+
     setSaving(true); setErrMsg("");
     try {
-      const etapesFinales = etapes.map(e => ({
-        ...e,
-        jour_delai: e.jour_delai ?? e.jour ?? 0, // assurer les deux formes présentes
-        corps: e.corps_html || e.corps || "",
-      }));
+      const etapesFinales = etapes.map((e, i) => {
+        const etape = {
+          ...e,
+          jour_delai: e.jour_delai ?? e.jour ?? 0,
+          corps: e.corps_html || e.corps || "",
+        };
+
+        // Log si pièce jointe présente
+        if (e.piece_jointe) {
+          console.log(`📎 Étape ${i+1} a une pièce jointe:`, {
+            nom: e.piece_jointe.nom,
+            taille: e.piece_jointe.taille,
+            hasData: !!e.piece_jointe.data
+          });
+        }
+
+        return etape;
+      });
+
+      console.log('💾 Sauvegarde séquence:', { nom, nbEtapes: etapesFinales.length });
       await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options: { desabonnement } });
       onClose();
     } catch(e) { setErrMsg("Erreur : " + (e.message || "impossible de sauvegarder")); }

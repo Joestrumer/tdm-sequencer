@@ -80,6 +80,15 @@ module.exports = (db) => {
 
       db.transaction((etapes) => {
         etapes.forEach((e, i) => {
+          // Log si pièce jointe présente
+          if (e.piece_jointe) {
+            logger.info('📎 Backend reçoit pièce jointe', {
+              etape: i + 1,
+              nom: e.piece_jointe.nom,
+              taille: e.piece_jointe.taille,
+              hasData: !!e.piece_jointe.data
+            });
+          }
           db.prepare('INSERT INTO etapes (id, sequence_id, ordre, jour_delai, sujet, corps, corps_html, piece_jointe) VALUES (?,?,?,?,?,?,?,?)')
             .run(uuidv4(), seqId, i + 1, e.jour_delai ?? e.jour ?? 0, e.sujet || '', e.corps || '', e.corps_html || null, e.piece_jointe ? JSON.stringify(e.piece_jointe) : null);
         });
@@ -110,6 +119,16 @@ module.exports = (db) => {
           etapes.forEach((e, i) => {
             const corps_html   = e.corps_html !== undefined ? e.corps_html : null;
             const piece_jointe = e.piece_jointe ? JSON.stringify(e.piece_jointe) : null;
+
+            // Log si pièce jointe présente
+            if (e.piece_jointe) {
+              logger.info('📎 Backend MAJ pièce jointe', {
+                etape: i + 1,
+                nom: e.piece_jointe.nom,
+                taille: e.piece_jointe.taille,
+                hasData: !!e.piece_jointe.data
+              });
+            }
 
             if (i < existantes.length) {
               db.prepare('UPDATE etapes SET ordre=?,jour_delai=?,sujet=?,corps=?,corps_html=?,piece_jointe=? WHERE id=?')
