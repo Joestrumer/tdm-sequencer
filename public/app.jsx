@@ -485,7 +485,10 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const etapeCourante = etapes[activeEtape] || {};
   // Retirer la signature du corps pour la preview (on l'affiche séparément)
   const corpsHtmlBrut = etapeCourante.corps_html || texteVersHtmlPreview(etapeCourante.corps || "");
-  const corpsPreview = corpsHtmlBrut;
+  // Nettoyer le corps : enlever toute trace de signature existante
+  const corpsPreview = corpsHtmlBrut
+    .replace(/<div[^>]*class="[^"]*border-t[^"]*"[^>]*>[\s\S]*?Hugo Montiel[\s\S]*?<\/div>/gi, '')
+    .replace(/<table[^>]*>[\s\S]*?Hugo Montiel[\s\S]*?<\/table>/gi, '');
 
   const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
   const TOOLBAR = [
@@ -637,14 +640,29 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       🔗 <span className="text-slate-400">Lien</span>
                     </button>
                     {/* Couleur du texte */}
-                    <div className="relative flex items-center">
-                      <button title="Couleur du texte" onMouseDown={e => { e.preventDefault(); colorInputRef.current?.click(); }} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-sm relative">
+                    <div className="relative group">
+                      <button title="Couleur du texte" onMouseDown={e => e.preventDefault()} className="w-7 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-sm">
                         <span style={{ borderBottom: "3px solid #e11d48" }}>A</span>
                       </button>
-                      <input ref={colorInputRef} type="color" defaultValue="#e11d48"
-                        onChange={e => { editorRef.current?.focus(); document.execCommand("foreColor", false, e.target.value); syncCorps(); }}
-                        className="absolute opacity-0 w-0 h-0 pointer-events-none"
-                      />
+                      <div className="hidden group-hover:flex absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-xl p-2 gap-1 flex-wrap w-44 z-50">
+                        {["#000000", "#e11d48", "#f97316", "#eab308", "#22c55e", "#3b82f6", "#a855f7", "#64748b"].map(c => (
+                          <button
+                            key={c}
+                            onMouseDown={e => { e.preventDefault(); document.execCommand("foreColor", false, c); syncCorps(); }}
+                            className="w-6 h-6 rounded border border-slate-200 hover:scale-110 transition-transform"
+                            style={{ backgroundColor: c }}
+                            title={c}
+                          />
+                        ))}
+                        <button
+                          onMouseDown={e => { e.preventDefault(); colorInputRef.current?.click(); }}
+                          className="w-6 h-6 rounded border border-dashed border-slate-300 hover:bg-slate-50 flex items-center justify-center text-xs text-slate-400"
+                        >+</button>
+                        <input ref={colorInputRef} type="color"
+                          onChange={e => { editorRef.current?.focus(); document.execCommand("foreColor", false, e.target.value); syncCorps(); }}
+                          className="absolute opacity-0 w-0 h-0 pointer-events-none"
+                        />
+                      </div>
                     </div>
                     <div className="w-px h-4 bg-slate-200 mx-0.5" />
                     {/* Variables corps */}
@@ -660,7 +678,6 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                     suppressContentEditableWarning
                     onInput={syncCorps}
                     className="min-h-64 max-h-96 overflow-y-auto p-5 text-sm text-slate-800 focus:outline-none leading-relaxed bg-white"
-                    style={{ fontFamily: 'Arial, Helvetica, sans-serif' }}
                   />
                   {/* Pièce jointe */}
                   <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
@@ -1046,6 +1063,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [detailData, setDetailData] = useState(null);     // détail complet lead (emails + events)
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailTab, setDetailTab] = useState('timeline'); // 'timeline' | 'emails' | 'hubspot'
+  const [showTooltip, setShowTooltip] = useState(null);   // "csv" | "sync" | "envoyer" | null
   const csvRef = useRef(null);
 
   const leadsNorm = leads.map(l => ({
@@ -1265,13 +1283,19 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
               {importStatus || "📥 Import CSV"}
             </button>
-            <div className="group relative inline-block">
-              <button className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs flex items-center justify-center font-bold">?</button>
-              <div className="hidden group-hover:block absolute left-0 top-full mt-2 w-80 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[100] border border-slate-700">
-                <div className="font-bold mb-2 text-white">Format CSV</div>
-                <div className="font-mono text-slate-200 bg-slate-900 p-1.5 rounded mb-2">prenom,nom,email,hotel,ville,segment,poste,langue</div>
-                <div className="text-slate-300">Champs requis: <span className="text-white font-semibold">email, hotel, prenom</span></div>
-              </div>
+            <div className="relative inline-block">
+              <button
+                onMouseEnter={() => setShowTooltip('csv')}
+                onMouseLeave={() => setShowTooltip(null)}
+                className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs flex items-center justify-center font-bold"
+              >?</button>
+              {showTooltip === 'csv' && (
+                <div className="absolute left-0 top-full mt-2 w-80 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[9999] border border-slate-700">
+                  <div className="font-bold mb-2 text-white">Format CSV</div>
+                  <div className="font-mono text-slate-200 bg-slate-900 p-1.5 rounded mb-2">prenom,nom,email,hotel,ville,segment,poste,langue</div>
+                  <div className="text-slate-300">Champs requis: <span className="text-white font-semibold">email, hotel, prenom</span></div>
+                </div>
+              )}
             </div>
           </div>
           <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
@@ -1282,11 +1306,17 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 whitespace-nowrap">
               🔄 Sync HS
             </button>
-            <div className="group relative inline-block">
-              <button className="w-5 h-5 rounded-full bg-orange-100 text-orange-500 hover:bg-orange-200 text-xs flex items-center justify-center font-bold">?</button>
-              <div className="hidden group-hover:block absolute left-0 top-full mt-2 w-64 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[100] border border-slate-700">
-                <div className="text-slate-100">Synchroniser tous les leads avec HubSpot</div>
-              </div>
+            <div className="relative inline-block">
+              <button
+                onMouseEnter={() => setShowTooltip('sync')}
+                onMouseLeave={() => setShowTooltip(null)}
+                className="w-5 h-5 rounded-full bg-orange-100 text-orange-500 hover:bg-orange-200 text-xs flex items-center justify-center font-bold"
+              >?</button>
+              {showTooltip === 'sync' && (
+                <div className="absolute left-0 top-full mt-2 w-64 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[9999] border border-slate-700">
+                  <div className="text-slate-100">Synchroniser tous les leads avec HubSpot</div>
+                </div>
+              )}
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -1299,11 +1329,17 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             }} className={`px-3 py-1.5 text-xs font-medium rounded-lg border transition-colors whitespace-nowrap ${triggerStatus === "sending" ? "bg-amber-50 border-amber-300 text-amber-700" : triggerStatus === "done" ? "bg-emerald-50 border-emerald-300 text-emerald-700" : triggerStatus === "error" ? "bg-red-50 border-red-300 text-red-600" : "bg-white border-slate-200 text-slate-600 hover:border-slate-300"}`}>
               {triggerStatus === "sending" ? "⟳ Envoi..." : triggerStatus === "done" ? "✓ Envoyé" : triggerStatus === "error" ? "✗ Erreur" : "⚡ Envoyer"}
             </button>
-            <div className="group relative inline-block">
-              <button className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 text-xs flex items-center justify-center font-bold">?</button>
-              <div className="hidden group-hover:block absolute right-0 top-full mt-2 w-72 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[100] border border-slate-700">
-                <div className="text-slate-100"><span className="font-bold text-amber-300">⚠️ Attention :</span> Force l'envoi immédiat des emails déjà planifiés pour aujourd'hui (bypass la fenêtre horaire normale)</div>
-              </div>
+            <div className="relative inline-block">
+              <button
+                onMouseEnter={() => setShowTooltip('envoyer')}
+                onMouseLeave={() => setShowTooltip(null)}
+                className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 text-xs flex items-center justify-center font-bold"
+              >?</button>
+              {showTooltip === 'envoyer' && (
+                <div className="absolute right-0 top-full mt-2 w-72 bg-slate-800 text-white text-xs rounded-lg p-3 shadow-2xl z-[9999] border border-slate-700">
+                  <div className="text-slate-100"><span className="font-bold text-amber-300">⚠️ Attention :</span> Force l'envoi immédiat des emails déjà planifiés pour aujourd'hui (bypass la fenêtre horaire normale)</div>
+                </div>
+              )}
             </div>
           </div>
           <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors whitespace-nowrap">+ Ajouter</button>

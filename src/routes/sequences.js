@@ -21,10 +21,15 @@ module.exports = (db) => {
         FROM sequences s ORDER BY s.created_at DESC
       `).all();
 
-      const result = sequences.map(s => ({
-        ...s,
-        etapes: db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(s.id),
-      }));
+      const result = sequences.map(s => {
+        const etapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(s.id);
+        // Parser les pièces jointes JSON
+        const etapesParsed = etapes.map(e => ({
+          ...e,
+          piece_jointe: e.piece_jointe ? JSON.parse(e.piece_jointe) : null
+        }));
+        return { ...s, etapes: etapesParsed };
+      });
 
       res.json({ sequences: result });
     } catch (err) {
@@ -38,7 +43,12 @@ module.exports = (db) => {
       const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
       if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
       const etapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(req.params.id);
-      res.json({ ...seq, etapes });
+      // Parser les pièces jointes JSON
+      const etapesParsed = etapes.map(e => ({
+        ...e,
+        piece_jointe: e.piece_jointe ? JSON.parse(e.piece_jointe) : null
+      }));
+      res.json({ ...seq, etapes: etapesParsed });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
