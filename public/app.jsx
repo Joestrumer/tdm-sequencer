@@ -3628,6 +3628,7 @@ const FacturesSingle = ({ showToast }) => {
   const [includeShipping, setIncludeShipping] = useState(true);
   const [sendEmail, setSendEmail] = useState(true);
   const [logGSheets, setLogGSheets] = useState(true);
+  const [useCurrentPrices, setUseCurrentPrices] = useState(false);
   const [calculation, setCalculation] = useState(null);
   const [result, setResult] = useState(null);
   const [processing, setProcessing] = useState(false);
@@ -3671,14 +3672,25 @@ const FacturesSingle = ({ showToast }) => {
         const arrayBuf = await file.arrayBuffer();
         const pdf = await pdfjsLib.getDocument({ data: arrayBuf }).promise;
         let text = '';
+        console.log(`📄 PDF: ${pdf.numPages} page(s) détectée(s)`);
+
         for (let i = 1; i <= pdf.numPages; i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
-          text += content.items.map(item => item.str).join(' ') + '\n';
+          const pageText = content.items.map(item => item.str).join(' ');
+          text += pageText + '\n';
+          console.log(`📄 Page ${i} texte extrait (${pageText.length} caractères):`, pageText.substring(0, 200));
         }
+
+        console.log(`📄 Texte total extrait: ${text.length} caractères`);
+        if (text.length < 10) {
+          throw new Error('PDF illisible - pas assez de texte extrait. Le PDF pourrait être une image scannée.');
+        }
+
         // Envoyer au backend pour parsing
-        const res = await api.post('/factures/match-products', { text });
+        const res = await api.post('/factures/match-products', { text, useCurrentPrices });
         if (res.erreur) { setError(res.erreur); return; }
+        console.log(`✅ ${res.length} produit(s) identifié(s)`);
         setMatchedProducts(res);
         setStep(2);
       }
@@ -3691,7 +3703,7 @@ const FacturesSingle = ({ showToast }) => {
     if (!manualText.trim()) return;
     setError(null);
     try {
-      const res = await api.post('/factures/match-products', { text: manualText });
+      const res = await api.post('/factures/match-products', { text: manualText, useCurrentPrices });
       if (res.erreur) { setError(res.erreur); return; }
       setMatchedProducts(res);
       setStep(2);
@@ -3702,7 +3714,7 @@ const FacturesSingle = ({ showToast }) => {
 
   const matchProducts = async (lines) => {
     try {
-      const res = await api.post('/factures/match-products', { lignes: lines });
+      const res = await api.post('/factures/match-products', { lignes: lines, useCurrentPrices });
       if (res.erreur) { setError(res.erreur); return; }
       setMatchedProducts(res);
       setStep(2);
@@ -3868,6 +3880,17 @@ const FacturesSingle = ({ showToast }) => {
             <p className="text-sm text-slate-600 font-medium">Glisser un fichier Excel ou PDF ici</p>
             <p className="text-xs text-slate-400 mt-1">ou cliquer pour sélectionner</p>
             <input id="file-upload-input" type="file" accept=".xlsx,.xls,.pdf" onChange={handleFile} className="hidden" />
+          </div>
+
+          {/* Option prix */}
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3">
+            <label className="flex items-center gap-2 text-sm text-amber-900 cursor-pointer">
+              <input type="checkbox" checked={useCurrentPrices} onChange={e => setUseCurrentPrices(e.target.checked)} className="rounded" />
+              <span className="font-medium">Utiliser les prix actuels du catalogue</span>
+            </label>
+            <p className="text-xs text-amber-700 ml-6 mt-1">
+              Si le fichier contient des anciens prix, cochez cette option pour utiliser les prix actuels de votre catalogue
+            </p>
           </div>
 
           <div className="text-center text-xs text-slate-400 font-medium">— ou saisie manuelle —</div>

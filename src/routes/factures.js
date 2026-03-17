@@ -114,7 +114,7 @@ module.exports = (db) => {
 
   router.post('/match-products', (req, res) => {
     try {
-      const { lignes, text } = req.body;
+      const { lignes, text, useCurrentPrices } = req.body;
       const catalog = getCatalogMap();
       const codeMappings = getCodeMappings('code_alias');
 
@@ -127,7 +127,19 @@ module.exports = (db) => {
         return res.status(400).json({ erreur: 'Aucune ligne produit fournie' });
       }
 
+      console.log(`🔍 Matching ${inputLines.length} produits, useCurrentPrices=${useCurrentPrices}`);
+
       const results = matcherProduits(inputLines, catalog, codeMappings);
+
+      // Si useCurrentPrices = true, supprimer les prix extraits du fichier
+      if (useCurrentPrices) {
+        results.forEach(p => {
+          delete p.prix_ht;
+          delete p.priceHT;
+          console.log(`💰 Prix supprimé pour ${p.ref}, utilisera le prix du catalogue`);
+        });
+      }
+
       res.json(results);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
