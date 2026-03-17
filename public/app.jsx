@@ -355,6 +355,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const corpsRef = useRef(null);
   const objetRef = useRef(null);
   const pjRef = useRef(null);
+  const colorInputRef = useRef(null);
   const [pieceJointe, setPieceJointe] = useState(etapes[0]?.piece_jointe || null);
 
   // Sync pj dans l'étape courante
