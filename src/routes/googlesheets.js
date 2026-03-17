@@ -136,6 +136,7 @@ module.exports = (db) => {
         const dateFacturation = (row['Date facturation'] || '').trim();
         const montantHTRaw = row['Prix Total HT'] || '';
         const montantTTCRaw = row['Prix Total TTC'] || '';
+        const commissionRaw = row['Commission SC'] || '';
 
         // Parser les montants (format européen: virgule = décimale, € = symbole)
         const parseEuroAmount = (str) => {
@@ -146,6 +147,7 @@ module.exports = (db) => {
 
         const montantHT = parseEuroAmount(montantHTRaw);
         const montantTTC = parseEuroAmount(montantTTCRaw);
+        const commission = parseEuroAmount(commissionRaw);
 
         // Log quelques exemples
         if (sampleValues.length < 10) {
@@ -186,6 +188,7 @@ module.exports = (db) => {
             month: invoiceMonth,
             totalHT: 0,
             totalTTC: 0,
+            totalCommission: 0,
             productCount: 0,
           });
         }
@@ -193,6 +196,7 @@ module.exports = (db) => {
         const invoice = invoicesMap.get(invoiceNumber);
         invoice.totalHT += montantHT;
         invoice.totalTTC += montantTTC;
+        invoice.totalCommission += commission;
         invoice.productCount++;
       }
 
@@ -217,35 +221,44 @@ module.exports = (db) => {
           invoices: invoicesMap.size,
           ca_ht: 0,
           ca_ttc: 0,
+          commission: 0,
         },
         byMonth: {},
         byClient: {},
         topClients: [],
         recentInvoices: [],
+        allClients: new Set(),
       };
 
       for (const [_, invoice] of invoicesMap) {
         stats.total.ca_ht += invoice.totalHT;
         stats.total.ca_ttc += invoice.totalTTC;
+        stats.total.commission += invoice.totalCommission;
+
+        if (invoice.client) {
+          stats.allClients.add(invoice.client);
+        }
 
         // Par mois
         if (invoice.year && invoice.month) {
           const monthKey = `${invoice.year}-${String(invoice.month).padStart(2, '0')}`;
           if (!stats.byMonth[monthKey]) {
-            stats.byMonth[monthKey] = { ca_ht: 0, ca_ttc: 0, count: 0 };
+            stats.byMonth[monthKey] = { ca_ht: 0, ca_ttc: 0, commission: 0, count: 0 };
           }
           stats.byMonth[monthKey].ca_ht += invoice.totalHT;
           stats.byMonth[monthKey].ca_ttc += invoice.totalTTC;
+          stats.byMonth[monthKey].commission += invoice.totalCommission;
           stats.byMonth[monthKey].count++;
         }
 
         // Par client
         if (invoice.client) {
           if (!stats.byClient[invoice.client]) {
-            stats.byClient[invoice.client] = { ca_ht: 0, ca_ttc: 0, count: 0 };
+            stats.byClient[invoice.client] = { ca_ht: 0, ca_ttc: 0, commission: 0, count: 0 };
           }
           stats.byClient[invoice.client].ca_ht += invoice.totalHT;
           stats.byClient[invoice.client].ca_ttc += invoice.totalTTC;
+          stats.byClient[invoice.client].commission += invoice.totalCommission;
           stats.byClient[invoice.client].count++;
         }
 
@@ -270,8 +283,12 @@ module.exports = (db) => {
       // Arrondir les montants
       stats.total.ca_ht = Math.round(stats.total.ca_ht * 100) / 100;
       stats.total.ca_ttc = Math.round(stats.total.ca_ttc * 100) / 100;
+      stats.total.commission = Math.round(stats.total.commission * 100) / 100;
 
-      console.log(`📊 Stats calculées: ${stats.total.invoices} factures, CA HT: ${stats.total.ca_ht}€`);
+      // Convertir allClients en array trié
+      stats.allClients = Array.from(stats.allClients).sort();
+
+      console.log(`📊 Stats calculées: ${stats.total.invoices} factures, CA HT: ${stats.total.ca_ht}€, Commission: ${stats.total.commission}€`);
 
       res.json(stats);
     } catch (e) {
@@ -352,6 +369,7 @@ module.exports = (db) => {
 
         const montantHT = parseEuroAmount(row['Prix Total HT']);
         const montantTTC = parseEuroAmount(row['Prix Total TTC']);
+        const commission = parseEuroAmount(row['Commission SC']);
 
         // Grouper par facture
         if (!clientInvoices.has(invoiceNumber)) {
@@ -360,6 +378,7 @@ module.exports = (db) => {
             date: dateFacturation,
             totalHT: 0,
             totalTTC: 0,
+            totalCommission: 0,
             products: [],
           });
         }
@@ -367,12 +386,14 @@ module.exports = (db) => {
         const invoice = clientInvoices.get(invoiceNumber);
         invoice.totalHT += montantHT;
         invoice.totalTTC += montantTTC;
+        invoice.totalCommission += commission;
         invoice.products.push({
           ref: productRef,
           name: productName,
           quantity,
           amountHT: montantHT,
           amountTTC: montantTTC,
+          commission,
         });
 
         // Stats produits
@@ -409,11 +430,13 @@ module.exports = (db) => {
       // Stats globales
       let totalHT = 0;
       let totalTTC = 0;
+      let totalCommission = 0;
       const invoices = Array.from(clientInvoices.values());
 
       for (const inv of invoices) {
         totalHT += inv.totalHT;
         totalTTC += inv.totalTTC;
+        totalCommission += inv.totalCommission;
       }
 
       res.json({
@@ -422,6 +445,7 @@ module.exports = (db) => {
           invoices: clientInvoices.size,
           ca_ht: Math.round(totalHT * 100) / 100,
           ca_ttc: Math.round(totalTTC * 100) / 100,
+          commission: Math.round(totalCommission * 100) / 100,
         },
         topProducts,
         invoices: invoices.map(i => ({
@@ -429,11 +453,157 @@ module.exports = (db) => {
           date: i.date || '',
           totalHT: Math.round(i.totalHT * 100) / 100,
           totalTTC: Math.round(i.totalTTC * 100) / 100,
+          totalCommission: Math.round(i.totalCommission * 100) / 100,
           productCount: i.products.length,
         })),
       });
     } catch (e) {
       console.error('Erreur analytics client:', e);
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Comparaison multi-années pour forecast
+  router.get('/analytics/years-comparison', async (req, res) => {
+    try {
+      const spreadsheetId = getSpreadsheetId();
+      if (!spreadsheetId) {
+        return res.status(400).json({ erreur: 'Spreadsheet ID non configuré' });
+      }
+
+      const service = getGsheetsService();
+      const result = await service.getLogSoldData(spreadsheetId, 'log sold');
+
+      if (!result.ok) {
+        return res.status(500).json({ erreur: result.erreur });
+      }
+
+      const data = result.data || [];
+      const parseEuroAmount = (str) => {
+        if (!str) return 0;
+        return parseFloat(String(str).replace(/€/g, '').replace(/\s/g, '').replace(',', '.')) || 0;
+      };
+
+      // Grouper par année et mois
+      const yearStats = {};
+
+      // Première passe: identifier toutes les factures par année
+      const invoicesByYear = {};
+      for (const row of data) {
+        const invoiceNumber = (row['Invoice'] || '').trim();
+        if (!invoiceNumber) continue;
+
+        const dateFacturation = (row['Date facturation'] || '').trim();
+        let invoiceYear = '';
+        if (dateFacturation && dateFacturation.includes('/')) {
+          const parts = dateFacturation.split('/');
+          if (parts.length === 3) invoiceYear = parts[2];
+        } else if (dateFacturation && dateFacturation.includes('-')) {
+          const parts = dateFacturation.split('-');
+          if (parts.length === 3 && parts[0].length === 4) invoiceYear = parts[0];
+        }
+
+        if (invoiceYear) {
+          if (!invoicesByYear[invoiceYear]) {
+            invoicesByYear[invoiceYear] = new Set();
+          }
+          invoicesByYear[invoiceYear].add(invoiceNumber);
+        }
+      }
+
+      // Deuxième passe: calculer les stats
+      for (const row of data) {
+        const invoiceNumber = (row['Invoice'] || '').trim();
+        if (!invoiceNumber) continue;
+
+        const dateFacturation = (row['Date facturation'] || '').trim();
+        let invoiceYear = '';
+        let invoiceMonth = '';
+        if (dateFacturation && dateFacturation.includes('/')) {
+          const parts = dateFacturation.split('/');
+          if (parts.length === 3) {
+            invoiceYear = parts[2];
+            invoiceMonth = parts[1];
+          }
+        } else if (dateFacturation && dateFacturation.includes('-')) {
+          const parts = dateFacturation.split('-');
+          if (parts.length === 3 && parts[0].length === 4) {
+            invoiceYear = parts[0];
+            invoiceMonth = parts[1];
+          }
+        }
+
+        if (!invoiceYear) continue;
+
+        // Vérifier que cette facture appartient bien à cette année
+        if (!invoicesByYear[invoiceYear] || !invoicesByYear[invoiceYear].has(invoiceNumber)) continue;
+
+        const montantHT = parseEuroAmount(row['Prix Total HT']);
+        const commission = parseEuroAmount(row['Commission SC']);
+
+        if (!yearStats[invoiceYear]) {
+          yearStats[invoiceYear] = {
+            year: invoiceYear,
+            total_ht: 0,
+            total_commission: 0,
+            invoices: new Set(),
+            byMonth: {},
+          };
+        }
+
+        yearStats[invoiceYear].total_ht += montantHT;
+        yearStats[invoiceYear].total_commission += commission;
+        yearStats[invoiceYear].invoices.add(invoiceNumber);
+
+        if (invoiceMonth) {
+          const monthKey = String(invoiceMonth).padStart(2, '0');
+          if (!yearStats[invoiceYear].byMonth[monthKey]) {
+            yearStats[invoiceYear].byMonth[monthKey] = {
+              ca_ht: 0,
+              commission: 0,
+              cumulative_ht: 0,
+              cumulative_commission: 0,
+            };
+          }
+          yearStats[invoiceYear].byMonth[monthKey].ca_ht += montantHT;
+          yearStats[invoiceYear].byMonth[monthKey].commission += commission;
+        }
+      }
+
+      // Calculer les cumulatifs par mois pour chaque année
+      for (const year in yearStats) {
+        let cumulativeHT = 0;
+        let cumulativeCommission = 0;
+        for (let m = 1; m <= 12; m++) {
+          const monthKey = String(m).padStart(2, '0');
+          if (yearStats[year].byMonth[monthKey]) {
+            cumulativeHT += yearStats[year].byMonth[monthKey].ca_ht;
+            cumulativeCommission += yearStats[year].byMonth[monthKey].commission;
+            yearStats[year].byMonth[monthKey].cumulative_ht = Math.round(cumulativeHT * 100) / 100;
+            yearStats[year].byMonth[monthKey].cumulative_commission = Math.round(cumulativeCommission * 100) / 100;
+          } else {
+            yearStats[year].byMonth[monthKey] = {
+              ca_ht: 0,
+              commission: 0,
+              cumulative_ht: Math.round(cumulativeHT * 100) / 100,
+              cumulative_commission: Math.round(cumulativeCommission * 100) / 100,
+            };
+          }
+        }
+      }
+
+      // Formater la réponse
+      const years = Object.values(yearStats).map(y => ({
+        year: y.year,
+        total_ht: Math.round(y.total_ht * 100) / 100,
+        total_commission: Math.round(y.total_commission * 100) / 100,
+        invoices: y.invoices.size,
+        byMonth: y.byMonth,
+      })).sort((a, b) => b.year - a.year);
+
+      res.json({ years });
+    } catch (e) {
+      console.error('Erreur comparaison années:', e);
       res.status(500).json({ erreur: e.message });
     }
   });
