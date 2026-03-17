@@ -281,6 +281,25 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/sequences/test-email — Tester un seul email
+  router.post('/test-email', async (req, res) => {
+    try {
+      const { inscription_id } = req.body;
+      if (!inscription_id) return res.status(400).json({ erreur: 'inscription_id requis' });
+
+      const inscription = db.prepare('SELECT * FROM inscriptions WHERE id = ?').get(inscription_id);
+      if (!inscription) return res.status(404).json({ erreur: 'Inscription introuvable' });
+
+      // Envoyer directement cet email uniquement
+      await traiterInscriptionDirect(inscription);
+
+      res.json({ message: 'Email de test envoyé', inscription_id });
+    } catch (err) {
+      logger.error('Erreur test email', { error: err.message });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // POST /api/sequences/trigger-now — Envoi direct (bypass fenêtre horaire)
   router.post('/trigger-now', async (req, res) => {
     try {

@@ -440,8 +440,11 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
             prochain_envoi: new Date().toISOString()
           });
 
-          // Forcer l'envoi immédiat
-          await api.post('/sequences/trigger-now', {});
+          // Attendre un peu pour que la mise à jour soit bien appliquée
+          await new Promise(r => setTimeout(r, 300));
+
+          // Envoyer SEULEMENT cet email (nouvel endpoint dédié)
+          await api.post('/sequences/test-email', { inscription_id: inscription.id });
 
           alert(`✅ Test envoyé avec succès à ${emailToSend}`);
         } else {
