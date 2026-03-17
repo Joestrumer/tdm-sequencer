@@ -166,7 +166,21 @@ module.exports = (db) => {
         const inscriptionIds = db.prepare('SELECT id FROM inscriptions WHERE sequence_id = ?').all(req.params.id).map(i => i.id);
         const etapeIds = db.prepare('SELECT id FROM etapes WHERE sequence_id = ?').all(req.params.id).map(e => e.id);
 
-        // 2. Supprimer TOUS les emails liés à cette séquence en une seule fois
+        // 2. Récupérer tous les IDs des emails liés
+        let emailIds = [];
+        if (inscriptionIds.length > 0) {
+          const placeholders = inscriptionIds.map(() => '?').join(',');
+          const emails = db.prepare(`SELECT id FROM emails WHERE inscription_id IN (${placeholders})`).all(...inscriptionIds);
+          emailIds = emails.map(e => e.id);
+        }
+
+        // 3. Supprimer les EVENTS liés à ces emails (events.email_id n'a pas de CASCADE)
+        if (emailIds.length > 0) {
+          const placeholders = emailIds.map(() => '?').join(',');
+          db.prepare(`DELETE FROM events WHERE email_id IN (${placeholders})`).run(...emailIds);
+        }
+
+        // 4. Supprimer TOUS les emails liés à cette séquence
         if (inscriptionIds.length > 0) {
           const placeholders = inscriptionIds.map(() => '?').join(',');
           db.prepare(`DELETE FROM emails WHERE inscription_id IN (${placeholders})`).run(...inscriptionIds);
@@ -176,16 +190,13 @@ module.exports = (db) => {
           db.prepare(`DELETE FROM emails WHERE etape_id IN (${placeholders})`).run(...etapeIds);
         }
 
-        // 3. Supprimer les events liés aux emails (déjà supprimés, mais par sécurité)
-        // Les events avec email_id NULL sont conservés
-
-        // 4. Supprimer les inscriptions
+        // 5. Supprimer les inscriptions
         db.prepare('DELETE FROM inscriptions WHERE sequence_id = ?').run(req.params.id);
 
-        // 5. Supprimer les étapes
+        // 6. Supprimer les étapes
         db.prepare('DELETE FROM etapes WHERE sequence_id = ?').run(req.params.id);
 
-        // 6. Supprimer la séquence
+        // 7. Supprimer la séquence
         db.prepare('DELETE FROM sequences WHERE id = ?').run(req.params.id);
       })();
 
