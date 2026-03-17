@@ -497,7 +497,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
   // Toolbar de mise en forme
   const fmt = (cmd, val) => {
-    editorRef.current?.focus();
+    corpsRef.current?.focus();
     if (cmd === 'fontName') {
       // Pour fontName, utiliser une approche plus robuste
       const selection = window.getSelection();
@@ -520,16 +520,16 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     syncCorps();
   };
   const syncCorps = () => {
-    if (editorRef.current) updateEtape(activeEtape, "corps_html", editorRef.current.innerHTML);
+    if (corpsRef.current) updateEtape(activeEtape, "corps_html", corpsRef.current.innerHTML);
   };
 
   // Initialiser le contenu de l'éditeur quand on change d'étape
   useEffect(() => {
-    if (editorRef.current && mode === "edit") {
+    if (corpsRef.current && mode === "edit") {
       // Forcer <br> au lieu de <p> pour les retours à la ligne
       try { document.execCommand("defaultParagraphSeparator", false, "div"); } catch {}
       const etape = etapes[activeEtape];
-      editorRef.current.innerHTML = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
+      corpsRef.current.innerHTML = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
 
       // Synchroniser l'état pieceJointe avec l'étape courante
       setPieceJointe(etape?.piece_jointe || null);
@@ -538,7 +538,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
   // Insérer une variable à la position du curseur
   const insererVar = (v) => {
-    editorRef.current?.focus();
+    corpsRef.current?.focus();
     document.execCommand("insertText", false, v);
     syncCorps();
   };
@@ -721,10 +721,10 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                           syncCorps();
                         } else {
                           // Sinon, appliquer à tout le contenu
-                          if (editorRef.current) {
+                          if (corpsRef.current) {
                             // Wrapper tout le contenu existant dans un div avec la police
-                            const content = editorRef.current.innerHTML;
-                            editorRef.current.innerHTML = `<div style="font-family: ${e.target.value}">${content}</div>`;
+                            const content = corpsRef.current.innerHTML;
+                            corpsRef.current.innerHTML = `<div style="font-family: ${e.target.value}">${content}</div>`;
                             syncCorps();
                           }
                         }
@@ -819,7 +819,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                           className="w-6 h-6 rounded border border-dashed border-slate-300 hover:bg-slate-50 flex items-center justify-center text-xs text-slate-400"
                         >+</button>
                         <input ref={colorInputRef} type="color"
-                          onChange={e => { editorRef.current?.focus(); document.execCommand("foreColor", false, e.target.value); syncCorps(); }}
+                          onChange={e => { corpsRef.current?.focus(); document.execCommand("foreColor", false, e.target.value); syncCorps(); }}
                           className="absolute opacity-0 w-0 h-0 pointer-events-none"
                         />
                       </div>
@@ -833,7 +833,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                   </div>
                   {/* Éditeur contentEditable */}
                   <div
-                    ref={editorRef}
+                    ref={corpsRef}
                     contentEditable
                     suppressContentEditableWarning
                     onInput={syncCorps}
