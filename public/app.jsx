@@ -2710,14 +2710,36 @@ const FacturesAnalytics = ({ showToast }) => {
   );
 };
 
-// ─── Analytics Spreadsheet (depuis Google Sheets log sold) ───────────────────
+// ─── Analytics Spreadsheet (Dashboard Commercial Professionnel) ──────────────
 const AnalyticsSpreadsheet = ({ showToast }) => {
+  // State management
+  const [viewMode, setViewMode] = useState('global'); // 'global' | 'client' | 'comparison'
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [year, setYear] = useState(new Date().getFullYear());
+
+  // Client search state
+  const [searchTerm, setSearchTerm] = useState('');
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientDetails, setClientDetails] = useState(null);
 
+  // Years comparison state
+  const [yearsComparison, setYearsComparison] = useState(null);
+  const [selectedYears, setSelectedYears] = useState([new Date().getFullYear(), new Date().getFullYear() - 1]);
+
+  // Chart refs
+  const monthlyChartRef = useRef(null);
+  const topClientsChartRef = useRef(null);
+  const clientMonthlyChartRef = useRef(null);
+  const comparisonChartRef = useRef(null);
+
+  // Chart instances
+  const monthlyChartInstance = useRef(null);
+  const topClientsChartInstance = useRef(null);
+  const clientMonthlyChartInstance = useRef(null);
+  const comparisonChartInstance = useRef(null);
+
+  // Load global analytics
   const loadAnalytics = async () => {
     setLoading(true);
     try {
@@ -2729,6 +2751,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     setLoading(false);
   };
 
+  // Load client details
   const loadClientDetails = async (clientName) => {
     setLoading(true);
     try {
@@ -2741,289 +2764,792 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     setLoading(false);
   };
 
+  // Load years comparison
+  const loadYearsComparison = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/gsheets/analytics/years-comparison');
+      setYearsComparison(data);
+    } catch (err) {
+      showToast('Erreur chargement comparaison: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  // Initial load
   useEffect(() => {
     loadAnalytics();
-    setSelectedClient(null);
-    setClientDetails(null);
+    loadYearsComparison();
   }, [year]);
+
+  // Cleanup charts on unmount
+  useEffect(() => {
+    return () => {
+      if (monthlyChartInstance.current) monthlyChartInstance.current.destroy();
+      if (topClientsChartInstance.current) topClientsChartInstance.current.destroy();
+      if (clientMonthlyChartInstance.current) clientMonthlyChartInstance.current.destroy();
+      if (comparisonChartInstance.current) comparisonChartInstance.current.destroy();
+    };
+  }, []);
+
+  // Create monthly evolution chart
+  useEffect(() => {
+    if (!monthlyChartRef.current || !analytics || viewMode !== 'global') return;
+
+    if (monthlyChartInstance.current) {
+      monthlyChartInstance.current.destroy();
+    }
+
+    const monthsData = Object.entries(analytics.byMonth || {})
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .slice(-12);
+
+    const ctx = monthlyChartRef.current.getContext('2d');
+    monthlyChartInstance.current = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: monthsData.map(([month]) => month),
+        datasets: [{
+          label: 'CA HT',
+          data: monthsData.map(([, data]) => data.ca_ht),
+          borderColor: 'rgb(16, 185, 129)',
+          backgroundColor: 'rgba(16, 185, 129, 0.1)',
+          tension: 0.4,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context) => `${context.parsed.y.toLocaleString('fr-FR')}€`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => `${value.toLocaleString('fr-FR')}€`
+            }
+          }
+        }
+      }
+    });
+  }, [analytics, viewMode]);
+
+  // Create top clients chart
+  useEffect(() => {
+    if (!topClientsChartRef.current || !analytics || viewMode !== 'global') return;
+
+    if (topClientsChartInstance.current) {
+      topClientsChartInstance.current.destroy();
+    }
+
+    const topClients = (analytics.topClients || []).slice(0, 10);
+
+    const ctx = topClientsChartRef.current.getContext('2d');
+    topClientsChartInstance.current = new Chart(ctx, {
+      type: 'bar',
+      data: {
+        labels: topClients.map(c => c.name.length > 20 ? c.name.substring(0, 20) + '...' : c.name),
+        datasets: [{
+          label: 'CA HT',
+          data: topClients.map(c => c.ca_ht),
+          backgroundColor: 'rgba(59, 130, 246, 0.7)',
+          borderColor: 'rgb(59, 130, 246)',
+          borderWidth: 1
+        }]
+      },
+      options: {
+        indexAxis: 'y',
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context) => `${context.parsed.x.toLocaleString('fr-FR')}€`
+            }
+          }
+        },
+        scales: {
+          x: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => `${value.toLocaleString('fr-FR')}€`
+            }
+          }
+        }
+      }
+    });
+  }, [analytics, viewMode]);
+
+  // Create client monthly chart
+  useEffect(() => {
+    if (!clientMonthlyChartRef.current || !clientDetails || viewMode !== 'client') return;
+
+    if (clientMonthlyChartInstance.current) {
+      clientMonthlyChartInstance.current.destroy();
+    }
+
+    // Extract monthly data from client invoices
+    const monthlyData = {};
+    (clientDetails.invoices || []).forEach(inv => {
+      const month = inv.date ? inv.date.substring(0, 7) : 'Unknown';
+      if (!monthlyData[month]) monthlyData[month] = 0;
+      monthlyData[month] += inv.totalHT || 0;
+    });
+
+    const sortedMonths = Object.entries(monthlyData).sort((a, b) => a[0].localeCompare(b[0]));
+
+    const ctx = clientMonthlyChartRef.current.getContext('2d');
+    clientMonthlyChartInstance.current = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: sortedMonths.map(([month]) => month),
+        datasets: [{
+          label: 'CA HT mensuel',
+          data: sortedMonths.map(([, amount]) => amount),
+          borderColor: 'rgb(147, 51, 234)',
+          backgroundColor: 'rgba(147, 51, 234, 0.1)',
+          tension: 0.4,
+          fill: true
+        }]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            callbacks: {
+              label: (context) => `${context.parsed.y.toLocaleString('fr-FR')}€`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => `${value.toLocaleString('fr-FR')}€`
+            }
+          }
+        }
+      }
+    });
+  }, [clientDetails, viewMode]);
+
+  // Create years comparison chart
+  useEffect(() => {
+    if (!comparisonChartRef.current || !yearsComparison || viewMode !== 'comparison') return;
+
+    if (comparisonChartInstance.current) {
+      comparisonChartInstance.current.destroy();
+    }
+
+    const filteredYears = (yearsComparison.years || []).filter(y => selectedYears.includes(y.year));
+
+    // Create cumulative monthly data
+    const allMonths = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+    const datasets = filteredYears.map((yearData, idx) => {
+      const colors = [
+        'rgb(59, 130, 246)',
+        'rgb(16, 185, 129)',
+        'rgb(147, 51, 234)',
+        'rgb(249, 115, 22)',
+        'rgb(236, 72, 153)'
+      ];
+
+      let cumulative = 0;
+      const cumulativeData = allMonths.map(month => {
+        const key = `${yearData.year}-${month}`;
+        const monthData = yearData.byMonth?.[key];
+        cumulative += monthData?.ca_ht || 0;
+        return cumulative;
+      });
+
+      return {
+        label: `${yearData.year}`,
+        data: cumulativeData,
+        borderColor: colors[idx % colors.length],
+        backgroundColor: 'transparent',
+        tension: 0.4
+      };
+    });
+
+    const ctx = comparisonChartRef.current.getContext('2d');
+    comparisonChartInstance.current = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: allMonths.map(m => `Mois ${parseInt(m)}`),
+        datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => `${context.dataset.label}: ${context.parsed.y.toLocaleString('fr-FR')}€`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => `${value.toLocaleString('fr-FR')}€`
+            }
+          }
+        }
+      }
+    });
+  }, [yearsComparison, selectedYears, viewMode]);
+
+  // Calculate YTD and comparison
+  const calculateYTD = () => {
+    if (!analytics?.byMonth) return { current: 0, previous: 0, growth: 0 };
+
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1;
+
+    let currentYTD = 0;
+    let previousYTD = 0;
+
+    Object.entries(analytics.byMonth).forEach(([month, data]) => {
+      const [y, m] = month.split('-').map(Number);
+      if (y === currentYear && m <= currentMonth) {
+        currentYTD += data.ca_ht;
+      }
+      if (y === currentYear - 1 && m <= currentMonth) {
+        previousYTD += data.ca_ht;
+      }
+    });
+
+    const growth = previousYTD > 0 ? ((currentYTD - previousYTD) / previousYTD * 100) : 0;
+
+    return { current: currentYTD, previous: previousYTD, growth };
+  };
+
+  // Filtered clients for search
+  const filteredClients = searchTerm.length > 0
+    ? (analytics?.allClients || []).filter(c =>
+        c.toLowerCase().includes(searchTerm.toLowerCase())
+      )
+    : [];
+
+  // Calculate growth for client
+  const calculateClientGrowth = () => {
+    if (!clientDetails?.invoices || clientDetails.invoices.length < 2) return 0;
+
+    const sortedInvoices = [...clientDetails.invoices].sort((a, b) => a.date.localeCompare(b.date));
+    const midpoint = Math.floor(sortedInvoices.length / 2);
+
+    const firstHalf = sortedInvoices.slice(0, midpoint).reduce((sum, inv) => sum + inv.totalHT, 0);
+    const secondHalf = sortedInvoices.slice(midpoint).reduce((sum, inv) => sum + inv.totalHT, 0);
+
+    return firstHalf > 0 ? ((secondHalf - firstHalf) / firstHalf * 100) : 0;
+  };
+
+  // Simple linear regression forecast
+  const calculateForecast = (yearData) => {
+    if (!yearData?.byMonth) return 0;
+
+    const months = Object.entries(yearData.byMonth)
+      .sort((a, b) => a[0].localeCompare(b[0]))
+      .map(([, data], idx) => ({ x: idx, y: data.ca_ht }));
+
+    if (months.length < 3) return 0;
+
+    const n = months.length;
+    const sumX = months.reduce((sum, p) => sum + p.x, 0);
+    const sumY = months.reduce((sum, p) => sum + p.y, 0);
+    const sumXY = months.reduce((sum, p) => sum + p.x * p.y, 0);
+    const sumX2 = months.reduce((sum, p) => sum + p.x * p.x, 0);
+
+    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+    const intercept = (sumY - slope * sumX) / n;
+
+    // Forecast next 3 months
+    const nextMonths = [n, n + 1, n + 2];
+    const forecast = nextMonths.reduce((sum, x) => sum + (slope * x + intercept), 0);
+
+    return forecast;
+  };
+
+  // Available years for comparison
+  const availableYears = yearsComparison?.years?.map(y => y.year) || [];
 
   if (loading) {
     return (
       <div className="flex items-center justify-center py-20">
         <div className="text-center">
           <div className="w-8 h-8 border-3 border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto mb-3" />
-          <p className="text-sm text-slate-500">Chargement des analytics depuis Excel...</p>
+          <p className="text-sm text-slate-500">Chargement des analytics depuis Google Sheets...</p>
         </div>
       </div>
     );
   }
-
-  if (!analytics && !clientDetails) return null;
-
-  // Vue détaillée d'un client
-  if (selectedClient && clientDetails) {
-    return (
-      <div className="space-y-6">
-        {/* Header */}
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <div className="flex items-center gap-3">
-            <button onClick={() => { setSelectedClient(null); setClientDetails(null); }}
-              className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200">
-              ← Retour
-            </button>
-            <h2 className="text-lg font-semibold text-slate-900">{selectedClient}</h2>
-            <div className="ml-auto text-xs text-emerald-600 font-medium">
-              📊 Source : Google Sheets "log sold"
-            </div>
-          </div>
-        </div>
-
-        {/* Stats client */}
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
-            <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">CA Total HT</div>
-            <div className="text-3xl font-bold text-blue-900">{clientDetails.total.ca_ht.toLocaleString('fr-FR')}€</div>
-            <div className="text-sm text-blue-700 mt-2">{clientDetails.total.invoices} factures</div>
-          </div>
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
-            <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">CA Total TTC</div>
-            <div className="text-3xl font-bold text-emerald-900">{clientDetails.total.ca_ttc.toLocaleString('fr-FR')}€</div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
-            <div className="text-xs font-medium text-purple-600 mb-2 uppercase tracking-wide">Panier Moyen</div>
-            <div className="text-3xl font-bold text-purple-900">
-              {Math.round(clientDetails.total.ca_ht / clientDetails.total.invoices).toLocaleString('fr-FR')}€
-            </div>
-          </div>
-        </div>
-
-        {/* Produits consommés */}
-        <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h3 className="text-sm font-semibold text-slate-800">Produits consommés</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Référence</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Produit</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Quantité</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Factures</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {clientDetails.topProducts.map((p, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
-                    <td className="px-6 py-3 text-sm font-mono text-slate-700">{p.ref}</td>
-                    <td className="px-6 py-3 text-sm text-slate-900">{p.name}</td>
-                    <td className="px-6 py-3 text-sm text-right text-slate-600">{p.totalQuantity}</td>
-                    <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
-                      {p.totalHT.toLocaleString('fr-FR')}€
-                    </td>
-                    <td className="px-6 py-3 text-sm text-right text-slate-600">{p.invoiceCount}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-
-        {/* Factures */}
-        <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h3 className="text-sm font-semibold text-slate-800">Historique factures</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Numéro</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Produits</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant HT</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant TTC</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {clientDetails.invoices.map((inv, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
-                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{inv.number}</td>
-                    <td className="px-6 py-3 text-sm text-slate-500">{inv.date}</td>
-                    <td className="px-6 py-3 text-sm text-right text-slate-600">{inv.productCount}</td>
-                    <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
-                      {inv.totalHT.toLocaleString('fr-FR')}€
-                    </td>
-                    <td className="px-6 py-3 text-sm text-right text-slate-600">
-                      {inv.totalTTC.toLocaleString('fr-FR')}€
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      </div>
-    );
-  }
-
-  // Vue globale
-  const monthsData = Object.entries(analytics?.byMonth || {})
-    .sort((a, b) => a[0].localeCompare(b[0]))
-    .slice(-12); // 12 derniers mois
 
   return (
     <div className="space-y-6">
-      {/* Filtres */}
+      {/* Header with tabs */}
       <div className="bg-white rounded-xl border border-slate-100 p-4">
-        <div className="flex items-center gap-3">
-          <label className="text-sm font-medium text-slate-700">Année :</label>
-          <select value={year} onChange={e => setYear(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm">
-            <option value={new Date().getFullYear()}>{new Date().getFullYear()}</option>
-            <option value={new Date().getFullYear() - 1}>{new Date().getFullYear() - 1}</option>
-            <option value={new Date().getFullYear() - 2}>{new Date().getFullYear() - 2}</option>
-            <option value="">Toutes les années</option>
-          </select>
-          <button onClick={loadAnalytics}
-            className="ml-auto px-4 py-1.5 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-800">
-            🔄 Rafraîchir
-          </button>
-          <div className="text-xs text-emerald-600 font-medium">
-            📊 Source : Google Sheets "log sold"
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex gap-2">
+            <button
+              onClick={() => setViewMode('global')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'global'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              Vue Globale
+            </button>
+            <button
+              onClick={() => setViewMode('client')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'client'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              Recherche Client
+            </button>
+            <button
+              onClick={() => setViewMode('comparison')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'comparison'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              Comparaison Années
+            </button>
+          </div>
+          <div className="flex items-center gap-3">
+            {viewMode === 'global' && (
+              <>
+                <label className="text-sm font-medium text-slate-700">Année:</label>
+                <select
+                  value={year}
+                  onChange={(e) => setYear(Number(e.target.value))}
+                  className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+                >
+                  {[0, 1, 2, 3].map(offset => {
+                    const y = new Date().getFullYear() - offset;
+                    return <option key={y} value={y}>{y}</option>;
+                  })}
+                </select>
+                <button
+                  onClick={loadAnalytics}
+                  className="px-4 py-1.5 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-800"
+                >
+                  Rafraîchir
+                </button>
+              </>
+            )}
+            <div className="text-xs text-emerald-600 font-medium">
+              Source: Google Sheets "log sold"
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Stats principales */}
-      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
-          <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">Chiffre d'Affaires HT</div>
-          <div className="text-3xl font-bold text-blue-900">{analytics.total.ca_ht.toLocaleString('fr-FR')}€</div>
-          <div className="text-sm text-blue-700 mt-2">{analytics.total.invoices} factures</div>
-        </div>
+      {/* Vue Globale */}
+      {viewMode === 'global' && analytics && (
+        <div className="space-y-6">
+          {/* KPIs */}
+          <div className="grid grid-cols-1 md:grid-cols-5 gap-4">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+              <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">CA HT Total</div>
+              <div className="text-3xl font-bold text-blue-900">
+                {(analytics.total?.ca_ht || 0).toLocaleString('fr-FR')}€
+              </div>
+              <div className="text-sm text-blue-700 mt-2">
+                YTD: {calculateYTD().current.toLocaleString('fr-FR')}€
+              </div>
+            </div>
 
-        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
-          <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">Chiffre d'Affaires TTC</div>
-          <div className="text-3xl font-bold text-emerald-900">{analytics.total.ca_ttc.toLocaleString('fr-FR')}€</div>
-          <div className="text-sm text-emerald-700 mt-2">TVA: {(analytics.total.ca_ttc - analytics.total.ca_ht).toLocaleString('fr-FR')}€</div>
-        </div>
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
+              <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">CA TTC Total</div>
+              <div className="text-3xl font-bold text-emerald-900">
+                {(analytics.total?.ca_ttc || 0).toLocaleString('fr-FR')}€
+              </div>
+              <div className="text-sm text-emerald-700 mt-2">
+                TVA: {((analytics.total?.ca_ttc || 0) - (analytics.total?.ca_ht || 0)).toLocaleString('fr-FR')}€
+              </div>
+            </div>
 
-        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
-          <div className="text-xs font-medium text-purple-600 mb-2 uppercase tracking-wide">Facture Moyenne</div>
-          <div className="text-3xl font-bold text-purple-900">
-            {analytics.total.invoices > 0 ? Math.round(analytics.total.ca_ht / analytics.total.invoices).toLocaleString('fr-FR') : 0}€
+            <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-6 border border-amber-200">
+              <div className="text-xs font-medium text-amber-600 mb-2 uppercase tracking-wide">Commission</div>
+              <div className="text-3xl font-bold text-amber-900">
+                {(analytics.total?.commission || 0).toLocaleString('fr-FR')}€
+              </div>
+              <div className="text-sm text-amber-700 mt-2">
+                {analytics.total?.ca_ht > 0 ? ((analytics.total.commission / analytics.total.ca_ht) * 100).toFixed(1) : 0}% du CA
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
+              <div className="text-xs font-medium text-purple-600 mb-2 uppercase tracking-wide">Nb Factures</div>
+              <div className="text-3xl font-bold text-purple-900">
+                {analytics.total?.invoices || 0}
+              </div>
+              <div className="text-sm text-purple-700 mt-2">
+                {calculateYTD().growth > 0 ? '+' : ''}{calculateYTD().growth.toFixed(1)}% vs N-1
+              </div>
+            </div>
+
+            <div className="bg-gradient-to-br from-pink-50 to-pink-100 rounded-xl p-6 border border-pink-200">
+              <div className="text-xs font-medium text-pink-600 mb-2 uppercase tracking-wide">Panier Moyen</div>
+              <div className="text-3xl font-bold text-pink-900">
+                {analytics.total?.invoices > 0
+                  ? Math.round(analytics.total.ca_ht / analytics.total.invoices).toLocaleString('fr-FR')
+                  : 0}€
+              </div>
+              <div className="text-sm text-pink-700 mt-2">HT par facture</div>
+            </div>
           </div>
-          <div className="text-sm text-purple-700 mt-2">HT par facture</div>
-        </div>
-      </div>
 
-      {/* CA par mois */}
-      <div className="bg-white rounded-xl border border-slate-100 p-6">
-        <h3 className="text-sm font-semibold text-slate-800 mb-4">Évolution mensuelle</h3>
-        <div className="space-y-2">
-          {monthsData.map(([month, data]) => {
-            const maxCA = Math.max(...monthsData.map(([, d]) => d.ca_ht));
-            const widthPercent = (data.ca_ht / maxCA) * 100;
-            return (
-              <div key={month} className="flex items-center gap-3">
-                <div className="text-xs font-mono text-slate-500 w-20">{month}</div>
-                <div className="flex-1 bg-slate-100 rounded-full h-8 overflow-hidden">
-                  <div
-                    className="bg-gradient-to-r from-emerald-500 to-emerald-600 h-full rounded-full flex items-center px-3"
-                    style={{ width: `${widthPercent}%` }}
+          {/* Charts row */}
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            {/* Monthly evolution */}
+            <div className="bg-white rounded-xl border border-slate-100 p-6">
+              <h3 className="text-sm font-semibold text-slate-800 mb-4">Évolution mensuelle du CA</h3>
+              <div className="h-64">
+                <canvas ref={monthlyChartRef}></canvas>
+              </div>
+            </div>
+
+            {/* Top 10 clients */}
+            <div className="bg-white rounded-xl border border-slate-100 p-6">
+              <h3 className="text-sm font-semibold text-slate-800 mb-4">Top 10 Clients</h3>
+              <div className="h-64">
+                <canvas ref={topClientsChartRef}></canvas>
+              </div>
+            </div>
+          </div>
+
+          {/* Recent invoices */}
+          {analytics.recentInvoices && analytics.recentInvoices.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-800">Dernières factures</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Numéro</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Client</th>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant HT</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant TTC</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {analytics.recentInvoices.slice(0, 10).map((inv, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="px-6 py-3 text-sm font-medium text-slate-900">{inv.number}</td>
+                        <td className="px-6 py-3 text-sm text-slate-700">{inv.client}</td>
+                        <td className="px-6 py-3 text-sm text-slate-500">{inv.date}</td>
+                        <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
+                          {(inv.amount_ht || 0).toLocaleString('fr-FR')}€
+                        </td>
+                        <td className="px-6 py-3 text-sm text-right text-slate-600">
+                          {(inv.amount_ttc || 0).toLocaleString('fr-FR')}€
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Vue Recherche Client */}
+      {viewMode === 'client' && (
+        <div className="space-y-6">
+          {!selectedClient ? (
+            <div className="bg-white rounded-xl border border-slate-100 p-6">
+              <h3 className="text-sm font-semibold text-slate-800 mb-4">Rechercher un client</h3>
+              <div className="relative">
+                <input
+                  type="text"
+                  placeholder="Tapez le nom du client..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full px-4 py-2 border border-slate-200 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                {filteredClients.length > 0 && (
+                  <div className="absolute z-10 w-full mt-2 bg-white border border-slate-200 rounded-lg shadow-lg max-h-64 overflow-y-auto">
+                    {filteredClients.map((client, i) => (
+                      <button
+                        key={i}
+                        onClick={() => {
+                          setSearchTerm(client);
+                          loadClientDetails(client);
+                        }}
+                        className="w-full text-left px-4 py-2 hover:bg-blue-50 text-sm transition-colors"
+                      >
+                        {client}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              {searchTerm && filteredClients.length === 0 && (
+                <p className="text-sm text-slate-500 mt-2">Aucun client trouvé</p>
+              )}
+            </div>
+          ) : clientDetails ? (
+            <div className="space-y-6">
+              {/* Header */}
+              <div className="bg-white rounded-xl border border-slate-100 p-4">
+                <div className="flex items-center gap-3">
+                  <button
+                    onClick={() => {
+                      setSelectedClient(null);
+                      setClientDetails(null);
+                      setSearchTerm('');
+                    }}
+                    className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200"
                   >
-                    {widthPercent > 15 && (
-                      <span className="text-xs font-medium text-white">
-                        {data.ca_ht.toLocaleString('fr-FR')}€
-                      </span>
-                    )}
+                    Retour
+                  </button>
+                  <h2 className="text-lg font-semibold text-slate-900">{selectedClient}</h2>
+                </div>
+              </div>
+
+              {/* KPIs Client */}
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+                  <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">CA Total HT</div>
+                  <div className="text-3xl font-bold text-blue-900">
+                    {(clientDetails.total?.ca_ht || 0).toLocaleString('fr-FR')}€
+                  </div>
+                  <div className="text-sm text-blue-700 mt-2">
+                    {clientDetails.total?.invoices || 0} factures
                   </div>
                 </div>
-                <div className="text-xs text-slate-500 w-16 text-right">{data.count} fact.</div>
+
+                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
+                  <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">CA Total TTC</div>
+                  <div className="text-3xl font-bold text-emerald-900">
+                    {(clientDetails.total?.ca_ttc || 0).toLocaleString('fr-FR')}€
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-6 border border-amber-200">
+                  <div className="text-xs font-medium text-amber-600 mb-2 uppercase tracking-wide">Commission</div>
+                  <div className="text-3xl font-bold text-amber-900">
+                    {(clientDetails.total?.commission || 0).toLocaleString('fr-FR')}€
+                  </div>
+                </div>
+
+                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
+                  <div className="text-xs font-medium text-purple-600 mb-2 uppercase tracking-wide">Panier Moyen</div>
+                  <div className="text-3xl font-bold text-purple-900">
+                    {clientDetails.total?.invoices > 0
+                      ? Math.round(clientDetails.total.ca_ht / clientDetails.total.invoices).toLocaleString('fr-FR')
+                      : 0}€
+                  </div>
+                  <div className="text-sm text-purple-700 mt-2">
+                    Tendance: {calculateClientGrowth() > 0 ? '+' : ''}{calculateClientGrowth().toFixed(1)}%
+                  </div>
+                </div>
               </div>
-            );
-          })}
-        </div>
-      </div>
 
-      {/* Top clients */}
-      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-        <div className="p-6 border-b border-slate-100">
-          <h3 className="text-sm font-semibold text-slate-800">Top 10 Clients (cliquez pour voir le détail)</h3>
+              {/* Client monthly chart */}
+              <div className="bg-white rounded-xl border border-slate-100 p-6">
+                <h3 className="text-sm font-semibold text-slate-800 mb-4">Évolution mensuelle du CA client</h3>
+                <div className="h-64">
+                  <canvas ref={clientMonthlyChartRef}></canvas>
+                </div>
+              </div>
+
+              {/* Top products */}
+              {clientDetails.topProducts && clientDetails.topProducts.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+                  <div className="p-6 border-b border-slate-100">
+                    <h3 className="text-sm font-semibold text-slate-800">Produits consommés</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Référence</th>
+                          <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Produit</th>
+                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Quantité</th>
+                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
+                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Factures</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {clientDetails.topProducts.map((p, i) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            <td className="px-6 py-3 text-sm font-mono text-slate-700">{p.ref}</td>
+                            <td className="px-6 py-3 text-sm text-slate-900">{p.name}</td>
+                            <td className="px-6 py-3 text-sm text-right text-slate-600">{p.totalQuantity}</td>
+                            <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
+                              {(p.totalHT || 0).toLocaleString('fr-FR')}€
+                            </td>
+                            <td className="px-6 py-3 text-sm text-right text-slate-600">{p.invoiceCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
+              {/* Invoices history */}
+              {clientDetails.invoices && clientDetails.invoices.length > 0 && (
+                <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+                  <div className="p-6 border-b border-slate-100">
+                    <h3 className="text-sm font-semibold text-slate-800">Historique factures</h3>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Numéro</th>
+                          <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
+                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Produits</th>
+                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant HT</th>
+                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant TTC</th>
+                        </tr>
+                      </thead>
+                      <tbody className="divide-y divide-slate-100">
+                        {clientDetails.invoices.map((inv, i) => (
+                          <tr key={i} className="hover:bg-slate-50">
+                            <td className="px-6 py-3 text-sm font-medium text-slate-900">{inv.number}</td>
+                            <td className="px-6 py-3 text-sm text-slate-500">{inv.date}</td>
+                            <td className="px-6 py-3 text-sm text-right text-slate-600">{inv.productCount}</td>
+                            <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
+                              {(inv.totalHT || 0).toLocaleString('fr-FR')}€
+                            </td>
+                            <td className="px-6 py-3 text-sm text-right text-slate-600">
+                              {(inv.totalTTC || 0).toLocaleString('fr-FR')}€
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
-        <div className="overflow-x-auto">
-          <table className="w-full">
-            <thead className="bg-slate-50">
-              <tr>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">#</th>
-                <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Client</th>
-                <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
-                <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA TTC</th>
-                <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Factures</th>
-                <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Panier moyen</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {analytics.topClients.map((client, i) => (
-                <tr key={i} onClick={() => loadClientDetails(client.name)}
-                  className="hover:bg-blue-50 cursor-pointer transition-colors">
-                  <td className="px-6 py-3 text-sm font-medium text-slate-500">{i + 1}</td>
-                  <td className="px-6 py-3 text-sm font-medium text-blue-600 hover:text-blue-800">
-                    {client.name} →
-                  </td>
-                  <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
-                    {client.ca_ht.toLocaleString('fr-FR')}€
-                  </td>
-                  <td className="px-6 py-3 text-sm text-right text-slate-600">
-                    {client.ca_ttc.toLocaleString('fr-FR')}€
-                  </td>
-                  <td className="px-6 py-3 text-sm text-right text-slate-600">{client.count}</td>
-                  <td className="px-6 py-3 text-sm text-right text-slate-600">
-                    {Math.round(client.ca_ht / client.count).toLocaleString('fr-FR')}€
-                  </td>
-                </tr>
+      )}
+
+      {/* Vue Comparaison Années */}
+      {viewMode === 'comparison' && yearsComparison && (
+        <div className="space-y-6">
+          {/* Year selection */}
+          <div className="bg-white rounded-xl border border-slate-100 p-6">
+            <h3 className="text-sm font-semibold text-slate-800 mb-4">Sélectionner les années à comparer</h3>
+            <div className="flex flex-wrap gap-3">
+              {availableYears.map(year => (
+                <label key={year} className="flex items-center gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={selectedYears.includes(year)}
+                    onChange={(e) => {
+                      if (e.target.checked) {
+                        setSelectedYears([...selectedYears, year]);
+                      } else {
+                        setSelectedYears(selectedYears.filter(y => y !== year));
+                      }
+                    }}
+                    className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                  />
+                  <span className="text-sm font-medium text-slate-700">{year}</span>
+                </label>
               ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
+            </div>
+          </div>
 
-      {/* Factures récentes */}
-      {analytics.recentInvoices.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-          <div className="p-6 border-b border-slate-100">
-            <h3 className="text-sm font-semibold text-slate-800">Dernières factures</h3>
-          </div>
-          <div className="overflow-x-auto">
-            <table className="w-full">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Numéro</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Client</th>
-                  <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant HT</th>
-                  <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant TTC</th>
-                </tr>
-              </thead>
-              <tbody className="divide-y divide-slate-100">
-                {analytics.recentInvoices.map((inv, i) => (
-                  <tr key={i} className="hover:bg-slate-50">
-                    <td className="px-6 py-3 text-sm font-medium text-slate-900">{inv.number}</td>
-                    <td className="px-6 py-3 text-sm text-slate-700">{inv.client}</td>
-                    <td className="px-6 py-3 text-sm text-slate-500">{inv.date}</td>
-                    <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
-                      {inv.amount_ht.toLocaleString('fr-FR')}€
-                    </td>
-                    <td className="px-6 py-3 text-sm text-right text-slate-600">
-                      {inv.amount_ttc.toLocaleString('fr-FR')}€
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
+          {/* Comparison chart */}
+          {selectedYears.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-100 p-6">
+              <h3 className="text-sm font-semibold text-slate-800 mb-4">Évolution cumulative par année</h3>
+              <div className="h-80">
+                <canvas ref={comparisonChartRef}></canvas>
+              </div>
+            </div>
+          )}
+
+          {/* Comparison table */}
+          {selectedYears.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-800">Tableau comparatif</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Année</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Commission</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Nb Factures</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Croissance</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Prévision 3 mois</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {yearsComparison.years
+                      .filter(y => selectedYears.includes(y.year))
+                      .sort((a, b) => b.year - a.year)
+                      .map((yearData, idx, arr) => {
+                        const prevYear = arr[idx + 1];
+                        const growth = prevYear
+                          ? ((yearData.total_ht - prevYear.total_ht) / prevYear.total_ht * 100)
+                          : 0;
+                        const forecast = calculateForecast(yearData);
+
+                        return (
+                          <tr key={yearData.year} className="hover:bg-slate-50">
+                            <td className="px-6 py-3 text-sm font-medium text-slate-900">{yearData.year}</td>
+                            <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
+                              {(yearData.total_ht || 0).toLocaleString('fr-FR')}€
+                            </td>
+                            <td className="px-6 py-3 text-sm text-right text-slate-600">
+                              {(yearData.total_commission || 0).toLocaleString('fr-FR')}€
+                            </td>
+                            <td className="px-6 py-3 text-sm text-right text-slate-600">
+                              {yearData.invoices || 0}
+                            </td>
+                            <td className={`px-6 py-3 text-sm text-right font-medium ${
+                              growth > 0 ? 'text-emerald-600' : growth < 0 ? 'text-red-600' : 'text-slate-600'
+                            }`}>
+                              {prevYear ? `${growth > 0 ? '+' : ''}${growth.toFixed(1)}%` : '-'}
+                            </td>
+                            <td className="px-6 py-3 text-sm text-right text-blue-600 font-medium">
+                              {forecast > 0 ? `${Math.round(forecast).toLocaleString('fr-FR')}€` : '-'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                  </tbody>
+                </table>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </div>
