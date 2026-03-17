@@ -121,6 +121,23 @@ const leads = [
   { prenom: 'Thomas', nom: 'Bernard', email: 'demo.thomas@exemple.fr', hotel: 'Hôtel Barrière Deauville', ville: 'Deauville', segment: '5*', tags: '["hôtel 5*","SPA"]', statut: 'Nouveau', score: 70 },
   { prenom: 'Isabelle', nom: 'Rousseau', email: 'demo.isabelle@exemple.fr', hotel: 'Concept Store Merci', ville: 'Paris', segment: 'Retail', tags: '["concept store","retail"]', statut: 'Converti', score: 100 },
   { prenom: 'Antoine', nom: 'Moreau', email: 'demo.antoine@exemple.fr', hotel: 'Hôtel Negresco', ville: 'Nice', segment: '5*', tags: '["hôtel 5*","luxe","Côte d\'Azur"]', statut: 'En séquence', score: 78 },
+
+  // ─── AUTOGRAPH COLLECTION HOTELS ────────────────────────────────────────────
+  { prenom: 'Carine', nom: 'Kienlé', email: 'carine.kienle@maison-rouge.com', hotel: 'Maison Rouge Strasbourg Hotel & Spa, Autograph Collection', ville: 'Strasbourg', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'General Manager' },
+  { prenom: 'Margaux', nom: 'Pellerin', email: 'margaux.pellerin@lacasernechanzy.com', hotel: 'La Caserne Chanzy Hôtel & Spa - Autograph Collection', ville: 'Reims', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'Responsable Marketing & Communication' },
+  { prenom: 'Baptiste', nom: 'Collignon', email: 'baptiste.collignon@lacasernechanzy.com', hotel: 'La Caserne Chanzy Hôtel & Spa - Autograph Collection', ville: 'Reims', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'Directeur général' },
+  { prenom: 'Léa', nom: 'Himbert', email: 'lea.himbert@lacasernechanzy.com', hotel: 'La Caserne Chanzy Hôtel & Spa - Autograph Collection', ville: 'Reims', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'Responsable Marketing et Communication' },
+  { prenom: 'Céline', nom: 'Moulin', email: 'celine.moulin@hotelsparouen.com', hotel: 'Hôtel de Bourgtheroulde, Autograph Collection', ville: 'Rouen', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'Directrice générale' },
+  { prenom: 'Jeremie', nom: 'Jaspart', email: 'jeremie.jaspart@gantoislille.com', hotel: 'Hermitage Gantois Autograph Collection', ville: 'Lille', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'Directeur d\'hébergement' },
+  { prenom: 'Mathieu', nom: 'Van Welden', email: 'mathieu.vanwelden@sapphirehouseantwerp.com', hotel: 'Sapphire House Antwerp, Autograph Collection', ville: 'Antwerp', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'General Manager' },
+  { prenom: 'Pierre', nom: 'Brochard', email: 'pierre.brochard@cardohotels.com', hotel: 'Cardo Brussels, Autograph Collection', ville: 'Brussels', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'General Manager' },
+  { prenom: 'Lisa', nom: 'Steppacher', email: 'lisa.steppacher@schlosslieser.de', hotel: 'Schloss Lieser, Autograph Collection by Marriott', ville: 'Lieser', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'Executive Assistant to GM' },
+  { prenom: 'Jessica', nom: 'Cullmann', email: 'jessica.cullmann@schlosslieser.de', hotel: 'Schloss Lieser, Autograph Collection by Marriott', ville: 'Lieser', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'Event Sales & Marketing Executive' },
+  { prenom: 'Benedikt', nom: 'Theisen', email: 'benedikt.theisen@kameha.com', hotel: 'Kameha Grand Zurich, Autograph Collection', ville: 'Zürich', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'Managing Director' },
+  { prenom: 'Ramzi', nom: 'Labidi', email: 'ramzi.labidi@arabella.com', hotel: 'Neues Schloss Privat Hotel Zürich, Autograph Collection', ville: 'Zürich', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'General Manager' },
+  { prenom: 'Cyril', nom: 'Marcou', email: 'cyril.marcou@brhhh.com', hotel: 'Grand Hotel Suisse Majestic, Autograph Collection', ville: 'Montreux', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'General Manager' },
+  { prenom: 'Steven', nom: 'Fennell', email: 'steven.fennell@marriott.com', hotel: 'The Hotel Lucerne, Autograph Collection', ville: 'Lucerne', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'General Manager' },
+  { prenom: 'Bosko', nom: 'Grozdanic', email: 'bosko.grozdanic@marriott.com', hotel: 'The Hotel Lucerne / Renaissance Lucerne Hotel', ville: 'Lucerne', segment: '5*', tags: '["Autograph Collection","Marriott","5*"]', statut: 'Nouveau', score: 0, poste: 'Cluster General Manager' },
 ];
 
 const leadIds = {};
@@ -139,6 +156,6 @@ db.prepare(`INSERT INTO inscriptions (id, lead_id, sequence_id, etape_courante, 
 );
 
 console.log(`✅ Données de démo insérées :
-  - ${leads.length} leads
+  - ${leads.length} leads (6 démo + 15 Autograph Collection)
   - 2 séquences (${etapes1.length + etapes2.length} étapes au total)
   - 1 inscription active`);
