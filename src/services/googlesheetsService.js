@@ -105,13 +105,17 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
 
   // Aliases manuels (priorité la plus haute)
   const manualAliases = {
-    'hotel litteraire swann': 'Le Swann',
+    'hotel litteraire le swann': 'Le Swann',
+    'litteraire le swann': 'Le Swann',
     'swann litteraire': 'Le Swann',
   };
   if (manualAliases[vfNorm]) {
     console.log(`🎯 Alias manuel: "${vfName}" → "${manualAliases[vfNorm]}"`);
     return manualAliases[vfNorm];
   }
+
+  // Debug: afficher le nom normalisé pour faciliter le débogage
+  console.log(`🔍 Mapping "${vfName}" → normalisé: "${vfNorm}"`);
 
   // Règle spéciale: hôtels Korner -> noms "HK ..." (nouveau format de suivi)
   if (vfNorm.includes('korner')) {
@@ -302,11 +306,19 @@ module.exports = (db) => ({
     let mappedPartnerName = partnerName;
     if (!mappedPartnerName) {
       const vfName = invoiceData.clientName || '';
+      console.log(`📊 Résolution partner name: VF="${vfName}"`);
+
       // D'abord essayer le mapping DB
-      mappedPartnerName = resolveCanonicalClientName(db, vfName);
+      const dbMapped = resolveCanonicalClientName(db, vfName);
+      console.log(`📊 Mapping DB: "${vfName}" → "${dbMapped}"`);
+      mappedPartnerName = dbMapped;
+
       // Si pas de mapping DB, utiliser mapPartnerNameToCanon avec la liste du spreadsheet
       if (mappedPartnerName === vfName && canonicalNames.length > 0) {
+        console.log(`📊 Pas de mapping DB, utilisation mapPartnerNameToCanon avec ${canonicalNames.length} noms`);
         mappedPartnerName = mapPartnerNameToCanon(vfName, canonicalNames);
+      } else {
+        console.log(`📊 Mapping DB trouvé, skip mapPartnerNameToCanon`);
       }
     }
 
