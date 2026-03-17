@@ -920,6 +920,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [filterStatut, setFilterStatut] = useState("Tous");
   const [filterSegment, setFilterSegment] = useState("Tous");
   const [filterVille, setFilterVille] = useState("Tous");
+  const [filterLangue, setFilterLangue] = useState("Tous");
   const [sortBy, setSortBy] = useState("recent"); // "recent"|"score"|"nom"
   const [vueMode, setVueMode] = useState("liste"); // "liste"|"kanban"
   const [selectedLead, setSelectedLead] = useState(null);
@@ -949,6 +950,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 
   const villes = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.ville).filter(Boolean))).sort()];
   const segments = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.segment).filter(Boolean))).sort()];
+  const langues = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.langue).filter(Boolean))).sort()];
   const statuts = ["Tous", ...Object.keys(STATUT_CONFIG)];
 
   const filtered = leadsNorm.filter(l => {
@@ -956,7 +958,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     const matchStatut = filterStatut === "Tous" || l.statut === filterStatut;
     const matchSegment = filterSegment === "Tous" || l.segment === filterSegment;
     const matchVille = filterVille === "Tous" || l.ville === filterVille;
-    return matchSearch && matchStatut && matchSegment && matchVille;
+    const matchLangue = filterLangue === "Tous" || l.langue === filterLangue;
+    return matchSearch && matchStatut && matchSegment && matchVille && matchLangue;
   }).sort((a, b) => {
     if (sortBy === "score") return (b.score||0) - (a.score||0);
     if (sortBy === "nom") return `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`);
@@ -1089,6 +1092,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <select value={filterVille} onChange={e => setFilterVille(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
             {villes.map(v => <option key={v}>{v}</option>)}
           </select>
+          <select value={filterLangue} onChange={e => setFilterLangue(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
+            {langues.map(l => <option key={l} value={l}>{l === "Tous" ? "Toutes langues" : l === "fr" ? "🇫🇷 FR" : l === "en" ? "🇬🇧 EN" : l === "de" ? "🇩🇪 DE" : l === "es" ? "🇪🇸 ES" : l === "it" ? "🇮🇹 IT" : l}</option>)}
+          </select>
           <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
             <option value="recent">Plus récents</option>
             <option value="score">Score ↓</option>
@@ -1167,7 +1173,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     <div className="font-medium text-slate-800 text-sm truncate">{lead.prenom} {lead.nom}
                       {lead.hubspot_id && <span className="ml-1 text-orange-300 text-xs">⬡</span>}
                     </div>
-                    <div className="text-xs text-slate-400 truncate">{lead.hotel} · {[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
+                    <div className="text-xs text-slate-400 truncate">{lead.hotel} · {[lead.ville, lead.segment, lead.langue ? (lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : lead.langue) : null].filter(Boolean).join(" · ")}</div>
                   </div>
                   <Badge statut={lead.statut} />
                 </div>
@@ -1197,6 +1203,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 </th>
                 <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Contact</th>
                 <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Établissement</th>
+                <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-16">Langue</th>
                 <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Séquence</th>
                 <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide w-28">Engagement</th>
                 <th className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wide">Statut</th>
@@ -1227,6 +1234,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                   <td className="px-3 py-3">
                     <div className="text-sm text-slate-700 font-medium leading-tight">{lead.hotel}</div>
                     <div className="text-xs text-slate-400 leading-tight">{[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
+                  </td>
+                  <td className="px-3 py-3 w-16">
+                    <span className="text-xs text-slate-600">{lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : lead.langue || '—'}</span>
                   </td>
                   <td className="px-3 py-3">
                     {lead.sequence
