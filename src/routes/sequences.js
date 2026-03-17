@@ -300,6 +300,87 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/sequences/:id/test-complete — Tester TOUTE la séquence (tous les emails)
+  router.post('/:id/test-complete', async (req, res) => {
+    try {
+      const { test_email } = req.body;
+      if (!test_email) return res.status(400).json({ erreur: 'test_email requis' });
+
+      const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
+      if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
+
+      const etapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(req.params.id);
+      if (!etapes.length) return res.status(400).json({ erreur: 'Séquence vide' });
+
+      // Chercher ou créer le lead de test
+      const existing = db.prepare('SELECT * FROM leads WHERE email = ?').get(test_email);
+      let leadId;
+      if (existing) {
+        leadId = existing.id;
+      } else {
+        leadId = uuidv4();
+        db.prepare('INSERT INTO leads (id, email, prenom, nom, hotel, segment, statut) VALUES (?, ?, ?, ?, ?, ?, ?)')
+          .run(leadId, test_email, 'Test', 'Séquence', 'Test Hotel', '5*', 'Nouveau');
+      }
+
+      // Inscrire le lead (ou réinscrire)
+      const inscription = inscrireLead(leadId, req.params.id);
+
+      // Retourner immédiatement et traiter en arrière-plan
+      res.json({
+        message: `Test lancé : ${etapes.length} email(s) seront envoyés vers ${test_email}`,
+        emails_total: etapes.length,
+        test_email
+      });
+
+      // Envoyer tous les emails en arrière-plan
+      setImmediate(async () => {
+        let envoyes = 0;
+        for (let i = 0; i < etapes.length; i++) {
+          try {
+            // Récupérer l'inscription à jour
+            const inscriptionActuelle = db.prepare('SELECT * FROM inscriptions WHERE lead_id = ? AND sequence_id = ?')
+              .get(leadId, req.params.id);
+
+            if (!inscriptionActuelle) {
+              logger.error('Inscription introuvable pour test complet', { leadId, sequenceId: req.params.id });
+              break;
+            }
+
+            // Mettre à jour l'étape courante
+            db.prepare('UPDATE inscriptions SET etape_courante = ?, prochain_envoi = ? WHERE id = ?')
+              .run(i, new Date().toISOString(), inscriptionActuelle.id);
+
+            // Récupérer l'inscription mise à jour
+            const inscriptionUpdated = db.prepare('SELECT * FROM inscriptions WHERE id = ?').get(inscriptionActuelle.id);
+
+            // Envoyer cet email
+            await traiterInscriptionDirect(inscriptionUpdated);
+            envoyes++;
+
+            logger.info(`✅ Test complet: Email ${i + 1}/${etapes.length} envoyé à ${test_email}`);
+
+            // Attendre 2-3 secondes avant le suivant pour éviter la limite de taux
+            if (i < etapes.length - 1) {
+              await new Promise(r => setTimeout(r, 2000 + Math.random() * 1000));
+            }
+          } catch (err) {
+            logger.error(`❌ Erreur envoi email ${i + 1} du test complet`, { error: err.message });
+          }
+        }
+
+        // Marquer comme terminé
+        db.prepare('UPDATE inscriptions SET statut = ?, prochain_envoi = NULL WHERE lead_id = ? AND sequence_id = ?')
+          .run('terminé', leadId, req.params.id);
+
+        logger.info(`🎉 Test complet terminé: ${envoyes}/${etapes.length} emails envoyés à ${test_email}`);
+      });
+    } catch (err) {
+      logger.error('Erreur test complet', { error: err.message });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // POST /api/sequences/trigger-now — Envoi direct (bypass fenêtre horaire)
   router.post('/trigger-now', async (req, res) => {
     try {

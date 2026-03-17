@@ -2131,25 +2131,20 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
     const seq = sequences.find(s => s.id === seqId);
     const nbEtapes = seq?.etapes?.length || 1;
     try {
-      // Chercher ou créer le lead
-      const search = await api.get(`/leads?search=${encodeURIComponent(email)}`);
-      const existing = (Array.isArray(search) ? search : search.leads || []).find(l => l.email === email);
-      let leadId;
-      if (existing) {
-        leadId = existing.id;
-      } else {
-        const created = await api.post('/leads', { email, prenom: 'Test', nom: 'Séquence', hotel: 'Test', segment: '5*' });
-        leadId = created.id || created.lead?.id;
-      }
-      // Inscrire à la séquence
-      await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId });
+      // Appeler l'endpoint de test complet qui envoie TOUS les emails immédiatement
+      await api.post(`/sequences/${seqId}/test-complete`, { test_email: email });
+
       // Fermer le modal immédiatement
       setTestModal(null);
       setTestEmail("");
       setTestLoading(false);
-      showToast(`Test lancé : ${nbEtapes} email(s) vers ${email}`, 'success');
-      // Les emails seront envoyés automatiquement par le scheduler
-      // (pas besoin de trigger manuel)
+
+      showToast(`⚡ Test lancé : ${nbEtapes} email(s) en cours d'envoi vers ${email}`, 'success');
+
+      // Les emails sont envoyés en arrière-plan (2-3 sec entre chaque)
+      setTimeout(() => {
+        showToast(`✅ Les ${nbEtapes} emails devraient être arrivés à ${email}`, 'success');
+      }, nbEtapes * 3000 + 2000);
     } catch (err) {
       showToast(err.message || 'Erreur lors du test', 'error');
     }
@@ -2214,13 +2209,15 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
     {testModal && (
       <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
         <div className="bg-white rounded-xl shadow-2xl w-full max-w-sm mx-4 p-5">
-          <h3 className="text-sm font-semibold text-slate-900 mb-3">Tester la séquence</h3>
-          <p className="text-xs text-slate-500 mb-3">L'email sera envoyé immédiatement à cette adresse.</p>
+          <h3 className="text-sm font-semibold text-slate-900 mb-3">Tester la séquence complète</h3>
+          <p className="text-xs text-slate-500 mb-3">
+            <strong>Tous les emails</strong> de la séquence seront envoyés immédiatement à cette adresse (2-3 sec entre chaque).
+          </p>
           <input value={testEmail} onChange={e => setTestEmail(e.target.value)} onKeyDown={e => e.key === "Enter" && envoyerTest(testModal)} placeholder="email@test.com" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm mb-3 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" autoFocus />
           <div className="flex justify-end gap-2">
             <button onClick={() => setTestModal(null)} className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700">Annuler</button>
             <button onClick={() => envoyerTest(testModal)} disabled={testLoading || !testEmail.trim()} className="px-4 py-1.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {testLoading ? "Envoi..." : "Envoyer le test"}
+              {testLoading ? "Envoi..." : "⚡ Tester la séquence"}
             </button>
           </div>
         </div>
