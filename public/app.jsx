@@ -30,6 +30,7 @@ const STATUT_CONFIG = {
   "Répondu": { bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500" },
   "Converti": { bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
   "Fin de séquence": { bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-500" },
+  "Closed Lost": { bg: "bg-orange-50", text: "text-orange-700", dot: "bg-orange-500" },
   "Désabonné": { bg: "bg-red-50", text: "text-red-600", dot: "bg-red-400" },
 };
 
@@ -74,7 +75,7 @@ function relTime(iso) {
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 
 const ModalAddLead = ({ onClose, onAdd }) => {
-  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "", langue: "fr", campaign: "" });
+  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "", langue: "fr", campaign: "", comment: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -198,6 +199,16 @@ const ModalAddLead = ({ onClose, onAdd }) => {
                 <input type={k === "email" ? "email" : "text"} value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
               </div>
             ))}
+            <div className="mt-3">
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Commentaire</label>
+              <textarea
+                value={form.comment}
+                onChange={e => set("comment", e.target.value)}
+                placeholder="Notes, contexte, remarques..."
+                rows={3}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
+              />
+            </div>
             <div className="grid grid-cols-2 gap-3 mt-3">
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">Segment</label>
@@ -1130,7 +1141,7 @@ const VueDashboard = ({ showToast }) => {
 
 // ─── Modal édition lead ────────────────────────────────────────────────────
 const ModalEditLead = ({ lead, onClose, onSave }) => {
-  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"", langue: lead.langue||"fr", campaign: lead.campaign||"" });
+  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"", langue: lead.langue||"fr", campaign: lead.campaign||"", comment: lead.comment||"" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -1161,6 +1172,16 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
             <div key={k}><label className="text-xs text-slate-500 mb-1 block">{l}</label>
             <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
           ))}
+          <div>
+            <label className="text-xs text-slate-500 mb-1 block">Commentaire</label>
+            <textarea
+              value={form.comment}
+              onChange={e => set("comment", e.target.value)}
+              placeholder="Notes, contexte, remarques..."
+              rows={3}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none"
+            />
+          </div>
           <div className="grid grid-cols-3 gap-3">
             <div><label className="text-xs text-slate-500 mb-1 block">Segment</label>
             <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
@@ -1334,7 +1355,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     return 0; // recent = ordre API
   });
 
-  const KANBAN_COLS = ["Nouveau", "En séquence", "Répondu", "Converti", "Fin de séquence", "Désabonné"];
+  const KANBAN_COLS = ["Nouveau", "En séquence", "Répondu", "Converti", "Fin de séquence", "Closed Lost", "Désabonné"];
 
   // ── Import CSV ──────────────────────────────────────────────────────────
   const importerCSV = async (file) => {

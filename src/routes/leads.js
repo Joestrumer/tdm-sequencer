@@ -81,7 +81,7 @@ module.exports = (db) => {
   // POST /api/leads — Créer un lead
   router.post('/', async (req, res) => {
     try {
-      const { prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, company_hubspot_id } = req.body;
+      const { prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, comment, company_hubspot_id } = req.body;
       if (!email || !hotel || !prenom) return res.status(400).json({ erreur: 'prenom, email et hotel sont requis' });
 
       // Normaliser tags : accepte string JSON ou tableau
@@ -89,9 +89,9 @@ module.exports = (db) => {
 
       const id = uuidv4();
       db.prepare(`
-        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', tagsStr, poste || null, langue || 'fr', campaign || null);
+        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, comment)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', tagsStr, poste || null, langue || 'fr', campaign || null, comment || null);
 
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
 
@@ -119,7 +119,7 @@ module.exports = (db) => {
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
       if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
 
-      const { prenom, nom, email, hotel, ville, segment, tags, statut, score, poste, langue, campaign } = req.body;
+      const { prenom, nom, email, hotel, ville, segment, tags, statut, score, poste, langue, campaign, comment } = req.body;
       db.prepare(`
         UPDATE leads SET
           prenom = COALESCE(?, prenom),
@@ -134,9 +134,10 @@ module.exports = (db) => {
           poste = COALESCE(?, poste),
           langue = COALESCE(?, langue),
           campaign = COALESCE(?, campaign),
+          comment = COALESCE(?, comment),
           updated_at = datetime('now')
         WHERE id = ?
-      `).run(prenom, nom, email, hotel, ville, segment, tags ? JSON.stringify(tags) : null, statut, score, poste, langue, campaign, req.params.id);
+      `).run(prenom, nom, email, hotel, ville, segment, tags ? JSON.stringify(tags) : null, statut, score, poste, langue, campaign, comment, req.params.id);
 
       res.json(db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id));
     } catch (err) {
