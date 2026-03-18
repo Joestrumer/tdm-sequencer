@@ -1450,7 +1450,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                       </div>
                     </div>
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 max-w-[180px]">
                     <div className="text-xs text-slate-700 font-medium leading-tight truncate">{lead.hotel} · {[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
                   </td>
                   <td className="px-2 py-1.5 w-12 text-center">
