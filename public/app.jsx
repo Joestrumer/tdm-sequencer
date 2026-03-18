@@ -3324,12 +3324,9 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
         'rgb(236, 72, 153)'
       ];
 
-      let cumulative = 0;
       const cumulativeData = allMonths.map(month => {
-        const key = `${yearData.year}-${month}`;
-        const monthData = yearData.byMonth?.[key];
-        cumulative += monthData?.ca_ht || 0;
-        return cumulative;
+        const monthData = yearData.byMonth?.[month];
+        return monthData?.cumulative_ht || 0;
       });
 
       return {
