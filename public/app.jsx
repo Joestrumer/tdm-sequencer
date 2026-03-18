@@ -3861,9 +3861,7 @@ const VueFactures = ({ showToast }) => {
     { id: "batch", label: "Batch", icon: "📦" },
     { id: "echantillons", label: "Échantillons", icon: "🎁" },
     { id: "relances", label: "Relances", icon: "📨" },
-    { id: "tracking", label: "Tracking", icon: "🚚" },
     { id: "envois", label: "Envois", icon: "📮" },
-    { id: "analytics", label: "Analytics", icon: "📊" },
     { id: "analytics-sheet", label: "Analytics Excel", icon: "📈" },
   ];
 
@@ -3896,9 +3894,7 @@ const VueFactures = ({ showToast }) => {
       {tab === "batch" && <FacturesBatch showToast={showToast} />}
       {tab === "echantillons" && <FacturesSamples showToast={showToast} />}
       {tab === "relances" && <FacturesReminders showToast={showToast} />}
-      {tab === "tracking" && <FacturesTracking showToast={showToast} />}
       {tab === "envois" && <FacturesShipments showToast={showToast} />}
-      {tab === "analytics" && <FacturesAnalytics showToast={showToast} />}
       {tab === "analytics-sheet" && <AnalyticsSpreadsheet showToast={showToast} />}
     </div>
   );
