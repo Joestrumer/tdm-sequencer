@@ -71,8 +71,12 @@ module.exports = (db) => {
 
   router.get('/clients', async (req, res) => {
     try {
-      const { q } = req.query;
+      const { q, refresh } = req.query;
       if (!q) return res.json([]);
+      // Si refresh=true, forcer le rechargement du cache
+      if (refresh === 'true') {
+        await vfService.getAllClients(true);
+      }
       const data = await vfService.rechercherClients(q);
       res.json(data);
     } catch (e) {

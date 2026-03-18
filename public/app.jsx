@@ -5405,9 +5405,10 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
   const [clients, setClients] = useState([]);
   const [loading, setLoading] = useState(false);
   const [erreur, setErreur] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
   const searchTimer = useRef(null);
 
-  const rechercher = (q) => {
+  const rechercher = (q, forceRefresh = false) => {
     setQuery(q);
     setErreur('');
     clearTimeout(searchTimer.current);
@@ -5415,7 +5416,8 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
     searchTimer.current = setTimeout(async () => {
       setLoading(true);
       try {
-        const res = await fetch(window.location.origin + '/api/factures/clients?q=' + encodeURIComponent(q), {
+        const refreshParam = forceRefresh ? '&refresh=true' : '';
+        const res = await fetch(window.location.origin + '/api/factures/clients?q=' + encodeURIComponent(q) + refreshParam, {
           headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('tdm_token') || '') }
         });
         const data = await res.json();
@@ -5430,11 +5432,39 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
     }, 400);
   };
 
+  const forceRefresh = async () => {
+    if (!query || query.length < 2) return;
+    setRefreshing(true);
+    setErreur('');
+    try {
+      const res = await fetch(window.location.origin + '/api/factures/clients?q=' + encodeURIComponent(query) + '&refresh=true', {
+        headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('tdm_token') || '') }
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setErreur(data.erreur || 'Erreur ' + res.status);
+        setClients([]);
+      } else {
+        setClients(Array.isArray(data) ? data : []);
+      }
+    } catch (e) { setErreur('Erreur réseau: ' + e.message); setClients([]); }
+    setRefreshing(false);
+  };
+
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
       <div className="flex items-center justify-between">
         <h3 className="text-sm font-semibold text-slate-800">Sélectionner un client</h3>
         <div className="flex items-center gap-3">
+          {query.length >= 2 && (
+            <button
+              onClick={forceRefresh}
+              disabled={refreshing}
+              className="text-xs text-blue-600 hover:text-blue-700 font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              {refreshing ? '⏳ Actualisation...' : '🔄 Actualiser'}
+            </button>
+          )}
           {onModifySaisie && <button onClick={onModifySaisie} className="text-xs text-slate-500 hover:text-slate-700">Modifier la saisie</button>}
           <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-700">← Retour</button>
         </div>
