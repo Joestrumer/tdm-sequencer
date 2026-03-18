@@ -10,7 +10,7 @@
     "start": "node src/server.js",
     "build": "npm run build:db && npm run build:tiptap",
     "build:db": "node src/db/init.js",
-    "build:tiptap": "esbuild src/tiptap-bundle.js --bundle --outfile=public/tiptap-bundle.js --format=iife --external:react --external:react-dom --global-name=TiptapBundle",
+    "build:tiptap": "esbuild src/tiptap-bundle.js --bundle --outfile=public/tiptap-bundle.js --format=iife --external:react --external:react-dom",
     "dev": "npm run build && npm start"
   },
   "dependencies": {
