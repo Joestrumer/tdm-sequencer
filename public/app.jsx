@@ -352,6 +352,8 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [showTestModal, setShowTestModal] = useState(false);
   const [testInProgress, setTestInProgress] = useState(false);
   const [mode, setMode] = useState("edit");
+  const [showTemplateSelector, setShowTemplateSelector] = useState(false);
+  const [templates, setTemplates] = useState([]);
   const objetRef = useRef(null);
   const pjRef = useRef(null);
   const [pieceJointe, setPieceJointe] = useState(etapes[0]?.piece_jointe || null);
@@ -366,6 +368,40 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     setPieceJointe(pj);
     updateEtape(activeEtape, "piece_jointe", pj);
   };
+
+  // Charger les templates
+  const loadTemplates = async () => {
+    try {
+      const res = await api.get('/email-templates');
+      setTemplates(res.templates || []);
+    } catch (err) {
+      console.error('Erreur chargement templates:', err);
+    }
+  };
+
+  // Appliquer un template
+  const applyTemplate = (template) => {
+    updateEtape(activeEtape, 'sujet', template.sujet);
+    updateEtape(activeEtape, 'corps_html', template.corps_html || '');
+    updateEtape(activeEtape, 'content_json', template.content_json || '');
+
+    // Recharger le contenu dans Quill
+    if (quillRef.current && template.content_json) {
+      try {
+        const delta = JSON.parse(template.content_json);
+        quillRef.current.setContents(delta);
+      } catch (e) {
+        console.error('Erreur chargement template dans Quill:', e);
+      }
+    }
+
+    setShowTemplateSelector(false);
+  };
+
+  // Charger templates au montage
+  useEffect(() => {
+    loadTemplates();
+  }, []);
 
   const chargerPj = (file) => {
     if (!file) return;
@@ -691,6 +727,13 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                           setTimeout(() => input.setSelectionRange(pos + v.length, pos + v.length), 0);
                         }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
                       ))}
+                      <button
+                        type="button"
+                        onClick={() => setShowTemplateSelector(true)}
+                        className="ml-auto px-3 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded font-medium transition-colors border border-blue-200"
+                      >
+                        📝 Utiliser un template
+                      </button>
                     </div>
                   </div>
                 </div>
@@ -792,6 +835,73 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
               </button>
               <button onClick={envoyerTestEmail} disabled={testLoading || !testEmail.trim()} className="px-5 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
                 {testLoading ? "Envoi..." : "⚡ Envoyer le test"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal sélection template */}
+      {showTemplateSelector && (
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
+            <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+              <h3 className="text-base font-semibold text-slate-900">Choisir un template</h3>
+              <button onClick={() => setShowTemplateSelector(false)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+            </div>
+
+            <div className="p-6 overflow-y-auto flex-1">
+              {templates.length === 0 ? (
+                <div className="text-center py-12">
+                  <div className="text-4xl mb-3">📝</div>
+                  <p className="text-sm text-slate-500">Aucun template disponible</p>
+                  <p className="text-xs text-slate-400 mt-1">Créez-en un dans l'onglet Templates</p>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {templates.map(template => (
+                    <div
+                      key={template.id}
+                      onClick={() => applyTemplate(template)}
+                      className="bg-white rounded-lg border border-slate-200 p-4 hover:border-blue-400 hover:shadow-md transition-all cursor-pointer group"
+                    >
+                      <div className="flex items-start justify-between mb-2">
+                        <h4 className="text-sm font-semibold text-slate-900 group-hover:text-blue-600 transition-colors">
+                          {template.nom}
+                        </h4>
+                        <span className="px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded">
+                          {template.categorie}
+                        </span>
+                      </div>
+
+                      <div className="mb-3">
+                        <div className="text-xs text-slate-500 mb-0.5">Sujet :</div>
+                        <div className="text-xs text-slate-700 font-medium line-clamp-1">
+                          {template.sujet}
+                        </div>
+                      </div>
+
+                      {template.tags && template.tags.length > 0 && (
+                        <div className="flex flex-wrap gap-1">
+                          {template.tags.slice(0, 3).map((tag, i) => (
+                            <span key={i} className="px-1.5 py-0.5 bg-blue-50 text-blue-600 text-xs rounded">
+                              {tag}
+                            </span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end flex-shrink-0">
+              <button
+                onClick={() => setShowTemplateSelector(false)}
+                className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800"
+              >
+                Annuler
               </button>
             </div>
           </div>
