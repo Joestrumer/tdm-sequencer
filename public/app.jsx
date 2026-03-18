@@ -356,56 +356,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const pjRef = useRef(null);
   const [pieceJointe, setPieceJointe] = useState(etapes[0]?.piece_jointe || null);
 
-  // Tiptap editor setup
-  const { useEditor, EditorContent } = window.TiptapReact || {};
-  const { StarterKit, Underline, TextStyle, Color, TextAlign, Link, Placeholder } = window.TiptapExtensions || {};
-
-  const editor = useEditor && StarterKit ? useEditor({
-    extensions: [
-      StarterKit.configure({
-        heading: { levels: [1, 2, 3] },
-        bulletList: true,
-        orderedList: true,
-        hardBreak: true,
-        paragraph: true,
-        bold: true,
-        italic: true,
-        strike: false,
-        code: false,
-        codeBlock: false,
-        blockquote: false,
-        horizontalRule: false,
-      }),
-      Underline,
-      TextStyle,
-      Color.configure({ types: ['textStyle'] }),
-      TextAlign.configure({
-        types: ['heading', 'paragraph'],
-        alignments: ['left', 'center', 'right'],
-      }),
-      Link.configure({
-        openOnClick: false,
-        HTMLAttributes: {
-          style: 'color: #1a56db; text-decoration: underline;'
-        },
-      }),
-      Placeholder.configure({
-        placeholder: 'Écrivez votre email ici... Utilisez la toolbar pour formater.'
-      }),
-    ],
-    content: '',
-    onUpdate: ({ editor }) => {
-      const json = editor.getJSON();
-      updateEtape(activeEtape, 'content_json', JSON.stringify(json));
-      updateEtape(activeEtape, 'corps_html', editor.getHTML());
-    },
-    editorProps: {
-      attributes: {
-        class: 'prose prose-sm max-w-none focus:outline-none min-h-64 p-4',
-        style: 'font-family: Helvetica, Arial, sans-serif; font-size: 14px;'
-      },
-    },
-  }) : null;
+  // Quill editor setup
+  const editorRef = useRef(null);
+  const quillRef = useRef(null);
 
   // Sync pj dans l'étape courante
   const setPjEtape = (pj) => {
@@ -533,24 +486,60 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     }
   };
 
-  // Initialiser le contenu de l'éditeur quand on change d'étape
+  // Initialiser Quill editor
   useEffect(() => {
-    if (editor && mode === "edit") {
-      const etape = etapes[activeEtape];
-      // Charger depuis content_json si disponible, sinon depuis corps_html
-      if (etape?.content_json) {
-        try {
-          const json = JSON.parse(etape.content_json);
-          editor.commands.setContent(json);
-        } catch {
-          editor.commands.setContent(etape.corps_html || '');
-        }
-      } else {
-        editor.commands.setContent(etape?.corps_html || '');
+    if (!editorRef.current || quillRef.current) return;
+
+    const quill = new Quill(editorRef.current, {
+      theme: 'snow',
+      placeholder: 'Écrivez votre email ici...',
+      modules: {
+        toolbar: [
+          ['bold', 'italic', 'underline'],
+          [{ 'header': [1, 2, 3, false] }],
+          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+          [{ 'align': [] }],
+          ['link'],
+          [{ 'color': [] }],
+          ['clean']
+        ]
       }
-      setPieceJointe(etape?.piece_jointe || null);
+    });
+
+    // Sauvegarder les changements
+    quill.on('text-change', () => {
+      const delta = quill.getContents();
+      const html = quill.root.innerHTML;
+      updateEtape(activeEtape, 'content_json', JSON.stringify(delta));
+      updateEtape(activeEtape, 'corps_html', html);
+    });
+
+    quillRef.current = quill;
+  }, []);
+
+  // Charger le contenu quand on change d'étape
+  useEffect(() => {
+    if (!quillRef.current || mode !== "edit") return;
+
+    const etape = etapes[activeEtape];
+    const quill = quillRef.current;
+
+    // Charger depuis content_json (Delta) si disponible, sinon depuis corps_html
+    if (etape?.content_json) {
+      try {
+        const delta = JSON.parse(etape.content_json);
+        quill.setContents(delta, 'silent');
+      } catch {
+        quill.root.innerHTML = etape.corps_html || '';
+      }
+    } else if (etape?.corps_html) {
+      quill.root.innerHTML = etape.corps_html;
+    } else {
+      quill.setText('');
     }
-  }, [editor, activeEtape, mode]);
+
+    setPieceJointe(etape?.piece_jointe || null);
+  }, [activeEtape, mode]);
 
   const handleSave = async () => {
     if (!nom.trim()) { setErrMsg("Donnez un nom à la séquence"); return; }
@@ -700,150 +689,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                   </div>
                 </div>
 
-                {/* Toolbar Tiptap */}
+                {/* Quill Editor */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                  {editor && (
-                    <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200">
-                      {/* Formatage texte */}
-                      <button
-                        type="button"
-                        title="Gras"
-                        onClick={() => editor.chain().focus().toggleBold().run()}
-                        className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 font-bold transition-colors ${editor.isActive('bold') ? 'bg-slate-200' : ''}`}
-                      >
-                        B
-                      </button>
-                      <button
-                        type="button"
-                        title="Italique"
-                        onClick={() => editor.chain().focus().toggleItalic().run()}
-                        className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 italic transition-colors ${editor.isActive('italic') ? 'bg-slate-200' : ''}`}
-                      >
-                        I
-                      </button>
-                      <button
-                        type="button"
-                        title="Souligné"
-                        onClick={() => editor.chain().focus().toggleUnderline().run()}
-                        className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 underline transition-colors ${editor.isActive('underline') ? 'bg-slate-200' : ''}`}
-                      >
-                        U
-                      </button>
-                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                      {/* Titres */}
-                      <button
-                        type="button"
-                        title="Titre 1"
-                        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
-                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-bold transition-colors ${editor.isActive('heading', { level: 1 }) ? 'bg-slate-200' : ''}`}
-                      >
-                        H1
-                      </button>
-                      <button
-                        type="button"
-                        title="Titre 2"
-                        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
-                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-bold transition-colors ${editor.isActive('heading', { level: 2 }) ? 'bg-slate-200' : ''}`}
-                      >
-                        H2
-                      </button>
-                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                      {/* Listes */}
-                      <button
-                        type="button"
-                        title="Liste à puces"
-                        onClick={() => editor.chain().focus().toggleBulletList().run()}
-                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive('bulletList') ? 'bg-slate-200' : ''}`}
-                      >
-                        •
-                      </button>
-                      <button
-                        type="button"
-                        title="Liste numérotée"
-                        onClick={() => editor.chain().focus().toggleOrderedList().run()}
-                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive('orderedList') ? 'bg-slate-200' : ''}`}
-                      >
-                        1.
-                      </button>
-                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                      {/* Alignement */}
-                      <button
-                        type="button"
-                        title="Aligner à gauche"
-                        onClick={() => editor.chain().focus().setTextAlign('left').run()}
-                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive({ textAlign: 'left' }) ? 'bg-slate-200' : ''}`}
-                      >
-                        ⬅
-                      </button>
-                      <button
-                        type="button"
-                        title="Centrer"
-                        onClick={() => editor.chain().focus().setTextAlign('center').run()}
-                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive({ textAlign: 'center' }) ? 'bg-slate-200' : ''}`}
-                      >
-                        ↔
-                      </button>
-                      <button
-                        type="button"
-                        title="Aligner à droite"
-                        onClick={() => editor.chain().focus().setTextAlign('right').run()}
-                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive({ textAlign: 'right' }) ? 'bg-slate-200' : ''}`}
-                      >
-                        ➡
-                      </button>
-                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                      {/* Lien hypertexte */}
-                      <button
-                        type="button"
-                        title="Ajouter un lien"
-                        onClick={() => {
-                          const url = prompt("URL du lien :", "https://");
-                          if (url && url.trim()) {
-                            editor.chain().focus().setLink({ href: url }).run();
-                          }
-                        }}
-                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs transition-colors ${editor.isActive('link') ? 'bg-slate-200' : ''}`}
-                      >
-                        🔗
-                      </button>
-                      {editor.isActive('link') && (
-                        <button
-                          type="button"
-                          title="Retirer le lien"
-                          onClick={() => editor.chain().focus().unsetLink().run()}
-                          className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-red-500 text-xs transition-colors"
-                        >
-                          ✕
-                        </button>
-                      )}
-                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                      {/* Variables corps */}
-                      <span className="text-xs text-slate-400">Variables :</span>
-                      {VARS.map(v => (
-                        <button
-                          type="button"
-                          key={v}
-                          onClick={() => insererVar(v)}
-                          className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200"
-                        >
-                          {v}
-                        </button>
-                      ))}
-                    </div>
-                  )}
-                  {/* Éditeur Tiptap */}
-                  {EditorContent ? (
-                    <EditorContent
-                      editor={editor}
-                      className="min-h-64 max-h-96 overflow-y-auto text-slate-800 bg-white border-t border-slate-100"
-                    />
-                  ) : (
-                    <div className="min-h-64 max-h-96 overflow-y-auto p-8 text-slate-500 flex flex-col items-center justify-center gap-3 bg-white border-t border-slate-100">
-                      <div className="text-2xl">⏳</div>
-                      <div className="text-sm">Chargement de l'éditeur Tiptap...</div>
-                      <div className="text-xs text-slate-400">Si ce message persiste, rechargez la page</div>
-                    </div>
-                  )}
+                  <div ref={editorRef} className="bg-white" style={{ minHeight: '300px' }}></div>
                   {/* Pièce jointe */}
                   <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
                     {etapeCourante.piece_jointe ? (
