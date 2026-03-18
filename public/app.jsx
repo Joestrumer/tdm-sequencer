@@ -3130,6 +3130,77 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     });
   }, [analytics, viewMode]);
 
+  // Create years comparison chart (monthly cumulative)
+  useEffect(() => {
+    if (!comparisonChartRef.current || !yearsComparison || viewMode !== 'comparison' || selectedYears.length === 0) return;
+
+    if (comparisonChartInstance.current) {
+      comparisonChartInstance.current.destroy();
+    }
+
+    const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+    const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+
+    const datasets = selectedYears
+      .sort((a, b) => b - a)
+      .map((year, idx) => {
+        const yearData = yearsComparison.years.find(y => y.year === year.toString() || y.year === year);
+        if (!yearData) return null;
+
+        const colors = [
+          'rgb(59, 130, 246)',   // blue
+          'rgb(16, 185, 129)',   // green
+          'rgb(245, 158, 11)',   // amber
+          'rgb(239, 68, 68)',    // red
+          'rgb(139, 92, 246)',   // purple
+        ];
+
+        return {
+          label: year.toString(),
+          data: months.map(month => yearData.byMonth?.[month]?.cumulative_ht || 0),
+          borderColor: colors[idx % colors.length],
+          backgroundColor: colors[idx % colors.length].replace('rgb', 'rgba').replace(')', ', 0.1)'),
+          tension: 0.4,
+          fill: false,
+          pointRadius: 4,
+          pointHoverRadius: 6
+        };
+      })
+      .filter(Boolean);
+
+    const ctx = comparisonChartRef.current.getContext('2d');
+    comparisonChartInstance.current = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: monthLabels,
+        datasets
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => `${context.dataset.label}: ${Math.round(context.parsed.y).toLocaleString('fr-FR')}€`
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => `${value.toLocaleString('fr-FR')}€`
+            }
+          }
+        }
+      }
+    });
+  }, [yearsComparison, viewMode, selectedYears]);
+
   // Create top clients chart
   useEffect(() => {
     if (!topClientsChartRef.current || !analytics || viewMode !== 'global') return;
