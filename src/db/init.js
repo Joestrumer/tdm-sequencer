@@ -201,6 +201,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_vf_discounts_client ON vf_client_discounts(client_name);
   CREATE INDEX IF NOT EXISTS idx_vf_code_mappings_type ON vf_code_mappings(type);
   CREATE INDEX IF NOT EXISTS idx_vf_invoice_logs_date ON vf_invoice_logs(created_at);
+
+  -- ─── Table Templates Email ────────────────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS email_templates (
+    id TEXT PRIMARY KEY,
+    nom TEXT NOT NULL,
+    categorie TEXT DEFAULT 'General',
+    sujet TEXT NOT NULL,
+    corps_html TEXT,
+    content_json TEXT,
+    tags TEXT DEFAULT '[]',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_email_templates_categorie ON email_templates(categorie);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────

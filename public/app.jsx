@@ -6983,6 +6983,313 @@ const VueBlocklist = ({ onRefresh, showToast }) => {
   );
 };
 
+// ─── VUE TEMPLATES ────────────────────────────────────────────────────────────
+const VueTemplates = ({ showToast }) => {
+  const [templates, setTemplates] = useState([]);
+  const [categories, setCategories] = useState(['Tous']);
+  const [filterCategorie, setFilterCategorie] = useState('Tous');
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editingTemplate, setEditingTemplate] = useState(null);
+
+  const loadTemplates = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/email-templates?categorie=' + filterCategorie);
+      setTemplates(res.templates || []);
+
+      const catRes = await api.get('/email-templates/categories');
+      setCategories(catRes.categories || ['Tous']);
+    } catch (err) {
+      showToast('Erreur chargement templates: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadTemplates();
+  }, [filterCategorie]);
+
+  const deleteTemplate = async (id) => {
+    if (!confirm('Supprimer ce template ?')) return;
+    try {
+      await api.delete('/email-templates/' + id);
+      showToast('Template supprimé', 'success');
+      loadTemplates();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-3">
+          <select
+            value={filterCategorie}
+            onChange={e => setFilterCategorie(e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm focus:outline-none bg-white"
+          >
+            {categories.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <span className="text-xs text-slate-400">{templates.length} template{templates.length > 1 ? 's' : ''}</span>
+        </div>
+        <button
+          onClick={() => { setEditingTemplate(null); setShowModal(true); }}
+          className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 transition-colors"
+        >
+          ➕ Nouveau template
+        </button>
+      </div>
+
+      {/* Liste des templates */}
+      {loading ? (
+        <div className="flex items-center justify-center py-20">
+          <div className="text-center">
+            <div className="w-8 h-8 border-3 border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-sm text-slate-500">Chargement...</p>
+          </div>
+        </div>
+      ) : templates.length === 0 ? (
+        <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
+          <div className="text-4xl mb-3">📝</div>
+          <h3 className="text-sm font-semibold text-slate-800 mb-2">Aucun template</h3>
+          <p className="text-xs text-slate-500 mb-4">Créez votre premier template pour gagner du temps</p>
+          <button
+            onClick={() => { setEditingTemplate(null); setShowModal(true); }}
+            className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800"
+          >
+            Créer un template
+          </button>
+        </div>
+      ) : (
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+          {templates.map(template => (
+            <div key={template.id} className="bg-white rounded-xl border border-slate-100 p-5 hover:border-slate-200 transition-colors">
+              <div className="flex items-start justify-between mb-3">
+                <div className="flex-1 min-w-0">
+                  <h3 className="text-sm font-semibold text-slate-900 truncate">{template.nom}</h3>
+                  <span className="inline-block mt-1 px-2 py-0.5 bg-slate-100 text-slate-600 text-xs rounded-md">
+                    {template.categorie}
+                  </span>
+                </div>
+              </div>
+
+              <div className="mb-4">
+                <div className="text-xs text-slate-500 mb-1">Sujet :</div>
+                <div className="text-xs text-slate-700 font-medium truncate">{template.sujet}</div>
+              </div>
+
+              {template.tags && template.tags.length > 0 && (
+                <div className="flex flex-wrap gap-1 mb-4">
+                  {template.tags.slice(0, 3).map((tag, i) => (
+                    <span key={i} className="px-2 py-0.5 bg-blue-50 text-blue-600 text-xs rounded">
+                      {tag}
+                    </span>
+                  ))}
+                </div>
+              )}
+
+              <div className="flex gap-2">
+                <button
+                  onClick={() => { setEditingTemplate(template); setShowModal(true); }}
+                  className="flex-1 px-3 py-1.5 border border-slate-200 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-50 transition-colors"
+                >
+                  ✏️ Modifier
+                </button>
+                <button
+                  onClick={() => deleteTemplate(template.id)}
+                  className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors"
+                >
+                  🗑
+                </button>
+              </div>
+
+              <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400">
+                Créé le {new Date(template.created_at).toLocaleDateString('fr-FR')}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Modal création/édition */}
+      {showModal && (
+        <ModalTemplateEditor
+          template={editingTemplate}
+          onClose={() => { setShowModal(false); setEditingTemplate(null); }}
+          onSave={() => {
+            setShowModal(false);
+            setEditingTemplate(null);
+            loadTemplates();
+            showToast(editingTemplate ? 'Template mis à jour' : 'Template créé', 'success');
+          }}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── Modal Template Editor ───────────────────────────────────────────────────
+const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
+  const [form, setForm] = useState({
+    nom: template?.nom || '',
+    categorie: template?.categorie || 'General',
+    sujet: template?.sujet || '',
+    corps_html: template?.corps_html || '',
+    content_json: template?.content_json || '',
+    tags: template?.tags || []
+  });
+  const [saving, setSaving] = useState(false);
+  const editorRef = useRef(null);
+  const quillRef = useRef(null);
+
+  const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
+
+  // Initialize Quill
+  useEffect(() => {
+    if (!editorRef.current || quillRef.current) return;
+
+    const quill = new Quill(editorRef.current, {
+      theme: 'snow',
+      modules: {
+        toolbar: [
+          ['bold', 'italic', 'underline'],
+          [{ 'header': [1, 2, 3, false] }],
+          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
+          [{ 'align': [] }],
+          ['link'],
+          [{ 'color': [] }],
+          ['clean']
+        ]
+      },
+      placeholder: 'Contenu de l\'email...'
+    });
+
+    // Load initial content
+    if (form.content_json) {
+      try {
+        const delta = JSON.parse(form.content_json);
+        quill.setContents(delta);
+      } catch (e) {
+        console.error('Erreur chargement content_json:', e);
+      }
+    }
+
+    quill.on('text-change', () => {
+      const delta = quill.getContents();
+      const html = quill.root.innerHTML;
+      set('content_json', JSON.stringify(delta));
+      set('corps_html', html);
+    });
+
+    quillRef.current = quill;
+  }, []);
+
+  const handleSave = async () => {
+    if (!form.nom || !form.sujet) {
+      showToast('Nom et sujet requis', 'error');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      if (template) {
+        await api.patch('/email-templates/' + template.id, form);
+      } else {
+        await api.post('/email-templates', form);
+      }
+      onSave();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+          <h2 className="text-base font-semibold text-slate-900">
+            {template ? 'Modifier le template' : 'Nouveau template'}
+          </h2>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+        </div>
+
+        {/* Content */}
+        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          <div className="grid grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Nom du template</label>
+              <input
+                value={form.nom}
+                onChange={e => set('nom', e.target.value)}
+                placeholder="Ex: Email de bienvenue"
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              />
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Catégorie</label>
+              <select
+                value={form.categorie}
+                onChange={e => set('categorie', e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none"
+              >
+                <option value="General">General</option>
+                <option value="Luxe">Luxe</option>
+                <option value="Boutique">Boutique</option>
+                <option value="Resort">Resort</option>
+                <option value="SPA">SPA</option>
+                <option value="Relance">Relance</option>
+              </select>
+            </div>
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Sujet</label>
+            <input
+              value={form.sujet}
+              onChange={e => set('sujet', e.target.value)}
+              placeholder="Ex: Découvrez notre nouvelle collection"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+            />
+          </div>
+
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Contenu</label>
+            <div className="border border-slate-200 rounded-lg bg-white">
+              <div ref={editorRef} />
+            </div>
+            <p className="text-xs text-slate-400 mt-1">
+              Variables disponibles : {'{{'} prenom {'}}'}, {'{{'} nom {'}}'}, {'{{'} hotel {'}}'}, {'{{'} ville {'}}'}, {'{{'} segment {'}}'}
+            </p>
+          </div>
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
+          <button
+            onClick={onClose}
+            className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors"
+          >
+            Annuler
+          </button>
+          <button
+            onClick={handleSave}
+            disabled={saving}
+            className="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors"
+          >
+            {saving ? 'Enregistrement...' : template ? 'Mettre à jour' : 'Créer'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 
 function App() {
@@ -7070,6 +7377,7 @@ function App() {
     { id: "dashboard", icon: "📊", label: "Dashboard" },
     { id: "leads", icon: "👥", label: "Leads" },
     { id: "sequences", icon: "📧", label: "Séquences" },
+    { id: "templates", icon: "📝", label: "Templates" },
     { id: "factures", icon: "📄", label: "Factures" },
     { id: "blocklist", icon: "🚫", label: "Blocklist" },
     { id: "emails", icon: "✅", label: "Validation Email" },
@@ -7147,6 +7455,7 @@ function App() {
               {vue === "dashboard" && `${leads.filter(l => l.statut === "En séquence").length} leads en séquence`}
               {vue === "leads" && `${leads.length} leads au total`}
               {vue === "sequences" && `${sequences.length} séquences actives`}
+              {vue === "templates" && "Bibliothèque de templates d'emails"}
               {vue === "blocklist" && "Gestion des emails et domaines bloqués"}
               {vue === "emails" && "Vérification & nettoyage des adresses email"}
               {vue === "factures" && "Commandes, factures & relances VosFactures"}
@@ -7166,6 +7475,7 @@ function App() {
           {vue === "dashboard" && <VueDashboard showToast={showToast} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} />}
+          {vue === "templates" && <VueTemplates showToast={showToast} />}
           {vue === "factures" && <VueFactures showToast={showToast} />}
           {vue === "blocklist" && <VueBlocklist onRefresh={charger} showToast={showToast} />}
           {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} showToast={showToast} />}
