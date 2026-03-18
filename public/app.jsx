@@ -73,7 +73,7 @@ function relTime(iso) {
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 
 const ModalAddLead = ({ onClose, onAdd }) => {
-  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "", langue: "fr" });
+  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "", langue: "fr", campaign: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
 
@@ -191,7 +191,7 @@ const ModalAddLead = ({ onClose, onAdd }) => {
                 </div>
               ))}
             </div>
-            {[["hotel","Établissement"],["ville","Ville"],["email","Email"],["poste","Poste / Fonction"]].map(([k,l]) => (
+            {[["hotel","Établissement"],["ville","Ville"],["email","Email"],["poste","Poste / Fonction"],["campaign","Campaign"]].map(([k,l]) => (
               <div key={k} className="mt-3">
                 <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
                 <input type={k === "email" ? "email" : "text"} value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
@@ -952,7 +952,7 @@ const VueDashboard = ({ leads, activites, stats }) => {
 
 // ─── Modal édition lead ────────────────────────────────────────────────────
 const ModalEditLead = ({ lead, onClose, onSave }) => {
-  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"", langue: lead.langue||"fr" });
+  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"", langue: lead.langue||"fr", campaign: lead.campaign||"" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
@@ -979,7 +979,7 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
               <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
             ))}
           </div>
-          {[["Email","email"],["Établissement","hotel"],["Ville","ville"],["Poste / Fonction","poste"]].map(([l,k]) => (
+          {[["Email","email"],["Établissement","hotel"],["Ville","ville"],["Poste / Fonction","poste"],["Campaign","campaign"]].map(([l,k]) => (
             <div key={k}><label className="text-xs text-slate-500 mb-1 block">{l}</label>
             <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
           ))}
@@ -1065,6 +1065,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [filterSegment, setFilterSegment] = useState("Tous");
   const [filterVille, setFilterVille] = useState("Tous");
   const [filterLangue, setFilterLangue] = useState("Tous");
+  const [filterCampaign, setFilterCampaign] = useState("Tous");
   const [sortBy, setSortBy] = useState("recent"); // "recent"|"score"|"nom"
   const [sortColumn, setSortColumn] = useState(null); // colonne active pour tri
   const [sortDirection, setSortDirection] = useState("asc"); // "asc"|"desc"
@@ -1098,6 +1099,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const villes = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.ville).filter(Boolean))).sort()];
   const segments = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.segment).filter(Boolean))).sort()];
   const langues = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.langue).filter(Boolean))).sort()];
+  const campaigns = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.campaign).filter(Boolean))).sort()];
   const statuts = ["Tous", ...Object.keys(STATUT_CONFIG)];
 
   const handleColumnSort = (column) => {
@@ -1111,12 +1113,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   };
 
   const filtered = leadsNorm.filter(l => {
-    const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email}`.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email} ${l.campaign||""}`.toLowerCase().includes(search.toLowerCase());
     const matchStatut = filterStatut === "Tous" || l.statut === filterStatut;
     const matchSegment = filterSegment === "Tous" || l.segment === filterSegment;
     const matchVille = filterVille === "Tous" || l.ville === filterVille;
     const matchLangue = filterLangue === "Tous" || l.langue === filterLangue;
-    return matchSearch && matchStatut && matchSegment && matchVille && matchLangue;
+    const matchCampaign = filterCampaign === "Tous" || l.campaign === filterCampaign;
+    return matchSearch && matchStatut && matchSegment && matchVille && matchLangue && matchCampaign;
   }).sort((a, b) => {
     // Tri par colonne (prioritaire)
     if (sortColumn) {
@@ -1139,6 +1142,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
       } else if (sortColumn === "statut") {
         aVal = (a.statut || "").toLowerCase();
         bVal = (b.statut || "").toLowerCase();
+      } else if (sortColumn === "campaign") {
+        aVal = (a.campaign || "").toLowerCase();
+        bVal = (b.campaign || "").toLowerCase();
       }
 
       const comparison = typeof aVal === "number" ? aVal - bVal : aVal.localeCompare(bVal);
@@ -1279,6 +1285,10 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <select value={filterLangue} onChange={e => setFilterLangue(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
             {langues.map(l => <option key={l} value={l}>{l === "Tous" ? "Toutes langues" : l === "fr" ? "🇫🇷 FR" : l === "en" ? "🇬🇧 EN" : l === "de" ? "🇩🇪 DE" : l === "es" ? "🇪🇸 ES" : l === "it" ? "🇮🇹 IT" : l}</option>)}
           </select>
+          <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
+            <option value="Tous">Toutes campaigns</option>
+            {campaigns.filter(c => c !== "Tous").map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
           <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
             <option value="recent">Plus récents</option>
             <option value="score">Score ↓</option>
@@ -1408,6 +1418,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 <th onClick={() => handleColumnSort("langue")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-12 cursor-pointer hover:text-slate-700 select-none">
                   Langue {sortColumn === "langue" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
+                <th onClick={() => handleColumnSort("campaign")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                  Campaign {sortColumn === "campaign" && (sortDirection === "asc" ? "↑" : "↓")}
+                </th>
                 <th className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Séquence</th>
                 <th onClick={() => handleColumnSort("score")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-20 cursor-pointer hover:text-slate-700 select-none">
                   Engagement {sortColumn === "score" && (sortDirection === "asc" ? "↑" : "↓")}
@@ -1447,6 +1460,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     <span className="text-xs">{lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : lead.langue || '—'}</span>
                   </td>
                   <td className="px-2 py-1.5">
+                    <span className="text-xs text-slate-600">{lead.campaign || '—'}</span>
+                  </td>
+                  <td className="px-2 py-1.5">
                     {lead.sequence
                       ? <div className="text-[10px] text-blue-600 font-medium truncate max-w-[100px]">E{(lead.etape||0)+1} · {lead.sequence}</div>
                       : <span className="text-xs text-slate-300">—</span>}
@@ -1478,7 +1494,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 {/* Panneau de détails inline */}
                 {selectedLead?.id === lead.id && (
                   <tr>
-                    <td colSpan="8" className="p-0 bg-gradient-to-b from-blue-50/50 to-transparent">
+                    <td colSpan="9" className="p-0 bg-gradient-to-b from-blue-50/50 to-transparent">
                       <div className="p-4 border-t-2 border-blue-400">
                         <div className="flex justify-end mb-2">
                           <button onClick={() => { setSelectedLead(null); setDetailData(null); }} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>

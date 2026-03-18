@@ -212,6 +212,8 @@ const migrations = [
   'ALTER TABLE leads     ADD COLUMN email_score  REAL',
   'ALTER TABLE leads     ADD COLUMN poste        TEXT',
   'ALTER TABLE leads     ADD COLUMN langue       TEXT DEFAULT "fr"',
+  'ALTER TABLE leads     ADD COLUMN campaign     TEXT',
+  'ALTER TABLE etapes    ADD COLUMN content_json TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (_) { /* colonne déjà présente */ }
