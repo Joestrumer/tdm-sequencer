@@ -1422,9 +1422,6 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                   Campaign {sortColumn === "campaign" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
                 <th className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Séquence</th>
-                <th onClick={() => handleColumnSort("score")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-20 cursor-pointer hover:text-slate-700 select-none">
-                  Engagement {sortColumn === "score" && (sortDirection === "asc" ? "↑" : "↓")}
-                </th>
                 <th onClick={() => handleColumnSort("statut")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
                   Statut {sortColumn === "statut" && (sortDirection === "asc" ? "↑" : "↓")}
                 </th>
@@ -1460,20 +1457,12 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     <span className="text-xs">{lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : lead.langue || '—'}</span>
                   </td>
                   <td className="px-2 py-1.5">
-                    <span className="text-xs text-slate-600">{lead.campaign || '—'}</span>
+                    <span className="text-xs text-slate-600 truncate block max-w-[120px]">{lead.campaign || '—'}</span>
                   </td>
                   <td className="px-2 py-1.5">
                     {lead.sequence
                       ? <div className="text-[10px] text-blue-600 font-medium truncate max-w-[100px]">E{(lead.etape||0)+1} · {lead.sequence}</div>
                       : <span className="text-xs text-slate-300">—</span>}
-                  </td>
-                  <td className="px-2 py-1.5 w-20">
-                    <div className="flex items-center gap-1">
-                      <div className="flex-1 h-1 bg-slate-100 rounded-full overflow-hidden">
-                        <div className={`h-full rounded-full ${lead.score >= 80 ? "bg-emerald-500" : lead.score >= 50 ? "bg-amber-400" : "bg-slate-300"}`} style={{width: lead.score + "%"}} />
-                      </div>
-                      <span className="text-[10px] font-medium text-slate-500 w-6 text-right">{lead.score}</span>
-                    </div>
                   </td>
                   <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
                     <select value={lead.statut} onChange={e => changerStatut(lead, e.target.value)}
@@ -1482,7 +1471,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     </select>
                   </td>
                   <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
-                    <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity justify-end">
+                    <div className="flex gap-1 justify-end">
                       {lead.statut !== "Désabonné" && (
                         <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 whitespace-nowrap">▶</button>
                       )}
@@ -1494,7 +1483,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 {/* Panneau de détails inline */}
                 {selectedLead?.id === lead.id && (
                   <tr>
-                    <td colSpan="9" className="p-0 bg-gradient-to-b from-blue-50/50 to-transparent">
+                    <td colSpan="8" className="p-0 bg-gradient-to-b from-blue-50/50 to-transparent">
                       <div className="p-4 border-t-2 border-blue-400">
                         <div className="flex justify-end mb-2">
                           <button onClick={() => { setSelectedLead(null); setDetailData(null); }} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
