@@ -359,6 +359,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   // Quill editor setup
   const editorRef = useRef(null);
   const quillRef = useRef(null);
+  const activeEtapeRef = useRef(activeEtape);
 
   // Sync pj dans l'étape courante
   const setPjEtape = (pj) => {
@@ -486,6 +487,11 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     }
   };
 
+  // Sync activeEtape ref
+  useEffect(() => {
+    activeEtapeRef.current = activeEtape;
+  }, [activeEtape]);
+
   // Initialiser Quill editor
   useEffect(() => {
     if (!editorRef.current || quillRef.current) return;
@@ -506,12 +512,12 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
       }
     });
 
-    // Sauvegarder les changements
+    // Sauvegarder les changements (utilise activeEtapeRef pour avoir toujours la bonne étape)
     quill.on('text-change', () => {
       const delta = quill.getContents();
       const html = quill.root.innerHTML;
-      updateEtape(activeEtape, 'content_json', JSON.stringify(delta));
-      updateEtape(activeEtape, 'corps_html', html);
+      updateEtape(activeEtapeRef.current, 'content_json', JSON.stringify(delta));
+      updateEtape(activeEtapeRef.current, 'corps_html', html);
     });
 
     quillRef.current = quill;
