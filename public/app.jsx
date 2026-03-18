@@ -1285,6 +1285,70 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [showTooltip, setShowTooltip] = useState(null);   // "csv" | "sync" | "envoyer" | null
   const csvRef = useRef(null);
 
+  // État pour les largeurs de colonnes redimensionnables
+  const [columnWidths, setColumnWidths] = useState(() => {
+    const saved = localStorage.getItem('leadTableColumnWidths');
+    return saved ? JSON.parse(saved) : {
+      checkbox: 32,
+      contact: 200,
+      hotel: 250,
+      langue: 80,
+      campaign: 150,
+      sequence: 120,
+      statut: 140,
+      actions: 150
+    };
+  });
+  const resizeRef = useRef({ isResizing: false, column: null, startX: 0, startWidth: 0 });
+
+  // Sauvegarder les largeurs dans localStorage
+  useEffect(() => {
+    localStorage.setItem('leadTableColumnWidths', JSON.stringify(columnWidths));
+  }, [columnWidths]);
+
+  // Gestionnaire de début de redimensionnement
+  const handleResizeStart = (e, column) => {
+    e.preventDefault();
+    e.stopPropagation();
+    resizeRef.current = {
+      isResizing: true,
+      column,
+      startX: e.clientX,
+      startWidth: columnWidths[column]
+    };
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  // Gestionnaire de mouvement
+  useEffect(() => {
+    const handleMouseMove = (e) => {
+      if (!resizeRef.current.isResizing) return;
+      const delta = e.clientX - resizeRef.current.startX;
+      const newWidth = Math.max(50, resizeRef.current.startWidth + delta);
+      setColumnWidths(prev => ({
+        ...prev,
+        [resizeRef.current.column]: newWidth
+      }));
+    };
+
+    const handleMouseUp = () => {
+      if (resizeRef.current.isResizing) {
+        resizeRef.current.isResizing = false;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+
+    document.addEventListener('mousemove', handleMouseMove);
+    document.addEventListener('mouseup', handleMouseUp);
+
+    return () => {
+      document.removeEventListener('mousemove', handleMouseMove);
+      document.removeEventListener('mouseup', handleMouseUp);
+    };
+  }, []);
+
   const leadsNorm = leads.map(l => ({
     ...l,
     tags: typeof l.tags === "string" ? (() => { try { return JSON.parse(l.tags || "[]"); } catch(e) { return []; } })() : (l.tags || []),
@@ -1601,30 +1665,57 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           {filtered.length === 0 && <div className="text-center py-12 text-slate-400 text-sm">Aucun lead trouvé</div>}
         </div>
         {/* Desktop table */}
-        <div className="hidden md:block bg-white rounded-2xl border border-slate-100 overflow-hidden">
-          <table className="w-full">
+        <div className="hidden md:block bg-white rounded-2xl border border-slate-100 overflow-hidden overflow-x-auto">
+          <table className="w-full" style={{ tableLayout: 'fixed' }}>
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
-                <th className="px-2 py-2 w-8">
+                <th className="px-2 py-2 relative" style={{ width: columnWidths.checkbox + 'px' }}>
                   <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={e => setSelectedIds(e.target.checked ? new Set(filtered.map(l => l.id)) : new Set())} />
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors group" onMouseDown={e => handleResizeStart(e, 'checkbox')}>
+                    <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
+                  </div>
                 </th>
-                <th onClick={() => handleColumnSort("nom")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                <th onClick={() => handleColumnSort("nom")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none relative" style={{ width: columnWidths.contact + 'px' }}>
                   Contact {sortColumn === "nom" && (sortDirection === "asc" ? "↑" : "↓")}
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors" onMouseDown={e => handleResizeStart(e, 'contact')}>
+                    <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
+                  </div>
                 </th>
-                <th onClick={() => handleColumnSort("hotel")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                <th onClick={() => handleColumnSort("hotel")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none relative" style={{ width: columnWidths.hotel + 'px' }}>
                   Établissement {sortColumn === "hotel" && (sortDirection === "asc" ? "↑" : "↓")}
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors" onMouseDown={e => handleResizeStart(e, 'hotel')}>
+                    <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
+                  </div>
                 </th>
-                <th onClick={() => handleColumnSort("langue")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide w-12 cursor-pointer hover:text-slate-700 select-none">
+                <th onClick={() => handleColumnSort("langue")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none relative" style={{ width: columnWidths.langue + 'px' }}>
                   Langue {sortColumn === "langue" && (sortDirection === "asc" ? "↑" : "↓")}
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors" onMouseDown={e => handleResizeStart(e, 'langue')}>
+                    <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
+                  </div>
                 </th>
-                <th onClick={() => handleColumnSort("campaign")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                <th onClick={() => handleColumnSort("campaign")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none relative" style={{ width: columnWidths.campaign + 'px' }}>
                   Campaign {sortColumn === "campaign" && (sortDirection === "asc" ? "↑" : "↓")}
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors" onMouseDown={e => handleResizeStart(e, 'campaign')}>
+                    <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
+                  </div>
                 </th>
-                <th className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide">Séquence</th>
-                <th onClick={() => handleColumnSort("statut")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none">
+                <th className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide relative" style={{ width: columnWidths.sequence + 'px' }}>
+                  Séquence
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors" onMouseDown={e => handleResizeStart(e, 'sequence')}>
+                    <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
+                  </div>
+                </th>
+                <th onClick={() => handleColumnSort("statut")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none relative" style={{ width: columnWidths.statut + 'px' }}>
                   Statut {sortColumn === "statut" && (sortDirection === "asc" ? "↑" : "↓")}
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors" onMouseDown={e => handleResizeStart(e, 'statut')}>
+                    <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
+                  </div>
                 </th>
-                <th className="px-2 py-2 w-24"></th>
+                <th className="px-2 py-2 relative" style={{ width: columnWidths.actions + 'px' }}>
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors" onMouseDown={e => handleResizeStart(e, 'actions')}>
+                    <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
+                  </div>
+                </th>
               </tr>
             </thead>
             <tbody>
@@ -1633,10 +1724,10 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 return (
                 <React.Fragment key={lead.id}>
                 <tr className={`group border-b border-slate-50 border-l-2 transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200 border-l-indigo-400" : selectedIds.has(lead.id) ? "bg-slate-100 border-l-transparent" : "hover:bg-slate-50/80 border-l-transparent hover:border-l-blue-400"} ${i === filtered.length-1 ? "border-b-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
-                  <td className="px-2 py-1.5 w-8" onClick={e => e.stopPropagation()}>
+                  <td className="px-2 py-1.5" style={{ width: columnWidths.checkbox + 'px' }} onClick={e => e.stopPropagation()}>
                     <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.has(lead.id)} onChange={e => { const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} />
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.contact + 'px' }}>
                     <div className="flex items-center gap-1.5">
                       <div className={`w-6 h-6 rounded-full flex items-center justify-center text-[10px] font-bold flex-shrink-0 ${cfg.bg} ${cfg.text}`}>
                         {lead.prenom?.[0]}{lead.nom?.[0]}
@@ -1649,27 +1740,27 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                       </div>
                     </div>
                   </td>
-                  <td className="px-2 py-1.5 max-w-[180px]">
+                  <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.hotel + 'px' }}>
                     <div className="text-xs text-slate-700 font-medium leading-tight truncate">{lead.hotel} · {[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
                   </td>
-                  <td className="px-2 py-1.5 w-12 text-center">
+                  <td className="px-2 py-1.5 text-center overflow-hidden" style={{ width: columnWidths.langue + 'px' }}>
                     <span className="text-xs">{lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : lead.langue || '—'}</span>
                   </td>
-                  <td className="px-2 py-1.5">
-                    <span className="text-xs text-slate-600 truncate block max-w-[120px]">{lead.campaign || '—'}</span>
+                  <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.campaign + 'px' }}>
+                    <span className="text-xs text-slate-600 truncate block">{lead.campaign || '—'}</span>
                   </td>
-                  <td className="px-2 py-1.5">
+                  <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.sequence + 'px' }}>
                     {lead.sequence
-                      ? <div className="text-[10px] text-blue-600 font-medium truncate max-w-[100px]">E{(lead.etape||0)+1} · {lead.sequence}</div>
+                      ? <div className="text-[10px] text-blue-600 font-medium truncate">E{(lead.etape||0)+1} · {lead.sequence}</div>
                       : <span className="text-xs text-slate-300">—</span>}
                   </td>
-                  <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
+                  <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.statut + 'px' }} onClick={e => e.stopPropagation()}>
                     <select value={lead.statut} onChange={e => changerStatut(lead, e.target.value)}
                       className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full border-0 cursor-pointer focus:outline-none ${cfg.bg} ${cfg.text}`}>
                       {Object.keys(STATUT_CONFIG).map(s => <option key={s}>{s}</option>)}
                     </select>
                   </td>
-                  <td className="px-2 py-1.5" onClick={e => e.stopPropagation()}>
+                  <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.actions + 'px' }} onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1 justify-end">
                       {lead.statut !== "Désabonné" && (
                         <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 whitespace-nowrap">▶</button>
