@@ -3021,12 +3021,14 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
   const topClientsChartRef = useRef(null);
   const clientMonthlyChartRef = useRef(null);
   const comparisonChartRef = useRef(null);
+  const commissionsChartRef = useRef(null);
 
   // Chart instances
   const monthlyChartInstance = useRef(null);
   const topClientsChartInstance = useRef(null);
   const clientMonthlyChartInstance = useRef(null);
   const comparisonChartInstance = useRef(null);
+  const commissionsChartInstance = useRef(null);
 
   // Load global analytics
   const loadAnalytics = async () => {
@@ -3303,6 +3305,90 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     });
   }, [clientDetails, viewMode]);
 
+  // Create commissions chart
+  useEffect(() => {
+    if (!commissionsChartRef.current || !analytics || viewMode !== 'commissions') return;
+
+    if (commissionsChartInstance.current) {
+      commissionsChartInstance.current.destroy();
+    }
+
+    const monthsData = Object.entries(analytics.byMonth || {})
+      .sort((a, b) => a[0].localeCompare(b[0]));
+
+    const ctx = commissionsChartRef.current.getContext('2d');
+    commissionsChartInstance.current = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: monthsData.map(([month]) => {
+          const date = new Date(month + '-01');
+          return date.toLocaleDateString('fr-FR', { year: 'numeric', month: 'short' });
+        }),
+        datasets: [
+          {
+            label: 'Commission Brute (15%)',
+            data: monthsData.map(([, data]) => (data.ca_ht || 0) * 0.15),
+            borderColor: 'rgb(59, 130, 246)',
+            backgroundColor: 'rgba(59, 130, 246, 0.1)',
+            tension: 0.4,
+            fill: true,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Taxes (23.04%)',
+            data: monthsData.map(([, data]) => (data.ca_ht || 0) * 0.15 * 0.2304),
+            borderColor: 'rgb(239, 68, 68)',
+            backgroundColor: 'rgba(239, 68, 68, 0.1)',
+            tension: 0.4,
+            fill: true,
+            yAxisID: 'y'
+          },
+          {
+            label: 'Commission Nette',
+            data: monthsData.map(([, data]) => (data.ca_ht || 0) * 0.15 * 0.7696),
+            borderColor: 'rgb(16, 185, 129)',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            tension: 0.4,
+            fill: true,
+            borderWidth: 3,
+            yAxisID: 'y'
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const label = context.dataset.label || '';
+                const value = Math.round(context.parsed.y).toLocaleString('fr-FR');
+                return `${label}: ${value}€`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => `${value.toLocaleString('fr-FR')}€`
+            }
+          }
+        }
+      }
+    });
+  }, [analytics, viewMode]);
+
   // Create years comparison chart
   useEffect(() => {
     if (!comparisonChartRef.current || !yearsComparison || viewMode !== 'comparison') return;
@@ -3500,6 +3586,16 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
               }`}
             >
               Comparaison Années
+            </button>
+            <button
+              onClick={() => setViewMode('commissions')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'commissions'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              Commissions
             </button>
           </div>
           <div className="flex items-center gap-3">
@@ -3932,6 +4028,146 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* Vue Commissions */}
+      {viewMode === 'commissions' && analytics && (
+        <div className="space-y-6">
+          {/* KPIs */}
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+            <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+              <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">Commission Brute</div>
+              <div className="text-3xl font-bold text-blue-900">
+                {Math.round((analytics.total?.ca_ht || 0) * 0.15).toLocaleString('fr-FR')}€
+              </div>
+              <div className="text-sm text-blue-700 mt-2">15% du CA HT</div>
+            </div>
+
+            <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl p-6 border border-red-200">
+              <div className="text-xs font-medium text-red-600 mb-2 uppercase tracking-wide">Taxes Totales</div>
+              <div className="text-3xl font-bold text-red-900">
+                {Math.round((analytics.total?.ca_ht || 0) * 0.15 * 0.2304).toLocaleString('fr-FR')}€
+              </div>
+              <div className="text-sm text-red-700 mt-2">23.04% de la commission</div>
+            </div>
+
+            <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
+              <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">Commission Nette</div>
+              <div className="text-3xl font-bold text-emerald-900">
+                {Math.round((analytics.total?.ca_ht || 0) * 0.15 * 0.7696).toLocaleString('fr-FR')}€
+              </div>
+              <div className="text-sm text-emerald-700 mt-2">Après taxes</div>
+            </div>
+
+            <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
+              <div className="text-xs font-medium text-purple-600 mb-2 uppercase tracking-wide">Taux Effectif</div>
+              <div className="text-3xl font-bold text-purple-900">11.54%</div>
+              <div className="text-sm text-purple-700 mt-2">Du CA HT (net)</div>
+            </div>
+          </div>
+
+          {/* Graphique évolution mensuelle */}
+          <div className="bg-white rounded-xl border border-slate-100 p-6">
+            <h3 className="text-sm font-semibold text-slate-800 mb-4">Évolution mensuelle des commissions</h3>
+            <div className="h-80">
+              <canvas ref={commissionsChartRef}></canvas>
+            </div>
+          </div>
+
+          {/* Tableau mensuel détaillé */}
+          <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+            <div className="p-6 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-800">Détail mensuel</h3>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Mois</th>
+                    <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
+                    <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Commission Brute (15%)</th>
+                    <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Taxes (23.04%)</th>
+                    <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Commission Nette</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100">
+                  {Object.entries(analytics.byMonth || {})
+                    .sort((a, b) => a[0].localeCompare(b[0]))
+                    .map(([month, data]) => {
+                      const caHT = data.ca_ht || 0;
+                      const commBrute = caHT * 0.15;
+                      const taxes = commBrute * 0.2304;
+                      const commNette = commBrute - taxes;
+
+                      return (
+                        <tr key={month} className="hover:bg-slate-50">
+                          <td className="px-6 py-3 text-sm font-medium text-slate-900">
+                            {new Date(month + '-01').toLocaleDateString('fr-FR', { year: 'numeric', month: 'long' })}
+                          </td>
+                          <td className="px-6 py-3 text-sm text-right text-slate-700">
+                            {Math.round(caHT).toLocaleString('fr-FR')}€
+                          </td>
+                          <td className="px-6 py-3 text-sm text-right font-medium text-blue-600">
+                            {Math.round(commBrute).toLocaleString('fr-FR')}€
+                          </td>
+                          <td className="px-6 py-3 text-sm text-right text-red-600">
+                            -{Math.round(taxes).toLocaleString('fr-FR')}€
+                          </td>
+                          <td className="px-6 py-3 text-sm text-right font-bold text-emerald-600">
+                            {Math.round(commNette).toLocaleString('fr-FR')}€
+                          </td>
+                        </tr>
+                      );
+                    })}
+                </tbody>
+                <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                  <tr>
+                    <td className="px-6 py-3 text-sm font-bold text-slate-900">TOTAL</td>
+                    <td className="px-6 py-3 text-sm text-right font-bold text-slate-900">
+                      {Math.round(analytics.total?.ca_ht || 0).toLocaleString('fr-FR')}€
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right font-bold text-blue-600">
+                      {Math.round((analytics.total?.ca_ht || 0) * 0.15).toLocaleString('fr-FR')}€
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right font-bold text-red-600">
+                      -{Math.round((analytics.total?.ca_ht || 0) * 0.15 * 0.2304).toLocaleString('fr-FR')}€
+                    </td>
+                    <td className="px-6 py-3 text-sm text-right font-bold text-emerald-600">
+                      {Math.round((analytics.total?.ca_ht || 0) * 0.15 * 0.7696).toLocaleString('fr-FR')}€
+                    </td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          </div>
+
+          {/* Détail des taxes */}
+          <div className="bg-slate-50 rounded-xl border border-slate-200 p-6">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">Détail des taxes appliquées</h3>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">CSG</div>
+                <div className="font-semibold text-slate-900">21.20%</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">CRDS</div>
+                <div className="font-semibold text-slate-900">1.70%</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Formation Pro</div>
+                <div className="font-semibold text-slate-900">0.10%</div>
+              </div>
+              <div>
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">CFP</div>
+                <div className="font-semibold text-slate-900">0.04%</div>
+              </div>
+              <div className="col-span-2 md:col-span-4 pt-2 border-t border-slate-300">
+                <div className="text-xs text-slate-500 uppercase tracking-wide mb-1">Total Taxes</div>
+                <div className="font-bold text-slate-900 text-lg">23.04%</div>
+              </div>
+            </div>
+          </div>
         </div>
       )}
     </div>
