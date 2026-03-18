@@ -352,10 +352,60 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [showTestModal, setShowTestModal] = useState(false);
   const [testInProgress, setTestInProgress] = useState(false);
   const [mode, setMode] = useState("edit");
-  const corpsRef = useRef(null);
   const objetRef = useRef(null);
   const pjRef = useRef(null);
   const [pieceJointe, setPieceJointe] = useState(etapes[0]?.piece_jointe || null);
+
+  // Tiptap editor setup
+  const { useEditor, EditorContent } = window.TiptapReact || {};
+  const { StarterKit, Underline, TextStyle, Color, TextAlign, Link, Placeholder } = window.TiptapExtensions || {};
+
+  const editor = useEditor && StarterKit ? useEditor({
+    extensions: [
+      StarterKit.configure({
+        heading: { levels: [1, 2, 3] },
+        bulletList: true,
+        orderedList: true,
+        hardBreak: true,
+        paragraph: true,
+        bold: true,
+        italic: true,
+        strike: false,
+        code: false,
+        codeBlock: false,
+        blockquote: false,
+        horizontalRule: false,
+      }),
+      Underline,
+      TextStyle,
+      Color.configure({ types: ['textStyle'] }),
+      TextAlign.configure({
+        types: ['heading', 'paragraph'],
+        alignments: ['left', 'center', 'right'],
+      }),
+      Link.configure({
+        openOnClick: false,
+        HTMLAttributes: {
+          style: 'color: #1a56db; text-decoration: underline;'
+        },
+      }),
+      Placeholder.configure({
+        placeholder: 'Écrivez votre email ici... Utilisez la toolbar pour formater.'
+      }),
+    ],
+    content: '',
+    onUpdate: ({ editor }) => {
+      const json = editor.getJSON();
+      updateEtape(activeEtape, 'content_json', JSON.stringify(json));
+      updateEtape(activeEtape, 'corps_html', editor.getHTML());
+    },
+    editorProps: {
+      attributes: {
+        class: 'prose prose-sm max-w-none focus:outline-none min-h-64 p-4',
+        style: 'font-family: Helvetica, Arial, sans-serif; font-size: 14px;'
+      },
+    },
+  }) : null;
 
   // Sync pj dans l'étape courante
   const setPjEtape = (pj) => {
@@ -476,39 +526,35 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     return { ...et, [k]: v, ...extra };
   }));
 
-  // Fonction de formatage pour contentEditable
-  const fmt = (cmd, val = null) => {
-    corpsRef.current?.focus();
-    document.execCommand(cmd, false, val);
-    syncCorps();
-  };
-
-  const syncCorps = () => {
-    if (corpsRef.current) updateEtape(activeEtape, "corps_html", corpsRef.current.innerHTML);
-  };
-
-  // Insérer une variable à la position du curseur
+  // Insérer une variable à la position du curseur (adapté pour Tiptap)
   const insererVar = (v) => {
-    corpsRef.current?.focus();
-    document.execCommand('insertText', false, v);
-    syncCorps();
+    if (editor) {
+      editor.chain().focus().insertContent(v).run();
+    }
   };
 
   // Initialiser le contenu de l'éditeur quand on change d'étape
   useEffect(() => {
-    if (corpsRef.current && mode === "edit") {
+    if (editor && mode === "edit") {
       const etape = etapes[activeEtape];
-      corpsRef.current.innerHTML = etape?.corps_html || (etape?.corps ? texteVersHtmlPreview(etape.corps) : "");
+      // Charger depuis content_json si disponible, sinon depuis corps_html
+      if (etape?.content_json) {
+        try {
+          const json = JSON.parse(etape.content_json);
+          editor.commands.setContent(json);
+        } catch {
+          editor.commands.setContent(etape.corps_html || '');
+        }
+      } else {
+        editor.commands.setContent(etape?.corps_html || '');
+      }
       setPieceJointe(etape?.piece_jointe || null);
     }
-  }, [activeEtape, mode]);
+  }, [editor, activeEtape, mode]);
 
   const handleSave = async () => {
     if (!nom.trim()) { setErrMsg("Donnez un nom à la séquence"); return; }
     if (etapes.length === 0) { setErrMsg("Ajoutez au moins un email"); return; }
-
-    // Synchroniser le corps_html de l'étape courante avant sauvegarde
-    syncCorps();
 
     setSaving(true); setErrMsg("");
     try {
@@ -589,7 +635,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
           <div className="md:w-52 border-b md:border-b-0 md:border-r border-slate-100 p-2 md:p-3 flex md:flex-col gap-1.5 flex-shrink-0 overflow-x-auto md:overflow-y-auto bg-slate-50/50">
             {etapes.map((e, i) => (
               <div key={i} className={`group rounded-lg transition-all ${activeEtape === i ? "bg-gradient-to-br from-slate-900 to-slate-800 shadow-lg" : "hover:bg-white hover:shadow-sm"}`}>
-                <button onClick={() => { syncCorps(); setActiveEtape(i); }} className="w-full text-left px-3 py-2.5">
+                <button onClick={() => setActiveEtape(i)} className="w-full text-left px-3 py-2.5">
                   <div className="flex items-center justify-between mb-1">
                     <span className={`font-semibold text-sm ${activeEtape === i ? "text-white" : "text-slate-800"}`}>Email {i + 1}</span>
                     {etapes.length > 1 && (
@@ -612,7 +658,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                 )}
               </div>
             ))}
-            <button onClick={() => { syncCorps(); addEtape(); }} className="w-full px-3 py-3 rounded-lg text-xs font-medium text-slate-500 hover:bg-white hover:text-slate-700 hover:shadow-sm transition-all border-2 border-dashed border-slate-200 hover:border-slate-300 mt-1">
+            <button onClick={addEtape} className="w-full px-3 py-3 rounded-lg text-xs font-medium text-slate-500 hover:bg-white hover:text-slate-700 hover:shadow-sm transition-all border-2 border-dashed border-slate-200 hover:border-slate-300 mt-1">
               + Ajouter un email
             </button>
           </div>
@@ -654,79 +700,141 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                   </div>
                 </div>
 
-                {/* Toolbar WYSIWYG simplifié */}
+                {/* Toolbar Tiptap */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                  <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200">
-                    {/* Formatage texte */}
-                    <button
-                      type="button"
-                      title="Gras"
-                      onClick={() => fmt('bold')}
-                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 font-bold transition-colors"
-                    >
-                      B
-                    </button>
-                    <button
-                      type="button"
-                      title="Italique"
-                      onClick={() => fmt('italic')}
-                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 italic transition-colors"
-                    >
-                      I
-                    </button>
-                    <button
-                      type="button"
-                      title="Souligné"
-                      onClick={() => fmt('underline')}
-                      className="w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 underline transition-colors"
-                    >
-                      U
-                    </button>
-                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                    {/* Lien hypertexte */}
-                    <button
-                      type="button"
-                      title="Ajouter un lien"
-                      onClick={() => {
-                        const url = prompt("URL du lien :", "https://");
-                        if (url && url.trim()) fmt('createLink', url);
-                      }}
-                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs transition-colors"
-                    >
-                      🔗
-                    </button>
-                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                    {/* Saut de ligne */}
-                    <button
-                      type="button"
-                      title="Saut de ligne"
-                      onClick={() => fmt('insertLineBreak')}
-                      className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-medium transition-colors"
-                    >
-                      ↵
-                    </button>
-                    <div className="w-px h-4 bg-slate-200 mx-0.5" />
-                    {/* Variables corps */}
-                    <span className="text-xs text-slate-400">Variables :</span>
-                    {VARS.map(v => (
+                  {editor && (
+                    <div className="flex flex-wrap items-center gap-1.5 px-3 py-2 bg-gradient-to-b from-slate-50 to-white border-b border-slate-200">
+                      {/* Formatage texte */}
                       <button
                         type="button"
-                        key={v}
-                        onClick={() => insererVar(v)}
-                        className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200"
+                        title="Gras"
+                        onClick={() => editor.chain().focus().toggleBold().run()}
+                        className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 font-bold transition-colors ${editor.isActive('bold') ? 'bg-slate-200' : ''}`}
                       >
-                        {v}
+                        B
                       </button>
-                    ))}
-                  </div>
-                  {/* Éditeur contentEditable WYSIWYG */}
-                  <div
-                    ref={corpsRef}
-                    contentEditable
-                    suppressContentEditableWarning
-                    onInput={syncCorps}
-                    className="min-h-64 max-h-96 overflow-y-auto p-4 text-slate-800 focus:outline-none leading-relaxed bg-white border-t border-slate-100"
-                    style={{ fontSize: '14px', fontFamily: 'Helvetica, Arial, sans-serif' }}
+                      <button
+                        type="button"
+                        title="Italique"
+                        onClick={() => editor.chain().focus().toggleItalic().run()}
+                        className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 italic transition-colors ${editor.isActive('italic') ? 'bg-slate-200' : ''}`}
+                      >
+                        I
+                      </button>
+                      <button
+                        type="button"
+                        title="Souligné"
+                        onClick={() => editor.chain().focus().toggleUnderline().run()}
+                        className={`w-7 h-7 rounded flex items-center justify-center text-sm hover:bg-slate-200 text-slate-600 underline transition-colors ${editor.isActive('underline') ? 'bg-slate-200' : ''}`}
+                      >
+                        U
+                      </button>
+                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                      {/* Titres */}
+                      <button
+                        type="button"
+                        title="Titre 1"
+                        onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()}
+                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-bold transition-colors ${editor.isActive('heading', { level: 1 }) ? 'bg-slate-200' : ''}`}
+                      >
+                        H1
+                      </button>
+                      <button
+                        type="button"
+                        title="Titre 2"
+                        onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()}
+                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs font-bold transition-colors ${editor.isActive('heading', { level: 2 }) ? 'bg-slate-200' : ''}`}
+                      >
+                        H2
+                      </button>
+                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                      {/* Listes */}
+                      <button
+                        type="button"
+                        title="Liste à puces"
+                        onClick={() => editor.chain().focus().toggleBulletList().run()}
+                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive('bulletList') ? 'bg-slate-200' : ''}`}
+                      >
+                        •
+                      </button>
+                      <button
+                        type="button"
+                        title="Liste numérotée"
+                        onClick={() => editor.chain().focus().toggleOrderedList().run()}
+                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive('orderedList') ? 'bg-slate-200' : ''}`}
+                      >
+                        1.
+                      </button>
+                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                      {/* Alignement */}
+                      <button
+                        type="button"
+                        title="Aligner à gauche"
+                        onClick={() => editor.chain().focus().setTextAlign('left').run()}
+                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive({ textAlign: 'left' }) ? 'bg-slate-200' : ''}`}
+                      >
+                        ⬅
+                      </button>
+                      <button
+                        type="button"
+                        title="Centrer"
+                        onClick={() => editor.chain().focus().setTextAlign('center').run()}
+                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive({ textAlign: 'center' }) ? 'bg-slate-200' : ''}`}
+                      >
+                        ↔
+                      </button>
+                      <button
+                        type="button"
+                        title="Aligner à droite"
+                        onClick={() => editor.chain().focus().setTextAlign('right').run()}
+                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-600 text-xs transition-colors ${editor.isActive({ textAlign: 'right' }) ? 'bg-slate-200' : ''}`}
+                      >
+                        ➡
+                      </button>
+                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                      {/* Lien hypertexte */}
+                      <button
+                        type="button"
+                        title="Ajouter un lien"
+                        onClick={() => {
+                          const url = prompt("URL du lien :", "https://");
+                          if (url && url.trim()) {
+                            editor.chain().focus().setLink({ href: url }).run();
+                          }
+                        }}
+                        className={`px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-slate-500 text-xs transition-colors ${editor.isActive('link') ? 'bg-slate-200' : ''}`}
+                      >
+                        🔗
+                      </button>
+                      {editor.isActive('link') && (
+                        <button
+                          type="button"
+                          title="Retirer le lien"
+                          onClick={() => editor.chain().focus().unsetLink().run()}
+                          className="px-2 h-7 rounded flex items-center justify-center hover:bg-slate-200 text-red-500 text-xs transition-colors"
+                        >
+                          ✕
+                        </button>
+                      )}
+                      <div className="w-px h-4 bg-slate-200 mx-0.5" />
+                      {/* Variables corps */}
+                      <span className="text-xs text-slate-400">Variables :</span>
+                      {VARS.map(v => (
+                        <button
+                          type="button"
+                          key={v}
+                          onClick={() => insererVar(v)}
+                          className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200"
+                        >
+                          {v}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                  {/* Éditeur Tiptap */}
+                  <EditorContent
+                    editor={editor}
+                    className="min-h-64 max-h-96 overflow-y-auto text-slate-800 bg-white border-t border-slate-100"
                   />
                   {/* Pièce jointe */}
                   <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
@@ -6716,9 +6824,6 @@ function App() {
         * { font-family: 'DM Sans', sans-serif; }
         .font-mono { font-family: 'DM Mono', monospace !important; }
         .line-clamp-1 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
-        [contenteditable] ul { list-style-type: disc; padding-left: 20px; margin: 8px 0; }
-        [contenteditable] ol { list-style-type: decimal; padding-left: 20px; margin: 8px 0; }
-        [contenteditable] li { margin: 2px 0; }
         @keyframes fade-in { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
         .animate-fade-in { animation: fade-in 0.2s ease-out; }
         .safe-area-bottom { padding-bottom: env(safe-area-inset-bottom, 0px); }
