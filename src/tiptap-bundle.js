@@ -1,4 +1,11 @@
 // Bundle Tiptap for browser use
+import * as React from 'react';
+import * as ReactDOM from 'react-dom';
+
+// Make React available globally for Tiptap
+window.React = React;
+window.ReactDOM = ReactDOM;
+
 import { useEditor, EditorContent } from '@tiptap/react';
 import StarterKit from '@tiptap/starter-kit';
 import { Underline } from '@tiptap/extension-underline';
