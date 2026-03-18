@@ -3315,6 +3315,9 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
 
     // Create cumulative monthly data
     const allMonths = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
+    const currentYear = new Date().getFullYear();
+    const currentMonth = new Date().getMonth() + 1; // 1-12
+
     const datasets = filteredYears.map((yearData, idx) => {
       const colors = [
         'rgb(59, 130, 246)',
@@ -3324,7 +3327,13 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
         'rgb(236, 72, 153)'
       ];
 
-      const cumulativeData = allMonths.map(month => {
+      const isCurrentYear = parseInt(yearData.year) === currentYear;
+
+      const cumulativeData = allMonths.map((month, monthIdx) => {
+        // Pour l'année en cours, ne pas afficher les mois futurs
+        if (isCurrentYear && (monthIdx + 1) > currentMonth) {
+          return null;
+        }
         const monthData = yearData.byMonth?.[month];
         return monthData?.cumulative_ht || 0;
       });
@@ -3619,7 +3628,9 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
                       <tr key={i} className="hover:bg-slate-50">
                         <td className="px-6 py-3 text-sm font-medium text-slate-900">{inv.number}</td>
                         <td className="px-6 py-3 text-sm text-slate-700">{inv.client}</td>
-                        <td className="px-6 py-3 text-sm text-slate-500">{inv.date}</td>
+                        <td className="px-6 py-3 text-sm text-slate-500">
+                          {new Date(inv.date).toLocaleDateString('fr-FR')}
+                        </td>
                         <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
                           {(inv.amount_ht || 0).toLocaleString('fr-FR')}€
                         </td>
@@ -3818,7 +3829,21 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
         <div className="space-y-6">
           {/* Year selection */}
           <div className="bg-white rounded-xl border border-slate-100 p-6">
-            <h3 className="text-sm font-semibold text-slate-800 mb-4">Sélectionner les années à comparer</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-slate-800">Sélectionner les années à comparer</h3>
+              <button
+                onClick={() => {
+                  if (selectedYears.length === availableYears.length) {
+                    setSelectedYears([]);
+                  } else {
+                    setSelectedYears([...availableYears]);
+                  }
+                }}
+                className="text-xs text-blue-600 hover:text-blue-700 font-medium"
+              >
+                {selectedYears.length === availableYears.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+              </button>
+            </div>
             <div className="flex flex-wrap gap-3">
               {availableYears.map(year => (
                 <label key={year} className="flex items-center gap-2 cursor-pointer">
