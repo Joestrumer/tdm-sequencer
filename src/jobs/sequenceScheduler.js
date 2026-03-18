@@ -45,6 +45,19 @@ async function avancerInscription(inscription, etapesParsed, lead) {
       .run(prochainIndex, inscription.id);
     logger.info(`📭 Séquence terminée pour ${lead.email}`);
 
+    // Vérifier s'il y a eu une réponse dans les events
+    const hasResponse = db.prepare(`
+      SELECT COUNT(*) as count FROM events
+      WHERE lead_id = ? AND type IN ('réponse', 'clic')
+    `).get(lead.id);
+
+    // Si pas de réponse, mettre le statut "Fin de séquence"
+    // Sinon laisser le statut actuel (probablement "Répondu" ou "Converti")
+    if (hasResponse.count === 0) {
+      db.prepare(`UPDATE leads SET statut='Fin de séquence', updated_at=datetime('now') WHERE id=?`).run(lead.id);
+      logger.info(`📭 Lead ${lead.email} mis en statut "Fin de séquence" (aucune réponse)`);
+    }
+
     if (process.env.HUBSPOT_API_KEY) {
       const seq = db.prepare('SELECT nom FROM sequences WHERE id = ?').get(inscription.sequence_id);
       await hubspot.creerTaskFinSequence(db, lead, seq?.nom || 'Séquence').catch(() => {});
@@ -55,9 +68,10 @@ async function avancerInscription(inscription, etapesParsed, lead) {
     db.prepare(`UPDATE inscriptions SET etape_courante=?, prochain_envoi=? WHERE id=?`)
       .run(prochainIndex, prochainDate, inscription.id);
     logger.info(`📅 Prochain email planifié : ${lead.email} → ${prochainDate}`);
-  }
 
-  db.prepare(`UPDATE leads SET statut='En séquence', updated_at=datetime('now') WHERE id=?`).run(lead.id);
+    // Mettre à jour le statut en "En séquence" seulement si la séquence continue
+    db.prepare(`UPDATE leads SET statut='En séquence', updated_at=datetime('now') WHERE id=?`).run(lead.id);
+  }
 }
 
 // ─── Traiter une inscription (noyau partagé) ──────────────────────────────────

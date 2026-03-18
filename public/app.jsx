@@ -29,6 +29,7 @@ const STATUT_CONFIG = {
   "En séquence": { bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500" },
   "Répondu": { bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500" },
   "Converti": { bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
+  "Fin de séquence": { bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-500" },
   "Désabonné": { bg: "bg-red-50", text: "text-red-600", dot: "bg-red-400" },
 };
 
@@ -1333,7 +1334,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     return 0; // recent = ordre API
   });
 
-  const KANBAN_COLS = ["Nouveau", "En séquence", "Répondu", "Converti", "Désabonné"];
+  const KANBAN_COLS = ["Nouveau", "En séquence", "Répondu", "Converti", "Fin de séquence", "Désabonné"];
 
   // ── Import CSV ──────────────────────────────────────────────────────────
   const importerCSV = async (file) => {
