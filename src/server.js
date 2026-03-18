@@ -124,6 +124,7 @@ app.use('/api/factures',      require('./routes/factures')(db));
 app.use('/api/gsheets',       require('./routes/googlesheets')(db));
 app.use('/api/reference',     require('./routes/referenceData')(db));
 app.use('/api/shipments',     require('./routes/shipments')(db));
+app.use('/api/dashboard',     require('./routes/dashboard')(db));
 
 // Frontend statique
 const publicPath = path.join(__dirname, '..', 'public');

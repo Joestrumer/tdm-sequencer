@@ -803,143 +803,210 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
 // ─── VUES ─────────────────────────────────────────────────────────────────────
 
-const VueDashboard = ({ leads, activites, stats }) => {
-  const kpis = stats?.kpis || {};
-  const envoyes = kpis.emailsEnvoyes || 0;
-  const tOuverture = kpis.tOuverture || 0;
-  const tClic = kpis.tClic || 0;
-  const tReponse = kpis.tReponse || 0;
-  const convertis = kpis.convertis || 0;
-  const leadsActifs = kpis.leadsActifs || 0;
-  const chauds = stats?.leadsChauds || leads.filter(l => (l.total_ouvertures >= 3 || l.score >= 80) && l.statut === "En séquence");
-  const perf7j = stats?.performance7j || [];
-  const statsSeq = stats?.statsSequences || [];
-  const maxEnvoyes = Math.max(...perf7j.map(d => d.envoyes || 0), 1);
+const VueDashboard = ({ showToast }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
 
-  const actRecentes = stats?.activitesRecentes || activites || [];
-  const ICONS = { ouverture: "👁", clic: "🔗", envoi: "📧", réponse: "💬", désabonnement: "🚫", bounce: "⚠️" };
+  const loadDashboard = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/dashboard');
+      setData(res);
+    } catch (err) {
+      showToast?.('Erreur chargement dashboard: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadDashboard();
+    const interval = setInterval(loadDashboard, 60000); // Refresh toutes les minutes
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading || !data) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="w-8 h-8 border-3 border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-500">Chargement du dashboard...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { stats, prochainsEnvois, quota, activite, erreurs, topSequences } = data;
+  const ICONS = { envoi: "📧", ouverture: "👁", clic: "🔗", desabonnement: "🚫" };
+
+  const quotaPct = (quota.utilise / quota.max) * 100;
+  const quotaColor = quotaPct >= 90 ? 'bg-red-500' : quotaPct >= 70 ? 'bg-amber-500' : 'bg-emerald-500';
 
   return (
     <div className="space-y-5">
-      {/* ── KPIs ── */}
+      {/* KPIs */}
       <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
-        {[
-          { label: "Emails envoyés", value: envoyes, icon: "📧", color: "text-slate-800" },
-          { label: "Taux ouverture", value: tOuverture + "%", icon: "👁", color: tOuverture >= 40 ? "text-emerald-600" : tOuverture >= 20 ? "text-amber-600" : "text-red-500" },
-          { label: "Taux de clic", value: tClic + "%", icon: "🔗", color: "text-blue-600" },
-          { label: "Taux de réponse", value: tReponse + "%", icon: "💬", color: tReponse >= 8 ? "text-emerald-600" : "text-amber-600" },
-          { label: "En séquence", value: leadsActifs, icon: "⚡", color: "text-purple-600" },
-        ].map(({ label, value, icon, color }) => (
-          <div key={label} className="bg-white rounded-xl border border-slate-100 p-4">
-            <div className="text-xs text-slate-400 mb-1">{label}</div>
-            <div className={`text-2xl font-bold ${color}`}>{value}</div>
-            <div className="text-lg mt-1">{icon}</div>
-          </div>
-        ))}
-      </div>
-
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-        {/* ── Courbe 7j ── */}
-        <div className="lg:col-span-2 bg-white rounded-xl border border-slate-100 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-4">Performance 7 derniers jours</h3>
-          {perf7j.length === 0 ? (
-            <div className="flex items-end justify-center gap-1 h-24 text-xs text-slate-300">Aucune donnée</div>
-          ) : (
-            <>
-              <div className="flex items-end gap-2 h-24">
-                {perf7j.map((d, i) => (
-                  <div key={i} className="flex-1 flex flex-col items-center gap-0.5">
-                    <div className="w-full flex flex-col justify-end gap-0.5" style={{height:"80px"}}>
-                      <div className="w-full bg-slate-100 rounded-sm" style={{height: Math.max(2, (d.envoyes/maxEnvoyes)*70)+"px"}} title={`${d.envoyes} envoyés`} />
-                      <div className="w-full bg-blue-400 rounded-sm" style={{height: Math.max(d.ouverts?2:0, ((d.ouverts||0)/maxEnvoyes)*70)+"px"}} title={`${d.ouverts||0} ouverts`} />
-                    </div>
-                    <span className="text-xs text-slate-400">{d.jour?.slice(5)}</span>
-                  </div>
-                ))}
-              </div>
-              <div className="flex gap-4 mt-2 text-xs text-slate-400">
-                <span className="flex items-center gap-1"><span className="w-3 h-2 bg-slate-200 rounded-sm inline-block"/>Envoyés</span>
-                <span className="flex items-center gap-1"><span className="w-3 h-2 bg-blue-400 rounded-sm inline-block"/>Ouverts</span>
-              </div>
-            </>
-          )}
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-4">
+          <div className="text-xs font-medium text-blue-600 mb-1 uppercase tracking-wide">Leads Actifs</div>
+          <div className="text-2xl font-bold text-blue-900">{stats.leadsActifs}</div>
+          <div className="text-sm text-blue-700 mt-1">Disponibles</div>
         </div>
 
-        {/* ── Activité récente ── */}
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-4">
+          <div className="text-xs font-medium text-purple-600 mb-1 uppercase tracking-wide">En Séquence</div>
+          <div className="text-2xl font-bold text-purple-900">{stats.leadsEnSequence}</div>
+          <div className="text-sm text-purple-700 mt-1">Inscrits actifs</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-4">
+          <div className="text-xs font-medium text-emerald-600 mb-1 uppercase tracking-wide">Cette Semaine</div>
+          <div className="text-2xl font-bold text-emerald-900">{stats.emailsSemaine}</div>
+          <div className="text-sm text-emerald-700 mt-1">Emails envoyés</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-4">
+          <div className="text-xs font-medium text-amber-600 mb-1 uppercase tracking-wide">Taux Ouverture</div>
+          <div className={`text-2xl font-bold ${stats.tauxOuverture >= 40 ? 'text-emerald-600' : stats.tauxOuverture >= 20 ? 'text-amber-600' : 'text-red-600'}`}>
+            {Math.round(stats.tauxOuverture)}%
+          </div>
+          <div className="text-sm text-amber-700 mt-1">30 derniers jours</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl border border-slate-200 p-4">
+          <div className="text-xs font-medium text-slate-600 mb-1 uppercase tracking-wide">Séquences</div>
+          <div className="text-2xl font-bold text-slate-900">{stats.sequencesActives}</div>
+          <div className="text-sm text-slate-700 mt-1">Actives</div>
+        </div>
+      </div>
+
+      {/* Quota du jour */}
+      <div className="bg-white rounded-xl border border-slate-100 p-5">
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-slate-800">Quota d'envoi du jour</h3>
+          <span className="text-xs text-slate-500">{quota.utilise} / {quota.max} emails</span>
+        </div>
+        <div className="w-full bg-slate-100 rounded-full h-3 overflow-hidden">
+          <div className={`h-full ${quotaColor} transition-all duration-300`} style={{ width: `${Math.min(quotaPct, 100)}%` }} />
+        </div>
+        {quotaPct >= 90 && (
+          <p className="text-xs text-red-600 mt-2">⚠️ Quota presque atteint ! Les envois seront limités.</p>
+        )}
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Prochains envois */}
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-800">Prochains envois</h3>
+            <button onClick={loadDashboard} className="text-xs text-blue-600 hover:text-blue-700">
+              🔄 Actualiser
+            </button>
+          </div>
+          <div className="space-y-2.5 max-h-80 overflow-y-auto">
+            {prochainsEnvois.map((envoi, i) => {
+              const prochainDate = new Date(envoi.prochain_envoi);
+              const isPast = prochainDate < new Date();
+              return (
+                <div key={i} className={`flex items-start gap-3 p-2.5 rounded-lg ${isPast ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs font-medium text-slate-900 truncate">
+                      {envoi.prenom} {envoi.nom}
+                    </div>
+                    <div className="text-xs text-slate-500 truncate">{envoi.hotel}</div>
+                    <div className="text-xs text-slate-400 mt-0.5">
+                      {envoi.sequence_nom} · Étape {envoi.etape_courante + 1}/{envoi.nb_etapes}
+                    </div>
+                  </div>
+                  <div className="text-right flex-shrink-0">
+                    <div className={`text-xs font-medium ${isPast ? 'text-amber-600' : 'text-slate-600'}`}>
+                      {prochainDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                    </div>
+                    <div className="text-xs text-slate-400">
+                      {prochainDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                    </div>
+                  </div>
+                </div>
+              );
+            })}
+            {prochainsEnvois.length === 0 && (
+              <p className="text-xs text-slate-300 italic text-center py-4">Aucun envoi planifié</p>
+            )}
+          </div>
+        </div>
+
+        {/* Activité récente */}
         <div className="bg-white rounded-xl border border-slate-100 p-5">
           <h3 className="text-sm font-semibold text-slate-800 mb-3">Activité récente</h3>
-          <div className="space-y-2.5">
-            {actRecentes.slice(0, 8).map((a, i) => (
+          <div className="space-y-2.5 max-h-80 overflow-y-auto">
+            {activite.map((a, i) => (
               <div key={i} className="flex items-start gap-2">
                 <span className="text-sm leading-none mt-0.5 flex-shrink-0">{ICONS[a.type] || "📌"}</span>
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <p className="text-xs text-slate-700 leading-snug truncate">
                     <span className="font-medium">{a.prenom} {a.nom}</span>
+                    {a.type === "envoi" && " — email envoyé"}
                     {a.type === "ouverture" && " a ouvert"}
                     {a.type === "clic" && " a cliqué"}
-                    {a.type === "envoi" && " — email envoyé"}
-                    {a.type === "réponse" && " a répondu ✨"}
-                    {a.type === "désabonnement" && " s'est désabonné"}
+                    {a.type === "desabonnement" && " s'est désabonné"}
                   </p>
                   {a.sujet && <p className="text-xs text-slate-400 truncate italic">{a.sujet}</p>}
                   <p className="text-xs text-slate-300">{relTime(a.created_at)}</p>
                 </div>
               </div>
             ))}
-            {actRecentes.length === 0 && <p className="text-xs text-slate-300 italic">Aucune activité</p>}
+            {activite.length === 0 && <p className="text-xs text-slate-300 italic text-center py-4">Aucune activité</p>}
           </div>
         </div>
       </div>
 
-      {/* ── Performance par séquence ── */}
-      {statsSeq.length > 0 && (
+      {/* Top séquences */}
+      {topSequences.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-100 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-3">Performance par séquence</h3>
+          <h3 className="text-sm font-semibold text-slate-800 mb-3">Top séquences actives</h3>
           <div className="overflow-x-auto">
             <table className="w-full text-sm">
-              <thead><tr className="border-b border-slate-100 text-xs text-slate-400 uppercase">
-                <th className="text-left py-2 pr-4">Séquence</th>
-                <th className="text-right py-2 px-3">Leads</th>
-                <th className="text-right py-2 px-3">Emails</th>
-                <th className="text-right py-2 px-3">Ouverture</th>
-                <th className="text-right py-2 px-3">Actifs</th>
-              </tr></thead>
+              <thead>
+                <tr className="border-b border-slate-100 text-xs text-slate-400 uppercase">
+                  <th className="text-left py-2 pr-4">Séquence</th>
+                  <th className="text-right py-2 px-3">Inscrits</th>
+                  <th className="text-right py-2 px-3">Emails</th>
+                  <th className="text-right py-2 px-3">Ouvertures</th>
+                  <th className="text-right py-2 px-3">Taux</th>
+                </tr>
+              </thead>
               <tbody>
-                {statsSeq.map((s, i) => (
-                  <tr key={i} className="border-b border-slate-50">
-                    <td className="py-2 pr-4 font-medium text-slate-800">{s.nom}</td>
-                    <td className="py-2 px-3 text-right text-slate-600">{s.total_leads}</td>
-                    <td className="py-2 px-3 text-right text-slate-600">{s.emails_envoyes}</td>
-                    <td className="py-2 px-3 text-right">
-                      <span className={`font-semibold ${(s.taux_ouverture||0) >= 40 ? "text-emerald-600" : (s.taux_ouverture||0) >= 20 ? "text-amber-600" : "text-slate-400"}`}>
-                        {Math.round(s.taux_ouverture||0)}%
-                      </span>
-                    </td>
-                    <td className="py-2 px-3 text-right text-blue-600 font-medium">{s.leads_actifs}</td>
-                  </tr>
-                ))}
+                {topSequences.map((s, i) => {
+                  const tauxOuv = s.total_emails > 0 ? (s.total_ouvertures / s.total_emails) * 100 : 0;
+                  return (
+                    <tr key={i} className="border-b border-slate-50">
+                      <td className="py-2 pr-4 font-medium text-slate-800">{s.nom}</td>
+                      <td className="py-2 px-3 text-right text-blue-600 font-medium">{s.inscrits_actifs}</td>
+                      <td className="py-2 px-3 text-right text-slate-600">{s.total_emails}</td>
+                      <td className="py-2 px-3 text-right text-slate-600">{s.total_ouvertures}</td>
+                      <td className="py-2 px-3 text-right">
+                        <span className={`font-semibold ${tauxOuv >= 40 ? 'text-emerald-600' : tauxOuv >= 20 ? 'text-amber-600' : 'text-slate-400'}`}>
+                          {Math.round(tauxOuv)}%
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>
         </div>
       )}
 
-      {/* ── Leads chauds ── */}
-      {chauds.length > 0 && (
-        <div className="bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-xl p-5">
-          <div className="flex items-center gap-2 mb-3">
-            <span>🔥</span>
-            <h3 className="text-sm font-semibold text-amber-800">Leads chauds — à relancer maintenant</h3>
-            <span className="ml-auto text-xs text-amber-600 font-medium">{chauds.length} lead{chauds.length > 1 ? "s" : ""}</span>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
-            {chauds.slice(0, 8).map(l => (
-              <div key={l.id} className="bg-white rounded-lg p-3 border border-amber-100 shadow-sm">
-                <div className="font-medium text-slate-800 text-sm">{l.prenom} {l.nom}</div>
-                <div className="text-xs text-slate-500 truncate">{l.hotel}</div>
-                <div className="flex items-center gap-2 mt-1.5">
-                  <span className="text-xs text-amber-600">👁 {l.total_ouvertures} ouv.</span>
-                  <span className="text-xs text-slate-400">Score {l.score}</span>
+      {/* Erreurs récentes */}
+      {erreurs.length > 0 && (
+        <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+          <h3 className="text-sm font-semibold text-red-800 mb-3">⚠️ Erreurs récentes (7 derniers jours)</h3>
+          <div className="space-y-2">
+            {erreurs.map((err, i) => (
+              <div key={i} className="bg-white rounded-lg p-3 border border-red-100">
+                <div className="text-xs font-medium text-slate-900">{err.sujet}</div>
+                <div className="text-xs text-red-600 mt-1">{err.erreur}</div>
+                <div className="text-xs text-slate-400 mt-1">
+                  {new Date(err.envoye_at).toLocaleString('fr-FR')}
                 </div>
               </div>
             ))}
@@ -7096,7 +7163,7 @@ function App() {
 
         <main className="p-4 pb-24 md:p-8 md:pb-8">
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
-          {vue === "dashboard" && <VueDashboard leads={leads} activites={activites} stats={stats} />}
+          {vue === "dashboard" && <VueDashboard showToast={showToast} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} />}
           {vue === "factures" && <VueFactures showToast={showToast} />}
