@@ -144,6 +144,34 @@ app.use((err, req, res, next) => {
   res.status(500).json({ erreur: 'Erreur interne' });
 });
 
+// ─── Checkpoint WAL périodique (toutes les 5 min) ────────────────────────────
+const walCheckpoint = setInterval(() => {
+  try {
+    db.pragma('wal_checkpoint(PASSIVE)');
+  } catch (e) {
+    logger.warn('WAL checkpoint échoué:', e.message);
+  }
+}, 5 * 60 * 1000);
+
+// ─── Shutdown propre : checkpoint WAL avant arrêt ────────────────────────────
+function gracefulShutdown(signal) {
+  logger.info(`${signal} reçu — arrêt propre...`);
+  clearInterval(walCheckpoint);
+  try {
+    db.pragma('wal_checkpoint(TRUNCATE)');
+    logger.info('✅ WAL checkpoint final effectué');
+  } catch (e) {
+    logger.warn('⚠️ WAL checkpoint final échoué:', e.message);
+  }
+  try {
+    db.close();
+    logger.info('✅ Base de données fermée');
+  } catch (_) {}
+  process.exit(0);
+}
+process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+
 process.on('uncaughtException', (err) => {
   console.error('UNCAUGHT EXCEPTION:', err.message, err.stack);
 });

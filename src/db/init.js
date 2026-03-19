@@ -14,6 +14,8 @@ if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 const db = new Database(DB_PATH);
 db.pragma('journal_mode = WAL');
 db.pragma('foreign_keys = ON');
+db.pragma('synchronous = FULL');       // Durabilité maximale contre les crashes
+db.pragma('wal_autocheckpoint = 100'); // Checkpoint WAL tous les 100 pages (plus fréquent)
 
 // ─── Schéma principal ─────────────────────────────────────────────────────────
 db.exec(`
