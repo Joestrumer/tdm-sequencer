@@ -37,6 +37,9 @@ try {
 const scheduler = require('./jobs/sequenceScheduler');
 scheduler.initialiser(db);
 
+const backup = require('./jobs/backup');
+backup.initialiser(db);
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -126,6 +129,60 @@ app.use('/api/reference',     require('./routes/referenceData')(db));
 app.use('/api/shipments',     require('./routes/shipments')(db));
 app.use('/api/dashboard',     require('./routes/dashboard')(db));
 app.use('/api/email-templates', require('./routes/emailTemplates')(db));
+
+// Backup manuel
+app.post('/api/backup', async (req, res) => {
+  try {
+    const data = backup.exporterDonnees(db);
+    const localPath = backup.sauvegarderLocal(data);
+    const github = await backup.pushGitHub(data);
+    res.json({
+      ok: true,
+      local: localPath,
+      github: github ? 'ok' : 'échoué (GITHUB_TOKEN manquant ?)',
+      stats: data._meta.tables
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, erreur: e.message });
+  }
+});
+
+// Restauration depuis un backup
+app.post('/api/backup/restore', (req, res) => {
+  try {
+    const { data } = req.body;
+    if (!data || !data._meta) return res.status(400).json({ erreur: 'Format de backup invalide' });
+
+    const tables = ['events', 'emails', 'inscriptions', 'etapes', 'sequences', 'leads',
+                     'email_blocklist', 'email_templates', 'envoi_quota'];
+
+    const restore = db.transaction(() => {
+      // Vider les tables dans l'ordre (foreign keys)
+      for (const t of tables) {
+        db.prepare(`DELETE FROM ${t}`).run();
+      }
+      // Réinsérer dans l'ordre inverse
+      for (const t of [...tables].reverse()) {
+        if (!data[t] || data[t].length === 0) continue;
+        const cols = Object.keys(data[t][0]);
+        const placeholders = cols.map(() => '?').join(', ');
+        const stmt = db.prepare(`INSERT OR IGNORE INTO ${t} (${cols.join(', ')}) VALUES (${placeholders})`);
+        for (const row of data[t]) {
+          stmt.run(...cols.map(c => row[c]));
+        }
+      }
+    });
+
+    restore();
+    res.json({
+      ok: true,
+      message: 'Restauration terminée',
+      stats: Object.fromEntries(tables.map(t => [t, data[t]?.length || 0]))
+    });
+  } catch (e) {
+    res.status(500).json({ ok: false, erreur: e.message });
+  }
+});
 
 // Frontend statique
 const publicPath = path.join(__dirname, '..', 'public');
