@@ -4908,6 +4908,48 @@ const FacturesSingle = ({ showToast }) => {
   const [result, setResult] = useState(null);
   const [processing, setProcessing] = useState(false);
   const [error, setError] = useState(null);
+  const [importInvoiceId, setImportInvoiceId] = useState('');
+  const [importLoading, setImportLoading] = useState(false);
+
+  const handleImportInvoice = async () => {
+    const idOrNumber = importInvoiceId.trim();
+    if (!idOrNumber) return;
+    setImportLoading(true);
+    setError(null);
+    try {
+      // Si c'est un numéro (ex: "FV 2024/123"), d'abord chercher l'ID
+      let invoiceId = idOrNumber;
+      if (!/^\d+$/.test(idOrNumber)) {
+        const results = await api.get('/factures/invoices/search?number=' + encodeURIComponent(idOrNumber));
+        if (!results || results.length === 0) { setError('Aucune facture trouvée pour "' + idOrNumber + '"'); setImportLoading(false); return; }
+        invoiceId = results[0].id;
+      }
+      const data = await api.get('/factures/invoices/' + invoiceId + '/products');
+      if (data.erreur) { setError(data.erreur); setImportLoading(false); return; }
+      if (!data.products || data.products.length === 0) { setError('Aucun produit trouvé dans cette facture'); setImportLoading(false); return; }
+      setMatchedProducts(data.products);
+      if (data.client) {
+        setSelectedClient(data.client);
+        setOrderNumber(data.invoiceNumber || '');
+        // Calculer directement et aller au step 4
+        const calcRes = await api.post('/factures/calculate', { products: data.products, clientName: data.client.name, includeShipping });
+        setCalculation(calcRes);
+        const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
+        const zip = data.client.zip || '';
+        const city = (data.client.city || '').toLowerCase();
+        const isIDF = idfDepts.some(d => zip.startsWith(d)) || city.includes('paris');
+        setShippingId(isIDF ? '101' : '1302');
+        setStep(4);
+        showToast('Facture importée — ' + data.products.length + ' produit(s)', 'success');
+      } else {
+        setStep(3);
+        showToast('Facture importée — sélectionnez un client', 'success');
+      }
+    } catch (err) {
+      setError('Erreur import: ' + err.message);
+    }
+    setImportLoading(false);
+  };
 
   // Step 1: Upload / Saisie manuelle
   const handleFile = async (e) => {
@@ -5197,6 +5239,18 @@ const FacturesSingle = ({ showToast }) => {
             className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-40 transition-colors">
             Analyser la commande
           </button>
+
+          <div className="text-center text-xs text-slate-400 font-medium">— ou importer une facture existante —</div>
+          <div className="flex gap-2">
+            <input type="text" value={importInvoiceId} onChange={e => setImportInvoiceId(e.target.value)}
+              placeholder="N° facture (ex: FV 2024/123) ou ID"
+              onKeyDown={e => e.key === 'Enter' && handleImportInvoice()}
+              className="flex-1 border border-slate-200 rounded-lg px-4 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+            <button onClick={handleImportInvoice} disabled={!importInvoiceId.trim() || importLoading}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors whitespace-nowrap">
+              {importLoading ? 'Import...' : 'Importer'}
+            </button>
+          </div>
         </div>
       )}
 
@@ -5326,8 +5380,8 @@ const FacturesSingle = ({ showToast }) => {
                   <tbody className="divide-y divide-slate-100">
                     {calculation.products?.map((p, i) => {
                       const qty = p.quantite || p.quantity || 1;
-                      const unitPrice = (p.total_ht || 0) / qty;
                       const discount = p.discount || 0;
+                      const unitPrice = p.prix_ht || ((p.total_ht || 0) / qty / (1 - discount / 100) || 0);
                       return (
                         <tr key={i} className="hover:bg-slate-50">
                           <td className="px-3 py-2">
@@ -5336,7 +5390,22 @@ const FacturesSingle = ({ showToast }) => {
                           </td>
                           <td className="px-3 py-2 text-right font-mono text-slate-700">{qty}</td>
                           <td className="px-3 py-2 text-right font-mono text-slate-700">{unitPrice.toFixed(2)}€</td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-500">{discount > 0 ? `-${discount}%` : '—'}</td>
+                          <td className="px-3 py-2 text-right">
+                            <input type="number" step="0.5" min="0" max="100"
+                              value={discount || ''}
+                              placeholder="—"
+                              onChange={e => {
+                                const newDiscount = parseFloat(e.target.value) || 0;
+                                const newProducts = [...calculation.products];
+                                const priceHT = newProducts[i].prix_ht || unitPrice;
+                                const tva = newProducts[i].tva || 20;
+                                const lineHT = priceHT * (1 - newDiscount / 100) * qty;
+                                newProducts[i] = { ...newProducts[i], discount: newDiscount, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
+                                setCalculation({ ...calculation, products: newProducts });
+                              }}
+                              className="w-16 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono" />
+                            <span className="text-xs text-slate-400 ml-0.5">%</span>
+                          </td>
                           <td className="px-3 py-2 text-right font-mono font-medium text-slate-900">{(p.total_ht || 0).toFixed(2)}€</td>
                         </tr>
                       );

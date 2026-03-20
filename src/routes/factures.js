@@ -502,6 +502,46 @@ module.exports = (db) => {
     }
   });
 
+  router.get('/invoices/:id/products', async (req, res) => {
+    try {
+      const data = await vfService.getFacture(req.params.id);
+      if (!data || !data.positions) return res.status(404).json({ erreur: 'Facture non trouvée ou sans positions' });
+
+      const catalogMap = getCatalogMap();
+      const products = (data.positions || [])
+        .filter(pos => {
+          const code = (pos.code || pos.name || '').toUpperCase();
+          return !code.startsWith('FP') && !code.startsWith('FE') && !code.includes('FRAIS');
+        })
+        .map(pos => {
+          const ref = (pos.code || '').toUpperCase().trim();
+          const catalog = catalogMap.get(ref);
+          return {
+            ref: ref || pos.name,
+            nom: catalog?.nom || pos.name || '',
+            quantite: pos.quantity || 1,
+            prix_ht: pos.total_price_gross != null ? (pos.total_price_gross / (pos.quantity || 1)) : (pos.price_net || 0),
+            discount: pos.discount_percent || pos.discount || 0,
+            tva: pos.tax || 20,
+            confiance: catalog ? 'exact' : 'import',
+          };
+        });
+
+      const client = data.buyer_name ? {
+        name: data.buyer_name,
+        vf_id: data.client_id,
+        street: data.buyer_street || '',
+        city: data.buyer_city || '',
+        zip: data.buyer_post_code || '',
+        country: data.buyer_country || '',
+      } : null;
+
+      res.json({ products, client, invoiceNumber: data.number || data.id });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   router.get('/invoices/:id', async (req, res) => {
     try {
       const data = await vfService.getFacture(req.params.id);
