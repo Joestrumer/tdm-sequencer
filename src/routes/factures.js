@@ -422,6 +422,15 @@ module.exports = (db) => {
               csvRef: catalog[normalizeRef(p.ref)]?.csv_ref,
             }));
 
+            // Ajouter frais de port (FP/FE) au log GSheets
+            for (const f of (fraisPort || [])) {
+              gsProducts.push({
+                ref: f.ref,
+                quantity: f.quantite || f.quantity || 1,
+                priceHT: f.prix_ht,
+              });
+            }
+
             const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
               clientName: client.name,
               invoiceNumber: result.number || '',
