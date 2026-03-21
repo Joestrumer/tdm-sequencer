@@ -4917,18 +4917,20 @@ const FacturesSingle = ({ showToast }) => {
     setImportLoading(true);
     setError(null);
     try {
-      // Chercher l'ID de la facture : soit ID numérique direct, soit recherche par numéro
+      // Toujours rechercher par numéro d'abord (même si c'est un nombre, car l'ID interne VF est différent du numéro affiché)
       let invoiceId = null;
-      if (/^\d+$/.test(idOrNumber)) {
+      const results = await api.get('/factures/invoices/search?number=' + encodeURIComponent(idOrNumber));
+      const list = Array.isArray(results) ? results : [];
+      if (list.length > 0) {
+        invoiceId = list[0].id;
+      } else if (/^\d+$/.test(idOrNumber)) {
+        // Fallback: essayer comme ID direct VF
         invoiceId = idOrNumber;
       } else {
-        // Recherche par numéro de facture
-        const results = await api.get('/factures/invoices/search?number=' + encodeURIComponent(idOrNumber));
-        const list = Array.isArray(results) ? results : [];
-        if (list.length === 0) { setError('Aucune facture trouvée pour "' + idOrNumber + '"'); setImportLoading(false); return; }
-        invoiceId = list[0].id;
+        setError('Aucune facture trouvée pour "' + idOrNumber + '"');
+        setImportLoading(false);
+        return;
       }
-      if (!invoiceId) { setError('ID de facture invalide'); setImportLoading(false); return; }
       const data = await api.get('/factures/invoices/' + invoiceId + '/products');
       if (data.erreur) { setError(data.erreur); setImportLoading(false); return; }
       if (!data.products || data.products.length === 0) { setError('Aucun produit trouvé dans cette facture'); setImportLoading(false); return; }

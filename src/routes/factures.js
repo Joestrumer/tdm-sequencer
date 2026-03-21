@@ -513,21 +513,34 @@ module.exports = (db) => {
       if (!data || !data.positions) return res.status(404).json({ erreur: `Facture #${req.params.id} trouvée mais sans positions (lignes de produits)` });
 
       const catalogMap = getCatalogMap();
+      console.log('📦 Import facture VF — positions:', JSON.stringify((data.positions || []).map(p => ({
+        name: p.name, code: p.code, qty: p.quantity, price_net: p.price_net, total_price_gross: p.total_price_gross, discount: p.discount, discount_percent: p.discount_percent, tax: p.tax
+      })), null, 2));
       const products = (data.positions || [])
         .filter(pos => {
           const code = (pos.code || pos.name || '').toUpperCase();
           return !code.startsWith('FP') && !code.startsWith('FE') && !code.includes('FRAIS');
         })
         .map(pos => {
-          const ref = (pos.code || '').toUpperCase().trim();
-          const catalog = catalogMap.get(ref);
+          const ref = normalizeRef(pos.code || '');
+          const catalog = catalogMap[ref];
+          const qty = parseFloat(pos.quantity) || 1;
+          // price_net = prix unitaire HT, total_price_gross = total TTC
+          const unitPriceHT = parseFloat(pos.price_net) || 0;
+          // Discount : VF utilise discount_percent (nombre) ou discount (texte comme "10%")
+          let discount = 0;
+          if (pos.discount_percent) {
+            discount = parseFloat(pos.discount_percent) || 0;
+          } else if (pos.discount && typeof pos.discount === 'string') {
+            discount = parseFloat(pos.discount.replace('%', '').replace(',', '.')) || 0;
+          }
           return {
             ref: ref || pos.name,
             nom: catalog?.nom || pos.name || '',
-            quantite: pos.quantity || 1,
-            prix_ht: pos.total_price_gross != null ? (pos.total_price_gross / (pos.quantity || 1)) : (pos.price_net || 0),
-            discount: pos.discount_percent || pos.discount || 0,
-            tva: pos.tax || 20,
+            quantite: qty,
+            prix_ht: unitPriceHT,
+            discount,
+            tva: parseFloat(pos.tax) || 20,
             confiance: catalog ? 'exact' : 'import',
           };
         });
