@@ -5759,11 +5759,29 @@ const FacturesBatch = ({ showToast }) => {
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
   const [manualText, setManualText] = useState('');
-  const [shippingId, setShippingId] = useState('1302');
+  const [importInvoiceId, setImportInvoiceId] = useState('');
+  const [importLoading, setImportLoading] = useState(false);
+  const [documentType, setDocumentType] = useState('vat');
+  const [sendEmail, setSendEmail] = useState(true);
+  const [logGSheets, setLogGSheets] = useState(true);
 
-  const addOrder = (products) => {
-    setOrders(prev => [...prev, { id: nextId, products, client: null }]);
+  const addOrder = (products, client = null, orderNumber = '') => {
+    const shippingId = client ? getShippingIdForClient(client) : '1302';
+    setOrders(prev => [...prev, { id: nextId, products, client, calculation: null, shippingId, orderNumber, expanded: false }]);
     setNextId(n => n + 1);
+    // Auto-calculate if client is already set
+    if (client) {
+      calculateOrder(nextId, products, client);
+    }
+  };
+
+  const calculateOrder = async (orderId, products, client) => {
+    try {
+      const res = await api.post('/factures/calculate', { products, clientName: client?.name, includeShipping: true });
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, calculation: res } : o));
+    } catch (err) {
+      showToast('Erreur calcul commande #' + orderId + ': ' + err.message, 'error');
+    }
   };
 
   const handleFile = async (e) => {
@@ -5776,14 +5794,33 @@ const FacturesBatch = ({ showToast }) => {
       const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
       const products = [];
       for (const row of json) {
-        if (!row[0] || row[0] === 'Ref 500ml' || row[0] === 'TOTAL') continue;
-        const ref = String(row[0]).trim();
-        const qty = parseFloat(row[6]) || parseFloat(row[5]) || 0;
-        const price = parseFloat(String(row[3] || '0').replace(/[€\s]/g, '').replace(',', '.')) || 0;
-        if (ref && qty > 0) products.push({ ref, quantity: qty, priceHT: price });
+        if (!row[0] || row[0] === 'Ref 500ml' || row[0] === 'Menu Déroulant' || row[0] === 'TOTAL') continue;
+        const rawRef = String(row[0]).trim();
+        const qtyUnits = parseFloat(row[6]) || 0;
+        const qtyCartons = parseFloat(row[5]) || 0;
+        const quantity = qtyUnits > 0 ? qtyUnits : qtyCartons;
+        let priceHT = parseFloat(String(row[3] || '0').replace(/[€\s]/g, '').replace(',', '.')) || 0;
+        const discountStr = row[9] ? String(row[9]).trim() : '';
+        let discount = 0;
+        if (discountStr && discountStr !== '-') {
+          discount = parseFloat(discountStr.replace('%', '').replace(',', '.')) || 0;
+          if (discount > 0 && discount < 1) discount *= 100;
+        }
+        if (rawRef && quantity > 0) products.push({ ref: rawRef, quantity, priceHT, discount });
       }
-      if (products.length > 0) addOrder(products);
-      else showToast('Aucun produit trouvé', 'error');
+      if (products.length > 0) {
+        // Match products via API like Single does
+        try {
+          const matched = await api.post('/factures/match-products', { lignes: products });
+          if (matched.erreur) { showToast(matched.erreur, 'error'); return; }
+          addOrder(matched);
+          showToast(matched.length + ' produit(s) ajoutés', 'success');
+        } catch (matchErr) {
+          showToast('Erreur matching: ' + matchErr.message, 'error');
+        }
+      } else {
+        showToast('Aucun produit trouvé', 'error');
+      }
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
     }
@@ -5797,31 +5834,133 @@ const FacturesBatch = ({ showToast }) => {
       if (res.erreur) { showToast(res.erreur, 'error'); return; }
       addOrder(res);
       setManualText('');
+      showToast(res.length + ' produit(s) ajoutés', 'success');
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
     }
   };
 
-  const removeOrder = (id) => setOrders(prev => prev.filter(o => o.id !== id));
-
-  const setOrderClient = (orderId, client) => {
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client } : o));
+  const handleImportInvoice = async () => {
+    const idOrNumber = importInvoiceId.trim();
+    if (!idOrNumber) return;
+    setImportLoading(true);
+    try {
+      let invoiceId = null;
+      const results = await api.get('/factures/invoices/search?number=' + encodeURIComponent(idOrNumber));
+      const list = Array.isArray(results) ? results : [];
+      if (list.length > 0) {
+        invoiceId = list[0].id;
+      } else if (/^\d+$/.test(idOrNumber)) {
+        invoiceId = idOrNumber;
+      } else {
+        showToast('Aucune facture trouvée pour "' + idOrNumber + '"', 'error');
+        setImportLoading(false);
+        return;
+      }
+      const data = await api.get('/factures/invoices/' + invoiceId + '/products');
+      if (data.erreur) { showToast(data.erreur, 'error'); setImportLoading(false); return; }
+      if (!data.products || data.products.length === 0) { showToast('Aucun produit trouvé dans cette facture', 'error'); setImportLoading(false); return; }
+      addOrder(data.products, data.client || null, data.invoiceNumber || '');
+      setImportInvoiceId('');
+      showToast('Facture importée — ' + data.products.length + ' produit(s)', 'success');
+    } catch (err) {
+      showToast('Erreur import: ' + err.message, 'error');
+    }
+    setImportLoading(false);
   };
 
+  const removeOrder = (id) => setOrders(prev => prev.filter(o => o.id !== id));
+
+  const toggleExpanded = (id) => setOrders(prev => prev.map(o => o.id === id ? { ...o, expanded: !o.expanded } : o));
+
+  const setOrderClient = async (orderId, client) => {
+    const order = orders.find(o => o.id === orderId);
+    const shippingId = getShippingIdForClient(client);
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId } : o));
+    if (order) {
+      calculateOrder(orderId, order.products, client);
+    }
+  };
+
+  const updateOrderField = (orderId, field, value) => {
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: value } : o));
+  };
+
+  const updateOrderDiscount = (orderId, productIndex, newDiscount) => {
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId || !o.calculation?.products) return o;
+      const newProducts = [...o.calculation.products];
+      const p = newProducts[productIndex];
+      const qty = p.quantite || p.quantity || 1;
+      const priceHT = p.prix_ht || ((p.total_ht || 0) / qty / (1 - (p.discount || 0) / 100) || 0);
+      const tva = p.tva || 20;
+      const lineHT = priceHT * (1 - newDiscount / 100) * qty;
+      newProducts[productIndex] = { ...p, discount: newDiscount, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
+      return { ...o, calculation: { ...o.calculation, products: newProducts } };
+    }));
+  };
+
+  const updateOrderFraisPort = (orderId, fraisIndex, field, value) => {
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId || !o.calculation) return o;
+      const newFrais = [...(o.calculation.frais_port || [])];
+      newFrais[fraisIndex] = { ...newFrais[fraisIndex], [field]: value };
+      return { ...o, calculation: { ...o.calculation, frais_port: newFrais } };
+    }));
+  };
+
+  const removeOrderFrais = (orderId, fraisIndex) => {
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId || !o.calculation) return o;
+      const newFrais = (o.calculation.frais_port || []).filter((_, idx) => idx !== fraisIndex);
+      return { ...o, calculation: { ...o.calculation, frais_port: newFrais } };
+    }));
+  };
+
+  const addOrderFrais = (orderId, type) => {
+    const frais = type === 'FP'
+      ? { ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20 }
+      : { ref: 'FE', nom: 'FRAIS EXPEDITION', prix_ht: 80, quantite: 1, tva: 20 };
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId || !o.calculation) return o;
+      return { ...o, calculation: { ...o.calculation, frais_port: [...(o.calculation.frais_port || []), frais] } };
+    }));
+  };
+
+  const recalculateOrder = async (orderId) => {
+    const order = orders.find(o => o.id === orderId);
+    if (!order?.calculation?.products || !order.client) return;
+    try {
+      const res = await api.post('/factures/calculate', {
+        products: order.calculation.products.map(p => ({ ref: p.ref, quantite: p.quantite || p.quantity, discount: p.discount, tva: p.tva })),
+        clientName: order.client.name,
+        includeShipping: true,
+      });
+      setOrders(prev => prev.map(o => o.id === orderId ? { ...o, calculation: res } : o));
+      showToast('Prix recalculés pour commande #' + orderId, 'success');
+    } catch (err) {
+      showToast('Erreur recalcul: ' + err.message, 'error');
+    }
+  };
+
+  const readyOrders = orders.filter(o => o.client && o.calculation?.products?.length);
+
   const createAll = async () => {
-    const ready = orders.filter(o => o.client);
-    if (ready.length === 0) { showToast('Attribuez un client à au moins une commande', 'error'); return; }
+    if (readyOrders.length === 0) { showToast('Aucune commande prête (client + produits requis)', 'error'); return; }
     setProcessing(true);
     const allResults = [];
-    for (const order of ready) {
+    for (const order of readyOrders) {
       try {
-        const calc = await api.post('/factures/calculate', { products: order.products, clientName: order.client.name });
         const inv = await api.post('/factures/invoices', {
           client: order.client,
-          products: calc.products,
-          fraisPort: calc.frais_port,
-          documentType: 'vat',
+          products: order.calculation.products,
+          fraisPort: order.calculation.frais_port || [],
+          documentType,
+          orderNumber: order.orderNumber || '',
+          sendEmail,
+          logGSheets,
         });
+        if (inv.erreur) throw new Error(inv.erreur);
         allResults.push({ ok: true, orderId: order.id, ...inv });
       } catch (err) {
         allResults.push({ ok: false, orderId: order.id, erreur: err.message });
@@ -5829,53 +5968,102 @@ const FacturesBatch = ({ showToast }) => {
     }
     setResults(allResults);
     setProcessing(false);
-    showToast(`${allResults.filter(r => r.ok).length}/${allResults.length} factures créées`, 'success');
+    const okCount = allResults.filter(r => r.ok).length;
+    const emailErrors = allResults.filter(r => r.ok && r.email_error);
+    showToast(`${okCount}/${allResults.length} facture(s) créée(s)`, okCount > 0 ? 'success' : 'error');
+    if (emailErrors.length > 0) {
+      showToast(`${emailErrors.length} email(s) non envoyé(s)`, 'error');
+    }
+  };
+
+  const logOnlyAll = async () => {
+    if (readyOrders.length === 0) { showToast('Aucune commande prête (client + produits requis)', 'error'); return; }
+    setProcessing(true);
+    const allResults = [];
+    for (const order of readyOrders) {
+      try {
+        const res = await api.post('/factures/log-only', {
+          client: order.client,
+          products: order.calculation.products,
+          fraisPort: order.calculation.frais_port || [],
+          orderNumber: order.orderNumber || '',
+        });
+        if (res.erreur) throw new Error(res.erreur);
+        allResults.push({ ok: true, orderId: order.id, logOnly: true, ...res });
+      } catch (err) {
+        allResults.push({ ok: false, orderId: order.id, erreur: err.message });
+      }
+    }
+    setResults(allResults);
+    setProcessing(false);
+    const okCount = allResults.filter(r => r.ok).length;
+    showToast(`${okCount}/${allResults.length} commande(s) loggée(s) dans Google Sheets`, okCount > 0 ? 'success' : 'error');
   };
 
   const downloadCSVBatch = async (r) => {
     try {
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
       const order = orders.find(o => o.id === r.orderId);
-      const invoiceData = { ...r, products: order?.products || [] };
+      const invoiceData = { ...r, products: order?.calculation?.products || order?.products || [], orderNumber: order?.orderNumber || '' };
       const client = order?.client || {};
+      const orderShippingId = order?.shippingId || '1302';
       const res2 = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceData, client, shippingId }),
+        body: JSON.stringify({ invoiceData, client, shippingId: orderShippingId }),
       });
       if (!res2.ok) {
         const errData = await res2.json().catch(() => ({}));
         throw new Error(errData.erreur || 'Erreur CSV: ' + res2.status);
       }
       const blob = await res2.blob();
+      const fileName = `logisticien-${r.number || 'facture'}.csv`;
 
       let saved = false;
       if (window.showDirectoryPicker) {
         try {
-          const dirHandle = await window.showDirectoryPicker({ id: 'endurance-imports', mode: 'readwrite', startIn: 'documents' });
-          const fileName = `logisticien-${r.number || 'facture'}.csv`;
+          let dirHandle = null;
+          const savedHandleName = localStorage.getItem('csvDirHandleName');
+          if (savedHandleName && window.savedCSVDirHandle) {
+            try {
+              const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
+              if (permission === 'granted' || await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+                dirHandle = window.savedCSVDirHandle;
+              }
+            } catch (e) { /* ignore */ }
+          }
+          if (!dirHandle) {
+            dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+            window.savedCSVDirHandle = dirHandle;
+            localStorage.setItem('csvDirHandleName', dirHandle.name);
+          }
           const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
           const writable = await fileHandle.createWritable();
           await writable.write(blob);
           await writable.close();
-          showToast(`CSV sauvé dans ${dirHandle.name}/${fileName}`, 'success');
+          showToast(`CSV sauvé: ${dirHandle.name}/${fileName}`, 'success');
           saved = true;
         } catch (fsErr) {
-          if (fsErr.name !== 'AbortError') console.warn('File System Access fallback:', fsErr);
+          if (fsErr.name !== 'AbortError') {
+            console.warn('File System Access fallback:', fsErr);
+            delete window.savedCSVDirHandle;
+            localStorage.removeItem('csvDirHandleName');
+          }
         }
       }
 
       if (!saved) {
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
-        a.href = url; a.download = `logisticien-${r.number || 'facture'}.csv`; a.click();
+        a.href = url; a.download = fileName; a.click();
         URL.revokeObjectURL(url);
         showToast('CSV téléchargé', 'success');
       }
 
       const clientName = client.name || '';
-      const subject = encodeURIComponent(clientName);
-      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${r.number || ''} (${clientName}).\n\nCordialement`);
+      const invoiceNum = order?.orderNumber || r.number || '';
+      const subject = encodeURIComponent(`Commande : ${clientName} ${invoiceNum}`);
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${invoiceNum} (${clientName}).\n\nCordialement`);
       const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
       window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
     } catch (err) {
@@ -5888,6 +6076,7 @@ const FacturesBatch = ({ showToast }) => {
       <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
         <h3 className="text-sm font-semibold text-slate-800">Commandes batch ({orders.length})</h3>
 
+        {/* Inputs : Excel + Manuel + Import VF */}
         <div className="flex gap-2">
           <label className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200 cursor-pointer">
             + Fichier Excel
@@ -5903,79 +6092,249 @@ const FacturesBatch = ({ showToast }) => {
             className="px-3 py-2 bg-slate-900 text-white text-sm rounded-lg disabled:opacity-40">+</button>
         </div>
 
-        {orders.map(order => (
-          <div key={order.id} className="border border-slate-200 rounded-xl p-3 space-y-2">
-            <div className="flex items-center justify-between">
-              <span className="text-sm font-medium">Commande #{order.id} ({order.products?.length || 0} produits)</span>
-              <button onClick={() => removeOrder(order.id)} className="text-xs text-red-500 hover:text-red-700">Supprimer</button>
-            </div>
-            {order.client ? (
-              <div className="text-xs text-emerald-600 flex items-center gap-1">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {order.client.name}
-              </div>
-            ) : (
-              <FacturesClientSearch onSelect={(c) => setOrderClient(order.id, c)} onBack={() => {}} />
-            )}
-          </div>
-        ))}
+        <div className="flex gap-2">
+          <input type="text" value={importInvoiceId} onChange={e => setImportInvoiceId(e.target.value)}
+            placeholder="Importer facture VF (n° ou ID)"
+            onKeyDown={e => e.key === 'Enter' && handleImportInvoice()}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          <button onClick={handleImportInvoice} disabled={!importInvoiceId.trim() || importLoading}
+            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 whitespace-nowrap">
+            {importLoading ? 'Import...' : 'Importer'}
+          </button>
+        </div>
 
+        {/* Orders list with expandable review */}
+        {orders.map(order => {
+          const calc = order.calculation;
+          const productsHT = calc?.products?.reduce((s, p) => s + (p.total_ht || 0), 0) || 0;
+          const fraisHT = (calc?.frais_port || []).reduce((s, f) => s + f.prix_ht * f.quantite, 0);
+          const totalHT = productsHT + fraisHT;
+          const productsTTC = calc?.products?.reduce((s, p) => s + (p.total_ttc || 0), 0) || 0;
+          const fraisTTC = (calc?.frais_port || []).reduce((s, f) => s + f.prix_ht * f.quantite * 1.2, 0);
+          const totalTTC = productsTTC + fraisTTC;
+
+          return (
+            <div key={order.id} className="border border-slate-200 rounded-xl overflow-hidden">
+              {/* Order header */}
+              <div className="p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50" onClick={() => toggleExpanded(order.id)}>
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-400">{order.expanded ? '▼' : '▶'}</span>
+                  <span className="text-sm font-medium">#{order.id} — {order.products?.length || calc?.products?.length || 0} produit(s)</span>
+                  {order.client && (
+                    <span className="text-xs text-emerald-600 flex items-center gap-1">
+                      <span className="w-1.5 h-1.5 rounded-full bg-emerald-500" /> {order.client.name}
+                    </span>
+                  )}
+                  {calc && <span className="text-xs font-mono text-slate-500">{totalHT.toFixed(2)}€ HT</span>}
+                </div>
+                <button onClick={e => { e.stopPropagation(); removeOrder(order.id); }} className="text-xs text-red-500 hover:text-red-700">Supprimer</button>
+              </div>
+
+              {/* Client selection if not set */}
+              {!order.client && (
+                <div className="px-3 pb-3">
+                  <FacturesClientSearch onSelect={(c) => setOrderClient(order.id, c)} onBack={() => {}} />
+                </div>
+              )}
+
+              {/* Expanded review panel */}
+              {order.expanded && (
+                <div className="border-t border-slate-100 p-4 space-y-3 bg-slate-50/50">
+                  {order.client && (
+                    <div className="flex items-center justify-between">
+                      <div className="text-sm text-slate-700">
+                        <span className="font-medium">{order.client.name}</span>
+                        {order.client.city && <span className="text-xs text-slate-400 ml-2">{order.client.city}</span>}
+                      </div>
+                      <button onClick={() => setOrderClient(order.id, null)} className="text-xs text-slate-500 hover:text-slate-700">Changer client</button>
+                    </div>
+                  )}
+
+                  {/* Recalculate button */}
+                  {order.client && calc && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg p-2 flex items-center justify-between">
+                      <span className="text-xs text-amber-700">Prix incorrects ?</span>
+                      <button onClick={() => recalculateOrder(order.id)}
+                        className="px-2 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700">
+                        Recalculer prix actuels
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Products table */}
+                  {calc?.products?.length > 0 && (
+                    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="text-left px-3 py-1.5 text-xs font-semibold text-slate-500">Produit</th>
+                            <th className="text-right px-3 py-1.5 text-xs font-semibold text-slate-500">Qté</th>
+                            <th className="text-right px-3 py-1.5 text-xs font-semibold text-slate-500">P.U. HT</th>
+                            <th className="text-right px-3 py-1.5 text-xs font-semibold text-slate-500">Remise</th>
+                            <th className="text-right px-3 py-1.5 text-xs font-semibold text-slate-500">Total HT</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {calc.products.map((p, i) => {
+                            const qty = p.quantite || p.quantity || 1;
+                            const discount = p.discount || 0;
+                            const unitPrice = p.prix_ht || ((p.total_ht || 0) / qty / (1 - discount / 100) || 0);
+                            return (
+                              <tr key={`${p.ref}_${i}`} className="hover:bg-slate-50">
+                                <td className="px-3 py-1.5">
+                                  <div className="font-medium text-slate-900 text-xs">{p.ref}</div>
+                                  <div className="text-xs text-slate-400">{p.nom}</div>
+                                </td>
+                                <td className="px-3 py-1.5 text-right font-mono text-xs">{qty}</td>
+                                <td className="px-3 py-1.5 text-right font-mono text-xs">{unitPrice.toFixed(2)}€</td>
+                                <td className="px-3 py-1.5 text-right">
+                                  <div className="inline-flex items-center">
+                                    <input type="number" step="0.5" min="0" max="100"
+                                      value={discount || ''}
+                                      placeholder="0"
+                                      onChange={e => {
+                                        const val = e.target.value;
+                                        const nd = val === '' ? 0 : Math.min(100, Math.max(0, parseFloat(val) || 0));
+                                        updateOrderDiscount(order.id, i, nd);
+                                      }}
+                                      className="w-14 border border-slate-200 rounded px-1 py-0.5 text-xs text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                                    <span className="text-xs text-slate-400 ml-0.5">%</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-1.5 text-right font-mono text-xs font-medium">{(p.total_ht || 0).toFixed(2)}€</td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+
+                  {/* Frais de port */}
+                  {calc?.frais_port?.map((f, i) => (
+                    <div key={'fp'+i} className="flex items-center justify-between text-sm py-1 text-slate-500">
+                      <span className="flex-1 text-xs">{f.nom}</span>
+                      <div className="flex items-center gap-1">
+                        <input type="number" step="0.01" min="0" value={f.prix_ht}
+                          onChange={e => updateOrderFraisPort(order.id, i, 'prix_ht', parseFloat(e.target.value) || 0)}
+                          className="w-20 border border-slate-200 rounded px-2 py-0.5 text-xs text-right font-mono" />
+                        <span className="text-xs">€ HT</span>
+                        <button onClick={() => removeOrderFrais(order.id, i)} className="ml-1 text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
+                      </div>
+                    </div>
+                  ))}
+                  {calc && (
+                    <div className="flex gap-2">
+                      <button onClick={() => addOrderFrais(order.id, 'FP')} className="text-xs text-blue-600 hover:text-blue-800">+ Frais préparation</button>
+                      <button onClick={() => addOrderFrais(order.id, 'FE')} className="text-xs text-blue-600 hover:text-blue-800">+ Frais expédition</button>
+                    </div>
+                  )}
+
+                  {/* Totals */}
+                  {calc && (
+                    <div className="space-y-1">
+                      <div className="border-t border-slate-200 pt-2 flex justify-between font-semibold text-sm">
+                        <span>Total HT</span>
+                        <span className="font-mono">{totalHT.toFixed(2)}€</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-slate-500">
+                        <span>Total TTC</span>
+                        <span className="font-mono">{totalTTC.toFixed(2)}€</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Order number + Shipping */}
+                  <div className="grid grid-cols-2 gap-2">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 mb-1 block">N° commande</label>
+                      <input value={order.orderNumber} onChange={e => updateOrderField(order.id, 'orderNumber', e.target.value)}
+                        placeholder="Optionnel"
+                        className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
+                      <select value={order.shippingId} onChange={e => updateOrderField(order.id, 'shippingId', e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm bg-white">
+                        {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                      </select>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+
+        {/* Global options + action buttons */}
         {orders.length > 0 && (
           <>
-            <div>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
-              <select value={shippingId} onChange={e => setShippingId(e.target.value)}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-                <option value="1">1 - Enlevement Colis</option>
-                <option value="2">2 - Enlevement Palette</option>
-                <option value="4">4 - Lettre Suivie</option>
-                <option value="101">101 - Coursier Colis</option>
-                <option value="102">102 - Coursier Palettes</option>
-                <option value="103">103 - Affretement</option>
-                <option value="200">200 - Affranchissement</option>
-                <option value="300">300 - Colissimo Expert France</option>
-                <option value="301">301 - Colissimo Expert DOM</option>
-                <option value="302">302 - Colissimo Expert International</option>
-                <option value="303">303 - SO Colissimo Avec Signature</option>
-                <option value="304">304 - SO Colissimo Sans Signature</option>
-                <option value="306">306 - SO Colissimo Bureau de Poste</option>
-                <option value="307">307 - SO Colissimo Cityssimo</option>
-                <option value="308">308 - SO Colissimo ACP</option>
-                <option value="309">309 - SO Colissimo A2P</option>
-                <option value="311">311 - SO Colissimo CDI</option>
-                <option value="312">312 - Colissimo Access France</option>
-                <option value="600">600 - TNT Avant 13H France</option>
-                <option value="601">601 - TNT Relais Colis France</option>
-                <option value="900">900 - UPS Inter Standard</option>
-                <option value="901">901 - UPS Inter Express</option>
-                <option value="902">902 - UPS Inter Express Saver</option>
-                <option value="903">903 - UPS Express Plus</option>
-                <option value="904">904 - UPS Expedited</option>
-                <option value="1000">1000 - DHL</option>
-                <option value="1100">1100 - GEODIS</option>
-                <option value="1300">1300 - Chronopost 13H</option>
-                <option value="1301">1301 - Chronopost Classic - intl</option>
-                <option value="1302">1302 - Chronopost 13H Instance Agence</option>
-                <option value="1303">1303 - Chronopost Relais 13H</option>
-                <option value="1304">1304 - Chronopost Express - intl</option>
-              </select>
+            <div className="border-t border-slate-200 pt-4 space-y-3">
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-slate-500 mb-1 block">Type de document</label>
+                  <select value={documentType} onChange={e => setDocumentType(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                    <option value="vat">Facture</option>
+                    <option value="proforma">Proforma</option>
+                  </select>
+                </div>
+                <div className="flex items-end gap-4 pb-1">
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)} className="rounded" />
+                    Email
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input type="checkbox" checked={logGSheets} onChange={e => setLogGSheets(e.target.checked)} className="rounded" />
+                    GSheets
+                  </label>
+                </div>
+              </div>
             </div>
-            <button onClick={createAll} disabled={processing || !orders.some(o => o.client)}
-              className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50">
-              {processing ? 'Création...' : `Créer ${orders.filter(o => o.client).length} facture(s)`}
-            </button>
+
+            <div className="flex gap-2">
+              <button onClick={createAll} disabled={processing || readyOrders.length === 0}
+                className="flex-1 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
+                {processing ? 'Création...' : `Créer ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'}`}
+              </button>
+              <button onClick={logOnlyAll} disabled={processing || readyOrders.length === 0}
+                className="py-3 px-4 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors whitespace-nowrap">
+                {processing ? '...' : 'Logger uniquement'}
+              </button>
+            </div>
           </>
         )}
 
+        {/* Results */}
         {results && (
           <div className="space-y-1">
             {results.map((r, i) => (
-              <div key={i} className={`text-sm p-2 rounded-lg flex items-center justify-between ${r.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
-                <span>{r.ok ? `Facture ${r.number || r.id} créée` : `Erreur: ${r.erreur}`}</span>
-                {r.ok && (
-                  <button onClick={() => downloadCSVBatch(r)}
-                    className="ml-2 px-2 py-1 bg-emerald-600 text-white text-xs rounded hover:bg-emerald-700">
-                    CSV + Email
-                  </button>
+              <div key={i} className={`text-sm p-2 rounded-lg ${r.ok ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-700'}`}>
+                <div className="flex items-center justify-between">
+                  <span>
+                    {r.ok
+                      ? (r.logOnly
+                        ? `Log OK — ${r.writtenLines || 0} ligne(s) (${r.partnerName || ''})`
+                        : `Facture ${r.number || r.id} créée`)
+                      : `Erreur: ${r.erreur}`}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    {r.ok && !r.logOnly && r.id && (
+                      <a href={`https://app.vosfactures.fr/invoices/${r.id}`} target="_blank" rel="noopener"
+                        className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">
+                        VF ↗
+                      </a>
+                    )}
+                    {r.ok && !r.logOnly && (
+                      <button onClick={() => downloadCSVBatch(r)}
+                        className="px-2 py-1 bg-emerald-600 text-white text-xs rounded hover:bg-emerald-700">
+                        CSV + Email
+                      </button>
+                    )}
+                  </div>
+                </div>
+                {r.ok && r.email_error && (
+                  <div className="text-xs text-amber-600 mt-1">Email non envoyé : {r.email_error}</div>
                 )}
               </div>
             ))}
