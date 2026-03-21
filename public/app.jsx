@@ -4898,6 +4898,50 @@ const parsePdfOrder = async (file) => {
   return { products };
 };
 
+// ─── Factures Helpers ─────────────────────────────────────────────────────────
+const getShippingIdForClient = (client) => {
+  const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
+  const zip = client?.zip || client?.post_code || '';
+  const city = (client?.city || '').toLowerCase();
+  const isIDF = idfDepts.some(d => zip.startsWith(d)) || city.includes('paris');
+  return isIDF ? '101' : '1302';
+};
+
+const SHIPPING_OPTIONS = [
+  { value: '1', label: '1 - Enlevement Colis' },
+  { value: '2', label: '2 - Enlevement Palette' },
+  { value: '4', label: '4 - Lettre Suivie' },
+  { value: '101', label: '101 - Coursier Colis' },
+  { value: '102', label: '102 - Coursier Palettes' },
+  { value: '103', label: '103 - Affretement' },
+  { value: '200', label: '200 - Affranchissement' },
+  { value: '300', label: '300 - Colissimo Expert France' },
+  { value: '301', label: '301 - Colissimo Expert DOM' },
+  { value: '302', label: '302 - Colissimo Expert International' },
+  { value: '303', label: '303 - SO Colissimo Avec Signature' },
+  { value: '304', label: '304 - SO Colissimo Sans Signature' },
+  { value: '306', label: '306 - SO Colissimo Bureau de Poste' },
+  { value: '307', label: '307 - SO Colissimo Cityssimo' },
+  { value: '308', label: '308 - SO Colissimo ACP' },
+  { value: '309', label: '309 - SO Colissimo A2P' },
+  { value: '311', label: '311 - SO Colissimo CDI' },
+  { value: '312', label: '312 - Colissimo Access France' },
+  { value: '600', label: '600 - TNT Avant 13H France' },
+  { value: '601', label: '601 - TNT Relais Colis France' },
+  { value: '900', label: '900 - UPS Inter Standard' },
+  { value: '901', label: '901 - UPS Inter Express' },
+  { value: '902', label: '902 - UPS Inter Express Saver' },
+  { value: '903', label: '903 - UPS Express Plus' },
+  { value: '904', label: '904 - UPS Expedited' },
+  { value: '1000', label: '1000 - DHL' },
+  { value: '1100', label: '1100 - GEODIS' },
+  { value: '1300', label: '1300 - Chronopost 13H' },
+  { value: '1301', label: '1301 - Chronopost Classic - intl' },
+  { value: '1302', label: '1302 - Chronopost 13H Instance Agence' },
+  { value: '1303', label: '1303 - Chronopost Relais 13H' },
+  { value: '1304', label: '1304 - Chronopost Express - intl' },
+];
+
 // ─── Factures Single (Step Wizard) ────────────────────────────────────────────
 const FacturesSingle = ({ showToast }) => {
   const [step, setStep] = useState(1); // 1=upload, 2=match, 3=client, 4=review, 5=done
@@ -4908,7 +4952,7 @@ const FacturesSingle = ({ showToast }) => {
   const [orderNumber, setOrderNumber] = useState('');
   const [manualText, setManualText] = useState('');
   const [shippingId, setShippingId] = useState('1302');
-  const [includeShipping, setIncludeShipping] = useState(true);
+  const includeShipping = true; // Toujours inclure les frais de port
   const [sendEmail, setSendEmail] = useState(true);
   const [logGSheets, setLogGSheets] = useState(true);
   const [useCurrentPrices, setUseCurrentPrices] = useState(false);
@@ -4949,11 +4993,7 @@ const FacturesSingle = ({ showToast }) => {
         // Calculer directement et aller au step 4
         const calcRes = await api.post('/factures/calculate', { products: data.products, clientName: data.client.name, includeShipping });
         setCalculation(calcRes);
-        const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
-        const zip = data.client.zip || '';
-        const city = (data.client.city || '').toLowerCase();
-        const isIDF = idfDepts.some(d => zip.startsWith(d)) || city.includes('paris');
-        setShippingId(isIDF ? '101' : '1302');
+        setShippingId(getShippingIdForClient(data.client));
         setStep(4);
         showToast('Facture importée — ' + data.products.length + ' produit(s)', 'success');
       } else {
@@ -5026,11 +5066,7 @@ const FacturesSingle = ({ showToast }) => {
               setOrderNumber(importData.invoiceNumber || '');
               const calcRes = await api.post('/factures/calculate', { products: importData.products, clientName: importData.client.name, includeShipping });
               setCalculation(calcRes);
-              const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
-              const zip = importData.client.zip || '';
-              const city = (importData.client.city || '').toLowerCase();
-              const isIDF = idfDepts.some(d => zip.startsWith(d)) || city.includes('paris');
-              setShippingId(isIDF ? '101' : '1302');
+              setShippingId(getShippingIdForClient(importData.client));
               setStep(4);
               showToast('Facture VF importée — ' + importData.products.length + ' produit(s)', 'success');
             } else {
@@ -5182,6 +5218,10 @@ const FacturesSingle = ({ showToast }) => {
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ invoiceData, client: selectedClient, shippingId }),
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.erreur || 'Erreur CSV: ' + res.status);
+      }
       const blob = await res.blob();
       const fileName = `logisticien-${result?.number || 'facture'}.csv`;
 
@@ -5356,12 +5396,7 @@ const FacturesSingle = ({ showToast }) => {
       {step === 3 && <FacturesClientSearch onSelect={(client) => {
         setSelectedClient(client);
         doCalculation(client);
-        // Auto-sélection transporteur : IDF/Paris → Coursier Colis, sinon Chronopost 13H Instance
-        const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
-        const zip = client.zip || client.post_code || '';
-        const city = (client.city || '').toLowerCase();
-        const isIDF = idfDepts.some(d => zip.startsWith(d)) || city.includes('paris');
-        setShippingId(isIDF ? '101' : '1302');
+        setShippingId(getShippingIdForClient(client));
         setStep(4);
       }} onBack={() => setStep(2)} onModifySaisie={() => setStep(1)} />}
 
@@ -5404,7 +5439,7 @@ const FacturesSingle = ({ showToast }) => {
                   <button onClick={async () => {
                     try {
                       const res = await api.post('/factures/calculate', {
-                        products: calculation.products.map(p => ({ ...p, prix_ht: undefined, priceHT: undefined })),
+                        products: calculation.products.map(p => ({ ref: p.ref, quantite: p.quantite || p.quantity, discount: p.discount, tva: p.tva })),
                         clientName: selectedClient?.name,
                         includeShipping,
                       });
@@ -5438,7 +5473,7 @@ const FacturesSingle = ({ showToast }) => {
                       const discount = p.discount || 0;
                       const unitPrice = p.prix_ht || ((p.total_ht || 0) / qty / (1 - discount / 100) || 0);
                       return (
-                        <tr key={i} className="hover:bg-slate-50">
+                        <tr key={`${p.ref}_${i}`} className="hover:bg-slate-50">
                           <td className="px-3 py-2">
                             <div className="font-medium text-slate-900">{p.ref}</div>
                             <div className="text-xs text-slate-500">{p.nom}</div>
@@ -5448,11 +5483,11 @@ const FacturesSingle = ({ showToast }) => {
                           <td className="px-3 py-2 text-right">
                             <div className="inline-flex items-center">
                               <input type="number" step="0.5" min="0" max="100"
-                                defaultValue={discount > 0 ? discount : ''}
+                                value={discount || ''}
                                 placeholder="0"
-                                onBlur={e => {
-                                  const newDiscount = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
-                                  e.target.value = newDiscount > 0 ? newDiscount : '';
+                                onChange={e => {
+                                  const val = e.target.value;
+                                  const newDiscount = val === '' ? 0 : Math.min(100, Math.max(0, parseFloat(val) || 0));
                                   const newProducts = [...calculation.products];
                                   const priceHT = newProducts[i].prix_ht || unitPrice;
                                   const tva = newProducts[i].tva || 20;
@@ -5460,7 +5495,6 @@ const FacturesSingle = ({ showToast }) => {
                                   newProducts[i] = { ...newProducts[i], discount: newDiscount, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
                                   setCalculation({ ...calculation, products: newProducts });
                                 }}
-                                onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
                                 className="w-16 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
                               <span className="text-xs text-slate-400 ml-0.5">%</span>
                             </div>
@@ -5479,14 +5513,14 @@ const FacturesSingle = ({ showToast }) => {
                   <div className="flex items-center gap-1">
                     <input type="number" step="0.01" min="0" value={f.prix_ht}
                       onChange={e => {
-                        const newFrais = [...calculation.frais_port];
+                        const newFrais = [...(calculation.frais_port || [])];
                         newFrais[i] = { ...newFrais[i], prix_ht: parseFloat(e.target.value) || 0 };
                         setCalculation({ ...calculation, frais_port: newFrais });
                       }}
                       className="w-20 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
                     <span className="text-xs">€ HT</span>
                     <button onClick={() => {
-                      const newFrais = calculation.frais_port.filter((_, idx) => idx !== i);
+                      const newFrais = (calculation.frais_port || []).filter((_, idx) => idx !== i);
                       setCalculation({ ...calculation, frais_port: newFrais });
                     }} className="ml-1 text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
                   </div>
@@ -5534,38 +5568,7 @@ const FacturesSingle = ({ showToast }) => {
             <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
             <select value={shippingId} onChange={e => setShippingId(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-              <option value="1">1 - Enlevement Colis</option>
-              <option value="2">2 - Enlevement Palette</option>
-              <option value="4">4 - Lettre Suivie</option>
-              <option value="101">101 - Coursier Colis</option>
-              <option value="102">102 - Coursier Palettes</option>
-              <option value="103">103 - Affretement</option>
-              <option value="200">200 - Affranchissement</option>
-              <option value="300">300 - Colissimo Expert France</option>
-              <option value="301">301 - Colissimo Expert DOM</option>
-              <option value="302">302 - Colissimo Expert International</option>
-              <option value="303">303 - SO Colissimo Avec Signature</option>
-              <option value="304">304 - SO Colissimo Sans Signature</option>
-              <option value="306">306 - SO Colissimo Bureau de Poste</option>
-              <option value="307">307 - SO Colissimo Cityssimo</option>
-              <option value="308">308 - SO Colissimo ACP</option>
-              <option value="309">309 - SO Colissimo A2P</option>
-              <option value="311">311 - SO Colissimo CDI</option>
-              <option value="312">312 - Colissimo Access France</option>
-              <option value="600">600 - TNT Avant 13H France</option>
-              <option value="601">601 - TNT Relais Colis France</option>
-              <option value="900">900 - UPS Inter Standard</option>
-              <option value="901">901 - UPS Inter Express</option>
-              <option value="902">902 - UPS Inter Express Saver</option>
-              <option value="903">903 - UPS Express Plus</option>
-              <option value="904">904 - UPS Expedited</option>
-              <option value="1000">1000 - DHL</option>
-              <option value="1100">1100 - GEODIS</option>
-              <option value="1300">1300 - Chronopost 13H</option>
-              <option value="1301">1301 - Chronopost Classic - intl</option>
-              <option value="1302">1302 - Chronopost 13H Instance Agence</option>
-              <option value="1303">1303 - Chronopost Relais 13H</option>
-              <option value="1304">1304 - Chronopost Express - intl</option>
+              {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
 
@@ -5648,18 +5651,23 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
   const [erreur, setErreur] = useState('');
   const [refreshing, setRefreshing] = useState(false);
   const searchTimer = useRef(null);
+  const abortRef = useRef(null);
 
   const rechercher = (q, forceRefresh = false) => {
     setQuery(q);
     setErreur('');
     clearTimeout(searchTimer.current);
+    if (abortRef.current) abortRef.current.abort();
     if (!q || q.length < 2) { setClients([]); return; }
     searchTimer.current = setTimeout(async () => {
+      const controller = new AbortController();
+      abortRef.current = controller;
       setLoading(true);
       try {
         const refreshParam = forceRefresh ? '&refresh=true' : '';
         const res = await fetch(window.location.origin + '/api/factures/clients?q=' + encodeURIComponent(q) + refreshParam, {
-          headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('tdm_token') || '') }
+          headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('tdm_token') || '') },
+          signal: controller.signal,
         });
         const data = await res.json();
         if (!res.ok) {
@@ -5668,7 +5676,10 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
         } else {
           setClients(Array.isArray(data) ? data : []);
         }
-      } catch (e) { setErreur('Erreur réseau: ' + e.message); setClients([]); }
+      } catch (e) {
+        if (e.name === 'AbortError') return;
+        setErreur('Erreur réseau: ' + e.message); setClients([]);
+      }
       setLoading(false);
     }, 400);
   };
@@ -5821,6 +5832,10 @@ const FacturesBatch = ({ showToast }) => {
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ invoiceData, client, shippingId }),
       });
+      if (!res2.ok) {
+        const errData = await res2.json().catch(() => ({}));
+        throw new Error(errData.erreur || 'Erreur CSV: ' + res2.status);
+      }
       const blob = await res2.blob();
 
       let saved = false;
@@ -6210,38 +6225,7 @@ const FacturesSamples = ({ showToast }) => {
             <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
             <select value={shippingId} onChange={e => setShippingId(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-              <option value="1">1 - Enlevement Colis</option>
-              <option value="2">2 - Enlevement Palette</option>
-              <option value="4">4 - Lettre Suivie</option>
-              <option value="101">101 - Coursier Colis</option>
-              <option value="102">102 - Coursier Palettes</option>
-              <option value="103">103 - Affretement</option>
-              <option value="200">200 - Affranchissement</option>
-              <option value="300">300 - Colissimo Expert France</option>
-              <option value="301">301 - Colissimo Expert DOM</option>
-              <option value="302">302 - Colissimo Expert International</option>
-              <option value="303">303 - SO Colissimo Avec Signature</option>
-              <option value="304">304 - SO Colissimo Sans Signature</option>
-              <option value="306">306 - SO Colissimo Bureau de Poste</option>
-              <option value="307">307 - SO Colissimo Cityssimo</option>
-              <option value="308">308 - SO Colissimo ACP</option>
-              <option value="309">309 - SO Colissimo A2P</option>
-              <option value="311">311 - SO Colissimo CDI</option>
-              <option value="312">312 - Colissimo Access France</option>
-              <option value="600">600 - TNT Avant 13H France</option>
-              <option value="601">601 - TNT Relais Colis France</option>
-              <option value="900">900 - UPS Inter Standard</option>
-              <option value="901">901 - UPS Inter Express</option>
-              <option value="902">902 - UPS Inter Express Saver</option>
-              <option value="903">903 - UPS Express Plus</option>
-              <option value="904">904 - UPS Expedited</option>
-              <option value="1000">1000 - DHL</option>
-              <option value="1100">1100 - GEODIS</option>
-              <option value="1300">1300 - Chronopost 13H</option>
-              <option value="1301">1301 - Chronopost Classic - intl</option>
-              <option value="1302">1302 - Chronopost 13H Instance Agence</option>
-              <option value="1303">1303 - Chronopost Relais 13H</option>
-              <option value="1304">1304 - Chronopost Express - intl</option>
+              {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
         </div>
