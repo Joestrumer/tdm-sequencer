@@ -295,14 +295,23 @@ module.exports = (db) => ({
     const auth = getAuth(db);
     const sheets = google.sheets({ version: 'v4', auth });
 
-    // 1) Lire les noms canoniques depuis le spreadsheet (colonne B "Hotel name")
+    // 1) Lire les noms canoniques depuis la DB (vf_partners) — source de vérité fiable
+    // On n'utilise PAS la colonne B du spreadsheet car elle peut contenir des noms VF non-canoniques
     let canonicalNames = [];
     try {
-      const partnersResult = await this.getPartners(spreadsheetId, sheetName);
-      canonicalNames = partnersResult || [];
-      console.log(`📊 GSheets: ${canonicalNames.length} noms canoniques lus depuis spreadsheet`);
+      const dbPartners = db.prepare('SELECT nom FROM vf_partners WHERE actif = 1').all();
+      canonicalNames = dbPartners.map(p => p.nom).filter(Boolean);
+      console.log(`📊 GSheets: ${canonicalNames.length} noms canoniques lus depuis vf_partners DB`);
     } catch (e) {
-      console.warn(`⚠️ Impossible de lire les noms canoniques: ${e.message}`);
+      console.warn(`⚠️ Impossible de lire vf_partners: ${e.message}`);
+      // Fallback : lire depuis le spreadsheet si la DB échoue
+      try {
+        const partnersResult = await this.getPartners(spreadsheetId, sheetName);
+        canonicalNames = partnersResult || [];
+        console.log(`📊 GSheets: fallback spreadsheet, ${canonicalNames.length} noms lus`);
+      } catch (e2) {
+        console.warn(`⚠️ Impossible de lire les noms depuis le spreadsheet: ${e2.message}`);
+      }
     }
 
     // 2) Résoudre le nom canonique via mapPartnerNameToCanon si partnerName non fourni
@@ -311,17 +320,22 @@ module.exports = (db) => ({
       const vfName = invoiceData.clientName || '';
       console.log(`📊 Résolution partner name: VF="${vfName}"`);
 
-      // D'abord essayer le mapping DB
+      // D'abord essayer le mapping DB (vf_client_mappings)
       const dbMapped = resolveCanonicalClientName(db, vfName);
       console.log(`📊 Mapping DB: "${vfName}" → "${dbMapped}"`);
-      mappedPartnerName = dbMapped;
 
-      // Si pas de mapping DB, utiliser mapPartnerNameToCanon avec la liste du spreadsheet
-      if (mappedPartnerName === vfName && canonicalNames.length > 0) {
+      if (dbMapped && dbMapped !== vfName) {
+        // Mapping explicite trouvé
+        mappedPartnerName = dbMapped;
+        console.log(`📊 Mapping DB trouvé: "${vfName}" → "${mappedPartnerName}"`);
+      } else if (canonicalNames.length > 0) {
+        // Pas de mapping DB, utiliser mapPartnerNameToCanon avec la liste canonique
         console.log(`📊 Pas de mapping DB, utilisation mapPartnerNameToCanon avec ${canonicalNames.length} noms`);
         mappedPartnerName = mapPartnerNameToCanon(vfName, canonicalNames);
       } else {
-        console.log(`📊 Mapping DB trouvé, skip mapPartnerNameToCanon`);
+        // Aucune source de noms canoniques, utiliser le nom VF brut
+        mappedPartnerName = vfName;
+        console.log(`⚠️ Aucune source canonique disponible, utilisation nom VF brut`);
       }
     }
 
