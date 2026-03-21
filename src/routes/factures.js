@@ -56,6 +56,32 @@ module.exports = (db) => {
     return db.prepare('SELECT * FROM vf_partners WHERE actif = 1').all();
   }
 
+  const roundPrice = (n) => Math.round(n * 100) / 100;
+
+  function repairGSheetsCredentials() {
+    const credsRow = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
+    let credsOk = false;
+    try {
+      const p = JSON.parse(credsRow?.valeur || '{}');
+      credsOk = !!(p.private_key && p.client_email);
+    } catch (e) {
+      console.warn('GSheets: credentials JSON invalide en DB:', e.message);
+    }
+    if (!credsOk && process.env.GSHEETS_CREDENTIALS) {
+      try {
+        const envParsed = JSON.parse(process.env.GSHEETS_CREDENTIALS);
+        if (envParsed.private_key && envParsed.client_email) {
+          db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
+            .run(process.env.GSHEETS_CREDENTIALS);
+          return { ok: true, email: envParsed.client_email, repaired: true };
+        }
+      } catch (e) {
+        console.warn('GSheets: env var GSHEETS_CREDENTIALS invalide:', e.message);
+      }
+    }
+    return { ok: credsOk, repaired: false };
+  }
+
   // ─── Status ─────────────────────────────────────────────────────────────────
 
   router.get('/status', async (req, res) => {
@@ -131,7 +157,7 @@ module.exports = (db) => {
         return res.status(400).json({ erreur: 'Aucune ligne produit fournie' });
       }
 
-      console.log(`🔍 Matching ${inputLines.length} produits, useCurrentPrices=${useCurrentPrices}`);
+      // Matching produits
 
       const results = matcherProduits(inputLines, catalog, codeMappings);
 
@@ -140,7 +166,6 @@ module.exports = (db) => {
         results.forEach(p => {
           delete p.prix_ht;
           delete p.priceHT;
-          console.log(`💰 Prix supprimé pour ${p.ref}, utilisera le prix du catalogue`);
         });
       }
 
@@ -191,9 +216,9 @@ module.exports = (db) => {
           ref,
           prix_ht: priceHT,
           discount,
-          prix_ht_after_discount: Math.round(priceAfterDiscount * 100) / 100,
-          total_ht: Math.round(lineHT * 100) / 100,
-          total_ttc: Math.round(lineTTC * 100) / 100,
+          prix_ht_after_discount: roundPrice(priceAfterDiscount),
+          total_ht: roundPrice(lineHT),
+          total_ttc: roundPrice(lineTTC),
           forced_price_ttc: forcedPriceTTC,
         };
       });
@@ -213,8 +238,8 @@ module.exports = (db) => {
       res.json({
         products: calculatedProducts,
         frais_port: fraisPort,
-        total_ht: Math.round(totalHT * 100) / 100,
-        total_ttc: Math.round(totalTTC * 100) / 100,
+        total_ht: roundPrice(totalHT),
+        total_ttc: roundPrice(totalTTC),
       });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -225,7 +250,7 @@ module.exports = (db) => {
 
   router.post('/invoices', async (req, res) => {
     try {
-      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts, priceMode, logGSheets } = req.body;
+      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts, logGSheets } = req.body;
 
       const catalog = getCatalogMap();
       const productIdMappings = getCodeMappings('product_id');
@@ -257,10 +282,7 @@ module.exports = (db) => {
         if (discount > 0) hasDiscount = true;
 
         // Résoudre le produit VF via la clé REF-PRIX (comme le HTML)
-        const lookupKey = `${ref}-${parseFloat(priceHT).toFixed(2)}`;
-        console.log(`🔍 findVFProduct: ref=${p.ref} → normalized=${ref}, prix_ht=${priceHT}, lookupKey=${lookupKey}`);
         const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
-        console.log(`   → productId=${vfProduct.productId}, productName=${vfProduct.productName}`);
 
         // Prix forcé TTC
         const forcedEntry = forcedPrices.find(f => normalizeRef(f.code_source) === ref);
@@ -351,7 +373,6 @@ module.exports = (db) => {
 
       if (client.id) invoiceData.client_id = client.id;
 
-      console.log('📤 Payload VF positions:', JSON.stringify(positions, null, 2));
       const result = await vfService.creerFacture(invoiceData);
 
       // Logger dans la DB
@@ -372,47 +393,31 @@ module.exports = (db) => {
         result.number || '',
         client.name || '',
         documentType || 'vat',
-        Math.round(montantHT * 100) / 100,
-        Math.round(montantTTC * 100) / 100,
+        roundPrice(montantHT),
+        roundPrice(montantTTC),
         JSON.stringify({ orderNumber, canonicalClientName }),
       );
 
       // Envoyer email si demandé
+      let emailSent = false;
       if (sendEmail && result.id) {
         try {
           await vfService.envoyerEmail(result.id, emailOpts || {});
           db.prepare('UPDATE vf_invoice_logs SET email_sent = 1 WHERE vf_invoice_id = ?').run(String(result.id));
+          emailSent = true;
         } catch (emailErr) {
-          console.error('⚠️ Erreur envoi email:', emailErr.message);
+          console.warn('Erreur envoi email facture', result.id, ':', emailErr.message);
+          result.email_error = emailErr.message;
         }
       }
 
       // Log Google Sheets automatique si demandé
       if (logGSheets !== false) {
         try {
-          // Vérifier/réparer credentials avant de tenter le log
-          const credsRow = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
-          let credsOk = false;
-          try {
-            const p = JSON.parse(credsRow?.valeur || '{}');
-            credsOk = !!(p.private_key && p.client_email);
-          } catch {}
-          if (!credsOk && process.env.GSHEETS_CREDENTIALS) {
-            try {
-              const envParsed = JSON.parse(process.env.GSHEETS_CREDENTIALS);
-              if (envParsed.private_key && envParsed.client_email) {
-                db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
-                  .run(process.env.GSHEETS_CREDENTIALS);
-                console.log('🔧 Credentials GSheets réparées depuis env var avant log');
-              }
-            } catch {}
-          }
-
+          repairGSheetsCredentials();
           const gsheetsService = require('../services/googlesheetsService')(db);
           const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
           const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
-
-          console.log(`📊 GSheets: spreadsheetId=${spreadsheetId}, sheetName=${sheetName}, produits=${(products || []).length}`);
 
           if (spreadsheetId) {
             const gsProducts = (products || []).map(p => ({
@@ -438,21 +443,16 @@ module.exports = (db) => {
               products: gsProducts,
             }, canonicalClientName);
 
-            console.log('📊 GSheets log:', JSON.stringify(gsResult));
             if (gsResult.ok) {
               db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));
-            } else {
-              console.error('📊 GSheets log échec:', JSON.stringify(gsResult));
             }
-          } else {
-            console.warn('📊 GSheets: pas de spreadsheetId configuré, skip');
           }
         } catch (gsErr) {
-          console.error('⚠️ Erreur log GSheets:', gsErr.message, gsErr.stack?.split('\n').slice(0, 3).join(' '));
+          console.warn('Erreur log GSheets:', gsErr.message);
         }
       }
 
-      res.json(result);
+      res.json({ ...result, email_sent: emailSent });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
@@ -470,12 +470,6 @@ module.exports = (db) => {
       const results = [];
       for (const order of orders) {
         try {
-          // Réutiliser la logique de création unitaire
-          const fakeRes = {
-            json: (data) => data,
-            status: () => ({ json: (data) => data }),
-          };
-          // Appeler directement le service
           const result = await vfService.creerFacture(order.invoiceData || order);
           results.push({ ok: true, ...result });
         } catch (e) {
@@ -513,9 +507,6 @@ module.exports = (db) => {
       if (!data || !data.positions) return res.status(404).json({ erreur: `Facture #${req.params.id} trouvée mais sans positions (lignes de produits)` });
 
       const catalogMap = getCatalogMap();
-      console.log('📦 Import facture VF — positions:', JSON.stringify((data.positions || []).map(p => ({
-        name: p.name, code: p.code, qty: p.quantity, price_net: p.price_net, total_price_gross: p.total_price_gross, discount: p.discount, discount_percent: p.discount_percent, tax: p.tax
-      })), null, 2));
       const products = (data.positions || [])
         .filter(pos => {
           const code = (pos.code || pos.name || '').toUpperCase();
@@ -621,24 +612,7 @@ module.exports = (db) => {
         return res.status(400).json({ erreur: 'Client et produits requis' });
       }
 
-      // Vérifier/réparer credentials
-      const credsRow = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
-      let credsOk = false;
-      try {
-        const p = JSON.parse(credsRow?.valeur || '{}');
-        credsOk = !!(p.private_key && p.client_email);
-      } catch {}
-      if (!credsOk && process.env.GSHEETS_CREDENTIALS) {
-        try {
-          const envParsed = JSON.parse(process.env.GSHEETS_CREDENTIALS);
-          if (envParsed.private_key && envParsed.client_email) {
-            db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
-              .run(process.env.GSHEETS_CREDENTIALS);
-            console.log('🔧 Credentials GSheets réparées depuis env var (log-only)');
-          }
-        } catch {}
-      }
-
+      repairGSheetsCredentials();
       const gsheetsService = require('../services/googlesheetsService')(db);
       const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
       const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
@@ -656,8 +630,6 @@ module.exports = (db) => {
         csvRef: catalog[normalizeRef(p.ref)]?.csv_ref,
       }));
 
-      console.log(`📊 Log-only: client="${client.name}", produits=${gsProducts.length}`);
-
       // Ne pas passer partnerName, laisser logInvoice le résoudre avec mapPartnerNameToCanon
       const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
         clientName: client.name,
@@ -666,11 +638,9 @@ module.exports = (db) => {
         products: gsProducts,
       });
 
-      console.log('📊 Log-only result:', JSON.stringify(gsResult));
       res.json(gsResult);
     } catch (e) {
-      console.error('⚠️ Erreur log-only:', e.message, e.stack?.split('\n').slice(0, 3).join(' '));
-      res.status(500).json({ erreur: e.message, status: 'failed_write' });
+      res.status(500).json({ erreur: e.message });
     }
   });
 
@@ -748,38 +718,19 @@ module.exports = (db) => {
 
   router.get('/gsheets-status', async (req, res) => {
     try {
-      // 1. Vérifier credentials en DB
-      const credsRow = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
-      let credsValid = false;
-      let credsInfo = 'absentes';
-      if (credsRow?.valeur) {
-        try {
-          const parsed = JSON.parse(credsRow.valeur);
-          if (parsed.private_key && parsed.client_email) {
-            credsValid = true;
-            credsInfo = `OK (${parsed.client_email})`;
-          } else {
-            credsInfo = 'JSON valide mais champs manquants';
-          }
-        } catch {
-          credsInfo = 'JSON invalide en DB';
-        }
-      }
+      // 1. Vérifier/réparer credentials
+      const repairResult = repairGSheetsCredentials();
+      let credsValid = repairResult.ok;
+      let credsInfo = repairResult.ok
+        ? (repairResult.repaired ? `Réparé depuis env (${repairResult.email})` : 'OK')
+        : 'absentes';
 
-      // 2. Si credentials invalides, tenter réparation depuis env var
-      if (!credsValid && process.env.GSHEETS_CREDENTIALS) {
+      // 2. Enrichir credsInfo si OK
+      if (credsValid && !repairResult.repaired) {
         try {
-          const envCreds = JSON.parse(process.env.GSHEETS_CREDENTIALS);
-          if (envCreds.private_key && envCreds.client_email) {
-            db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
-              .run(process.env.GSHEETS_CREDENTIALS);
-            credsValid = true;
-            credsInfo = `Réparé depuis env (${envCreds.client_email})`;
-            console.log('🔧 Credentials GSheets réparées depuis GSHEETS_CREDENTIALS env var');
-          }
-        } catch {
-          credsInfo += ' + env var invalide aussi';
-        }
+          const parsed = JSON.parse(db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get()?.valeur || '{}');
+          if (parsed.client_email) credsInfo = `OK (${parsed.client_email})`;
+        } catch {}
       }
 
       // 3. Vérifier config spreadsheet
