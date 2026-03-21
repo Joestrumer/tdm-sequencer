@@ -504,8 +504,13 @@ module.exports = (db) => {
 
   router.get('/invoices/:id/products', async (req, res) => {
     try {
-      const data = await vfService.getFacture(req.params.id);
-      if (!data || !data.positions) return res.status(404).json({ erreur: 'Facture non trouvée ou sans positions' });
+      let data;
+      try {
+        data = await vfService.getFacture(req.params.id);
+      } catch (vfErr) {
+        return res.status(404).json({ erreur: `Facture #${req.params.id} non trouvée sur VosFactures: ${vfErr.message}` });
+      }
+      if (!data || !data.positions) return res.status(404).json({ erreur: `Facture #${req.params.id} trouvée mais sans positions (lignes de produits)` });
 
       const catalogMap = getCatalogMap();
       const products = (data.positions || [])

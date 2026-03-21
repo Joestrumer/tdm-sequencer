@@ -4884,7 +4884,7 @@ const parsePdfOrder = async (file) => {
     .filter(p => p && p.quantity > 0 && Number.isFinite(p.priceHT) && p.priceHT > 0);
 
   if (!products.length) {
-    throw new Error("Aucun produit détecté dans le PDF. Si c'est un PDF scanné (image), il faut l'Excel ou un PDF texte.");
+    throw new Error("Aucun produit détecté dans le PDF. Si c'est une facture VosFactures, utilisez plutôt l'import par numéro de facture ci-dessous. Si c'est un PDF scanné (image), il faut l'Excel ou un PDF texte.");
   }
 
   return { products };
@@ -4917,13 +4917,18 @@ const FacturesSingle = ({ showToast }) => {
     setImportLoading(true);
     setError(null);
     try {
-      // Si c'est un numéro (ex: "FV 2024/123"), d'abord chercher l'ID
-      let invoiceId = idOrNumber;
-      if (!/^\d+$/.test(idOrNumber)) {
+      // Chercher l'ID de la facture : soit ID numérique direct, soit recherche par numéro
+      let invoiceId = null;
+      if (/^\d+$/.test(idOrNumber)) {
+        invoiceId = idOrNumber;
+      } else {
+        // Recherche par numéro de facture
         const results = await api.get('/factures/invoices/search?number=' + encodeURIComponent(idOrNumber));
-        if (!results || results.length === 0) { setError('Aucune facture trouvée pour "' + idOrNumber + '"'); setImportLoading(false); return; }
-        invoiceId = results[0].id;
+        const list = Array.isArray(results) ? results : [];
+        if (list.length === 0) { setError('Aucune facture trouvée pour "' + idOrNumber + '"'); setImportLoading(false); return; }
+        invoiceId = list[0].id;
       }
+      if (!invoiceId) { setError('ID de facture invalide'); setImportLoading(false); return; }
       const data = await api.get('/factures/invoices/' + invoiceId + '/products');
       if (data.erreur) { setError(data.erreur); setImportLoading(false); return; }
       if (!data.products || data.products.length === 0) { setError('Aucun produit trouvé dans cette facture'); setImportLoading(false); return; }
@@ -5391,20 +5396,24 @@ const FacturesSingle = ({ showToast }) => {
                           <td className="px-3 py-2 text-right font-mono text-slate-700">{qty}</td>
                           <td className="px-3 py-2 text-right font-mono text-slate-700">{unitPrice.toFixed(2)}€</td>
                           <td className="px-3 py-2 text-right">
-                            <input type="number" step="0.5" min="0" max="100"
-                              value={discount || ''}
-                              placeholder="—"
-                              onChange={e => {
-                                const newDiscount = parseFloat(e.target.value) || 0;
-                                const newProducts = [...calculation.products];
-                                const priceHT = newProducts[i].prix_ht || unitPrice;
-                                const tva = newProducts[i].tva || 20;
-                                const lineHT = priceHT * (1 - newDiscount / 100) * qty;
-                                newProducts[i] = { ...newProducts[i], discount: newDiscount, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
-                                setCalculation({ ...calculation, products: newProducts });
-                              }}
-                              className="w-16 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono" />
-                            <span className="text-xs text-slate-400 ml-0.5">%</span>
+                            <div className="inline-flex items-center">
+                              <input type="number" step="0.5" min="0" max="100"
+                                defaultValue={discount > 0 ? discount : ''}
+                                placeholder="0"
+                                onBlur={e => {
+                                  const newDiscount = Math.min(100, Math.max(0, parseFloat(e.target.value) || 0));
+                                  e.target.value = newDiscount > 0 ? newDiscount : '';
+                                  const newProducts = [...calculation.products];
+                                  const priceHT = newProducts[i].prix_ht || unitPrice;
+                                  const tva = newProducts[i].tva || 20;
+                                  const lineHT = priceHT * (1 - newDiscount / 100) * qty;
+                                  newProducts[i] = { ...newProducts[i], discount: newDiscount, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
+                                  setCalculation({ ...calculation, products: newProducts });
+                                }}
+                                onKeyDown={e => { if (e.key === 'Enter') e.target.blur(); }}
+                                className="w-16 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                              <span className="text-xs text-slate-400 ml-0.5">%</span>
+                            </div>
                           </td>
                           <td className="px-3 py-2 text-right font-mono font-medium text-slate-900">{(p.total_ht || 0).toFixed(2)}€</td>
                         </tr>
