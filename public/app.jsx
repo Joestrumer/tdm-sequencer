@@ -5156,6 +5156,9 @@ const FacturesSingle = ({ showToast }) => {
       setResult(res);
       setStep(5);
       showToast('Facture créée avec succès !', 'success');
+      if (sendEmail && res.email_error) {
+        showToast('Attention : email non envoyé — ' + res.email_error, 'error');
+      }
     } catch (err) {
       setError(err.message);
       showToast('Erreur: ' + err.message, 'error');
@@ -5584,11 +5587,11 @@ const FacturesSingle = ({ showToast }) => {
           </div>
 
           <div className="flex gap-2">
-            <button onClick={createInvoice} disabled={processing}
+            <button onClick={createInvoice} disabled={processing || !selectedClient || !calculation?.products?.length}
               className="flex-1 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
               {processing ? 'En cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'}`}
             </button>
-            <button onClick={logOnly} disabled={processing}
+            <button onClick={logOnly} disabled={processing || !selectedClient || !calculation?.products?.length}
               className="py-3 px-4 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors whitespace-nowrap">
               {processing ? '...' : 'Logger uniquement'}
             </button>
@@ -5702,6 +5705,13 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
     } catch (e) { setErreur('Erreur réseau: ' + e.message); setClients([]); }
     setRefreshing(false);
   };
+
+  // Escape pour fermer
+  React.useEffect(() => {
+    const handleEscape = (e) => { if (e.key === 'Escape') onBack?.(); };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [onBack]);
 
   return (
     <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
