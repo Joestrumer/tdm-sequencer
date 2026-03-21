@@ -607,7 +607,7 @@ module.exports = (db) => {
 
   router.post('/log-only', async (req, res) => {
     try {
-      const { client, products, orderNumber } = req.body;
+      const { client, products, fraisPort, orderNumber } = req.body;
       if (!client || !products || !products.length) {
         return res.status(400).json({ erreur: 'Client et produits requis' });
       }
@@ -629,6 +629,15 @@ module.exports = (db) => {
         priceHT: p.prix_ht || catalog[normalizeRef(p.ref)]?.prix_ht || 0,
         csvRef: catalog[normalizeRef(p.ref)]?.csv_ref,
       }));
+
+      // Ajouter frais de port (FP/FE) au log GSheets
+      for (const f of (fraisPort || [])) {
+        gsProducts.push({
+          ref: f.ref,
+          quantity: f.quantite || f.quantity || 1,
+          priceHT: f.prix_ht,
+        });
+      }
 
       // Ne pas passer partnerName, laisser logInvoice le résoudre avec mapPartnerNameToCanon
       const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {

@@ -5174,6 +5174,7 @@ const FacturesSingle = ({ showToast }) => {
       const res = await api.post('/factures/log-only', {
         client: selectedClient,
         products: calculation?.products || matchedProducts,
+        fraisPort: calculation?.frais_port || [],
         orderNumber,
       });
       if (res.erreur) throw new Error(res.erreur);
