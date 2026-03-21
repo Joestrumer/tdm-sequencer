@@ -436,12 +436,15 @@ module.exports = (db) => {
               });
             }
 
+            // Ne passer le nom canonique que s'il diffère du nom VF (mapping réel trouvé)
+            // Sinon laisser logInvoice résoudre via mapPartnerNameToCanon avec les noms du spreadsheet
+            const resolvedPartner = (canonicalClientName && canonicalClientName !== client.name) ? canonicalClientName : undefined;
             const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
               clientName: client.name,
               invoiceNumber: result.number || '',
               invoiceDate: new Date().toISOString().split('T')[0],
               products: gsProducts,
-            }, canonicalClientName);
+            }, resolvedPartner);
 
             if (gsResult.ok) {
               db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));
@@ -683,16 +686,13 @@ module.exports = (db) => {
         return res.status(400).json({ erreur: 'Spreadsheet ID non configuré' });
       }
 
-      // Résoudre le nom partenaire via clientNameMapping d'abord, puis fallback fuzzy
+      // Résoudre le nom partenaire via clientNameMapping d'abord
+      // Si pas de mapping réel trouvé, laisser logInvoice résoudre avec les noms du spreadsheet
       let canonName = partnerName;
       if (!canonName) {
         const clientName = invoiceData.clientName || invoiceData.client_name || '';
-        canonName = resolveCanonicalClientName(clientName);
-        if (canonName === clientName) {
-          // Fallback : essayer le fuzzy matching
-          const partners = getPartners();
-          canonName = mapPartnerNameToCanon(clientName, partners);
-        }
+        const dbMapped = resolveCanonicalClientName(clientName);
+        canonName = (dbMapped && dbMapped !== clientName) ? dbMapped : undefined;
       }
 
       const result = await gsheetsService.logInvoice(spreadsheetId, sheetName, invoiceData, canonName);
