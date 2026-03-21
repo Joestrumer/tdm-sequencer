@@ -4883,8 +4883,16 @@ const parsePdfOrder = async (file) => {
   const products = Array.from(map.values())
     .filter(p => p && p.quantity > 0 && Number.isFinite(p.priceHT) && p.priceHT > 0);
 
+  // Extraire le texte complet pour détecter un numéro de facture VF
+  const fullText = rows.map(r => r.text).join('\n');
+
   if (!products.length) {
-    throw new Error("Aucun produit détecté dans le PDF. Si c'est une facture VosFactures, utilisez plutôt l'import par numéro de facture ci-dessous. Si c'est un PDF scanné (image), il faut l'Excel ou un PDF texte.");
+    // Chercher un numéro de facture VosFactures dans le texte (ex: "FV 2024/01/7184", "Facture FV 2024/123", "N° FV 2024/7184")
+    const vfMatch = fullText.match(/\bFV\s*[\d/]+/i);
+    if (vfMatch) {
+      return { products: [], vfInvoiceNumber: vfMatch[0].replace(/\s+/g, ' ').trim() };
+    }
+    throw new Error("Aucun produit détecté dans le PDF. Si c'est une facture VosFactures, utilisez l'import par numéro ci-dessous. Si c'est un PDF scanné (image), il faut l'Excel ou un PDF texte.");
   }
 
   return { products };
@@ -4992,10 +5000,50 @@ const FacturesSingle = ({ showToast }) => {
         setRawLines(products);
         matchProducts(products);
       } else if (file.name.endsWith('.pdf')) {
-        showToast('Parsing PDF position-based en cours...', 'info');
+        showToast('Parsing PDF en cours...', 'info');
         console.log('📄 Parsing PDF avec logique position-based (X/Y)');
 
         const data = await parsePdfOrder(file);
+
+        // Si c'est une facture VosFactures détectée, lancer l'import automatique
+        if (data.vfInvoiceNumber) {
+          console.log('📄 Facture VF détectée dans le PDF:', data.vfInvoiceNumber);
+          showToast('Facture VF détectée : ' + data.vfInvoiceNumber + ' — import en cours...', 'info');
+          setImportInvoiceId(data.vfInvoiceNumber);
+          // Lancer l'import automatiquement
+          setImportLoading(true);
+          try {
+            const results = await api.get('/factures/invoices/search?number=' + encodeURIComponent(data.vfInvoiceNumber));
+            const list = Array.isArray(results) ? results : [];
+            if (list.length === 0) { setError('Facture VF "' + data.vfInvoiceNumber + '" détectée dans le PDF mais non trouvée sur VosFactures'); setImportLoading(false); return; }
+            const invoiceId = list[0].id;
+            const importData = await api.get('/factures/invoices/' + invoiceId + '/products');
+            if (importData.erreur) { setError(importData.erreur); setImportLoading(false); return; }
+            if (!importData.products || importData.products.length === 0) { setError('Aucun produit trouvé dans la facture VF'); setImportLoading(false); return; }
+            setMatchedProducts(importData.products);
+            if (importData.client) {
+              setSelectedClient(importData.client);
+              setOrderNumber(importData.invoiceNumber || '');
+              const calcRes = await api.post('/factures/calculate', { products: importData.products, clientName: importData.client.name, includeShipping });
+              setCalculation(calcRes);
+              const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
+              const zip = importData.client.zip || '';
+              const city = (importData.client.city || '').toLowerCase();
+              const isIDF = idfDepts.some(d => zip.startsWith(d)) || city.includes('paris');
+              setShippingId(isIDF ? '101' : '1302');
+              setStep(4);
+              showToast('Facture VF importée — ' + importData.products.length + ' produit(s)', 'success');
+            } else {
+              setStep(3);
+              showToast('Facture VF importée — sélectionnez un client', 'success');
+            }
+          } catch (importErr) {
+            setError('Erreur import facture VF: ' + importErr.message);
+          }
+          setImportLoading(false);
+          return;
+        }
+
         console.log(`📄 parsePdfOrder: ${data.products.length} produit(s) détecté(s)`);
 
         if (data.products.length === 0) {
