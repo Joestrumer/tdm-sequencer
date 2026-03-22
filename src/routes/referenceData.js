@@ -3,6 +3,8 @@
  */
 
 const express = require('express');
+const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 
 module.exports = (db) => {
   const router = express.Router();
@@ -49,7 +51,10 @@ module.exports = (db) => {
 
   router.get('/partners', (req, res) => {
     try {
-      const rows = db.prepare('SELECT * FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+      const { all } = req.query;
+      const rows = all === '1'
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, password_hash IS NOT NULL as has_password FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, password_hash IS NOT NULL as has_password FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -65,6 +70,51 @@ module.exports = (db) => {
         ON CONFLICT(nom) DO UPDATE SET nom_normalise = excluded.nom_normalise
       `).run(nom, nom_normalise || nom.toLowerCase());
       res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Mettre à jour les champs d'un partenaire
+  router.patch('/partners/:id', (req, res) => {
+    try {
+      const { email, contact_nom, telephone, adresse, shipping_id, actif } = req.body;
+      const updates = [];
+      const params = [];
+
+      if (email !== undefined) { updates.push('email = ?'); params.push(email); }
+      if (contact_nom !== undefined) { updates.push('contact_nom = ?'); params.push(contact_nom); }
+      if (telephone !== undefined) { updates.push('telephone = ?'); params.push(telephone); }
+      if (adresse !== undefined) { updates.push('adresse = ?'); params.push(adresse); }
+      if (shipping_id !== undefined) { updates.push('shipping_id = ?'); params.push(shipping_id); }
+      if (actif !== undefined) { updates.push('actif = ?'); params.push(actif ? 1 : 0); }
+
+      if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
+
+      params.push(req.params.id);
+      db.prepare(`UPDATE vf_partners SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Générer un mot de passe pour un partenaire
+  router.post('/partners/:id/generate-password', async (req, res) => {
+    try {
+      const partner = db.prepare('SELECT id, nom FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+
+      const plainPassword = crypto.randomBytes(4).toString('hex'); // 8 caractères hex
+      const hash = await bcrypt.hash(plainPassword, 10);
+
+      db.prepare('UPDATE vf_partners SET password_hash = ? WHERE id = ?').run(hash, partner.id);
+
+      res.json({
+        ok: true,
+        password: plainPassword,
+        message: `Mot de passe généré pour ${partner.nom}. Copiez-le maintenant, il ne sera plus affiché.`,
+      });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }

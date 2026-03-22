@@ -7477,6 +7477,7 @@ const VueParametres = () => {
         {saving ? "Sauvegarde..." : "Enregistrer les paramètres"}
       </button>
 
+      <VuePartenaires showToast={(m, t) => setMsg(t === "error" ? "❌ " + m : "✅ " + m)} />
       <VueHubspot />
       <VueVosFacturesConfig />
     </div>
@@ -8078,6 +8079,323 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
   );
 };
 
+// ─── VUE COMMANDES PARTENAIRES ────────────────────────────────────────────────
+const VueCommandes = ({ showToast }) => {
+  const [commandes, setCommandes] = useState([]);
+  const [counts, setCounts] = useState({ en_attente: 0, validee: 0, annulee: 0, total: 0 });
+  const [filtre, setFiltre] = useState("tous");
+  const [loading, setLoading] = useState(true);
+  const [expandedId, setExpandedId] = useState(null);
+  const [validating, setValidating] = useState(null);
+
+  const charger = async () => {
+    setLoading(true);
+    try {
+      const [orders, c] = await Promise.all([
+        api.get('/partner-orders' + (filtre !== 'tous' ? `?statut=${filtre}` : '')),
+        api.get('/partner-orders/counts'),
+      ]);
+      if (Array.isArray(orders)) setCommandes(orders);
+      if (c && !c.erreur) setCounts(c);
+    } catch (e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { charger(); }, [filtre]);
+
+  const validerCommande = async (id) => {
+    if (!confirm('Valider cette commande ? Une facture VosFactures sera créée.')) return;
+    setValidating(id);
+    try {
+      const res = await api.post(`/partner-orders/${id}/validate`);
+      if (res.ok) {
+        showToast(`Commande validée — Facture ${res.vf_invoice_number || ''}`, "success");
+        charger();
+      } else {
+        showToast(res.erreur || 'Erreur validation', "error");
+      }
+    } catch (e) {
+      showToast('Erreur réseau', "error");
+    }
+    setValidating(null);
+  };
+
+  const annulerCommande = async (id) => {
+    if (!confirm('Annuler cette commande ?')) return;
+    try {
+      const res = await api.post(`/partner-orders/${id}/cancel`);
+      if (res.ok) {
+        showToast('Commande annulée', "success");
+        charger();
+      } else {
+        showToast(res.erreur || 'Erreur', "error");
+      }
+    } catch (e) {}
+  };
+
+  const statutConfig = {
+    en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
+    validee: { label: "Validée", bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500" },
+    annulee: { label: "Annulée", bg: "bg-red-50", text: "text-red-600", dot: "bg-red-400" },
+  };
+
+  const filtres = [
+    { id: "tous", label: "Tous", count: counts.total },
+    { id: "en_attente", label: "En attente", count: counts.en_attente },
+    { id: "validee", label: "Validées", count: counts.validee },
+    { id: "annulee", label: "Annulées", count: counts.annulee },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* Filtres */}
+      <div className="flex gap-2 flex-wrap">
+        {filtres.map(f => (
+          <button key={f.id} onClick={() => setFiltre(f.id)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${filtre === f.id ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"}`}>
+            {f.label}
+            {f.count > 0 && <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${filtre === f.id ? "bg-white/20" : "bg-slate-100"}`}>{f.count}</span>}
+          </button>
+        ))}
+      </div>
+
+      {loading && <div className="flex items-center gap-2 text-sm text-slate-400"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
+
+      {/* Tableau */}
+      {!loading && commandes.length === 0 && (
+        <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-sm text-slate-400">Aucune commande</div>
+      )}
+
+      <div className="space-y-3">
+        {commandes.map(c => {
+          const cfg = statutConfig[c.statut] || statutConfig.en_attente;
+          const expanded = expandedId === c.id;
+          return (
+            <div key={c.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+              <div className="p-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setExpandedId(expanded ? null : c.id)}>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className="text-sm font-medium text-slate-900">{c.partner_nom}</span>
+                    <span className={`inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${cfg.bg} ${cfg.text}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
+                      {cfg.label}
+                    </span>
+                  </div>
+                  <div className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-semibold text-slate-900">{c.total_ht?.toFixed(2)} &euro; HT</div>
+                  <div className="text-xs text-slate-400">{c.products?.length || 0} produit{(c.products?.length || 0) > 1 ? 's' : ''}</div>
+                </div>
+                <span className={`text-slate-400 transition-transform ${expanded ? 'rotate-180' : ''}`}>&#9660;</span>
+              </div>
+
+              {expanded && (
+                <div className="border-t border-slate-100 p-4 bg-slate-50/50 animate-fade-in">
+                  {/* Infos partenaire */}
+                  <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
+                    {c.partner_contact && <div><span className="text-xs text-slate-400 block">Contact</span><span className="text-sm text-slate-700">{c.partner_contact}</span></div>}
+                    {c.partner_email && <div><span className="text-xs text-slate-400 block">Email</span><span className="text-sm text-slate-700">{c.partner_email}</span></div>}
+                  </div>
+
+                  {/* Tableau produits */}
+                  <table className="w-full text-sm mb-4">
+                    <thead><tr className="text-xs text-slate-400 border-b border-slate-200">
+                      <th className="text-left py-2 font-medium">Ref</th>
+                      <th className="text-left py-2 font-medium">Produit</th>
+                      <th className="text-center py-2 font-medium">Qté</th>
+                      <th className="text-right py-2 font-medium">PU HT</th>
+                      <th className="text-right py-2 font-medium">Total HT</th>
+                    </tr></thead>
+                    <tbody>
+                      {(c.products || []).map((p, i) => (
+                        <tr key={i} className="border-b border-slate-100">
+                          <td className="py-2 font-mono text-xs text-slate-500">{p.ref}</td>
+                          <td className="py-2 text-slate-700">{p.nom}</td>
+                          <td className="py-2 text-center">{p.quantite}</td>
+                          <td className="py-2 text-right">{p.prix_remise?.toFixed(2)} &euro;</td>
+                          <td className="py-2 text-right font-medium">{p.total_ht?.toFixed(2)} &euro;</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+
+                  {c.notes && <div className="text-xs text-slate-500 italic mb-3">Notes : "{c.notes}"</div>}
+
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <span className="text-sm font-semibold text-slate-900">{c.total_ht?.toFixed(2)} &euro; HT</span>
+                      <span className="text-xs text-slate-400 ml-2">({c.total_ttc?.toFixed(2)} &euro; TTC)</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {c.vf_invoice_number && <span className="text-xs text-emerald-600 font-medium">Facture n&deg;{c.vf_invoice_number}</span>}
+                      {c.statut === 'en_attente' && (
+                        <>
+                          <button onClick={(e) => { e.stopPropagation(); annulerCommande(c.id); }} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">Annuler</button>
+                          <button onClick={(e) => { e.stopPropagation(); validerCommande(c.id); }} disabled={validating === c.id} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-colors disabled:opacity-50">
+                            {validating === c.id ? "Validation..." : "Valider la commande"}
+                          </button>
+                        </>
+                      )}
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+};
+
+// ─── GESTION PARTENAIRES (section dans Paramètres) ────────────────────────────
+const VuePartenaires = ({ showToast }) => {
+  const [partners, setPartners] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [generatedPwd, setGeneratedPwd] = useState(null);
+
+  const charger = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/reference/partners?all=1');
+      if (Array.isArray(data)) setPartners(data);
+    } catch (e) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { charger(); }, []);
+
+  const genererMotDePasse = async (id) => {
+    try {
+      const res = await api.post(`/reference/partners/${id}/generate-password`);
+      if (res.ok) {
+        setGeneratedPwd({ id, password: res.password });
+        showToast('Mot de passe généré', "success");
+        charger();
+      } else {
+        showToast(res.erreur || 'Erreur', "error");
+      }
+    } catch (e) {
+      showToast('Erreur réseau', "error");
+    }
+  };
+
+  const sauvegarderEdition = async (id) => {
+    try {
+      await api.patch(`/reference/partners/${id}`, editForm);
+      showToast('Partenaire mis à jour', "success");
+      setEditId(null);
+      setEditForm({});
+      charger();
+    } catch (e) {
+      showToast('Erreur', "error");
+    }
+  };
+
+  const toggleActif = async (id, actif) => {
+    try {
+      await api.patch(`/reference/partners/${id}`, { actif: !actif });
+      charger();
+    } catch (e) {}
+  };
+
+  const copyToClipboard = (text) => {
+    navigator.clipboard.writeText(text);
+    showToast('Copié dans le presse-papier', "success");
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-slate-800">Partenaires — Portail Commande</h3>
+      <p className="text-xs text-slate-400">Gérez les accès des partenaires au portail de commande (/partenaire).</p>
+
+      {loading && <div className="text-xs text-slate-400">Chargement...</div>}
+
+      <div className="space-y-3">
+        {partners.map(p => (
+          <div key={p.id} className={`border rounded-xl p-4 ${p.actif ? 'border-slate-200' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-slate-900">{p.nom}</span>
+                {p.has_password ? (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600">Accès actif</span>
+                ) : (
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">Pas d'accès</span>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => toggleActif(p.id, p.actif)} className={`text-[10px] px-2 py-1 rounded-lg ${p.actif ? 'bg-slate-100 text-slate-500 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
+                  {p.actif ? 'Désactiver' : 'Activer'}
+                </button>
+                <button onClick={() => genererMotDePasse(p.id)} className="text-[10px] px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100">
+                  {p.has_password ? 'Régénérer MDP' : 'Générer MDP'}
+                </button>
+                <button onClick={() => { setEditId(editId === p.id ? null : p.id); setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '' }); }} className="text-[10px] px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200">
+                  Modifier
+                </button>
+              </div>
+            </div>
+
+            {/* Password display */}
+            {generatedPwd && generatedPwd.id === p.id && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-2 animate-fade-in">
+                <div className="text-xs text-amber-700 font-medium mb-1">Mot de passe généré (affiché une seule fois) :</div>
+                <div className="flex items-center gap-2">
+                  <code className="text-sm font-mono bg-white px-3 py-1.5 rounded border border-amber-200 text-slate-900 select-all">{generatedPwd.password}</code>
+                  <button onClick={() => copyToClipboard(generatedPwd.password)} className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded hover:bg-amber-200">Copier</button>
+                </div>
+              </div>
+            )}
+
+            {/* Info display */}
+            {(p.email || p.contact_nom || p.telephone) && editId !== p.id && (
+              <div className="flex gap-4 text-xs text-slate-400 mt-1">
+                {p.email && <span>{p.email}</span>}
+                {p.contact_nom && <span>{p.contact_nom}</span>}
+                {p.telephone && <span>{p.telephone}</span>}
+              </div>
+            )}
+
+            {/* Edit form */}
+            {editId === p.id && (
+              <div className="mt-3 space-y-2 animate-fade-in">
+                <div className="grid grid-cols-2 gap-2">
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-0.5">Email</label>
+                    <input type="email" value={editForm.email || ''} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-0.5">Contact</label>
+                    <input type="text" value={editForm.contact_nom || ''} onChange={e => setEditForm(f => ({ ...f, contact_nom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-0.5">Téléphone</label>
+                    <input type="text" value={editForm.telephone || ''} onChange={e => setEditForm(f => ({ ...f, telephone: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-0.5">Adresse</label>
+                    <input type="text" value={editForm.adresse || ''} onChange={e => setEditForm(f => ({ ...f, adresse: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                  <div>
+                    <label className="text-[10px] text-slate-400 block mb-0.5">Shipping ID</label>
+                    <input type="text" value={editForm.shipping_id || ''} onChange={e => setEditForm(f => ({ ...f, shipping_id: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                  </div>
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={() => sauvegarderEdition(p.id)} className="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700">Sauvegarder</button>
+                  <button onClick={() => { setEditId(null); setEditForm({}); }} className="text-xs px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50">Annuler</button>
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 
 function App() {
@@ -8164,6 +8482,7 @@ function App() {
   const NAV = [
     { id: "dashboard", icon: "📧", label: "Séquences" },
     { id: "ventes", icon: "📈", label: "Ventes" },
+    { id: "commandes", icon: "📦", label: "Commandes" },
     { id: "leads", icon: "👥", label: "Leads" },
     { id: "sequences", icon: "📨", label: "Campagnes" },
     { id: "templates", icon: "📝", label: "Templates" },
@@ -8243,6 +8562,7 @@ function App() {
             <p className="text-xs text-slate-400">
               {vue === "dashboard" && `${leads.filter(l => l.statut === "En séquence").length} leads en séquence`}
               {vue === "ventes" && "Analytics CA, clients & commandes"}
+              {vue === "commandes" && "Commandes partenaires en attente de validation"}
               {vue === "leads" && `${leads.length} leads au total`}
               {vue === "sequences" && `${sequences.length} séquences actives`}
               {vue === "templates" && "Bibliothèque de templates d'emails"}
@@ -8264,6 +8584,7 @@ function App() {
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
           {vue === "dashboard" && <VueDashboard showToast={showToast} />}
           {vue === "ventes" && <AnalyticsSpreadsheet showToast={showToast} />}
+          {vue === "commandes" && <VueCommandes showToast={showToast} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} />}
           {vue === "templates" && <VueTemplates showToast={showToast} />}

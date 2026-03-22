@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Terre de Mars — Espace Partenaire</title>
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e293b'/><text x='16' y='22' text-anchor='middle' font-family='Arial' font-weight='bold' font-size='13' fill='white'>TM</text></svg>" />
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <style>
+    * { font-family: 'DM Sans', sans-serif; box-sizing: border-box; }
+    body { margin: 0; background: #0f172a; }
+    @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .animate-fade-in { animation: fade-in 0.3s ease-out; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script>
+    const API_BASE = window.location.origin + '/api/partenaire';
+
+    window.partnerApi = {
+      _headers: () => {
+        const token = sessionStorage.getItem('partner_token') || '';
+        return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+      },
+      get: (path) => fetch(API_BASE + path, { headers: window.partnerApi._headers() }).then(r => r.json()),
+      post: (path, body) => fetch(API_BASE + path, { method: 'POST', headers: window.partnerApi._headers(), body: JSON.stringify(body) }).then(r => r.json()),
+    };
+  </script>
+
+  <script type="text/babel" data-presets="react">
+    const { useState, useEffect, useRef, useMemo } = React;
+    const api = window.partnerApi;
+
+    // ─── Toast ──────────────────────────────────────────────────────────────────
+    const Toast = ({ toast }) => {
+      if (!toast || !toast.visible) return null;
+      const colors = { success: "bg-emerald-600", error: "bg-red-500", info: "bg-slate-700" };
+      return (
+        <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-white text-sm font-medium animate-fade-in ${colors[toast.type] || colors.info}`}>
+          {toast.type === "success" && "✓ "}{toast.type === "error" && "✗ "}{toast.message}
+        </div>
+      );
+    };
+
+    // ─── Login Screen ───────────────────────────────────────────────────────────
+    const LoginScreen = ({ onLogin }) => {
+      const [password, setPassword] = useState("");
+      const [loading, setLoading] = useState(false);
+      const [error, setError] = useState("");
+
+      const handleLogin = async () => {
+        if (!password.trim()) return;
+        setLoading(true);
+        setError("");
+        try {
+          const res = await api.post('/login', { password: password.trim() });
+          if (res.erreur) {
+            setError(res.erreur);
+          } else if (res.token) {
+            sessionStorage.setItem('partner_token', res.token);
+            onLogin(res.partenaire);
+          }
+        } catch (e) {
+          setError("Impossible de contacter le serveur");
+        }
+        setLoading(false);
+      };
+
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm animate-fade-in">
+            <div className="flex items-center gap-3 mb-8">
+              <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white text-sm font-bold">TM</div>
+              <div>
+                <div className="text-sm font-semibold text-slate-900">Terre de Mars</div>
+                <div className="text-xs text-slate-400">Espace Partenaire</div>
+              </div>
+            </div>
+            <h2 className="text-lg font-semibold text-slate-900 mb-1">Bienvenue</h2>
+            <p className="text-sm text-slate-400 mb-6">Entrez votre mot de passe pour accéder au catalogue.</p>
+            <input
+              type="password"
+              value={password}
+              onChange={e => setPassword(e.target.value)}
+              onKeyDown={e => e.key === 'Enter' && handleLogin()}
+              placeholder="Mot de passe..."
+              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400"
+              autoFocus
+            />
+            {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
+            <button
+              onClick={handleLogin}
+              disabled={loading}
+              className="w-full mt-4 bg-slate-900 text-white py-3 rounded-xl text-sm font-medium hover:bg-slate-700 transition-colors disabled:opacity-50"
+            >
+              {loading ? "Connexion..." : "Accéder"}
+            </button>
+          </div>
+        </div>
+      );
+    };
+
+    // ─── Catalogue ──────────────────────────────────────────────────────────────
+    const CatalogueView = ({ catalogue, panier, setPanier }) => {
+      const [search, setSearch] = useState("");
+
+      const filtered = useMemo(() => {
+        if (!search) return catalogue;
+        const q = search.toLowerCase();
+        return catalogue.filter(p => p.ref.toLowerCase().includes(q) || p.nom.toLowerCase().includes(q));
+      }, [catalogue, search]);
+
+      const getQty = (ref) => panier[ref]?.quantite || 0;
+
+      const setQty = (ref, qty) => {
+        if (qty <= 0) {
+          setPanier(p => { const n = { ...p }; delete n[ref]; return n; });
+        } else {
+          const prod = catalogue.find(c => c.ref === ref);
+          setPanier(p => ({ ...p, [ref]: { ...prod, quantite: qty } }));
+        }
+      };
+
+      return (
+        <div>
+          <div className="mb-6">
+            <input
+              type="text"
+              value={search}
+              onChange={e => setSearch(e.target.value)}
+              placeholder="Rechercher un produit..."
+              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30"
+            />
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+            {filtered.map(p => (
+              <div key={p.ref} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-colors">
+                <div className="text-xs text-slate-400 font-mono mb-1">{p.ref}</div>
+                <div className="text-sm font-medium text-white mb-3 leading-snug">{p.nom}</div>
+                <div className="flex items-end justify-between">
+                  <div>
+                    {p.discount_pct > 0 && (
+                      <div className="text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)} &euro; HT</div>
+                    )}
+                    <div className="text-lg font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; <span className="text-xs font-normal text-slate-400">HT</span></div>
+                    {p.discount_pct > 0 && (
+                      <div className="text-xs text-emerald-400/70">-{p.discount_pct}%</div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-2">
+                    {getQty(p.ref) > 0 && (
+                      <button onClick={() => setQty(p.ref, getQty(p.ref) - 1)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-lg font-bold transition-colors">-</button>
+                    )}
+                    {getQty(p.ref) > 0 && (
+                      <span className="text-white font-semibold text-sm min-w-[20px] text-center">{getQty(p.ref)}</span>
+                    )}
+                    <button onClick={() => setQty(p.ref, getQty(p.ref) + 1)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-lg font-bold transition-colors">+</button>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+          {filtered.length === 0 && (
+            <div className="text-center py-12 text-slate-400 text-sm">Aucun produit trouv&eacute;</div>
+          )}
+        </div>
+      );
+    };
+
+    // ─── Panier Panel ───────────────────────────────────────────────────────────
+    const PanierPanel = ({ panier, setPanier, onCommander, loading }) => {
+      const [notes, setNotes] = useState("");
+      const items = Object.values(panier);
+      const totalHT = items.reduce((s, i) => s + i.prix_remise * i.quantite, 0);
+      const totalTTC = totalHT * 1.2;
+
+      if (items.length === 0) {
+        return (
+          <div className="text-center py-8 text-slate-400 text-sm">
+            Votre panier est vide.<br />Ajoutez des produits depuis le catalogue.
+          </div>
+        );
+      }
+
+      return (
+        <div className="space-y-4">
+          {items.map(i => (
+            <div key={i.ref} className="flex items-center justify-between bg-white/5 rounded-xl p-3">
+              <div className="min-w-0 flex-1">
+                <div className="text-xs text-slate-400 font-mono">{i.ref}</div>
+                <div className="text-sm text-white truncate">{i.nom}</div>
+              </div>
+              <div className="flex items-center gap-3 ml-3">
+                <div className="flex items-center gap-1">
+                  <button onClick={() => setPanier(p => {
+                    if (i.quantite <= 1) { const n = { ...p }; delete n[i.ref]; return n; }
+                    return { ...p, [i.ref]: { ...i, quantite: i.quantite - 1 } };
+                  })} className="w-6 h-6 rounded bg-white/10 text-white text-xs hover:bg-white/20 flex items-center justify-center">-</button>
+                  <span className="text-white text-sm min-w-[24px] text-center">{i.quantite}</span>
+                  <button onClick={() => setPanier(p => ({ ...p, [i.ref]: { ...i, quantite: i.quantite + 1 } }))} className="w-6 h-6 rounded bg-white/10 text-white text-xs hover:bg-white/20 flex items-center justify-center">+</button>
+                </div>
+                <div className="text-sm text-white font-medium w-20 text-right">{(i.prix_remise * i.quantite).toFixed(2)} &euro;</div>
+              </div>
+            </div>
+          ))}
+          <div className="border-t border-white/10 pt-4 space-y-2">
+            <div className="flex justify-between text-sm text-white">
+              <span>Total HT</span>
+              <span className="font-semibold">{totalHT.toFixed(2)} &euro;</span>
+            </div>
+            <div className="flex justify-between text-sm text-slate-400">
+              <span>Total TTC (20%)</span>
+              <span>{totalTTC.toFixed(2)} &euro;</span>
+            </div>
+          </div>
+          <textarea
+            value={notes}
+            onChange={e => setNotes(e.target.value)}
+            placeholder="Notes ou instructions (optionnel)..."
+            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/20 resize-none"
+            rows={3}
+          />
+          <button
+            onClick={() => onCommander(notes)}
+            disabled={loading}
+            className="w-full bg-emerald-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-emerald-400 transition-colors disabled:opacity-50"
+          >
+            {loading ? "Envoi en cours..." : `Commander (${totalHT.toFixed(2)} \u20ac HT)`}
+          </button>
+        </div>
+      );
+    };
+
+    // ─── Historique ─────────────────────────────────────────────────────────────
+    const HistoriqueView = ({ commandes }) => {
+      const statutConfig = {
+        en_attente: { label: "En attente", bg: "bg-amber-500/20", text: "text-amber-400" },
+        validee: { label: "Valid\u00e9e", bg: "bg-emerald-500/20", text: "text-emerald-400" },
+        annulee: { label: "Annul\u00e9e", bg: "bg-red-500/20", text: "text-red-400" },
+      };
+
+      if (commandes.length === 0) {
+        return <div className="text-center py-12 text-slate-400 text-sm">Aucune commande pass\u00e9e.</div>;
+      }
+
+      return (
+        <div className="space-y-4">
+          {commandes.map(c => {
+            const cfg = statutConfig[c.statut] || statutConfig.en_attente;
+            return (
+              <div key={c.id} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+                <div className="flex items-center justify-between mb-3">
+                  <div className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                </div>
+                <div className="space-y-1 mb-3">
+                  {c.products.map((p, i) => (
+                    <div key={i} className="flex justify-between text-sm">
+                      <span className="text-slate-300">{p.quantite}x {p.nom}</span>
+                      <span className="text-white">{p.total_ht.toFixed(2)} &euro;</span>
+                    </div>
+                  ))}
+                </div>
+                <div className="flex justify-between text-sm font-medium border-t border-white/10 pt-2">
+                  <span className="text-white">Total HT</span>
+                  <span className="text-white">{c.total_ht.toFixed(2)} &euro;</span>
+                </div>
+                {c.vf_invoice_number && (
+                  <div className="text-xs text-emerald-400 mt-2">Facture n&deg;{c.vf_invoice_number}</div>
+                )}
+                {c.notes && <div className="text-xs text-slate-400 mt-2 italic">"{c.notes}"</div>}
+              </div>
+            );
+          })}
+        </div>
+      );
+    };
+
+    // ─── App Principale ─────────────────────────────────────────────────────────
+    const App = () => {
+      const [partner, setPartner] = useState(null);
+      const [vue, setVue] = useState("catalogue"); // catalogue | historique
+      const [catalogue, setCatalogue] = useState([]);
+      const [panier, setPanier] = useState({});
+      const [commandes, setCommandes] = useState([]);
+      const [panierOpen, setPanierOpen] = useState(false);
+      const [loading, setLoading] = useState(false);
+      const [orderSuccess, setOrderSuccess] = useState(false);
+      const [toast, setToast] = useState(null);
+
+      const showToast = (message, type = "info") => {
+        setToast({ message, type, visible: true });
+        setTimeout(() => setToast(t => t ? { ...t, visible: false } : null), 4000);
+      };
+
+      // Check existing session
+      useEffect(() => {
+        const token = sessionStorage.getItem('partner_token');
+        if (token) {
+          api.get('/profil').then(res => {
+            if (res.erreur) {
+              sessionStorage.removeItem('partner_token');
+            } else {
+              setPartner(res);
+            }
+          }).catch(() => sessionStorage.removeItem('partner_token'));
+        }
+      }, []);
+
+      // Load catalogue and orders
+      useEffect(() => {
+        if (!partner) return;
+        api.get('/catalogue').then(data => { if (Array.isArray(data)) setCatalogue(data); });
+        api.get('/commandes').then(data => { if (Array.isArray(data)) setCommandes(data); });
+      }, [partner]);
+
+      const handleLogin = (p) => {
+        setPartner(p);
+      };
+
+      const handleCommander = async (notes) => {
+        const items = Object.values(panier);
+        if (items.length === 0) return;
+        setLoading(true);
+        try {
+          const res = await api.post('/commande', {
+            products: items.map(i => ({ ref: i.ref, quantite: i.quantite })),
+            notes: notes || undefined,
+          });
+          if (res.erreur) {
+            showToast(res.erreur, "error");
+          } else {
+            setPanier({});
+            setPanierOpen(false);
+            setOrderSuccess(true);
+            // Refresh orders
+            api.get('/commandes').then(data => { if (Array.isArray(data)) setCommandes(data); });
+            setTimeout(() => setOrderSuccess(false), 5000);
+          }
+        } catch (e) {
+          showToast("Erreur lors de la commande", "error");
+        }
+        setLoading(false);
+      };
+
+      const handleLogout = () => {
+        sessionStorage.removeItem('partner_token');
+        setPartner(null);
+        setCatalogue([]);
+        setPanier({});
+        setCommandes([]);
+      };
+
+      const panierCount = Object.values(panier).reduce((s, i) => s + i.quantite, 0);
+
+      if (!partner) return <LoginScreen onLogin={handleLogin} />;
+
+      return (
+        <div className="min-h-screen bg-slate-900 text-white">
+          <Toast toast={toast} />
+
+          {/* Header */}
+          <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-white/10">
+            <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-slate-900 text-xs font-bold">TM</div>
+                <div className="hidden sm:block">
+                  <div className="text-sm font-semibold">Terre de Mars</div>
+                  <div className="text-xs text-slate-400">{partner.nom || partner.contact_nom}</div>
+                </div>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-3 py-2 rounded-lg text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-white/10 text-white" : "text-slate-400 hover:text-white"}`}>
+                  Catalogue
+                </button>
+                <button onClick={() => { setVue("historique"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-3 py-2 rounded-lg text-sm transition-colors ${vue === "historique" ? "bg-white/10 text-white" : "text-slate-400 hover:text-white"}`}>
+                  Commandes
+                </button>
+                <button onClick={() => { setPanierOpen(!panierOpen); setVue("catalogue"); }} className="relative px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white transition-colors ml-2">
+                  <span className="text-lg">&#128722;</span>
+                  {panierCount > 0 && (
+                    <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">{panierCount}</span>
+                  )}
+                </button>
+                <button onClick={handleLogout} className="text-slate-500 hover:text-slate-300 text-xs ml-2" title="D&eacute;connexion">
+                  &#x2192;
+                </button>
+              </div>
+            </div>
+          </header>
+
+          {/* Order success banner */}
+          {orderSuccess && (
+            <div className="bg-emerald-500/10 border-b border-emerald-500/20 animate-fade-in">
+              <div className="max-w-6xl mx-auto px-4 py-4 text-center">
+                <div className="text-emerald-400 font-semibold mb-1">Commande enregistr&eacute;e !</div>
+                <div className="text-sm text-slate-300">Nous vous recontactons sous 24h pour confirmer votre commande.</div>
+              </div>
+            </div>
+          )}
+
+          {/* Main content */}
+          <main className="max-w-6xl mx-auto px-4 py-6">
+            {panierOpen ? (
+              <div className="max-w-lg mx-auto animate-fade-in">
+                <h2 className="text-lg font-semibold mb-4">Votre panier</h2>
+                <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={loading} />
+              </div>
+            ) : vue === "catalogue" ? (
+              <div className="animate-fade-in">
+                <div className="flex items-center justify-between mb-4">
+                  <h2 className="text-lg font-semibold">Catalogue</h2>
+                  <span className="text-xs text-slate-400">{catalogue.length} produit{catalogue.length > 1 ? 's' : ''}</span>
+                </div>
+                <CatalogueView catalogue={catalogue} panier={panier} setPanier={setPanier} />
+              </div>
+            ) : (
+              <div className="max-w-2xl mx-auto animate-fade-in">
+                <h2 className="text-lg font-semibold mb-4">Historique des commandes</h2>
+                <HistoriqueView commandes={commandes} />
+              </div>
+            )}
+          </main>
+
+          {/* Floating cart button (mobile) */}
+          {panierCount > 0 && !panierOpen && vue === "catalogue" && (
+            <button
+              onClick={() => setPanierOpen(true)}
+              className="md:hidden fixed bottom-6 right-6 bg-emerald-500 text-white px-5 py-3 rounded-2xl shadow-lg text-sm font-semibold flex items-center gap-2 z-20"
+            >
+              <span>&#128722;</span>
+              Panier ({panierCount})
+            </button>
+          )}
+        </div>
+      );
+    };
+
+    ReactDOM.createRoot(document.getElementById('root')).render(React.createElement(App));
+  </script>
+</body>
+</html>

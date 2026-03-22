@@ -226,6 +226,25 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_email_templates_categorie ON email_templates(categorie);
+
+  -- ─── Table Commandes Partenaires ─────────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS partner_orders (
+    id TEXT PRIMARY KEY,
+    partner_id INTEGER NOT NULL REFERENCES vf_partners(id),
+    statut TEXT DEFAULT 'en_attente',
+    products TEXT NOT NULL,
+    notes TEXT,
+    total_ht REAL,
+    total_ttc REAL,
+    vf_invoice_id TEXT,
+    vf_invoice_number TEXT,
+    validated_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_partner_orders_partner ON partner_orders(partner_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_orders_statut ON partner_orders(statut);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
@@ -240,6 +259,12 @@ const migrations = [
   'ALTER TABLE leads     ADD COLUMN campaign     TEXT',
   'ALTER TABLE leads     ADD COLUMN comment      TEXT',
   'ALTER TABLE etapes    ADD COLUMN content_json TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN password_hash TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN email TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN contact_nom TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN telephone TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN adresse TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN shipping_id TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

@@ -110,6 +110,7 @@ const authMiddleware = require('./middleware/auth');
 app.use('/api', (req, res, next) => {
   if (req.path === '/health') return next();
   if (req.path.startsWith('/tracking')) return next();
+  if (req.path.startsWith('/partenaire')) return next();
   authMiddleware(req, res, next);
 });
 
@@ -129,6 +130,8 @@ app.use('/api/reference',     require('./routes/referenceData')(db));
 app.use('/api/shipments',     require('./routes/shipments')(db));
 app.use('/api/dashboard',     require('./routes/dashboard')(db));
 app.use('/api/email-templates', require('./routes/emailTemplates')(db));
+app.use('/api/partenaire', require('./routes/partnerPortal')(db));
+app.use('/api/partner-orders', require('./routes/partnerOrders')(db));
 
 // Backup manuel
 app.post('/api/backup', async (req, res) => {
@@ -188,6 +191,10 @@ app.post('/api/backup/restore', (req, res) => {
 const publicPath = path.join(__dirname, '..', 'public');
 if (fs.existsSync(publicPath)) {
   app.use(express.static(publicPath));
+  // Page portail partenaire (avant le catch-all)
+  app.get('/partenaire', (req, res) => {
+    res.sendFile(path.join(publicPath, 'partenaire.html'));
+  });
   app.get('*', (req, res) => {
     res.sendFile(path.join(publicPath, 'index.html'));
   });

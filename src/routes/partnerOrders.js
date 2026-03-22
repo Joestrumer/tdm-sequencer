@@ -1,0 +1,323 @@
+/**
+ * partnerOrders.js — Routes admin pour gérer les commandes partenaires
+ */
+
+const express = require('express');
+const {
+  normalizeRef, findVFProduct, calculerRemise, calculerFraisPort, genererCSVLogisticien,
+} = require('../services/productMatchingService');
+const logger = require('../config/logger');
+
+module.exports = (db) => {
+  const router = express.Router();
+  const vfService = require('../services/vosfacturesService')(db);
+
+  function getCatalogMap() {
+    const rows = db.prepare('SELECT * FROM vf_catalog WHERE actif = 1').all();
+    const map = {};
+    for (const r of rows) map[r.ref] = r;
+    return map;
+  }
+
+  function getCodeMappings(type) {
+    if (type) return db.prepare('SELECT * FROM vf_code_mappings WHERE type = ?').all(type);
+    return db.prepare('SELECT * FROM vf_code_mappings').all();
+  }
+
+  function resolveCanonicalClientName(vfName) {
+    if (!vfName) return vfName;
+    const mapping = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
+    return (mapping && mapping.file_name) || vfName;
+  }
+
+  function getDiscountsForClient(clientName) {
+    return db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(clientName);
+  }
+
+  function getShippingNames() {
+    const rows = db.prepare("SELECT code_source, valeur FROM vf_code_mappings WHERE type = 'shipping_name'").all();
+    const map = {};
+    for (const r of rows) map[r.code_source] = r.valeur;
+    return map;
+  }
+
+  function repairGSheetsCredentials() {
+    const credsRow = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
+    let credsOk = false;
+    try {
+      const p = JSON.parse(credsRow?.valeur || '{}');
+      credsOk = !!(p.private_key && p.client_email);
+    } catch (e) {}
+    if (!credsOk && process.env.GSHEETS_CREDENTIALS) {
+      try {
+        const envParsed = JSON.parse(process.env.GSHEETS_CREDENTIALS);
+        if (envParsed.private_key && envParsed.client_email) {
+          db.prepare("INSERT INTO config (cle, valeur) VALUES ('gsheets_credentials', ?) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur")
+            .run(process.env.GSHEETS_CREDENTIALS);
+          return { ok: true, repaired: true };
+        }
+      } catch (e) {}
+    }
+    return { ok: credsOk, repaired: false };
+  }
+
+  const roundPrice = (n) => Math.round(n * 100) / 100;
+
+  // ─── Liste commandes ──────────────────────────────────────────────────────
+  router.get('/', (req, res) => {
+    try {
+      const { statut } = req.query;
+      let sql = `
+        SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact
+        FROM partner_orders po
+        JOIN vf_partners vp ON vp.id = po.partner_id
+      `;
+      const params = [];
+      if (statut) {
+        sql += ' WHERE po.statut = ?';
+        params.push(statut);
+      }
+      sql += ' ORDER BY po.created_at DESC';
+
+      const orders = db.prepare(sql).all(...params);
+      const result = orders.map(o => ({
+        ...o,
+        products: JSON.parse(o.products || '[]'),
+      }));
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Compteurs par statut ─────────────────────────────────────────────────
+  router.get('/counts', (req, res) => {
+    try {
+      const counts = db.prepare(`
+        SELECT statut, COUNT(*) as count FROM partner_orders GROUP BY statut
+      `).all();
+      const result = { en_attente: 0, validee: 0, annulee: 0 };
+      for (const c of counts) result[c.statut] = c.count;
+      result.total = result.en_attente + result.validee + result.annulee;
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Détail commande ──────────────────────────────────────────────────────
+  router.get('/:id', (req, res) => {
+    try {
+      const order = db.prepare(`
+        SELECT po.*, vp.nom as partner_nom, vp.email as partner_email,
+               vp.contact_nom as partner_contact, vp.telephone as partner_telephone,
+               vp.adresse as partner_adresse, vp.shipping_id as partner_shipping_id
+        FROM partner_orders po
+        JOIN vf_partners vp ON vp.id = po.partner_id
+        WHERE po.id = ?
+      `).get(req.params.id);
+
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+
+      res.json({
+        ...order,
+        products: JSON.parse(order.products || '[]'),
+      });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Valider commande ─────────────────────────────────────────────────────
+  router.post('/:id/validate', async (req, res) => {
+    try {
+      const order = db.prepare(`
+        SELECT po.*, vp.nom as partner_nom, vp.nom_normalise, vp.email as partner_email,
+               vp.contact_nom as partner_contact, vp.shipping_id as partner_shipping_id
+        FROM partner_orders po
+        JOIN vf_partners vp ON vp.id = po.partner_id
+        WHERE po.id = ?
+      `).get(req.params.id);
+
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+      if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Cette commande ne peut plus être validée' });
+
+      const products = JSON.parse(order.products || '[]');
+      const catalog = getCatalogMap();
+      const productIdMappings = getCodeMappings('product_id');
+      const productNameMappings = getCodeMappings('product_name');
+      const codeMappings = getCodeMappings('code_alias');
+      const forcedPrices = getCodeMappings('forced_price');
+
+      // Résoudre le client VF
+      const canonicalClientName = resolveCanonicalClientName(order.partner_nom) || order.nom_normalise;
+      const discountsDb = getDiscountsForClient(canonicalClientName);
+
+      // Construire les positions
+      const positions = [];
+      let hasDiscount = false;
+
+      for (const p of products) {
+        const ref = normalizeRef(p.ref);
+        const catEntry = catalog[ref];
+        const qty = p.quantite || 1;
+        const taxRate = p.tva || catEntry?.tva || 20;
+        const priceHT = p.prix_ht || catEntry?.prix_ht || 0;
+
+        let discount = p.discount_pct || 0;
+        if (!discount && canonicalClientName) {
+          const discEntry = discountsDb.find(d => normalizeRef(d.product_code) === ref);
+          discount = discEntry ? discEntry.discount_pct : 0;
+        }
+        if (discount > 0) hasDiscount = true;
+
+        const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
+
+        const forcedEntry = forcedPrices.find(f => normalizeRef(f.code_source) === ref);
+        const forcedPriceTTC = forcedEntry ? parseFloat(forcedEntry.valeur) : null;
+
+        let priceToUse = priceHT;
+        if (forcedPriceTTC) {
+          priceToUse = forcedPriceTTC / (1 + taxRate / 100);
+        }
+
+        const totalPriceNet = priceToUse * qty;
+        const totalPriceGross = forcedPriceTTC
+          ? (forcedPriceTTC * qty)
+          : (totalPriceNet * (1 + taxRate / 100));
+
+        const position = {
+          name: vfProduct.productName || p.nom || vfProduct.ref,
+          code: p.ref || vfProduct.vfRef || ref,
+          tax: taxRate,
+          quantity: qty,
+          price_net: priceToUse.toFixed(2),
+          total_price_gross: totalPriceGross.toFixed(2),
+        };
+
+        if (vfProduct.productId) position.product_id = vfProduct.productId;
+        if (discount > 0) position.discount_percent = discount;
+
+        positions.push(position);
+      }
+
+      // Résoudre le client VF pour la facture
+      const clientMapping = db.prepare('SELECT * FROM vf_client_mappings WHERE file_name = ? OR vf_name = ?')
+        .get(canonicalClientName, order.partner_nom);
+
+      const today = new Date().toISOString().split('T')[0];
+      const paymentTo = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+
+      const invoiceData = {
+        kind: 'vat',
+        number: null,
+        sell_date: today,
+        issue_date: today,
+        payment_to: paymentTo,
+        department_id: parseInt(process.env.VF_DEPARTMENT_ID) || 1553025,
+        buyer_name: order.partner_nom,
+        buyer_email: order.partner_email || '',
+        show_discount: hasDiscount,
+        discount_kind: hasDiscount ? 'percent_unit' : null,
+        positions,
+      };
+
+      if (clientMapping?.vf_client_id) {
+        invoiceData.client_id = clientMapping.vf_client_id;
+      }
+
+      // Créer la facture VF
+      const result = await vfService.creerFacture(invoiceData);
+
+      // Logger dans vf_invoice_logs
+      db.prepare(`
+        INSERT INTO vf_invoice_logs (vf_invoice_id, vf_invoice_number, client_name, mode, montant_ht, montant_ttc, meta)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(
+        String(result.id || ''),
+        result.number || '',
+        order.partner_nom,
+        'partner_order',
+        order.total_ht,
+        order.total_ttc,
+        JSON.stringify({ orderId: order.id, canonicalClientName }),
+      );
+
+      // Mettre à jour la commande
+      db.prepare(`
+        UPDATE partner_orders
+        SET statut = 'validee', vf_invoice_id = ?, vf_invoice_number = ?, validated_at = datetime('now')
+        WHERE id = ?
+      `).run(String(result.id || ''), result.number || '', order.id);
+
+      // Email facture au partenaire
+      if (result.id && order.partner_email) {
+        try {
+          await vfService.envoyerEmail(result.id, {});
+          db.prepare('UPDATE vf_invoice_logs SET email_sent = 1 WHERE vf_invoice_id = ?').run(String(result.id));
+        } catch (emailErr) {
+          logger.warn('Erreur envoi email facture partenaire', { error: emailErr.message });
+        }
+      }
+
+      // Log Google Sheets
+      try {
+        repairGSheetsCredentials();
+        const gsheetsService = require('../services/googlesheetsService')(db);
+        const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
+        const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
+
+        if (spreadsheetId) {
+          const gsProducts = products.map(p => ({
+            ref: p.ref,
+            quantity: p.quantite || 1,
+            priceHT: p.prix_ht || catalog[normalizeRef(p.ref)]?.prix_ht || 0,
+            csvRef: catalog[normalizeRef(p.ref)]?.csv_ref,
+          }));
+
+          const resolvedPartner = (canonicalClientName && canonicalClientName !== order.partner_nom) ? canonicalClientName : undefined;
+          const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
+            clientName: order.partner_nom,
+            invoiceNumber: result.number || '',
+            invoiceDate: today,
+            products: gsProducts,
+          }, resolvedPartner);
+
+          if (gsResult.ok) {
+            db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));
+          }
+        }
+      } catch (gsErr) {
+        logger.warn('Erreur log GSheets commande partenaire', { error: gsErr.message });
+      }
+
+      res.json({
+        ok: true,
+        order_id: order.id,
+        vf_invoice_id: result.id,
+        vf_invoice_number: result.number,
+        message: 'Commande validée et facture créée',
+      });
+    } catch (e) {
+      logger.error('Erreur validation commande partenaire', { error: e.message, stack: e.stack });
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Annuler commande ─────────────────────────────────────────────────────
+  router.post('/:id/cancel', (req, res) => {
+    try {
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ?').get(req.params.id);
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+      if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Cette commande ne peut plus être annulée' });
+
+      db.prepare("UPDATE partner_orders SET statut = 'annulee' WHERE id = ?").run(req.params.id);
+
+      res.json({ ok: true, message: 'Commande annulée' });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  return router;
+};
