@@ -8259,6 +8259,7 @@ const VuePartenaires = ({ showToast }) => {
   const [editing, setEditing] = useState(false);
   const [showPwd, setShowPwd] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [syncing, setSyncing] = useState(false);
 
   const charger = async () => {
     setLoading(true);
@@ -8270,6 +8271,22 @@ const VuePartenaires = ({ showToast }) => {
   };
 
   useEffect(() => { charger(); }, []);
+
+  const syncVF = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.post('/reference/partners/sync-vf');
+      if (res.ok) {
+        showToast(`Sync VF : ${res.updated} mis à jour, ${res.created} créés (${res.vf_clients} clients VF)`, "success");
+        charger();
+      } else {
+        showToast(res.erreur || 'Erreur sync VF', "error");
+      }
+    } catch (e) {
+      showToast('Erreur réseau', "error");
+    }
+    setSyncing(false);
+  };
 
   const filtered = useMemo(() => {
     if (!search) return partners;
@@ -8342,13 +8359,18 @@ const VuePartenaires = ({ showToast }) => {
     <div className="flex gap-6 max-w-5xl">
       {/* Liste gauche */}
       <div className="w-72 flex-shrink-0 space-y-3">
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Rechercher un partenaire..."
-          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-        />
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher..."
+            className="flex-1 border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+          />
+          <button onClick={syncVF} disabled={syncing} className="px-3 py-2.5 rounded-xl text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 transition-colors disabled:opacity-50 flex-shrink-0" title="Synchroniser noms et données depuis VosFactures">
+            {syncing ? <span className="inline-block w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" /> : 'Sync VF'}
+          </button>
+        </div>
         {loading && <div className="text-xs text-slate-400 py-2">Chargement...</div>}
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden max-h-[calc(100vh-220px)] overflow-y-auto">
           {filtered.map(p => (
@@ -8359,13 +8381,16 @@ const VuePartenaires = ({ showToast }) => {
             >
               <div className="flex items-center justify-between">
                 <span className={`text-sm font-medium truncate ${selectedId === p.id ? 'text-white' : 'text-slate-900'}`}>{p.nom}</span>
-                {p.has_password ? (
-                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${selectedId === p.id ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Accès portail actif" />
-                ) : (
-                  <span className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" title="Pas d'accès" />
-                )}
+                <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {p.vf_client_id && <span className={`text-[9px] ${selectedId === p.id ? 'text-white/40' : 'text-slate-300'}`}>VF</span>}
+                  {p.has_password ? (
+                    <span className={`w-2 h-2 rounded-full ${selectedId === p.id ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Accès portail actif" />
+                  ) : (
+                    <span className="w-2 h-2 rounded-full bg-slate-300" title="Pas d'accès" />
+                  )}
+                </div>
               </div>
-              {p.contact_nom && <div className={`text-xs truncate mt-0.5 ${selectedId === p.id ? 'text-white/60' : 'text-slate-400'}`}>{p.contact_nom}</div>}
+              {(p.email || p.contact_nom) && <div className={`text-xs truncate mt-0.5 ${selectedId === p.id ? 'text-white/60' : 'text-slate-400'}`}>{p.contact_nom || p.email}</div>}
             </button>
           ))}
           {!loading && filtered.length === 0 && (
@@ -8382,6 +8407,9 @@ const VuePartenaires = ({ showToast }) => {
             <div className="text-slate-300 text-4xl mb-3">&#128101;</div>
             <div className="text-sm text-slate-400">Sélectionnez un partenaire dans la liste pour gérer son accès au portail.</div>
             <div className="text-xs text-slate-300 mt-2">Portail accessible sur <code className="bg-slate-50 px-1.5 py-0.5 rounded">/partenaire</code></div>
+            <button onClick={syncVF} disabled={syncing} className="mt-4 px-4 py-2 rounded-lg text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 transition-colors disabled:opacity-50">
+              {syncing ? 'Synchronisation...' : 'Synchroniser depuis VosFactures'}
+            </button>
           </div>
         ) : (
           <div className="space-y-4 animate-fade-in" key={selected.id}>
@@ -8390,7 +8418,10 @@ const VuePartenaires = ({ showToast }) => {
               <div className="flex items-center justify-between mb-4">
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">{selected.nom}</h2>
-                  <div className="text-xs text-slate-400 mt-0.5">{selected.nom_normalise}</div>
+                  <div className="flex items-center gap-2 mt-0.5">
+                    {selected.vf_client_id && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-mono">VF #{selected.vf_client_id}</span>}
+                    <span className="text-xs text-slate-400">{selected.nom_normalise}</span>
+                  </div>
                 </div>
                 <div className="flex items-center gap-2">
                   {selected.has_password ? (
@@ -8432,7 +8463,7 @@ const VuePartenaires = ({ showToast }) => {
               {!editing ? (
                 <div>
                   <div className="flex items-center justify-between mb-3">
-                    <span className="text-xs font-medium text-slate-600">Informations</span>
+                    <span className="text-xs font-medium text-slate-600">Informations {selected.vf_client_id ? '(depuis VosFactures)' : ''}</span>
                     <button onClick={() => setEditing(true)} className="text-[11px] px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200">Modifier</button>
                   </div>
                   <div className="grid grid-cols-2 gap-x-6 gap-y-2">

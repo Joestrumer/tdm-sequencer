@@ -53,8 +53,8 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, password_hash IS NOT NULL as has_password, password_plain FROM vf_partners ORDER BY nom').all()
-        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, password_hash IS NOT NULL as has_password, password_plain FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -124,6 +124,119 @@ module.exports = (db) => {
     try {
       db.prepare('DELETE FROM vf_partners WHERE id = ?').run(req.params.id);
       res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Synchroniser les partenaires depuis VosFactures
+  router.post('/partners/sync-vf', async (req, res) => {
+    try {
+      const vfService = require('../services/vosfacturesService')(db);
+      const vfClients = await vfService.getAllClients(true);
+
+      if (!vfClients || !vfClients.length) {
+        return res.status(400).json({ erreur: 'Aucun client VosFactures trouvé' });
+      }
+
+      // Charger les mappings existants (vf_name → file_name)
+      const mappings = db.prepare('SELECT * FROM vf_client_mappings').all();
+      const mappingByVfName = {};
+      for (const m of mappings) {
+        if (m.vf_name) mappingByVfName[m.vf_name.toLowerCase()] = m;
+      }
+
+      // Charger les partenaires existants
+      const existingPartners = db.prepare('SELECT * FROM vf_partners').all();
+      const partnerByNom = {};
+      for (const p of existingPartners) {
+        partnerByNom[p.nom.toLowerCase()] = p;
+        if (p.nom_normalise) partnerByNom[p.nom_normalise.toLowerCase()] = p;
+      }
+
+      let updated = 0;
+      let created = 0;
+      let skipped = 0;
+
+      const updateStmt = db.prepare(`
+        UPDATE vf_partners SET
+          email = COALESCE(?, email),
+          contact_nom = COALESCE(?, contact_nom),
+          telephone = COALESCE(?, telephone),
+          adresse = COALESCE(?, adresse),
+          vf_client_id = ?
+        WHERE id = ?
+      `);
+
+      const insertStmt = db.prepare(`
+        INSERT INTO vf_partners (nom, nom_normalise, email, contact_nom, telephone, adresse, vf_client_id, actif)
+        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+      `);
+
+      // Aussi mettre à jour vf_client_id dans vf_client_mappings si manquant
+      const updateMappingStmt = db.prepare(`
+        UPDATE vf_client_mappings SET vf_client_id = ? WHERE vf_name = ? AND (vf_client_id IS NULL OR vf_client_id = '')
+      `);
+
+      for (const vfClient of vfClients) {
+        const vfName = (vfClient.name || '').trim();
+        if (!vfName) continue;
+
+        const vfId = String(vfClient.id || '');
+        const email = vfClient.email || null;
+        const phone = vfClient.phone || null;
+        const contactName = vfClient.shortcut || null;
+        const street = vfClient.street || '';
+        const city = vfClient.city || '';
+        const postCode = vfClient.post_code || '';
+        const adresse = [street, postCode, city].filter(Boolean).join(', ') || null;
+
+        // Mettre à jour le vf_client_id dans les mappings
+        if (vfId) {
+          updateMappingStmt.run(vfId, vfName);
+        }
+
+        // Trouver le partenaire local correspondant
+        // 1. Match direct par nom
+        let partner = partnerByNom[vfName.toLowerCase()];
+
+        // 2. Match via vf_client_mappings (vf_name → file_name → partner.nom)
+        if (!partner) {
+          const mapping = mappingByVfName[vfName.toLowerCase()];
+          if (mapping && mapping.file_name) {
+            partner = partnerByNom[mapping.file_name.toLowerCase()];
+          }
+        }
+
+        if (partner) {
+          // Mettre à jour avec les données VF (seulement si le champ local est vide)
+          updateStmt.run(
+            email || null,
+            contactName || null,
+            phone || null,
+            adresse || null,
+            vfId,
+            partner.id
+          );
+          updated++;
+        } else {
+          // Créer un nouveau partenaire
+          const nomNormalise = vfName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+          insertStmt.run(vfName, nomNormalise, email, contactName, phone, adresse, vfId);
+          created++;
+        }
+      }
+
+      // Recharger pour retourner le total
+      const total = db.prepare('SELECT COUNT(*) as n FROM vf_partners WHERE actif = 1').get().n;
+
+      res.json({
+        ok: true,
+        vf_clients: vfClients.length,
+        updated,
+        created,
+        total_partenaires: total,
+      });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
