@@ -182,58 +182,7 @@ module.exports = (db) => {
         VALUES (?, ?, ?, ?, ?, ?)
       `).run(orderId, partnerId, JSON.stringify(orderProducts), notes || null, totalHTWithFrais, totalTTC);
 
-      // Email notification admin
-      try {
-        const nodemailer = require('nodemailer');
-        const transporter = nodemailer.createTransport({
-          host: 'smtp-relay.brevo.com',
-          port: 587,
-          auth: {
-            user: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com',
-            pass: process.env.BREVO_SMTP_KEY,
-          },
-        });
-
-        const adminEmail = process.env.ADMIN_EMAIL || 'hugo@terredemars.com';
-        const productRows = orderProducts.map(p =>
-          `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0">${p.ref}</td><td style="padding:6px 12px;border:1px solid #e2e8f0">${p.nom}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center">${p.quantite}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:right">${p.prix_remise.toFixed(2)} &euro;</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:right">${p.total_ht.toFixed(2)} &euro;</td></tr>`
-        ).join('');
-
-        await transporter.sendMail({
-          from: `"Terre de Mars" <${process.env.BREVO_SMTP_USER || 'hugo@terredemars.com'}>`,
-          to: adminEmail,
-          subject: `Nouvelle commande — ${partner.nom}`,
-          html: `
-            <div style="font-family:'DM Sans',Arial,sans-serif;max-width:600px;margin:0 auto">
-              <h2 style="color:#0f172a">Nouvelle commande partenaire</h2>
-              <p><strong>Partenaire :</strong> ${partner.nom}</p>
-              ${partner.contact_nom ? `<p><strong>Contact :</strong> ${partner.contact_nom}</p>` : ''}
-              ${partner.email ? `<p><strong>Email :</strong> ${partner.email}</p>` : ''}
-              <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
-                <thead><tr style="background:#f1f5f9">
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Ref</th>
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Produit</th>
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center">Qté</th>
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:right">PU HT</th>
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:right">Total HT</th>
-                </tr></thead>
-                <tbody>${productRows}</tbody>
-              </table>
-              <p style="font-size:14px">Sous-total HT : ${totalHT.toFixed(2)} &euro;</p>
-              ${fraisRef ? `<p style="font-size:14px">${fraisNom} (${fraisRef}) : ${fraisMontant.toFixed(2)} &euro; HT</p>` : '<p style="font-size:14px;color:#16a34a">Exonéré de frais</p>'}
-              <p style="font-size:16px"><strong>Total HT : ${totalHTWithFrais.toFixed(2)} &euro;</strong></p>
-              <p style="font-size:16px"><strong>Total TTC : ${totalTTC.toFixed(2)} &euro;</strong></p>
-              ${notes ? `<p><strong>Notes :</strong> ${notes}</p>` : ''}
-              <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
-              <p style="color:#94a3b8;font-size:12px">Connectez-vous au back-office pour traiter cette commande.</p>
-            </div>
-          `,
-        });
-        logger.info('Email notification commande envoyé', { orderId, partner: partner.nom });
-      } catch (emailErr) {
-        logger.warn('Erreur envoi email notification commande', { error: emailErr.message });
-      }
-
+      // Répondre immédiatement au partenaire
       res.json({
         id: orderId,
         partner_id: partnerId,
@@ -245,6 +194,58 @@ module.exports = (db) => {
         subtotal_ht: totalHT,
         frais_ref: fraisRef,
         frais_montant: fraisMontant,
+      });
+
+      // Email notification admin (fire-and-forget, ne bloque pas la réponse)
+      setImmediate(async () => {
+        try {
+          const nodemailer = require('nodemailer');
+          const transporter = nodemailer.createTransport({
+            host: 'smtp-relay.brevo.com',
+            port: 587,
+            auth: {
+              user: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com',
+              pass: process.env.BREVO_SMTP_KEY,
+            },
+          });
+          const adminEmail = process.env.ADMIN_EMAIL || 'hugo@terredemars.com';
+          const productRows = orderProducts.map(p =>
+            `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0">${p.ref}</td><td style="padding:6px 12px;border:1px solid #e2e8f0">${p.nom}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center">${p.quantite}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:right">${p.prix_remise.toFixed(2)} &euro;</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:right">${p.total_ht.toFixed(2)} &euro;</td></tr>`
+          ).join('');
+          await transporter.sendMail({
+            from: `"Terre de Mars" <${process.env.BREVO_SMTP_USER || 'hugo@terredemars.com'}>`,
+            to: adminEmail,
+            subject: `Nouvelle commande — ${partner.nom}`,
+            html: `
+              <div style="font-family:'DM Sans',Arial,sans-serif;max-width:600px;margin:0 auto">
+                <h2 style="color:#0f172a">Nouvelle commande partenaire</h2>
+                <p><strong>Partenaire :</strong> ${partner.nom}</p>
+                ${partner.contact_nom ? `<p><strong>Contact :</strong> ${partner.contact_nom}</p>` : ''}
+                ${partner.email ? `<p><strong>Email :</strong> ${partner.email}</p>` : ''}
+                <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+                  <thead><tr style="background:#f1f5f9">
+                    <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Ref</th>
+                    <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Produit</th>
+                    <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center">Qt&eacute;</th>
+                    <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:right">PU HT</th>
+                    <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:right">Total HT</th>
+                  </tr></thead>
+                  <tbody>${productRows}</tbody>
+                </table>
+                <p style="font-size:14px">Sous-total HT : ${totalHT.toFixed(2)} &euro;</p>
+                ${fraisRef ? `<p style="font-size:14px">${fraisNom} (${fraisRef}) : ${fraisMontant.toFixed(2)} &euro; HT</p>` : '<p style="font-size:14px;color:#16a34a">Exon&eacute;r&eacute; de frais</p>'}
+                <p style="font-size:16px"><strong>Total HT : ${totalHTWithFrais.toFixed(2)} &euro;</strong></p>
+                <p style="font-size:16px"><strong>Total TTC : ${totalTTC.toFixed(2)} &euro;</strong></p>
+                ${notes ? `<p><strong>Notes :</strong> ${notes}</p>` : ''}
+                <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
+                <p style="color:#94a3b8;font-size:12px">Connectez-vous au back-office pour traiter cette commande.</p>
+              </div>
+            `,
+          });
+          logger.info('Email notification commande envoyé', { orderId, partner: partner.nom });
+        } catch (emailErr) {
+          logger.warn('Erreur envoi email notification commande', { error: emailErr.message });
+        }
       });
     } catch (e) {
       logger.error('Erreur création commande partenaire', { error: e.message });

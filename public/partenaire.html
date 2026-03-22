@@ -553,21 +553,34 @@
         setDeleting(null);
       };
 
-      const handleModify = (c) => {
-        // Charger les produits de la commande dans le panier pour modification
+      const handleModify = async (c) => {
+        // Supprimer d'abord l'ancienne commande
+        try {
+          const delRes = await api.del(`/commande/${c.id}`);
+          if (delRes.erreur) {
+            showToast(delRes.erreur, 'error');
+            return;
+          }
+        } catch (e) {
+          showToast('Erreur suppression commande', 'error');
+          return;
+        }
+        // Charger les produits de la commande dans le panier
         const newPanier = {};
         c.products.forEach(p => {
           const prod = catalogue.find(cat => cat.ref === p.ref);
           if (prod) {
             newPanier[p.ref] = { ...prod, quantite: p.quantite };
+          } else {
+            // Produit plus au catalogue, utiliser les données de la commande
+            newPanier[p.ref] = { ref: p.ref, nom: p.nom, prix_ht: p.prix_ht, prix_remise: p.prix_remise, discount_pct: p.discount_pct || 0, moq: 1, quantite: p.quantite };
           }
         });
         setPanier(newPanier);
         setPanierOpen(true);
         setVue('catalogue');
-        // Supprimer l'ancienne commande
-        api.del(`/commande/${c.id}`).then(() => onRefresh());
-        showToast('Commande charg\u00e9e dans le panier pour modification', 'info');
+        onRefresh();
+        showToast('Commande charg\u00e9e dans le panier', 'success');
       };
 
       if (commandes.length === 0) {
@@ -683,10 +696,9 @@
           } else {
             setPanier({});
             setPanierOpen(false);
-            setOrderSuccess(true);
+            showToast('Commande enregistr\u00e9e !', 'success');
             refreshCommandes();
-            // Basculer vers l'onglet commandes après un court délai
-            setTimeout(() => { setVue('historique'); setOrderSuccess(false); }, 2000);
+            setVue('historique');
           }
         } catch (e) {
           showToast("Erreur lors de la commande", "error");
