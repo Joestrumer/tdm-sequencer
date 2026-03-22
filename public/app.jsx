@@ -371,6 +371,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [nom, setNom] = useState(seq?.nom || "");
   const [segment, setSegment] = useState(seq?.segment || "5*");
   const [desabonnement, setDesabonnement] = useState(seq?.options?.desabonnement !== false);
+  const [bcc, setBcc] = useState(seq?.options?.bcc || "");
   const [activeEtape, setActiveEtape] = useState(0);
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
@@ -636,7 +637,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
       });
 
       console.log('💾 Sauvegarde séquence:', { nom, nbEtapes: etapesFinales.length });
-      await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options: { desabonnement } });
+      await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options: { desabonnement, bcc: bcc.trim() || undefined } });
       onClose();
     } catch(e) { setErrMsg("Erreur : " + (e.message || "impossible de sauvegarder")); }
     setSaving(false);
@@ -678,8 +679,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
           </select>
           <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
             <input type="checkbox" checked={desabonnement} onChange={e => setDesabonnement(e.target.checked)} className="rounded" />
-            Lien désabonnement
+            Désabo
           </label>
+          <input type="email" value={bcc} onChange={e => setBcc(e.target.value)} placeholder="BCC (optionnel)" className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400 w-40" title="Adresse email en copie cachée pour tous les envois de cette séquence" />
           {/* Tabs edit/preview */}
           <div className="flex bg-slate-100 rounded-lg p-0.5">
             <button onClick={() => setMode("edit")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === "edit" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>✏️ Éditer</button>

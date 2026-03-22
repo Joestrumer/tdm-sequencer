@@ -53,6 +53,9 @@ async function brevoSendEmail(payload) {
         replyTo: payload.replyTo ? '"' + payload.replyTo.name + '" <' + payload.replyTo.email + '>' : undefined,
         headers: payload.headers || {},
       };
+      if (payload.bcc && payload.bcc.length) {
+        mailOptions.bcc = payload.bcc.map(b => b.email).join(', ');
+      }
       if (payload.attachment && payload.attachment.length) {
         mailOptions.attachments = payload.attachment.map(function(a) {
           return { filename: a.name, content: Buffer.from(a.content, 'base64') };
@@ -320,6 +323,11 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
     },
   };
+
+  // BCC si configuré dans les options de la séquence
+  if (seqOptions.bcc) {
+    payload.bcc = [{ email: seqOptions.bcc }];
+  }
 
   // Pièce jointe si présente
   if (etape.piece_jointe?.data) {
