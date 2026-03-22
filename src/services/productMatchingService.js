@@ -3,6 +3,8 @@
  * Porté depuis le HTML standalone factures.html
  */
 
+const logger = require('../config/logger');
+
 // ─── Normalisation ────────────────────────────────────────────────────────────
 
 function stripDiacritics(s) {
@@ -127,7 +129,7 @@ function findVFProduct(ref, price, catalog, codeMappings, productIdMapping, prod
       const fallbackEntry = productIdMapping.find(m => m.code_source.startsWith(prefix));
       if (fallbackEntry) {
         productId = fallbackEntry.valeur;
-        console.log(`⚠️ findVFProduct fallback: ${lookupKey} non trouvé, utilisation de ${fallbackEntry.code_source} → ${productId}`);
+        logger.debug(`⚠️ findVFProduct fallback: ${lookupKey} non trouvé, utilisation de ${fallbackEntry.code_source} → ${productId}`);
       }
     }
   }
@@ -490,7 +492,7 @@ function parseOrderText(text) {
           if (existing) existing.quantity += quantity;
           else products.push({ ref: normalizedRef, quantity });
           foundAny = true;
-          console.log(`📋 Format tabulaire détecté: ${normalizedRef} x${quantity}`);
+          logger.debug(`📋 Format tabulaire détecté: ${normalizedRef} x${quantity}`);
           return;
         }
       }

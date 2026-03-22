@@ -198,6 +198,14 @@ db.exec(`
     created_at TEXT DEFAULT (datetime('now'))
   );
 
+  -- ─── Indexes performance ──────────────────────────────────────────────────
+  CREATE INDEX IF NOT EXISTS idx_emails_lead_id ON emails(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_emails_inscription_id ON emails(inscription_id);
+  CREATE INDEX IF NOT EXISTS idx_inscriptions_lead_id ON inscriptions(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_inscriptions_statut ON inscriptions(statut);
+  CREATE INDEX IF NOT EXISTS idx_events_lead_id ON events(lead_id);
+  CREATE INDEX IF NOT EXISTS idx_leads_hotel ON leads(hotel);
+
   CREATE INDEX IF NOT EXISTS idx_vf_catalog_actif ON vf_catalog(actif);
   CREATE INDEX IF NOT EXISTS idx_vf_partners_nom ON vf_partners(nom_normalise);
   CREATE INDEX IF NOT EXISTS idx_vf_discounts_client ON vf_client_discounts(client_name);
@@ -234,7 +242,12 @@ const migrations = [
   'ALTER TABLE etapes    ADD COLUMN content_json TEXT',
 ];
 for (const sql of migrations) {
-  try { db.prepare(sql).run(); } catch (_) { /* colonne déjà présente */ }
+  try { db.prepare(sql).run(); } catch (e) {
+    // Ignorer "duplicate column" qui est attendu, logger les vraies erreurs
+    if (!e.message.includes('duplicate column') && !e.message.includes('already exists')) {
+      console.error('⚠️  Erreur migration:', sql, '-', e.message);
+    }
+  }
 }
 
 console.log('✅ Base de données initialisée :', DB_PATH);

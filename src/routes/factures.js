@@ -9,6 +9,7 @@ const {
   parseAdresseExpedition, mapPartnerNameToCanon, parseOrderText,
   inferPriceFromMappings,
 } = require('../services/productMatchingService');
+const logger = require('../config/logger');
 
 module.exports = (db) => {
   const router = express.Router();
@@ -65,7 +66,7 @@ module.exports = (db) => {
       const p = JSON.parse(credsRow?.valeur || '{}');
       credsOk = !!(p.private_key && p.client_email);
     } catch (e) {
-      console.warn('GSheets: credentials JSON invalide en DB:', e.message);
+      logger.warn('GSheets: credentials JSON invalide en DB', { error: e.message });
     }
     if (!credsOk && process.env.GSHEETS_CREDENTIALS) {
       try {
@@ -76,7 +77,7 @@ module.exports = (db) => {
           return { ok: true, email: envParsed.client_email, repaired: true };
         }
       } catch (e) {
-        console.warn('GSheets: env var GSHEETS_CREDENTIALS invalide:', e.message);
+        logger.warn('GSheets: env var GSHEETS_CREDENTIALS invalide', { error: e.message });
       }
     }
     return { ok: credsOk, repaired: false };
@@ -106,7 +107,7 @@ module.exports = (db) => {
       const data = await vfService.rechercherClients(q);
       res.json(data);
     } catch (e) {
-      console.error('Erreur recherche clients VF:', e.message);
+      logger.error('Erreur recherche clients VF', { error: e.message });
       res.status(500).json({ erreur: e.message });
     }
   });
@@ -406,7 +407,7 @@ module.exports = (db) => {
           db.prepare('UPDATE vf_invoice_logs SET email_sent = 1 WHERE vf_invoice_id = ?').run(String(result.id));
           emailSent = true;
         } catch (emailErr) {
-          console.warn('Erreur envoi email facture', result.id, ':', emailErr.message);
+          logger.warn('Erreur envoi email facture', { invoiceId: result.id, error: emailErr.message });
           result.email_error = emailErr.message;
         }
       }
@@ -451,7 +452,7 @@ module.exports = (db) => {
             }
           }
         } catch (gsErr) {
-          console.warn('Erreur log GSheets:', gsErr.message);
+          logger.warn('Erreur log GSheets', { error: gsErr.message });
         }
       }
 
@@ -801,7 +802,7 @@ module.exports = (db) => {
     try {
       const { year, limit } = req.query;
 
-      console.log(`📊 Analytics: year=${year}, limit=${limit}`);
+      logger.info('Analytics request', { year, limit });
 
       // Récupérer toutes les factures via API VF (avec pagination)
       const allInvoices = [];
@@ -814,11 +815,11 @@ module.exports = (db) => {
 
         // Arrêter si plus aucune facture
         if (!invoices || invoices.length === 0) {
-          console.log(`🛑 Page ${page}: Aucune facture, fin de pagination`);
+          logger.debug(`Analytics: page ${page} vide, fin de pagination`);
           break;
         }
 
-        console.log(`📄 Page ${page}: ${invoices.length} factures retournées par VF`);
+        logger.debug(`Analytics: page ${page}, ${invoices.length} factures VF`);
 
         // Filtrer uniquement les vraies factures (kind=vat, pas proforma/devis)
         const validInvoices = invoices.filter(inv => {
@@ -840,10 +841,7 @@ module.exports = (db) => {
           return true;
         });
 
-        console.log(`✅ Page ${page}: ${validInvoices.length} factures valides (kind=vat, numéro chiffres uniquement)`);
-        if (validInvoices.length > 0) {
-          console.log(`   Exemples: ${validInvoices.slice(0, 3).map(i => `${i.number} (${i.issue_date})`).join(', ')}`);
-        }
+        logger.debug(`Analytics: page ${page}, ${validInvoices.length} factures valides`);
 
         allInvoices.push(...validInvoices);
 
@@ -851,7 +849,7 @@ module.exports = (db) => {
         page++;
       }
 
-      console.log(`🎯 Total factures valides: ${allInvoices.length}`);
+      logger.info(`Analytics: ${allInvoices.length} factures valides récupérées`);
 
       // Calculer les statistiques
       const stats = {
@@ -912,7 +910,7 @@ module.exports = (db) => {
 
       res.json(stats);
     } catch (e) {
-      console.error('Erreur analytics:', e);
+      logger.error('Erreur analytics', { error: e.message });
       res.status(500).json({ erreur: e.message });
     }
   });

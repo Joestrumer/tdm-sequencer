@@ -8,6 +8,8 @@
  * - getHistorique(id, delivery_order) → dates clés
  */
 
+const logger = require('../config/logger');
+
 const ENDPOINT = 'https://wms.endurancelogistique.fr/secure/ws_order.php';
 const NAMESPACE = 'https://wms.endurancelogistique.fr/secure/ws_order.wsdl';
 
@@ -77,7 +79,7 @@ async function callSoap(method, params, db) {
   }
 
   // Log pour debug
-  console.log(`WMS ${method} (${params.delivery_order}):`, text.substring(0, 500));
+  logger.debug(`WMS ${method} (${params.delivery_order}):`, text.substring(0, 500));
 
   return parseResponse(text);
 }

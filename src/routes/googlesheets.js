@@ -3,6 +3,7 @@
  */
 
 const express = require('express');
+const logger = require('../config/logger');
 
 module.exports = (db) => {
   const router = express.Router();
@@ -81,8 +82,8 @@ module.exports = (db) => {
         return res.status(500).json({ erreur: result.erreur });
       }
 
-      console.log(`📊 GSheets Analytics: ${result.totalRows} lignes lues`);
-      console.log(`📊 Headers: ${result.headers.join(', ')}`);
+      logger.debug(`📊 GSheets Analytics: ${result.totalRows} lignes lues`);
+      logger.debug(`📊 Headers: ${result.headers.join(', ')}`);
 
       const data = result.data || [];
 
@@ -107,7 +108,7 @@ module.exports = (db) => {
             validInvoices.add(invoiceNumber);
           }
         }
-        console.log(`📊 ${validInvoices.size} factures trouvées pour ${year}`);
+        logger.debug(`📊 ${validInvoices.size} factures trouvées pour ${year}`);
       }
 
       // Deuxième passe: grouper par facture et inclure toutes les lignes des factures valides
@@ -200,11 +201,11 @@ module.exports = (db) => {
         invoice.productCount++;
       }
 
-      console.log(`📊 Traitement: ${totalLinesProcessed} lignes, ${linesSkippedNoInvoice} sans Invoice, ${linesSkippedYear} lignes exclues (factures autres années)`);
-      console.log(`📊 Exemples de valeurs HT lues:`, sampleValues);
-      console.log(`📊 ${invoicesMap.size} factures uniques trouvées`);
+      logger.debug(`📊 Traitement: ${totalLinesProcessed} lignes, ${linesSkippedNoInvoice} sans Invoice, ${linesSkippedYear} lignes exclues (factures autres années)`);
+      logger.debug(`📊 Exemples de valeurs HT lues:`, sampleValues);
+      logger.debug(`📊 ${invoicesMap.size} factures uniques trouvées`);
       const invoicesList = Array.from(invoicesMap.keys()).sort();
-      console.log(`📊 Factures trouvées: ${invoicesList.join(', ')}`);
+      logger.debug(`📊 Factures trouvées: ${invoicesList.join(', ')}`);
 
       // Log totaux de quelques factures
       const sampleInvoiceTotals = [];
@@ -213,7 +214,7 @@ module.exports = (db) => {
           sampleInvoiceTotals.push({ num, totalHT: inv.totalHT, products: inv.productCount });
         }
       }
-      console.log(`📊 Exemples de totaux factures:`, sampleInvoiceTotals);
+      logger.debug(`📊 Exemples de totaux factures:`, sampleInvoiceTotals);
 
       // Calculer les statistiques
       const stats = {
@@ -288,11 +289,11 @@ module.exports = (db) => {
       // Convertir allClients en array trié
       stats.allClients = Array.from(stats.allClients).sort();
 
-      console.log(`📊 Stats calculées: ${stats.total.invoices} factures, CA HT: ${stats.total.ca_ht}€, Commission: ${stats.total.commission}€`);
+      logger.debug(`📊 Stats calculées: ${stats.total.invoices} factures, CA HT: ${stats.total.ca_ht}€, Commission: ${stats.total.commission}€`);
 
       res.json(stats);
     } catch (e) {
-      console.error('Erreur analytics GSheets:', e);
+      logger.error('Erreur analytics GSheets:', e);
       res.status(500).json({ erreur: e.message });
     }
   });
@@ -458,7 +459,7 @@ module.exports = (db) => {
         })),
       });
     } catch (e) {
-      console.error('Erreur analytics client:', e);
+      logger.error('Erreur analytics client:', e);
       res.status(500).json({ erreur: e.message });
     }
   });
@@ -603,7 +604,7 @@ module.exports = (db) => {
 
       res.json({ years });
     } catch (e) {
-      console.error('Erreur comparaison années:', e);
+      logger.error('Erreur comparaison années:', e);
       res.status(500).json({ erreur: e.message });
     }
   });

@@ -41,36 +41,36 @@ async function avancerInscription(inscription, etapesParsed, lead) {
   const prochainIndex = inscription.etape_courante + 1;
 
   if (prochainIndex >= etapesParsed.length) {
-    db.prepare(`UPDATE inscriptions SET etape_courante=?, statut='terminé', prochain_envoi=NULL WHERE id=?`)
-      .run(prochainIndex, inscription.id);
+    // Transaction pour garantir la cohérence inscription + lead
+    db.transaction(() => {
+      db.prepare(`UPDATE inscriptions SET etape_courante=?, statut='terminé', prochain_envoi=NULL WHERE id=?`)
+        .run(prochainIndex, inscription.id);
+
+      const hasResponse = db.prepare(`
+        SELECT COUNT(*) as count FROM events
+        WHERE lead_id = ? AND type IN ('réponse', 'clic')
+      `).get(lead.id);
+
+      if (hasResponse.count === 0) {
+        db.prepare(`UPDATE leads SET statut='Fin de séquence', updated_at=datetime('now') WHERE id=?`).run(lead.id);
+        logger.info(`📭 Lead ${lead.email} mis en statut "Fin de séquence" (aucune réponse)`);
+      }
+    })();
     logger.info(`📭 Séquence terminée pour ${lead.email}`);
-
-    // Vérifier s'il y a eu une réponse dans les events
-    const hasResponse = db.prepare(`
-      SELECT COUNT(*) as count FROM events
-      WHERE lead_id = ? AND type IN ('réponse', 'clic')
-    `).get(lead.id);
-
-    // Si pas de réponse, mettre le statut "Fin de séquence"
-    // Sinon laisser le statut actuel (probablement "Répondu" ou "Converti")
-    if (hasResponse.count === 0) {
-      db.prepare(`UPDATE leads SET statut='Fin de séquence', updated_at=datetime('now') WHERE id=?`).run(lead.id);
-      logger.info(`📭 Lead ${lead.email} mis en statut "Fin de séquence" (aucune réponse)`);
-    }
 
     if (process.env.HUBSPOT_API_KEY) {
       const seq = db.prepare('SELECT nom FROM sequences WHERE id = ?').get(inscription.sequence_id);
-      await hubspot.creerTaskFinSequence(db, lead, seq?.nom || 'Séquence').catch(() => {});
+      await hubspot.creerTaskFinSequence(db, lead, seq?.nom || 'Séquence').catch(e => logger.warn('HubSpot task fin séquence échouée', { error: e.message }));
     }
   } else {
     const prochainEtape = etapesParsed[prochainIndex];
     const prochainDate  = prochaineDateEnvoi(prochainEtape.jour_delai);
-    db.prepare(`UPDATE inscriptions SET etape_courante=?, prochain_envoi=? WHERE id=?`)
-      .run(prochainIndex, prochainDate, inscription.id);
+    db.transaction(() => {
+      db.prepare(`UPDATE inscriptions SET etape_courante=?, prochain_envoi=? WHERE id=?`)
+        .run(prochainIndex, prochainDate, inscription.id);
+      db.prepare(`UPDATE leads SET statut='En séquence', updated_at=datetime('now') WHERE id=?`).run(lead.id);
+    })();
     logger.info(`📅 Prochain email planifié : ${lead.email} → ${prochainDate}`);
-
-    // Mettre à jour le statut en "En séquence" seulement si la séquence continue
-    db.prepare(`UPDATE leads SET statut='En séquence', updated_at=datetime('now') WHERE id=?`).run(lead.id);
   }
 }
 
@@ -110,8 +110,8 @@ async function _traiter(inscription) {
     await envoyerEmail(db, { lead, etape, inscriptionId: inscription.id });
 
     if (process.env.HUBSPOT_API_KEY) {
-      await hubspot.logEmailTimeline(db, lead, { sujet: etape.sujet }).catch(() => {});
-      if (index === 0) await hubspot.mettreAJourLifecycle(db, lead, 'lead').catch(() => {});
+      await hubspot.logEmailTimeline(db, lead, { sujet: etape.sujet }).catch(e => logger.warn('HubSpot logEmailTimeline échoué', { error: e.message, leadId: lead.id }));
+      if (index === 0) await hubspot.mettreAJourLifecycle(db, lead, 'lead').catch(e => logger.warn('HubSpot lifecycle update échoué', { error: e.message, leadId: lead.id }));
     }
 
     await avancerInscription(inscription, etapesParsed, lead);
@@ -183,13 +183,24 @@ function inscrireLead(leadId, sequenceId) {
     ? new Date(Date.now() + 60_000).toISOString()
     : prochaineDateEnvoi(premiereEtape.jour_delai || 0);
 
-  const id = uuidv4();
-  db.prepare(`
-    INSERT INTO inscriptions (id, lead_id, sequence_id, etape_courante, statut, prochain_envoi)
-    VALUES (?, ?, ?, 0, 'actif', ?)
-    ON CONFLICT(lead_id, sequence_id) DO UPDATE SET
-      statut = 'actif', etape_courante = 0, prochain_envoi = excluded.prochain_envoi
-  `).run(id, leadId, sequenceId, prochainEnvoi);
+  // Vérifier si une inscription active existe déjà pour éviter de reset etape_courante
+  const existing = db.prepare(
+    `SELECT id, statut FROM inscriptions WHERE lead_id = ? AND sequence_id = ?`
+  ).get(leadId, sequenceId);
+
+  if (existing && existing.statut === 'actif') {
+    throw new Error('Ce lead est déjà inscrit et actif dans cette séquence');
+  }
+
+  const id = existing ? existing.id : uuidv4();
+  if (existing) {
+    // Réactiver une inscription terminée
+    db.prepare(`UPDATE inscriptions SET statut = 'actif', etape_courante = 0, prochain_envoi = ? WHERE id = ?`)
+      .run(prochainEnvoi, existing.id);
+  } else {
+    db.prepare(`INSERT INTO inscriptions (id, lead_id, sequence_id, etape_courante, statut, prochain_envoi) VALUES (?, ?, ?, 0, 'actif', ?)`)
+      .run(id, leadId, sequenceId, prochainEnvoi);
+  }
 
   db.prepare(`UPDATE leads SET statut='En séquence', updated_at=datetime('now') WHERE id=?`).run(leadId);
   logger.info('🚀 Lead inscrit à la séquence', { leadId, sequenceId, prochainEnvoi, delai: premiereEtape.jour_delai });

@@ -60,7 +60,7 @@ module.exports = (db) => {
         if (totalOuvertures >= 2 && process.env.HUBSPOT_API_KEY) {
           const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(email.lead_id);
           if (lead) {
-            await hubspot.mettreAJourLifecycle(db, lead, 'MQL').catch(() => {});
+            await hubspot.mettreAJourLifecycle(db, lead, 'MQL').catch(e => logger.warn('HubSpot MQL update échoué', { error: e.message, leadId: lead.id }));
           }
         }
 
@@ -123,7 +123,7 @@ module.exports = (db) => {
 
       // Notifier HubSpot
       if (process.env.HUBSPOT_API_KEY && lead.hubspot_id) {
-        hubspot.mettreAJourLifecycle(db, lead, 'lead').catch(() => {});
+        hubspot.mettreAJourLifecycle(db, lead, 'lead').catch(e => logger.warn('HubSpot lifecycle update échoué (désabonnement)', { error: e.message, leadId: lead.id }));
       }
 
       logger.info(`🚫 Désabonnement : ${lead.email}`);
@@ -192,7 +192,7 @@ module.exports = (db) => {
 
         // Notifier HubSpot
         if (process.env.HUBSPOT_API_KEY && lead.hubspot_id) {
-          await hubspot.mettreAJourLifecycle(db, lead, 'MQL').catch(() => {});
+          await hubspot.mettreAJourLifecycle(db, lead, 'MQL').catch(e => logger.warn('HubSpot MQL update échoué (reply)', { error: e.message, leadId: lead.id }));
         }
 
         logger.info('📩 Réponse détectée — lead passé en Répondu', { email: lead.email, sujet: subject });

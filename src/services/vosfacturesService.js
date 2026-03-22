@@ -2,12 +2,13 @@
  * vosfacturesService.js — Proxy VosFactures API
  */
 
+const logger = require('../config/logger');
 const VF_BASE_URL = process.env.VF_BASE_URL || 'https://terredemars.vosfactures.fr';
 
 function getToken(db) {
   const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('vf_api_token');
   const token = (row?.valeur || process.env.VF_API_TOKEN || '').trim();
-  if (token) console.log(`🔑 VF token: ${token.substring(0, 6)}... (${token.length} chars)`);
+  if (token) logger.debug(`🔑 VF token: ${token.substring(0, 6)}... (${token.length} chars)`);
   return token;
 }
 
@@ -37,7 +38,7 @@ async function vfFetch(path, opts = {}, db) {
 
       if (res.status === 429 && attempt < maxRetries) {
         const wait = Math.pow(2, attempt) * 1000;
-        console.log(`⏳ VF rate limit, retry ${attempt}/${maxRetries} dans ${wait}ms`);
+        logger.debug(`⏳ VF rate limit, retry ${attempt}/${maxRetries} dans ${wait}ms`);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
@@ -93,7 +94,7 @@ module.exports = (db) => ({
     allClients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     clientsCache = allClients;
     clientsCacheTime = Date.now();
-    console.log(`📇 ${allClients.length} clients VF chargés en cache`);
+    logger.debug(`📇 ${allClients.length} clients VF chargés en cache`);
     return allClients;
   },
 
@@ -161,7 +162,7 @@ module.exports = (db) => ({
       }, db);
     } catch (e) {
       // Fallback vers send_by_email si send_reminder n'est pas disponible
-      console.log('⚠️ send_reminder indisponible, fallback send_by_email');
+      logger.debug('⚠️ send_reminder indisponible, fallback send_by_email');
       return await vfFetch(`/invoices/${id}/send_by_email.json`, {
         method: 'POST',
         body: opts,

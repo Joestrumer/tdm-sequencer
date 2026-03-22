@@ -33,7 +33,7 @@ async function hubspotFetch(path, options = {}, tentative = 1) {
   });
 
   if (res.status === 429 && tentative <= 3) {
-    const retryAfter = parseInt(res.headers.get('Retry-After') || '10') * 1000;
+    const retryAfter = Math.min(parseInt(res.headers.get('Retry-After') || '10') * 1000, 30000);
     await new Promise(r => setTimeout(r, retryAfter));
     return hubspotFetch(path, options, tentative + 1);
   }
@@ -53,7 +53,9 @@ function logHubspot(db, type, action, leadId, hubspotId, payload, erreur = null)
     db.prepare(`INSERT INTO hubspot_logs (id, type, action, lead_id, hubspot_id, payload, erreur)
       VALUES (?, ?, ?, ?, ?, ?, ?)`
     ).run(uuidv4(), type, action, leadId, hubspotId, JSON.stringify(payload), erreur);
-  } catch (e) {}
+  } catch (e) {
+    logger.warn('Erreur logHubspot DB', { error: e.message });
+  }
 }
 
 // ─── Rechercher des companies par nom ────────────────────────────────────────
@@ -220,7 +222,7 @@ async function syncContact(db, lead) {
           body: JSON.stringify({
             inputs: [{ from: { id: hubspotId }, to: { id: companyId }, type: 'contact_to_company' }]
           }),
-        }).catch(() => {});
+        }).catch(e => logger.warn('HubSpot association contact→company échouée', { error: e.message, hubspotId, companyId }));
       }
     }
 
@@ -335,7 +337,7 @@ async function creerDeal(db, lead) {
         body: JSON.stringify({
           inputs: [{ from: { id: dealId }, to: { id: hubspotId }, type: 'deal_to_contact' }]
         }),
-      }).catch(() => {});
+      }).catch(e => logger.warn('HubSpot association deal→contact échouée', { error: e.message, dealId, hubspotId }));
     }
     logHubspot(db, 'deal', 'create', lead.id, dealId, { hotel: lead.hotel });
     logger.info('💼 HubSpot Deal créé', { hotel: lead.hotel, dealId });

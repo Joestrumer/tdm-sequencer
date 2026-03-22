@@ -3,6 +3,7 @@
  * Deuxième endpoint WMS avec peut-être plus d'informations
  */
 
+const logger = require('../config/logger');
 const ENDPOINT = 'https://wms.endurancelogistique.fr/secure/ws_order_info.php';
 const NAMESPACE = 'https://wms.endurancelogistique.fr/secure/ws_order_info.wsdl';
 
@@ -70,7 +71,7 @@ async function callSoap(method, params, db) {
     throw new Error(`WMS Info HTTP ${res.status}: ${text.substring(0, 200)}`);
   }
 
-  console.log(`WMS Info ${method} (${params.delivery_order || params.id}):`, text.substring(0, 500));
+  logger.debug(`WMS Info ${method} (${params.delivery_order || params.id}):`, text.substring(0, 500));
 
   return parseResponse(text);
 }

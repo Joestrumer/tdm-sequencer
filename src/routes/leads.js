@@ -16,15 +16,28 @@ module.exports = (db) => {
       const { statut, segment, search } = req.query;
       let query = `
         SELECT l.*,
-          (SELECT COUNT(*) FROM emails e WHERE e.lead_id = l.id) as emails_envoyes,
-          (SELECT SUM(e.ouvertures) FROM emails e WHERE e.lead_id = l.id) as total_ouvertures,
-          (SELECT s.nom FROM inscriptions i JOIN sequences s ON i.sequence_id = s.id WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as sequence_active,
-          (SELECT s.id FROM inscriptions i JOIN sequences s ON i.sequence_id = s.id WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as sequence_id_active,
-          (SELECT i.etape_courante FROM inscriptions i WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as etape_courante,
-          (SELECT i.prochain_envoi FROM inscriptions i WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as prochain_envoi,
-          (SELECT i.id FROM inscriptions i WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as inscription_id_active,
-          (SELECT COUNT(*) FROM etapes et JOIN inscriptions i ON et.sequence_id = i.sequence_id WHERE i.lead_id = l.id AND i.statut = 'actif' LIMIT 1) as nb_etapes_sequence
-        FROM leads l WHERE 1=1
+          COALESCE(em.emails_envoyes, 0) as emails_envoyes,
+          COALESCE(em.total_ouvertures, 0) as total_ouvertures,
+          ia.sequence_active,
+          ia.sequence_id_active,
+          ia.etape_courante,
+          ia.prochain_envoi,
+          ia.inscription_id_active,
+          ia.nb_etapes_sequence
+        FROM leads l
+        LEFT JOIN (
+          SELECT lead_id, COUNT(*) as emails_envoyes, SUM(ouvertures) as total_ouvertures
+          FROM emails GROUP BY lead_id
+        ) em ON em.lead_id = l.id
+        LEFT JOIN (
+          SELECT i.lead_id, s.nom as sequence_active, s.id as sequence_id_active,
+            i.etape_courante, i.prochain_envoi, i.id as inscription_id_active,
+            (SELECT COUNT(*) FROM etapes WHERE sequence_id = i.sequence_id) as nb_etapes_sequence
+          FROM inscriptions i
+          JOIN sequences s ON i.sequence_id = s.id
+          WHERE i.statut = 'actif'
+        ) ia ON ia.lead_id = l.id
+        WHERE 1=1
       `;
       const params = [];
 

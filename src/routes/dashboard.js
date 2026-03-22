@@ -30,7 +30,7 @@ module.exports = (db) => {
 
         tauxOuverture: db.prepare(`
           SELECT
-            CAST(SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) AS REAL) * 100.0 / COUNT(*) as taux
+            CAST(SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) AS REAL) * 100.0 / COALESCE(NULLIF(COUNT(*), 0), 1) as taux
           FROM emails
           WHERE envoye_at >= datetime('now', '-30 days')
         `).get().taux || 0,
