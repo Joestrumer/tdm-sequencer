@@ -8577,16 +8577,32 @@ function App() {
   const NAV = [
     { id: "dashboard", icon: "📧", label: "Séquences" },
     { id: "ventes", icon: "📈", label: "Ventes" },
-    { id: "commandes", icon: "📦", label: "Commandes" },
-    { id: "partenaires", icon: "🤝", label: "Partenaires" },
+    { id: "portail", icon: "📦", label: "Portail", children: [
+      { id: "commandes", label: "Commandes" },
+      { id: "partenaires", label: "Partenaires" },
+    ]},
     { id: "leads", icon: "👥", label: "Leads" },
-    { id: "sequences", icon: "📨", label: "Campagnes" },
-    { id: "templates", icon: "📝", label: "Templates" },
+    { id: "campagnes", icon: "📨", label: "Campagnes", children: [
+      { id: "sequences", label: "Séquences" },
+      { id: "templates", label: "Templates" },
+    ]},
     { id: "factures", icon: "📄", label: "Factures" },
-    { id: "blocklist", icon: "🚫", label: "Blocklist" },
-    { id: "emails", icon: "✅", label: "Validation Email" },
-    { id: "parametres", icon: "⚙️", label: "Paramètres" },
+    { id: "config", icon: "⚙️", label: "Configuration", children: [
+      { id: "parametres", label: "Paramètres" },
+      { id: "blocklist", label: "Blocklist" },
+      { id: "emails", label: "Validation Email" },
+    ]},
   ];
+
+  // Trouver le groupe parent actif et le label de la vue courante
+  const activeGroup = NAV.find(n => n.children?.some(c => c.id === vue));
+  const activeNav = NAV.find(n => n.id === vue) || activeGroup;
+  const activeChild = activeGroup?.children?.find(c => c.id === vue);
+  const isGroupActive = (item) => item.children ? item.children.some(c => c.id === vue) : item.id === vue;
+  const headerLabel = activeChild?.label || activeNav?.label || '';
+
+  // Mobile : aplatir les items pour la bottom bar (seulement les parents)
+  const MOBILE_NAV = NAV.map(n => n.children ? { ...n, id: n.children[0].id } : n);
 
   return (
     <div className="min-h-screen bg-slate-50 font-sans">
@@ -8619,13 +8635,35 @@ function App() {
             </div>
           </div>
         </div>
-        <nav className="flex-1 p-3 space-y-1">
-          {NAV.map(({ id, icon, label }) => (
-            <button key={id} onClick={() => setVue(id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${vue === id ? "bg-slate-900 text-white font-medium" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
-              <span className="text-base">{icon}</span>
-              {label}
-            </button>
-          ))}
+        <nav className="flex-1 p-3 space-y-0.5 overflow-y-auto">
+          {NAV.map((item) => {
+            const active = isGroupActive(item);
+            if (!item.children) {
+              return (
+                <button key={item.id} onClick={() => setVue(item.id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${active ? "bg-slate-900 text-white font-medium" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
+                  <span className="text-base">{item.icon}</span>
+                  {item.label}
+                </button>
+              );
+            }
+            return (
+              <div key={item.id}>
+                <button onClick={() => setVue(item.children[0].id)} className={`w-full flex items-center gap-3 px-3 py-2.5 rounded-xl text-sm transition-all ${active ? "bg-slate-900 text-white font-medium" : "text-slate-600 hover:bg-slate-50 hover:text-slate-900"}`}>
+                  <span className="text-base">{item.icon}</span>
+                  {item.label}
+                </button>
+                {active && (
+                  <div className="ml-8 mt-0.5 mb-1 space-y-0.5">
+                    {item.children.map(child => (
+                      <button key={child.id} onClick={() => setVue(child.id)} className={`w-full text-left px-3 py-1.5 rounded-lg text-xs transition-all ${vue === child.id ? "text-slate-900 font-semibold bg-slate-100" : "text-slate-400 hover:text-slate-600 hover:bg-slate-50"}`}>
+                        {child.label}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
         </nav>
         <div className="p-4 border-t border-slate-100">
           <div className="flex items-center gap-2.5">
@@ -8640,21 +8678,29 @@ function App() {
 
       {/* Bottom tab bar — mobile only */}
       <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 z-40 flex justify-around items-center px-1 py-1 safe-area-bottom">
-        {NAV.map(({ id, icon, label }) => (
-          <button key={id} onClick={() => setVue(id)} className={`flex flex-col items-center justify-center min-w-0 flex-1 py-2 rounded-lg transition-colors ${vue === id ? "text-slate-900" : "text-slate-400"}`}>
-            <span className="text-lg leading-none">{icon}</span>
-            {vue === id && <span className="text-[10px] font-medium mt-0.5 truncate max-w-full px-1">{label}</span>}
-          </button>
-        ))}
+        {MOBILE_NAV.map(({ id, icon, label }) => {
+          const mActive = NAV.find(n => n.children?.some(c => c.id === id))
+            ? NAV.find(n => n.children?.some(c => c.id === id)).children.some(c => c.id === vue)
+            : vue === id;
+          return (
+            <button key={id} onClick={() => setVue(id)} className={`flex flex-col items-center justify-center min-w-0 flex-1 py-2 rounded-lg transition-colors ${mActive ? "text-slate-900" : "text-slate-400"}`}>
+              <span className="text-lg leading-none">{icon}</span>
+              {mActive && <span className="text-[10px] font-medium mt-0.5 truncate max-w-full px-1">{label}</span>}
+            </button>
+          );
+        })}
       </div>
 
       {/* Main */}
       <div className="md:ml-56 min-h-screen">
         <header className="bg-white border-b border-slate-100 shadow-sm px-4 py-3 md:px-8 md:py-4 flex items-center justify-between sticky top-0 z-30">
           <div>
-            <h1 className="text-base font-semibold text-slate-900">
-              {NAV.find(n => n.id === vue)?.label}
-            </h1>
+            <div className="flex items-center gap-2">
+              <h1 className="text-base font-semibold text-slate-900">{headerLabel}</h1>
+              {activeGroup && (
+                <span className="text-xs text-slate-300 font-normal">/ {activeGroup.label}</span>
+              )}
+            </div>
             <p className="text-xs text-slate-400">
               {vue === "dashboard" && `${leads.filter(l => l.statut === "En séquence").length} leads en séquence`}
               {vue === "ventes" && "Analytics CA, clients & commandes"}
@@ -8669,12 +8715,24 @@ function App() {
               {vue === "parametres" && "Configuration Brevo & envoi"}
             </p>
           </div>
-          {vue === "leads" && (
-            <div className="flex items-center gap-2 text-xs text-slate-400">
-              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
-              Scheduler actif
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {/* Sous-onglets dans le header quand groupe actif */}
+            {activeGroup && (
+              <div className="flex bg-slate-100 rounded-lg p-0.5">
+                {activeGroup.children.map(child => (
+                  <button key={child.id} onClick={() => setVue(child.id)} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vue === child.id ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>
+                    {child.label}
+                  </button>
+                ))}
+              </div>
+            )}
+            {vue === "leads" && (
+              <div className="flex items-center gap-2 text-xs text-slate-400">
+                <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse inline-block" />
+                Scheduler actif
+              </div>
+            )}
+          </div>
         </header>
 
         <main className="p-4 pb-24 md:p-8 md:pb-8">
