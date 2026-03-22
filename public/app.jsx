@@ -1489,8 +1489,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   };
 
   const changerStatut = async (lead, statut) => {
-    await api.patch(`/leads/${lead.id}`, { statut });
-    if (onRefresh) onRefresh();
+    try {
+      await api.patch(`/leads/${lead.id}`, { statut });
+      showToast(`Statut mis à jour : ${statut}`, "success");
+      if (onRefresh) onRefresh();
+    } catch(e) { showToast(`Erreur changement statut : ${e.message}`, "error"); }
   };
 
   // ── HubSpot détails ─────────────────────────────────────────────────────
@@ -1642,7 +1645,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <div className="flex flex-wrap items-center gap-2 md:gap-3 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm">
             <span className="font-medium">{selectedIds.size} lead{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
             <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer</button>
-            <button onClick={async () => { if(!confirm('Supprimer ' + selectedIds.size + ' leads ?')) return; for(const id of selectedIds) await api.delete('/leads/' + id).catch(()=>{}); setSelectedIds(new Set()); if(onRefresh) onRefresh(); }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600">✕ Supprimer</button>
+            <button onClick={async (e) => { if(!confirm('Supprimer ' + selectedIds.size + ' leads ?')) return; const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Suppression...'; let errCount = 0; for(const id of selectedIds) { try { await api.delete('/leads/' + id); } catch(err) { errCount++; } } setSelectedIds(new Set()); if(onRefresh) onRefresh(); showToast(errCount ? `${selectedIds.size - errCount} supprimé(s), ${errCount} erreur(s)` : `${selectedIds.size} lead(s) supprimé(s)`, errCount ? 'error' : 'success'); btn.disabled = false; btn.textContent = '✕ Supprimer'; }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50">✕ Supprimer</button>
             <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-blue-200 hover:text-white text-xs">Annuler</button>
           </div>
         )}
@@ -2258,10 +2261,15 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 ) : (
                   <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center gap-3 text-center">
                     <p className="text-sm text-slate-400">Non synchronisé avec HubSpot</p>
-                    <button onClick={async () => {
-                      await api.post(`/hubspot/sync-lead/${selectedLead.id}`);
-                      if (onRefresh) onRefresh();
-                    }} className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600">
+                    <button onClick={async (e) => {
+                      const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Synchronisation...';
+                      try {
+                        await api.post(`/hubspot/sync-lead/${selectedLead.id}`);
+                        showToast('Lead synchronisé avec HubSpot', 'success');
+                        if (onRefresh) onRefresh();
+                      } catch(err) { showToast('Erreur sync HubSpot : ' + err.message, 'error'); }
+                      btn.disabled = false; btn.textContent = 'Synchroniser maintenant';
+                    }} className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50">
                       Synchroniser maintenant
                     </button>
                   </div>
@@ -2327,6 +2335,9 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
       </button>
     </div>
     <div className="grid gap-3">
+      {sequences.length === 0 && (
+        <div className="text-center py-12 text-slate-400 text-sm">Aucune séquence. Créez-en une pour commencer.</div>
+      )}
       {sequences.map(seq => (
         <div key={seq.id} className="bg-white rounded-xl border border-slate-100 p-4">
           <div className="flex items-center justify-between mb-3">
@@ -6128,6 +6139,9 @@ const FacturesBatch = ({ showToast }) => {
         </div>
 
         {/* Orders list with expandable review */}
+        {orders.length === 0 && (
+          <div className="text-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">Ajoutez des commandes via Excel, saisie manuelle ou import facture VF.</div>
+        )}
         {orders.map(order => {
           const calc = order.calculation;
           const productsHT = calc?.products?.reduce((s, p) => s + (p.total_ht || 0), 0) || 0;
