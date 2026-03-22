@@ -8548,19 +8548,36 @@ const VuePartenaires = ({ showToast }) => {
             {/* Produits amenities */}
             <div className="bg-white rounded-2xl border border-slate-100 p-5">
               <div className="flex items-center justify-between mb-3">
-                <span className="text-xs font-medium text-slate-600">Produits amenities</span>
+                <span className="text-xs font-medium text-slate-600">Produits amenities (par gamme)</span>
               </div>
               {(() => {
-                const AMENITY_CATEGORIES = [
-                  { key: 'gel_douche', label: 'Gel douche', prefixes: ['P008', 'P035', 'P036', 'P037', 'P014', 'P042'] },
-                  { key: 'shampoing', label: 'Shampoing', prefixes: ['P010', 'P019', 'P034'] },
-                  { key: 'apres_shampoing', label: 'Après-shampoing', prefixes: ['P024'] },
-                  { key: 'lotion', label: 'Lotion', prefixes: ['P011'] },
-                  { key: 'savon_main', label: 'Savon main', prefixes: ['P007', 'P017', 'P038'] },
+                const AMENITY_TYPES = [
+                  { key: 'gel_douche', label: 'Gel douche', gammes: [
+                    { ref: 'P008', gamme: 'Verveine / Reddition' },
+                    { ref: 'P035', gamme: 'Thé Blanc / Élégance' },
+                  ]},
+                  { key: 'shampoing', label: 'Shampoing', gammes: [
+                    { ref: 'P019', gamme: 'Verveine / Reddition' },
+                    { ref: 'P010', gamme: 'Cédrat / Irrévérence' },
+                    { ref: 'P034', gamme: 'Thé Blanc / Élégance' },
+                  ]},
+                  { key: 'gel_corps_cheveux', label: 'Gel Corps & Cheveux', gammes: [
+                    { ref: 'P042', gamme: 'Verveine / Reddition' },
+                    { ref: 'P014', gamme: 'Cédrat / Irrévérence' },
+                    { ref: 'P040', gamme: 'Thé Blanc / Élégance' },
+                  ]},
+                  { key: 'apres_shampoing', label: 'Après-shampoing', gammes: [
+                    { ref: 'P024', gamme: 'Cédrat / Irrévérence' },
+                    { ref: 'P037', gamme: 'Thé Blanc / Élégance' },
+                  ]},
+                  { key: 'lotion', label: 'Lotion Corps & Main', gammes: [
+                    { ref: 'P036', gamme: 'Thé Blanc / Élégance' },
+                    { ref: 'P011', gamme: 'Vétiver / Imminence' },
+                  ]},
+                  { key: 'savon_main', label: 'Savon Liquide Main', gammes: [
+                    { ref: 'P007', gamme: 'Vétiver / Insurrection' },
+                  ]},
                 ];
-                const getOptionsForCategory = (prefixes) => {
-                  return catalog.filter(c => prefixes.some(prefix => c.ref === prefix || c.ref.startsWith(prefix + '-')));
-                };
                 const saveAmenities = async (newAm) => {
                   setAmenities(newAm);
                   try {
@@ -8571,22 +8588,19 @@ const VuePartenaires = ({ showToast }) => {
                 };
                 return (
                   <div className="grid grid-cols-1 gap-2">
-                    {AMENITY_CATEGORIES.map(cat => {
-                      const options = getOptionsForCategory(cat.prefixes);
-                      return (
-                        <div key={cat.key} className="flex items-center gap-3">
-                          <label className="text-xs text-slate-500 w-32 flex-shrink-0">{cat.label}</label>
-                          <select
-                            value={amenities[cat.key] || ''}
-                            onChange={e => saveAmenities({ ...amenities, [cat.key]: e.target.value || undefined })}
-                            className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
-                          >
-                            <option value="">— Non défini —</option>
-                            {options.map(o => <option key={o.ref} value={o.ref}>{o.ref} — {o.nom}</option>)}
-                          </select>
-                        </div>
-                      );
-                    })}
+                    {AMENITY_TYPES.map(type => (
+                      <div key={type.key} className="flex items-center gap-3">
+                        <label className="text-xs text-slate-500 w-40 flex-shrink-0">{type.label}</label>
+                        <select
+                          value={amenities[type.key] || ''}
+                          onChange={e => saveAmenities({ ...amenities, [type.key]: e.target.value || undefined })}
+                          className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        >
+                          <option value="">— Non défini —</option>
+                          {type.gammes.map(g => <option key={g.ref} value={g.ref}>{g.ref} — {g.gamme}</option>)}
+                        </select>
+                      </div>
+                    ))}
                   </div>
                 );
               })()}

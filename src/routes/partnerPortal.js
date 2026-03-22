@@ -47,6 +47,7 @@ module.exports = (db) => {
           nom: matched.nom,
           email: matched.email,
           contact_nom: matched.contact_nom,
+          amenities: matched.amenities || null,
         },
       });
     } catch (e) {
@@ -61,7 +62,7 @@ module.exports = (db) => {
   // ─── Profil ────────────────────────────────────────────────────────────────
   router.get('/profil', (req, res) => {
     try {
-      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse FROM vf_partners WHERE id = ?').get(req.partner.id);
+      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities FROM vf_partners WHERE id = ?').get(req.partner.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       res.json(partner);
     } catch (e) {
