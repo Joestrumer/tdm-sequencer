@@ -4481,7 +4481,6 @@ const VueFactures = ({ showToast }) => {
     { id: "echantillons", label: "Échantillons", icon: "🎁" },
     { id: "relances", label: "Relances", icon: "📨" },
     { id: "envois", label: "Envois", icon: "📮" },
-    { id: "analytics-sheet", label: "Analytics Excel", icon: "📈" },
   ];
 
   return (
@@ -4514,7 +4513,6 @@ const VueFactures = ({ showToast }) => {
       {tab === "echantillons" && <FacturesSamples showToast={showToast} />}
       {tab === "relances" && <FacturesReminders showToast={showToast} />}
       {tab === "envois" && <FacturesShipments showToast={showToast} />}
-      {tab === "analytics-sheet" && <AnalyticsSpreadsheet showToast={showToast} />}
     </div>
   );
 };
@@ -8109,9 +8107,10 @@ function App() {
   };
 
   const NAV = [
-    { id: "dashboard", icon: "📊", label: "Dashboard" },
+    { id: "dashboard", icon: "📧", label: "Séquences" },
+    { id: "ventes", icon: "📈", label: "Ventes" },
     { id: "leads", icon: "👥", label: "Leads" },
-    { id: "sequences", icon: "📧", label: "Séquences" },
+    { id: "sequences", icon: "📨", label: "Campagnes" },
     { id: "templates", icon: "📝", label: "Templates" },
     { id: "factures", icon: "📄", label: "Factures" },
     { id: "blocklist", icon: "🚫", label: "Blocklist" },
@@ -8188,6 +8187,7 @@ function App() {
             </h1>
             <p className="text-xs text-slate-400">
               {vue === "dashboard" && `${leads.filter(l => l.statut === "En séquence").length} leads en séquence`}
+              {vue === "ventes" && "Analytics CA, clients & commandes"}
               {vue === "leads" && `${leads.length} leads au total`}
               {vue === "sequences" && `${sequences.length} séquences actives`}
               {vue === "templates" && "Bibliothèque de templates d'emails"}
@@ -8208,6 +8208,7 @@ function App() {
         <main className="p-4 pb-24 md:p-8 md:pb-8">
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
           {vue === "dashboard" && <VueDashboard showToast={showToast} />}
+          {vue === "ventes" && <AnalyticsSpreadsheet showToast={showToast} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} />}
           {vue === "templates" && <VueTemplates showToast={showToast} />}
