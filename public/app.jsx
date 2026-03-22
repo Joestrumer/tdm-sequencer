@@ -1,8 +1,16 @@
-const { useState, useEffect, useRef, useMemo } = React;
+const { useState, useEffect, useRef, useMemo, useCallback } = React;
 
 // ─── API BACKEND (remplace les données démo) ──────────────────────────────────
 const api = window.tdmApi;
 
+// ─── HOOKS UTILITAIRES ──────────────────────────────────────────────────────────
+function useEscapeClose(onClose) {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onClose]);
+}
 
 // ─── TOAST ───────────────────────────────────────────────────────────────────
 const Toast = ({ toast, onDismiss }) => {
@@ -75,6 +83,7 @@ function relTime(iso) {
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 
 const ModalAddLead = ({ onClose, onAdd }) => {
+  useEscapeClose(onClose);
   const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "", langue: "fr", campaign: "", comment: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -136,8 +145,8 @@ const ModalAddLead = ({ onClose, onAdd }) => {
     setSaving(false);
   };
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <h3 className="text-base font-semibold text-slate-900">Ajouter un lead</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
@@ -240,6 +249,7 @@ const ModalAddLead = ({ onClose, onAdd }) => {
 };
 
 const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
+  useEscapeClose(onClose);
   const [selected, setSelected] = useState(sequences[0]?.id);
   const [status, setStatus] = useState(null); // null | "loading" | "done" | "error"
   const [errMsg, setErrMsg] = useState("");
@@ -264,8 +274,8 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <h3 className="text-base font-semibold text-slate-900">Lancer une séquence</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
@@ -335,13 +345,17 @@ const SIGNATURE_HTML = `<br>
 // Données de démo pour la prévisualisation
 const DEMO_LEAD_PREVIEW = { prenom: "Sophie", nom: "Lefebvre", hotel: "Hôtel Le Bristol", ville: "Paris", segment: "5*" };
 
+function escapeHtml(str) {
+  return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+}
+
 function substituerVarsPreview(texte, lead = DEMO_LEAD_PREVIEW) {
   return texte
-    .replace(/\{\{prenom\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.prenom}</span>`)
-    .replace(/\{\{nom\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.nom}</span>`)
-    .replace(/\{\{hotel\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.hotel}</span>`)
-    .replace(/\{\{ville\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.ville}</span>`)
-    .replace(/\{\{segment\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${lead.segment}</span>`);
+    .replace(/\{\{prenom\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.prenom)}</span>`)
+    .replace(/\{\{nom\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.nom)}</span>`)
+    .replace(/\{\{hotel\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.hotel)}</span>`)
+    .replace(/\{\{ville\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.ville)}</span>`)
+    .replace(/\{\{segment\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.segment)}</span>`);
 }
 
 function texteVersHtmlPreview(texte) {
@@ -352,6 +366,7 @@ function texteVersHtmlPreview(texte) {
 }
 
 const ModalEmailEditor = ({ seq, onClose, onSave }) => {
+  useEscapeClose(onClose);
   const [etapes, setEtapes] = useState(seq ? [...seq.etapes] : [{ jour: 0, sujet: "", corps: "" }]);
   const [nom, setNom] = useState(seq?.nom || "");
   const [segment, setSegment] = useState(seq?.segment || "5*");
@@ -652,8 +667,8 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-4xl max-h-[92vh] flex flex-col overflow-hidden">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-[95vw] md:max-w-4xl max-h-[92vh] flex flex-col overflow-hidden" onClick={e => e.stopPropagation()}>
 
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-4 flex-shrink-0">
@@ -1141,6 +1156,7 @@ const VueDashboard = ({ showToast }) => {
 
 // ─── Modal édition lead ────────────────────────────────────────────────────
 const ModalEditLead = ({ lead, onClose, onSave }) => {
+  useEscapeClose(onClose);
   const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"", langue: lead.langue||"fr", campaign: lead.campaign||"", comment: lead.comment||"" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
@@ -1155,8 +1171,8 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
     setSaving(false);
   };
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-semibold text-slate-900">Modifier le lead</h2>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
@@ -1213,6 +1229,7 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
 
 // ─── Modal bulk (lancer séquence sur plusieurs leads) ───────────────────────
 const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
+  useEscapeClose(onClose);
   const [selected, setSelected] = useState(sequences[0]?.id);
   const [status, setStatus] = useState(null);
   const [errMsg, setErrMsg] = useState("");
@@ -1226,8 +1243,8 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
     } catch(e) { setStatus("error"); setErrMsg(e.message || "Erreur"); }
   };
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <h3 className="text-base font-semibold text-slate-900">Lancer une séquence</h3>
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
@@ -2472,6 +2489,7 @@ const VueHubspot = () => {
 
 // ─── Modal Qualification Lead ──────────────────────────────────────────────────
 const ModalQualification = ({ email, onClose, onSuccess, sequences, showToast }) => {
+  useEscapeClose(onClose);
   const [form, setForm] = useState({
     email,
     prenom: '',
@@ -2548,8 +2566,8 @@ const ModalQualification = ({ email, onClose, onSuccess, sequences, showToast })
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <div>
             <h3 className="text-base font-semibold text-slate-900">Qualifier le lead</h3>
@@ -2737,7 +2755,7 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
     try {
       const r = await api.get("/email-validation/credits");
       if (r.Credits !== undefined) setCredits(r.Credits);
-    } catch(e) {}
+    } catch(e) { showToast?.("Erreur chargement crédits ZeroBounce", "error"); }
   };
 
   // Charger config ZeroBounce au montage — via /health (variable Railway)
@@ -3370,6 +3388,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
       if (topClientsChartInstance.current) topClientsChartInstance.current.destroy();
       if (clientMonthlyChartInstance.current) clientMonthlyChartInstance.current.destroy();
       if (comparisonChartInstance.current) comparisonChartInstance.current.destroy();
+      if (commissionsChartInstance.current) commissionsChartInstance.current.destroy();
     };
   }, []);
 
@@ -3677,6 +3696,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
         }
       }
     });
+    return () => { if (commissionsChartInstance.current) { commissionsChartInstance.current.destroy(); commissionsChartInstance.current = null; } };
   }, [analytics, viewMode]);
 
   // Create years comparison chart
@@ -3754,6 +3774,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
         }
       }
     });
+    return () => { if (comparisonChartInstance.current) { comparisonChartInstance.current.destroy(); comparisonChartInstance.current = null; } };
   }, [yearsComparison, selectedYears, viewMode]);
 
   // Calculate YTD and comparison
@@ -5705,6 +5726,11 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
     setRefreshing(false);
   };
 
+  // Cleanup timer et abort controller au démontage
+  useEffect(() => {
+    return () => { clearTimeout(searchTimer.current); if (abortRef.current) abortRef.current.abort(); };
+  }, []);
+
   // Escape pour fermer
   React.useEffect(() => {
     const handleEscape = (e) => { if (e.key === 'Escape') onBack?.(); };
@@ -6739,6 +6765,7 @@ const FacturesReminders = ({ showToast }) => {
 
 // ─── Modal Ajout Manuel d'Envoi ──────────────────────────────────────────────
 const ModalAddShipment = ({ isOpen, onClose, onAdded, showToast }) => {
+  useEscapeClose(onClose);
   const [type, setType] = useState('echantillon');
   const [orderRef, setOrderRef] = useState('');
   const [invoiceNumber, setInvoiceNumber] = useState('');
@@ -6801,8 +6828,8 @@ const ModalAddShipment = ({ isOpen, onClose, onAdded, showToast }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="flex items-center justify-between p-6 border-b border-slate-100 flex-shrink-0">
           <h2 className="text-lg font-semibold text-slate-900">Ajouter un envoi</h2>
@@ -7867,6 +7894,7 @@ const VueTemplates = ({ showToast }) => {
 
 // ─── Modal Template Editor ───────────────────────────────────────────────────
 const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
+  useEscapeClose(onClose);
   const [form, setForm] = useState({
     nom: template?.nom || '',
     categorie: template?.categorie || 'General',
@@ -7942,8 +7970,8 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
   };
 
   return (
-    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col">
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
           <h2 className="text-base font-semibold text-slate-900">
