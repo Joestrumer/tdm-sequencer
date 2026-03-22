@@ -269,6 +269,8 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN vf_client_id TEXT',
   'ALTER TABLE vf_catalog ADD COLUMN moq INTEGER DEFAULT 1',
   'ALTER TABLE vf_partners ADD COLUMN amenities TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN franco_seuil REAL DEFAULT 800',
+  'ALTER TABLE vf_partners ADD COLUMN frais_port REAL DEFAULT 0',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

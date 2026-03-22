@@ -48,6 +48,8 @@ module.exports = (db) => {
           email: matched.email,
           contact_nom: matched.contact_nom,
           amenities: matched.amenities || null,
+          franco_seuil: matched.franco_seuil ?? 800,
+          frais_port: matched.frais_port ?? 0,
         },
       });
     } catch (e) {
@@ -62,7 +64,7 @@ module.exports = (db) => {
   // ─── Profil ────────────────────────────────────────────────────────────────
   router.get('/profil', (req, res) => {
     try {
-      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities FROM vf_partners WHERE id = ?').get(req.partner.id);
+      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_port FROM vf_partners WHERE id = ?').get(req.partner.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       res.json(partner);
     } catch (e) {
@@ -145,14 +147,20 @@ module.exports = (db) => {
         };
       });
 
-      const totalTTC = Math.round(totalHT * 1.2 * 100) / 100;
       totalHT = Math.round(totalHT * 100) / 100;
+
+      // Frais de port si sous le franco
+      const francoSeuil = partner.franco_seuil ?? 800;
+      const fraisPort = partner.frais_port ?? 0;
+      const shippingCost = (fraisPort > 0 && totalHT < francoSeuil) ? fraisPort : 0;
+      const totalHTWithShipping = Math.round((totalHT + shippingCost) * 100) / 100;
+      const totalTTC = Math.round(totalHTWithShipping * 1.2 * 100) / 100;
 
       const orderId = uuidv4();
       db.prepare(`
         INSERT INTO partner_orders (id, partner_id, products, notes, total_ht, total_ttc)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run(orderId, partnerId, JSON.stringify(orderProducts), notes || null, totalHT, totalTTC);
+      `).run(orderId, partnerId, JSON.stringify(orderProducts), notes || null, totalHTWithShipping, totalTTC);
 
       // Email notification admin
       try {
@@ -191,7 +199,9 @@ module.exports = (db) => {
                 </tr></thead>
                 <tbody>${productRows}</tbody>
               </table>
-              <p style="font-size:16px"><strong>Total HT : ${totalHT.toFixed(2)} &euro;</strong></p>
+              <p style="font-size:14px">Sous-total HT : ${totalHT.toFixed(2)} &euro;</p>
+              ${shippingCost > 0 ? `<p style="font-size:14px">Frais de port : ${shippingCost.toFixed(2)} &euro; HT</p>` : '<p style="font-size:14px;color:#16a34a">Franco de port atteint</p>'}
+              <p style="font-size:16px"><strong>Total HT : ${totalHTWithShipping.toFixed(2)} &euro;</strong></p>
               <p style="font-size:16px"><strong>Total TTC : ${totalTTC.toFixed(2)} &euro;</strong></p>
               ${notes ? `<p><strong>Notes :</strong> ${notes}</p>` : ''}
               <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
@@ -210,8 +220,10 @@ module.exports = (db) => {
         statut: 'en_attente',
         products: orderProducts,
         notes: notes || null,
-        total_ht: totalHT,
+        total_ht: totalHTWithShipping,
         total_ttc: totalTTC,
+        subtotal_ht: totalHT,
+        shipping_cost: shippingCost,
       });
     } catch (e) {
       logger.error('Erreur création commande partenaire', { error: e.message });
@@ -234,6 +246,70 @@ module.exports = (db) => {
       }));
 
       res.json(result);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Supprimer une commande en attente ────────────────────────────────────
+  router.delete('/commande/:id', (req, res) => {
+    try {
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.id);
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+      if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Seules les commandes en attente peuvent être supprimées' });
+
+      db.prepare('DELETE FROM partner_orders WHERE id = ?').run(req.params.id);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Modifier une commande en attente ───────────────────────────────────────
+  router.patch('/commande/:id', (req, res) => {
+    try {
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.id);
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+      if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Seules les commandes en attente peuvent être modifiées' });
+
+      const { products, notes } = req.body;
+      if (!products || !Array.isArray(products) || products.length === 0) {
+        return res.status(400).json({ erreur: 'Au moins un produit requis' });
+      }
+
+      const partnerId = req.partner.id;
+      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(partnerId);
+
+      const catalog = {};
+      for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all()) {
+        catalog[p.ref] = p;
+      }
+      const discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom_normalise);
+
+      let totalHT = 0;
+      const orderProducts = products.map(item => {
+        const catEntry = catalog[item.ref];
+        if (!catEntry) throw new Error(`Produit inconnu: ${item.ref}`);
+        const qty = item.quantite || 1;
+        const discount = discounts.find(d => normalizeRef(d.product_code) === normalizeRef(item.ref));
+        const discount_pct = discount ? discount.discount_pct : 0;
+        const prix_remise = catEntry.prix_ht * (1 - discount_pct / 100);
+        const lineHT = Math.round(prix_remise * qty * 100) / 100;
+        totalHT += lineHT;
+        return { ref: item.ref, nom: catEntry.nom, quantite: qty, prix_ht: catEntry.prix_ht, prix_remise: Math.round(prix_remise * 100) / 100, discount_pct, total_ht: lineHT };
+      });
+
+      totalHT = Math.round(totalHT * 100) / 100;
+      const francoSeuil = partner.franco_seuil ?? 800;
+      const fraisPort = partner.frais_port ?? 0;
+      const shippingCost = (fraisPort > 0 && totalHT < francoSeuil) ? fraisPort : 0;
+      const totalHTWithShipping = Math.round((totalHT + shippingCost) * 100) / 100;
+      const totalTTC = Math.round(totalHTWithShipping * 1.2 * 100) / 100;
+
+      db.prepare('UPDATE partner_orders SET products = ?, notes = ?, total_ht = ?, total_ttc = ? WHERE id = ?')
+        .run(JSON.stringify(orderProducts), notes || null, totalHTWithShipping, totalTTC, req.params.id);
+
+      res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }

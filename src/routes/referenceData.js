@@ -38,6 +38,18 @@ module.exports = (db) => {
     }
   });
 
+  router.patch('/catalog/:ref', (req, res) => {
+    try {
+      const { moq } = req.body;
+      if (moq !== undefined) {
+        db.prepare('UPDATE vf_catalog SET moq = ? WHERE ref = ?').run(moq, req.params.ref);
+      }
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   router.delete('/catalog/:ref', (req, res) => {
     try {
       db.prepare('DELETE FROM vf_catalog WHERE ref = ?').run(req.params.ref);
@@ -53,8 +65,8 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities FROM vf_partners ORDER BY nom').all()
-        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -89,6 +101,8 @@ module.exports = (db) => {
       if (shipping_id !== undefined) { updates.push('shipping_id = ?'); params.push(shipping_id); }
       if (actif !== undefined) { updates.push('actif = ?'); params.push(actif ? 1 : 0); }
       if (req.body.amenities !== undefined) { updates.push('amenities = ?'); params.push(req.body.amenities); }
+      if (req.body.franco_seuil !== undefined) { updates.push('franco_seuil = ?'); params.push(req.body.franco_seuil); }
+      if (req.body.frais_port !== undefined) { updates.push('frais_port = ?'); params.push(req.body.frais_port); }
 
       if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
 

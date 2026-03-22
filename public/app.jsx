@@ -8314,7 +8314,7 @@ const VuePartenaires = ({ showToast }) => {
     setSelectedId(p.id);
     setEditing(false);
     setShowPwd(false);
-    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '' });
+    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? 800, frais_port: p.frais_port ?? 0 });
     // Charger amenities depuis le partenaire
     try {
       const am = p.amenities ? JSON.parse(p.amenities) : {};
@@ -8377,7 +8377,7 @@ const VuePartenaires = ({ showToast }) => {
     if (selectedId && partners.length) {
       const p = partners.find(x => x.id === selectedId);
       if (p) {
-        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '' });
+        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? 800, frais_port: p.frais_port ?? 0 });
         try { setAmenities(p.amenities ? JSON.parse(p.amenities) : {}); } catch (e) { setAmenities({}); }
       }
     }
@@ -8508,6 +8508,8 @@ const VuePartenaires = ({ showToast }) => {
                     <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.telephone || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Adresse</span><span className="text-sm text-slate-700">{selected.adresse || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Shipping ID</span><span className="text-sm text-slate-700 font-mono">{selected.shipping_id || '—'}</span></div>
+                    <div><span className="text-[10px] text-slate-400 block">Franco (seuil HT)</span><span className="text-sm text-slate-700">{(selected.franco_seuil ?? 800).toFixed(0)} &euro;</span></div>
+                    <div><span className="text-[10px] text-slate-400 block">Frais de port HT</span><span className="text-sm text-slate-700">{(selected.frais_port ?? 0).toFixed(2)} &euro;</span></div>
                   </div>
                 </div>
               ) : (
@@ -8535,6 +8537,14 @@ const VuePartenaires = ({ showToast }) => {
                     <div>
                       <label className="text-[10px] text-slate-400 block mb-0.5">Shipping ID</label>
                       <input type="text" value={editForm.shipping_id || ''} onChange={e => setEditForm(f => ({ ...f, shipping_id: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-0.5">Franco (seuil HT &euro;)</label>
+                      <input type="number" step="1" value={editForm.franco_seuil ?? 800} onChange={e => setEditForm(f => ({ ...f, franco_seuil: parseFloat(e.target.value) || 0 }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-0.5">Frais de port HT &euro;</label>
+                      <input type="number" step="0.01" value={editForm.frais_port ?? 0} onChange={e => setEditForm(f => ({ ...f, frais_port: parseFloat(e.target.value) || 0 }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
                     </div>
                   </div>
                   <div className="flex gap-2">
