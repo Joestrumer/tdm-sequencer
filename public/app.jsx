@@ -7479,7 +7479,6 @@ const VueParametres = () => {
         {saving ? "Sauvegarde..." : "Enregistrer les paramètres"}
       </button>
 
-      <VuePartenaires showToast={(m, t) => setMsg(t === "error" ? "❌ " + m : "✅ " + m)} />
       <VueHubspot />
       <VueVosFacturesConfig />
     </div>
@@ -8250,18 +8249,21 @@ const VueCommandes = ({ showToast }) => {
   );
 };
 
-// ─── GESTION PARTENAIRES (section dans Paramètres) ────────────────────────────
+// ─── VUE PARTENAIRES (onglet dédié) ──────────────────────────────────────────
 const VuePartenaires = ({ showToast }) => {
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [editId, setEditId] = useState(null);
+  const [search, setSearch] = useState("");
+  const [selectedId, setSelectedId] = useState(null);
   const [editForm, setEditForm] = useState({});
-  const [generatedPwd, setGeneratedPwd] = useState(null);
+  const [editing, setEditing] = useState(false);
+  const [showPwd, setShowPwd] = useState(false);
+  const [saving, setSaving] = useState(false);
 
   const charger = async () => {
     setLoading(true);
     try {
-      const data = await api.get('/reference/partners?all=1');
+      const data = await api.get('/reference/partners');
       if (Array.isArray(data)) setPartners(data);
     } catch (e) {}
     setLoading(false);
@@ -8269,12 +8271,28 @@ const VuePartenaires = ({ showToast }) => {
 
   useEffect(() => { charger(); }, []);
 
-  const genererMotDePasse = async (id) => {
+  const filtered = useMemo(() => {
+    if (!search) return partners;
+    const q = search.toLowerCase();
+    return partners.filter(p => p.nom.toLowerCase().includes(q) || (p.contact_nom || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q));
+  }, [partners, search]);
+
+  const selected = partners.find(p => p.id === selectedId);
+
+  const selectPartner = (p) => {
+    setSelectedId(p.id);
+    setEditing(false);
+    setShowPwd(false);
+    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '' });
+  };
+
+  const genererMotDePasse = async () => {
+    if (!selected) return;
     try {
-      const res = await api.post(`/reference/partners/${id}/generate-password`);
+      const res = await api.post(`/reference/partners/${selected.id}/generate-password`);
       if (res.ok) {
-        setGeneratedPwd({ id, password: res.password });
         showToast('Mot de passe généré', "success");
+        setShowPwd(true);
         charger();
       } else {
         showToast(res.erreur || 'Erreur', "error");
@@ -8284,115 +8302,190 @@ const VuePartenaires = ({ showToast }) => {
     }
   };
 
-  const sauvegarderEdition = async (id) => {
+  const sauvegarderEdition = async () => {
+    if (!selected) return;
+    setSaving(true);
     try {
-      await api.patch(`/reference/partners/${id}`, editForm);
+      await api.patch(`/reference/partners/${selected.id}`, editForm);
       showToast('Partenaire mis à jour', "success");
-      setEditId(null);
-      setEditForm({});
+      setEditing(false);
       charger();
     } catch (e) {
       showToast('Erreur', "error");
     }
+    setSaving(false);
   };
 
-  const toggleActif = async (id, actif) => {
+  const toggleActif = async () => {
+    if (!selected) return;
     try {
-      await api.patch(`/reference/partners/${id}`, { actif: !actif });
+      await api.patch(`/reference/partners/${selected.id}`, { actif: !selected.actif });
+      showToast(selected.actif ? 'Partenaire désactivé' : 'Partenaire activé', "success");
       charger();
     } catch (e) {}
   };
 
   const copyToClipboard = (text) => {
     navigator.clipboard.writeText(text);
-    showToast('Copié dans le presse-papier', "success");
+    showToast('Copié', "success");
   };
 
+  // Refresh selected after charger
+  useEffect(() => {
+    if (selectedId && partners.length) {
+      const p = partners.find(x => x.id === selectedId);
+      if (p) setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '' });
+    }
+  }, [partners, selectedId]);
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
-      <h3 className="text-sm font-semibold text-slate-800">Partenaires — Portail Commande</h3>
-      <p className="text-xs text-slate-400">Gérez les accès des partenaires au portail de commande (/partenaire).</p>
-
-      {loading && <div className="text-xs text-slate-400">Chargement...</div>}
-
-      <div className="space-y-3">
-        {partners.map(p => (
-          <div key={p.id} className={`border rounded-xl p-4 ${p.actif ? 'border-slate-200' : 'border-slate-100 bg-slate-50 opacity-60'}`}>
-            <div className="flex items-center justify-between mb-2">
-              <div className="flex items-center gap-2">
-                <span className="text-sm font-medium text-slate-900">{p.nom}</span>
+    <div className="flex gap-6 max-w-5xl">
+      {/* Liste gauche */}
+      <div className="w-72 flex-shrink-0 space-y-3">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Rechercher un partenaire..."
+          className="w-full border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+        />
+        {loading && <div className="text-xs text-slate-400 py-2">Chargement...</div>}
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden max-h-[calc(100vh-220px)] overflow-y-auto">
+          {filtered.map(p => (
+            <button
+              key={p.id}
+              onClick={() => selectPartner(p)}
+              className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors ${selectedId === p.id ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'}`}
+            >
+              <div className="flex items-center justify-between">
+                <span className={`text-sm font-medium truncate ${selectedId === p.id ? 'text-white' : 'text-slate-900'}`}>{p.nom}</span>
                 {p.has_password ? (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-50 text-emerald-600">Accès actif</span>
+                  <span className={`w-2 h-2 rounded-full flex-shrink-0 ${selectedId === p.id ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Accès portail actif" />
                 ) : (
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-slate-100 text-slate-400">Pas d'accès</span>
+                  <span className="w-2 h-2 rounded-full bg-slate-300 flex-shrink-0" title="Pas d'accès" />
                 )}
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => toggleActif(p.id, p.actif)} className={`text-[10px] px-2 py-1 rounded-lg ${p.actif ? 'bg-slate-100 text-slate-500 hover:bg-slate-200' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
-                  {p.actif ? 'Désactiver' : 'Activer'}
-                </button>
-                <button onClick={() => genererMotDePasse(p.id)} className="text-[10px] px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100">
-                  {p.has_password ? 'Régénérer MDP' : 'Générer MDP'}
-                </button>
-                <button onClick={() => { setEditId(editId === p.id ? null : p.id); setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '' }); }} className="text-[10px] px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200">
-                  Modifier
-                </button>
+              {p.contact_nom && <div className={`text-xs truncate mt-0.5 ${selectedId === p.id ? 'text-white/60' : 'text-slate-400'}`}>{p.contact_nom}</div>}
+            </button>
+          ))}
+          {!loading && filtered.length === 0 && (
+            <div className="px-4 py-6 text-center text-xs text-slate-400">Aucun partenaire{search ? ' trouvé' : ''}</div>
+          )}
+        </div>
+        <div className="text-xs text-slate-400">{filtered.length} partenaire{filtered.length > 1 ? 's' : ''} actif{filtered.length > 1 ? 's' : ''}</div>
+      </div>
+
+      {/* Détail droite */}
+      <div className="flex-1 min-w-0">
+        {!selected ? (
+          <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+            <div className="text-slate-300 text-4xl mb-3">&#128101;</div>
+            <div className="text-sm text-slate-400">Sélectionnez un partenaire dans la liste pour gérer son accès au portail.</div>
+            <div className="text-xs text-slate-300 mt-2">Portail accessible sur <code className="bg-slate-50 px-1.5 py-0.5 rounded">/partenaire</code></div>
+          </div>
+        ) : (
+          <div className="space-y-4 animate-fade-in" key={selected.id}>
+            {/* Header partenaire */}
+            <div className="bg-white rounded-2xl border border-slate-100 p-5">
+              <div className="flex items-center justify-between mb-4">
+                <div>
+                  <h2 className="text-lg font-semibold text-slate-900">{selected.nom}</h2>
+                  <div className="text-xs text-slate-400 mt-0.5">{selected.nom_normalise}</div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {selected.has_password ? (
+                    <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">Accès portail actif</span>
+                  ) : (
+                    <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-400 font-medium">Pas d'accès portail</span>
+                  )}
+                </div>
               </div>
+
+              {/* Mot de passe */}
+              <div className="bg-slate-50 rounded-xl p-4 mb-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs font-medium text-slate-600">Mot de passe portail</span>
+                  <div className="flex items-center gap-2">
+                    {selected.password_plain && (
+                      <button onClick={() => setShowPwd(!showPwd)} className="text-[11px] px-2 py-1 rounded-lg bg-white border border-slate-200 text-slate-600 hover:bg-slate-50">
+                        {showPwd ? 'Masquer' : 'Afficher'}
+                      </button>
+                    )}
+                    <button onClick={genererMotDePasse} className="text-[11px] px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium">
+                      {selected.has_password ? 'Régénérer' : 'Générer un mot de passe'}
+                    </button>
+                  </div>
+                </div>
+                {selected.password_plain && showPwd ? (
+                  <div className="flex items-center gap-2">
+                    <code className="text-sm font-mono bg-white px-3 py-2 rounded-lg border border-slate-200 text-slate-900 select-all">{selected.password_plain}</code>
+                    <button onClick={() => copyToClipboard(selected.password_plain)} className="text-xs px-2.5 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700">Copier</button>
+                  </div>
+                ) : selected.has_password && !showPwd ? (
+                  <div className="text-xs text-slate-400">&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022;&#x2022; — cliquez "Afficher" pour voir le mot de passe</div>
+                ) : (
+                  <div className="text-xs text-slate-400">Aucun mot de passe défini. Cliquez "Générer" pour créer un accès.</div>
+                )}
+              </div>
+
+              {/* Infos partenaire */}
+              {!editing ? (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-medium text-slate-600">Informations</span>
+                    <button onClick={() => setEditing(true)} className="text-[11px] px-2 py-1 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200">Modifier</button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                    <div><span className="text-[10px] text-slate-400 block">Email</span><span className="text-sm text-slate-700">{selected.email || '—'}</span></div>
+                    <div><span className="text-[10px] text-slate-400 block">Contact</span><span className="text-sm text-slate-700">{selected.contact_nom || '—'}</span></div>
+                    <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.telephone || '—'}</span></div>
+                    <div><span className="text-[10px] text-slate-400 block">Adresse</span><span className="text-sm text-slate-700">{selected.adresse || '—'}</span></div>
+                    <div><span className="text-[10px] text-slate-400 block">Shipping ID</span><span className="text-sm text-slate-700 font-mono">{selected.shipping_id || '—'}</span></div>
+                  </div>
+                </div>
+              ) : (
+                <div className="animate-fade-in">
+                  <div className="flex items-center justify-between mb-3">
+                    <span className="text-xs font-medium text-slate-600">Modifier les informations</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-0.5">Email</label>
+                      <input type="email" value={editForm.email || ''} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-0.5">Contact</label>
+                      <input type="text" value={editForm.contact_nom || ''} onChange={e => setEditForm(f => ({ ...f, contact_nom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-0.5">Téléphone</label>
+                      <input type="text" value={editForm.telephone || ''} onChange={e => setEditForm(f => ({ ...f, telephone: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-0.5">Adresse</label>
+                      <input type="text" value={editForm.adresse || ''} onChange={e => setEditForm(f => ({ ...f, adresse: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-0.5">Shipping ID</label>
+                      <input type="text" value={editForm.shipping_id || ''} onChange={e => setEditForm(f => ({ ...f, shipping_id: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    </div>
+                  </div>
+                  <div className="flex gap-2">
+                    <button onClick={sauvegarderEdition} disabled={saving} className="text-xs px-4 py-2 bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50">{saving ? 'Sauvegarde...' : 'Sauvegarder'}</button>
+                    <button onClick={() => setEditing(false)} className="text-xs px-4 py-2 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50">Annuler</button>
+                  </div>
+                </div>
+              )}
             </div>
 
-            {/* Password display */}
-            {generatedPwd && generatedPwd.id === p.id && (
-              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-2 animate-fade-in">
-                <div className="text-xs text-amber-700 font-medium mb-1">Mot de passe généré (affiché une seule fois) :</div>
-                <div className="flex items-center gap-2">
-                  <code className="text-sm font-mono bg-white px-3 py-1.5 rounded border border-amber-200 text-slate-900 select-all">{generatedPwd.password}</code>
-                  <button onClick={() => copyToClipboard(generatedPwd.password)} className="text-xs px-2 py-1 bg-amber-100 text-amber-700 rounded hover:bg-amber-200">Copier</button>
-                </div>
-              </div>
-            )}
-
-            {/* Info display */}
-            {(p.email || p.contact_nom || p.telephone) && editId !== p.id && (
-              <div className="flex gap-4 text-xs text-slate-400 mt-1">
-                {p.email && <span>{p.email}</span>}
-                {p.contact_nom && <span>{p.contact_nom}</span>}
-                {p.telephone && <span>{p.telephone}</span>}
-              </div>
-            )}
-
-            {/* Edit form */}
-            {editId === p.id && (
-              <div className="mt-3 space-y-2 animate-fade-in">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-0.5">Email</label>
-                    <input type="email" value={editForm.email || ''} onChange={e => setEditForm(f => ({ ...f, email: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-0.5">Contact</label>
-                    <input type="text" value={editForm.contact_nom || ''} onChange={e => setEditForm(f => ({ ...f, contact_nom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-0.5">Téléphone</label>
-                    <input type="text" value={editForm.telephone || ''} onChange={e => setEditForm(f => ({ ...f, telephone: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-0.5">Adresse</label>
-                    <input type="text" value={editForm.adresse || ''} onChange={e => setEditForm(f => ({ ...f, adresse: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-slate-400 block mb-0.5">Shipping ID</label>
-                    <input type="text" value={editForm.shipping_id || ''} onChange={e => setEditForm(f => ({ ...f, shipping_id: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                  </div>
-                </div>
-                <div className="flex gap-2">
-                  <button onClick={() => sauvegarderEdition(p.id)} className="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700">Sauvegarder</button>
-                  <button onClick={() => { setEditId(null); setEditForm({}); }} className="text-xs px-3 py-1.5 border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50">Annuler</button>
-                </div>
-              </div>
-            )}
+            {/* Actions */}
+            <div className="flex items-center gap-3">
+              <button onClick={toggleActif} className={`text-xs px-3 py-2 rounded-lg font-medium ${selected.actif ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
+                {selected.actif ? 'Désactiver ce partenaire' : 'Réactiver ce partenaire'}
+              </button>
+            </div>
           </div>
-        ))}
+        )}
       </div>
     </div>
   );
@@ -8485,6 +8578,7 @@ function App() {
     { id: "dashboard", icon: "📧", label: "Séquences" },
     { id: "ventes", icon: "📈", label: "Ventes" },
     { id: "commandes", icon: "📦", label: "Commandes" },
+    { id: "partenaires", icon: "🤝", label: "Partenaires" },
     { id: "leads", icon: "👥", label: "Leads" },
     { id: "sequences", icon: "📨", label: "Campagnes" },
     { id: "templates", icon: "📝", label: "Templates" },
@@ -8565,6 +8659,7 @@ function App() {
               {vue === "dashboard" && `${leads.filter(l => l.statut === "En séquence").length} leads en séquence`}
               {vue === "ventes" && "Analytics CA, clients & commandes"}
               {vue === "commandes" && "Commandes partenaires en attente de validation"}
+              {vue === "partenaires" && "Gestion des accès au portail partenaire"}
               {vue === "leads" && `${leads.length} leads au total`}
               {vue === "sequences" && `${sequences.length} séquences actives`}
               {vue === "templates" && "Bibliothèque de templates d'emails"}
@@ -8587,6 +8682,7 @@ function App() {
           {vue === "dashboard" && <VueDashboard showToast={showToast} />}
           {vue === "ventes" && <AnalyticsSpreadsheet showToast={showToast} />}
           {vue === "commandes" && <VueCommandes showToast={showToast} />}
+          {vue === "partenaires" && <VuePartenaires showToast={showToast} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} />}
           {vue === "templates" && <VueTemplates showToast={showToast} />}

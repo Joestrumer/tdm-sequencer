@@ -53,8 +53,8 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, password_hash IS NOT NULL as has_password FROM vf_partners ORDER BY nom').all()
-        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, password_hash IS NOT NULL as has_password FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, password_hash IS NOT NULL as has_password, password_plain FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, password_hash IS NOT NULL as has_password, password_plain FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -108,7 +108,7 @@ module.exports = (db) => {
       const plainPassword = crypto.randomBytes(4).toString('hex'); // 8 caractères hex
       const hash = await bcrypt.hash(plainPassword, 10);
 
-      db.prepare('UPDATE vf_partners SET password_hash = ? WHERE id = ?').run(hash, partner.id);
+      db.prepare('UPDATE vf_partners SET password_hash = ?, password_plain = ? WHERE id = ?').run(hash, plainPassword, partner.id);
 
       res.json({
         ok: true,

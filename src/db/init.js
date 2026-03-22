@@ -265,6 +265,7 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN telephone TEXT',
   'ALTER TABLE vf_partners ADD COLUMN adresse TEXT',
   'ALTER TABLE vf_partners ADD COLUMN shipping_id TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN password_plain TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
