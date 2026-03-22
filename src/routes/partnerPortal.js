@@ -87,8 +87,11 @@ module.exports = (db) => {
       // Produits actifs (exclure FP et FE)
       const products = db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all();
 
-      // Remises du partenaire (utilise nom_normalise comme client_name)
-      const discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom_normalise);
+      // Remises du partenaire (cherche par nom exact puis par nom_normalise en fallback)
+      let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
+      if (discounts.length === 0) {
+        discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
+      }
 
       const catalogue = products.map(p => {
         const discount = discounts.find(d => normalizeRef(d.product_code) === normalizeRef(p.ref));
@@ -128,7 +131,8 @@ module.exports = (db) => {
       for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all()) {
         catalog[p.ref] = p;
       }
-      const discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom_normalise);
+      let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
+      if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
 
       // Calculer les produits avec prix remisés
       let totalHT = 0;
@@ -301,7 +305,8 @@ module.exports = (db) => {
       for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all()) {
         catalog[p.ref] = p;
       }
-      const discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom_normalise);
+      let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
+      if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
 
       let totalHT = 0;
       const orderProducts = products.map(item => {

@@ -282,5 +282,49 @@ for (const sql of migrations) {
   }
 }
 
+// ─── Seed MOQ (quantité par carton) ────────────────────────────────────────
+const MOQ_MAP = {
+  // 4 par carton
+  'P004-500': 4, 'P007-5000': 4, 'P008-5000': 4, 'P010-5000': 4, 'P011-5000': 4,
+  'P014-5000': 4, 'P015': 4, 'P019-5000': 4, 'P024-5000': 4, 'P034-5000': 4,
+  'P035-5000': 4, 'P036-5000': 4, 'P037-5000': 4, 'P039-500': 4, 'P041-500': 4,
+  'P042-5000': 4, 'P040-5000': 4,
+  // 6 par carton
+  'P003': 6, 'P004': 6, 'P005': 6, 'P006': 6, 'P007': 6, 'P007-30': 6,
+  'P008': 6, 'P008-30': 6, 'P010': 6, 'P011': 6, 'P011-30': 6, 'P014': 6,
+  'P018': 6, 'P019': 6, 'P022': 6, 'P024': 6, 'P027': 6, 'P034': 6,
+  'P035': 6, 'P035-30': 6, 'P036': 6, 'P037': 6, 'P039': 6, 'P039-200V': 6,
+  'P041': 6, 'P041-200V': 6, 'P042-30': 6, 'P317-100': 6, 'P040': 6,
+  // 12 par carton
+  'P017': 12, 'P039SPRAY': 12,
+  // 30 par carton
+  'P021': 30,
+  // 44 par carton
+  'P017-30': 44, 'P026': 44, 'P038-30': 44,
+  // 50 par carton
+  'P011-100': 50, 'P014-100': 50, 'P034-100': 50, 'P035-100': 50, 'P036-100': 50, 'P037-100': 50,
+  // 56 par carton
+  'P008-75': 56,
+  // 66 par carton
+  'P016': 66,
+  // 100 par carton
+  'P008-150': 100, 'P009': 100, 'P010-150': 100, 'P010-30': 100, 'P010-50': 100,
+  'P018-50': 100, 'P019-50': 100, 'P020': 100, 'P024-40': 100, 'P029': 100,
+  // 112 par carton
+  'P023': 112,
+  // 300 par carton
+  'P012': 300,
+  // 336 par carton
+  'P021-20': 336,
+};
+
+const stmtMoq = db.prepare('UPDATE vf_catalog SET moq = ? WHERE ref = ? AND moq = 1');
+let moqUpdated = 0;
+for (const [ref, moq] of Object.entries(MOQ_MAP)) {
+  const r = stmtMoq.run(moq, ref);
+  if (r.changes > 0) moqUpdated++;
+}
+if (moqUpdated > 0) console.log(`📦 ${moqUpdated} MOQ mis à jour`);
+
 console.log('✅ Base de données initialisée :', DB_PATH);
 module.exports = db;
