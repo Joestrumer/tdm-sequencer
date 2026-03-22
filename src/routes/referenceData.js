@@ -53,8 +53,8 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain FROM vf_partners ORDER BY nom').all()
-        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -88,6 +88,7 @@ module.exports = (db) => {
       if (adresse !== undefined) { updates.push('adresse = ?'); params.push(adresse); }
       if (shipping_id !== undefined) { updates.push('shipping_id = ?'); params.push(shipping_id); }
       if (actif !== undefined) { updates.push('actif = ?'); params.push(actif ? 1 : 0); }
+      if (req.body.amenities !== undefined) { updates.push('amenities = ?'); params.push(req.body.amenities); }
 
       if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
 
@@ -123,6 +124,45 @@ module.exports = (db) => {
   router.delete('/partners/:id', (req, res) => {
     try {
       db.prepare('DELETE FROM vf_partners WHERE id = ?').run(req.params.id);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Remises par partenaire ──────────────────────────────────────────────
+
+  router.get('/partners/:id/discounts', (req, res) => {
+    try {
+      const partner = db.prepare('SELECT nom FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+      const rows = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? ORDER BY product_code').all(partner.nom);
+      res.json(rows);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.post('/partners/:id/discounts', (req, res) => {
+    try {
+      const partner = db.prepare('SELECT nom FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+      const { product_code, discount_pct } = req.body;
+      if (!product_code || discount_pct === undefined) return res.status(400).json({ erreur: 'product_code et discount_pct requis' });
+      db.prepare(`
+        INSERT INTO vf_client_discounts (client_name, product_code, discount_pct)
+        VALUES (?, ?, ?)
+        ON CONFLICT(client_name, product_code) DO UPDATE SET discount_pct = excluded.discount_pct
+      `).run(partner.nom, product_code, discount_pct);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.delete('/partners/:id/discounts/:discountId', (req, res) => {
+    try {
+      db.prepare('DELETE FROM vf_client_discounts WHERE id = ?').run(req.params.discountId);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });

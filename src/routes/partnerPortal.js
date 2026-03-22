@@ -76,8 +76,8 @@ module.exports = (db) => {
       const partner = db.prepare('SELECT nom, nom_normalise FROM vf_partners WHERE id = ?').get(partnerId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
-      // Produits actifs
-      const products = db.prepare('SELECT * FROM vf_catalog WHERE actif = 1').all();
+      // Produits actifs (exclure FP et FE)
+      const products = db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all();
 
       // Remises du partenaire (utilise nom_normalise comme client_name)
       const discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom_normalise);
@@ -93,6 +93,7 @@ module.exports = (db) => {
           prix_remise: Math.round(prix_remise * 100) / 100,
           discount_pct,
           tva: p.tva,
+          moq: p.moq || 1,
         };
       });
 
@@ -114,9 +115,9 @@ module.exports = (db) => {
       const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(partnerId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
-      // Récupérer catalogue et remises
+      // Récupérer catalogue et remises (exclure FP/FE)
       const catalog = {};
-      for (const p of db.prepare('SELECT * FROM vf_catalog WHERE actif = 1').all()) {
+      for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all()) {
         catalog[p.ref] = p;
       }
       const discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom_normalise);

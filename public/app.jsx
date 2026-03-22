@@ -8261,6 +8261,10 @@ const VuePartenaires = ({ showToast }) => {
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
   const [tab, setTab] = useState("tous"); // "tous" | "portail"
+  const [catalog, setCatalog] = useState([]);
+  const [discounts, setDiscounts] = useState([]);
+  const [newDiscount, setNewDiscount] = useState({ product_code: '', discount_pct: '' });
+  const [amenities, setAmenities] = useState({});
 
   const charger = async () => {
     setLoading(true);
@@ -8271,7 +8275,10 @@ const VuePartenaires = ({ showToast }) => {
     setLoading(false);
   };
 
-  useEffect(() => { charger(); }, []);
+  useEffect(() => {
+    charger();
+    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data); });
+  }, []);
 
   const syncVF = async () => {
     setSyncing(true);
@@ -8308,6 +8315,17 @@ const VuePartenaires = ({ showToast }) => {
     setEditing(false);
     setShowPwd(false);
     setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '' });
+    // Charger amenities depuis le partenaire
+    try {
+      const am = p.amenities ? JSON.parse(p.amenities) : {};
+      setAmenities(am);
+    } catch (e) { setAmenities({}); }
+    // Charger les remises
+    setNewDiscount({ product_code: '', discount_pct: '' });
+    api.get(`/reference/partners/${p.id}/discounts`).then(data => {
+      if (Array.isArray(data)) setDiscounts(data);
+      else setDiscounts([]);
+    }).catch(() => setDiscounts([]));
   };
 
   const genererMotDePasse = async () => {
@@ -8358,7 +8376,10 @@ const VuePartenaires = ({ showToast }) => {
   useEffect(() => {
     if (selectedId && partners.length) {
       const p = partners.find(x => x.id === selectedId);
-      if (p) setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '' });
+      if (p) {
+        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '' });
+        try { setAmenities(p.amenities ? JSON.parse(p.amenities) : {}); } catch (e) { setAmenities({}); }
+      }
     }
   }, [partners, selectedId]);
 
@@ -8524,6 +8545,128 @@ const VuePartenaires = ({ showToast }) => {
               )}
             </div>
 
+            {/* Produits amenities */}
+            <div className="bg-white rounded-2xl border border-slate-100 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-slate-600">Produits amenities</span>
+              </div>
+              {(() => {
+                const AMENITY_CATEGORIES = [
+                  { key: 'gel_douche', label: 'Gel douche', prefixes: ['P008', 'P035', 'P036', 'P037', 'P014', 'P042'] },
+                  { key: 'shampoing', label: 'Shampoing', prefixes: ['P010', 'P019', 'P034'] },
+                  { key: 'apres_shampoing', label: 'Après-shampoing', prefixes: ['P024'] },
+                  { key: 'lotion', label: 'Lotion', prefixes: ['P011'] },
+                  { key: 'savon_main', label: 'Savon main', prefixes: ['P007', 'P017', 'P038'] },
+                ];
+                const getOptionsForCategory = (prefixes) => {
+                  return catalog.filter(c => prefixes.some(prefix => c.ref === prefix || c.ref.startsWith(prefix + '-')));
+                };
+                const saveAmenities = async (newAm) => {
+                  setAmenities(newAm);
+                  try {
+                    await api.patch(`/reference/partners/${selected.id}`, { amenities: JSON.stringify(newAm) });
+                    showToast('Amenities mis à jour', 'success');
+                    charger();
+                  } catch (e) { showToast('Erreur sauvegarde amenities', 'error'); }
+                };
+                return (
+                  <div className="grid grid-cols-1 gap-2">
+                    {AMENITY_CATEGORIES.map(cat => {
+                      const options = getOptionsForCategory(cat.prefixes);
+                      return (
+                        <div key={cat.key} className="flex items-center gap-3">
+                          <label className="text-xs text-slate-500 w-32 flex-shrink-0">{cat.label}</label>
+                          <select
+                            value={amenities[cat.key] || ''}
+                            onChange={e => saveAmenities({ ...amenities, [cat.key]: e.target.value || undefined })}
+                            className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          >
+                            <option value="">— Non défini —</option>
+                            {options.map(o => <option key={o.ref} value={o.ref}>{o.ref} — {o.nom}</option>)}
+                          </select>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
+            </div>
+
+            {/* Réductions */}
+            <div className="bg-white rounded-2xl border border-slate-100 p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className="text-xs font-medium text-slate-600">Réductions ({discounts.length})</span>
+              </div>
+              {discounts.length > 0 && (
+                <table className="w-full text-xs mb-3">
+                  <thead>
+                    <tr className="border-b border-slate-100">
+                      <th className="text-left py-1.5 text-slate-400 font-medium">Ref</th>
+                      <th className="text-left py-1.5 text-slate-400 font-medium">Produit</th>
+                      <th className="text-right py-1.5 text-slate-400 font-medium">Remise %</th>
+                      <th className="w-8"></th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {discounts.map(d => {
+                      const prod = catalog.find(c => c.ref === d.product_code);
+                      return (
+                        <tr key={d.id} className="border-b border-slate-50">
+                          <td className="py-1.5 font-mono text-slate-700">{d.product_code}</td>
+                          <td className="py-1.5 text-slate-600">{prod ? prod.nom : '—'}</td>
+                          <td className="py-1.5 text-right text-emerald-600 font-medium">{d.discount_pct}%</td>
+                          <td className="py-1.5 text-right">
+                            <button onClick={async () => {
+                              await api.delete(`/reference/partners/${selected.id}/discounts/${d.id}`);
+                              setDiscounts(ds => ds.filter(x => x.id !== d.id));
+                              showToast('Réduction supprimée', 'success');
+                            }} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              )}
+              <div className="flex items-center gap-2">
+                <select
+                  value={newDiscount.product_code}
+                  onChange={e => setNewDiscount(d => ({ ...d, product_code: e.target.value }))}
+                  className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                >
+                  <option value="">Sélectionner un produit...</option>
+                  {catalog.filter(c => c.ref !== 'FP' && c.ref !== 'FE').map(c => <option key={c.ref} value={c.ref}>{c.ref} — {c.nom}</option>)}
+                </select>
+                <input
+                  type="number"
+                  value={newDiscount.discount_pct}
+                  onChange={e => setNewDiscount(d => ({ ...d, discount_pct: e.target.value }))}
+                  placeholder="%"
+                  className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  min="0" max="100" step="0.5"
+                />
+                <button
+                  onClick={async () => {
+                    if (!newDiscount.product_code || !newDiscount.discount_pct) return;
+                    const res = await api.post(`/reference/partners/${selected.id}/discounts`, {
+                      product_code: newDiscount.product_code,
+                      discount_pct: parseFloat(newDiscount.discount_pct),
+                    });
+                    if (res.ok) {
+                      showToast('Réduction ajoutée', 'success');
+                      setNewDiscount({ product_code: '', discount_pct: '' });
+                      const data = await api.get(`/reference/partners/${selected.id}/discounts`);
+                      if (Array.isArray(data)) setDiscounts(data);
+                    } else {
+                      showToast(res.erreur || 'Erreur', 'error');
+                    }
+                  }}
+                  disabled={!newDiscount.product_code || !newDiscount.discount_pct}
+                  className="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-30 flex-shrink-0"
+                >+</button>
+              </div>
+            </div>
+
             {/* Actions */}
             <div className="flex items-center gap-3">
               <button onClick={toggleActif} className={`text-xs px-3 py-2 rounded-lg font-medium ${selected.actif ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
@@ -8633,10 +8776,10 @@ function App() {
       { id: "templates", label: "Templates" },
     ]},
     { id: "factures", icon: "📄", label: "Factures" },
+    { id: "emails", icon: "✉️", label: "Validation Email" },
     { id: "config", icon: "⚙️", label: "Configuration", children: [
       { id: "parametres", label: "Paramètres" },
       { id: "blocklist", label: "Blocklist" },
-      { id: "emails", label: "Validation Email" },
     ]},
   ];
 

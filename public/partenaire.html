@@ -120,8 +120,12 @@
 
       const getQty = (ref) => panier[ref]?.quantite || 0;
 
-      const setQty = (ref, qty) => {
+      const setQty = (ref, qty, moq) => {
+        const minQty = moq || 1;
         if (qty <= 0) {
+          setPanier(p => { const n = { ...p }; delete n[ref]; return n; });
+        } else if (qty < minQty) {
+          // Si on descend sous le MOQ, supprimer du panier
           setPanier(p => { const n = { ...p }; delete n[ref]; return n; });
         } else {
           const prod = catalogue.find(c => c.ref === ref);
@@ -154,15 +158,18 @@
                     {p.discount_pct > 0 && (
                       <div className="text-xs text-emerald-400/70">-{p.discount_pct}%</div>
                     )}
+                    {(p.moq || 1) > 1 && (
+                      <div className="text-[10px] text-slate-400 mt-0.5">Min. {p.moq} unit&eacute;(s)</div>
+                    )}
                   </div>
                   <div className="flex items-center gap-2">
                     {getQty(p.ref) > 0 && (
-                      <button onClick={() => setQty(p.ref, getQty(p.ref) - 1)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-lg font-bold transition-colors">-</button>
+                      <button onClick={() => setQty(p.ref, getQty(p.ref) - 1, p.moq)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-lg font-bold transition-colors">-</button>
                     )}
                     {getQty(p.ref) > 0 && (
                       <span className="text-white font-semibold text-sm min-w-[20px] text-center">{getQty(p.ref)}</span>
                     )}
-                    <button onClick={() => setQty(p.ref, getQty(p.ref) + 1)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-lg font-bold transition-colors">+</button>
+                    <button onClick={() => setQty(p.ref, getQty(p.ref) === 0 ? (p.moq || 1) : getQty(p.ref) + 1, p.moq)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-lg font-bold transition-colors">+</button>
                   </div>
                 </div>
               </div>
@@ -201,7 +208,8 @@
               <div className="flex items-center gap-3 ml-3">
                 <div className="flex items-center gap-1">
                   <button onClick={() => setPanier(p => {
-                    if (i.quantite <= 1) { const n = { ...p }; delete n[i.ref]; return n; }
+                    const moq = i.moq || 1;
+                    if (i.quantite - 1 < moq) { const n = { ...p }; delete n[i.ref]; return n; }
                     return { ...p, [i.ref]: { ...i, quantite: i.quantite - 1 } };
                   })} className="w-6 h-6 rounded bg-white/10 text-white text-xs hover:bg-white/20 flex items-center justify-center">-</button>
                   <span className="text-white text-sm min-w-[24px] text-center">{i.quantite}</span>

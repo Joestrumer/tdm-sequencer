@@ -606,5 +606,36 @@ const seedAll = db.transaction(() => {
 });
 
 seedAll();
+
+// ─── MOQ (Minimum Order Quantity) ────────────────────────────────────────────
+console.log('🌱 Seed des MOQ...');
+
+const moqData = {
+  'COFFRETS': 1, 'P018-5000': 1, 'P039-3000V': 1, 'P039-5000': 1, 'P041-5000': 1,
+  'P042': 1, 'P5L': 1, 'PFD': 1, 'PFS': 1, 'PFT': 1, 'SPFS': 1,
+  'P039SPRAY-VIDE': 1, 'SPRAY-VIDE': 1,
+  'P004-500': 4, 'P007-5000': 4, 'P008-5000': 4, 'P010-5000': 4, 'P011-5000': 4,
+  'P014-5000': 4, 'P015': 4, 'P019-5000': 4, 'P024-5000': 4, 'P034-5000': 4,
+  'P035-5000': 4, 'P037-5000': 4, 'P039-500': 4, 'P041-500': 4, 'P042-5000': 4,
+  'P003': 6, 'P004': 6, 'P005': 6, 'P006': 6, 'P007': 6, 'P007-30': 6,
+  'P008': 6, 'P008-30': 6, 'P010': 6, 'P011': 6, 'P011-30': 6, 'P014': 6,
+  'P018': 6, 'P019': 6, 'P022': 6, 'P024': 6, 'P027': 6, 'P034': 6,
+  'P035': 6, 'P035-30': 6, 'P037': 6, 'P039': 6, 'P039-200V': 6,
+  'P041': 6, 'P042-30': 6, 'P317-100': 6, 'P040': 6,
+  'P017': 12, 'P021': 30, 'P017-30': 44, 'P038-30': 44,
+  'P011-100': 50, 'P014-100': 50,
+  'P016': 66, 'P008-150': 100, 'P009': 100, 'P010-150': 100,
+  'P010-30': 100, 'P010-50': 100, 'P018-50': 100, 'P020': 100,
+  'P024-40': 100, 'P023': 112, 'P012': 300, 'P021-20': 336,
+};
+
+const moqStmt = db.prepare('UPDATE vf_catalog SET moq = ? WHERE ref = ?');
+let moqCount = 0;
+for (const [ref, moq] of Object.entries(moqData)) {
+  const info = moqStmt.run(moq, ref);
+  if (info.changes > 0) moqCount++;
+}
+console.log(`  ✅ MOQ : ${moqCount} produits mis à jour`);
+
 console.log('🌱 Seed terminé !');
 process.exit(0);
