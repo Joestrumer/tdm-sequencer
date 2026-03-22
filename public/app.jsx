@@ -8260,6 +8260,7 @@ const VuePartenaires = ({ showToast }) => {
   const [showPwd, setShowPwd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [tab, setTab] = useState("tous"); // "tous" | "portail"
 
   const charger = async () => {
     setLoading(true);
@@ -8289,10 +8290,16 @@ const VuePartenaires = ({ showToast }) => {
   };
 
   const filtered = useMemo(() => {
-    if (!search) return partners;
-    const q = search.toLowerCase();
-    return partners.filter(p => p.nom.toLowerCase().includes(q) || (p.contact_nom || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q));
-  }, [partners, search]);
+    let list = partners;
+    if (tab === "portail") list = list.filter(p => p.has_password);
+    if (search) {
+      const q = search.toLowerCase();
+      list = list.filter(p => p.nom.toLowerCase().includes(q) || (p.contact_nom || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q));
+    }
+    return list;
+  }, [partners, search, tab]);
+
+  const portalCount = useMemo(() => partners.filter(p => p.has_password).length, [partners]);
 
   const selected = partners.find(p => p.id === selectedId);
 
@@ -8359,6 +8366,14 @@ const VuePartenaires = ({ showToast }) => {
     <div className="flex gap-6 max-w-5xl">
       {/* Liste gauche */}
       <div className="w-72 flex-shrink-0 space-y-3">
+        <div className="flex gap-1 bg-slate-100 rounded-xl p-0.5">
+          <button onClick={() => { setTab("tous"); setSelectedId(null); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "tous" ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            Tous ({partners.length})
+          </button>
+          <button onClick={() => { setTab("portail"); setSelectedId(null); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "portail" ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            Accès portail ({portalCount})
+          </button>
+        </div>
         <div className="flex gap-2">
           <input
             type="text"

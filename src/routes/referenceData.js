@@ -171,6 +171,13 @@ module.exports = (db) => {
       const insertStmt = db.prepare(`
         INSERT INTO vf_partners (nom, nom_normalise, email, contact_nom, telephone, adresse, vf_client_id, actif)
         VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        ON CONFLICT(nom) DO UPDATE SET
+          nom_normalise = excluded.nom_normalise,
+          email = COALESCE(excluded.email, vf_partners.email),
+          contact_nom = COALESCE(excluded.contact_nom, vf_partners.contact_nom),
+          telephone = COALESCE(excluded.telephone, vf_partners.telephone),
+          adresse = COALESCE(excluded.adresse, vf_partners.adresse),
+          vf_client_id = COALESCE(excluded.vf_client_id, vf_partners.vf_client_id)
       `);
 
       // Aussi mettre à jour vf_client_id dans vf_client_mappings si manquant
