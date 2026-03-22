@@ -355,15 +355,30 @@
     };
 
     // ─── Panier Panel ───────────────────────────────────────────────────────────
-    const PanierPanel = ({ panier, setPanier, onCommander, loading, francoSeuil, fraisPort }) => {
+    const PanierPanel = ({ panier, setPanier, onCommander, loading, partner }) => {
       const [notes, setNotes] = useState("");
       const items = Object.values(panier);
       const subtotalHT = items.reduce((s, i) => s + i.prix_remise * i.quantite, 0);
-      const seuil = francoSeuil ?? 800;
-      const shippingCost = (fraisPort > 0 && subtotalHT < seuil) ? fraisPort : 0;
-      const totalHT = subtotalHT + shippingCost;
+      const francoSeuil = partner.franco_seuil ?? 800;
+      const exonere = partner.frais_exonere ?? 0;
+      const fpPrix = partner.fp_prix ?? 0;
+      const fePrix = partner.fe_prix ?? 0;
+
+      let fraisLabel = '';
+      let fraisMontant = 0;
+      let francoAtteint = subtotalHT >= francoSeuil;
+      if (!exonere) {
+        if (francoAtteint) {
+          fraisLabel = 'Frais de pr\u00e9paration (FP)';
+          fraisMontant = fpPrix;
+        } else {
+          fraisLabel = "Frais d'exp\u00e9dition (FE)";
+          fraisMontant = fePrix;
+        }
+      }
+      const totalHT = subtotalHT + fraisMontant;
       const totalTTC = totalHT * 1.2;
-      const manquePourFranco = seuil > 0 ? Math.max(0, seuil - subtotalHT) : 0;
+      const manquePourFranco = Math.max(0, francoSeuil - subtotalHT);
 
       if (items.length === 0) {
         return (
@@ -403,28 +418,47 @@
               </div>
             </div>
           ))}
+
+          {/* Barre de progression franco */}
+          {!exonere && (
+            <div className="bg-white/5 rounded-xl p-3">
+              <div className="flex justify-between text-[11px] mb-1.5">
+                <span className={francoAtteint ? "text-emerald-400" : "text-slate-400"}>
+                  {francoAtteint ? 'Franco atteint !' : `Encore ${manquePourFranco.toFixed(2)} \u20ac pour le franco`}
+                </span>
+                <span className="text-slate-500">{subtotalHT.toFixed(0)} / {francoSeuil.toFixed(0)} &euro; HT</span>
+              </div>
+              <div className="w-full bg-white/10 rounded-full h-1.5">
+                <div
+                  className={`h-1.5 rounded-full transition-all ${francoAtteint ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                  style={{ width: `${Math.min(100, (subtotalHT / francoSeuil) * 100)}%` }}
+                />
+              </div>
+              <div className="text-[10px] mt-1 text-slate-500">
+                {francoAtteint
+                  ? `Frais de pr\u00e9paration : ${fpPrix.toFixed(2)} \u20ac HT (au lieu de ${fePrix.toFixed(2)} \u20ac d'exp\u00e9dition)`
+                  : `Frais d'exp\u00e9dition : ${fePrix.toFixed(2)} \u20ac HT`
+                }
+              </div>
+            </div>
+          )}
+
           <div className="border-t border-white/10 pt-4 space-y-2">
             <div className="flex justify-between text-sm text-slate-300">
               <span>Sous-total HT</span>
               <span>{subtotalHT.toFixed(2)} &euro;</span>
             </div>
-            {fraisPort > 0 && (
-              shippingCost > 0 ? (
-                <div>
-                  <div className="flex justify-between text-sm text-amber-400">
-                    <span>Frais de port</span>
-                    <span>{shippingCost.toFixed(2)} &euro;</span>
-                  </div>
-                  <div className="text-[10px] text-slate-500 mt-0.5">
-                    Encore {manquePourFranco.toFixed(2)} &euro; HT pour le franco ({seuil.toFixed(0)} &euro;)
-                  </div>
-                </div>
-              ) : (
-                <div className="flex justify-between text-sm text-emerald-400">
-                  <span>Frais de port</span>
-                  <span>Offerts (franco atteint)</span>
-                </div>
-              )
+            {!exonere && (
+              <div className={`flex justify-between text-sm ${francoAtteint ? 'text-emerald-400' : 'text-amber-400'}`}>
+                <span>{fraisLabel}</span>
+                <span>{fraisMontant.toFixed(2)} &euro;</span>
+              </div>
+            )}
+            {exonere === 1 && (
+              <div className="flex justify-between text-sm text-emerald-400">
+                <span>Frais</span>
+                <span>Exon&eacute;r&eacute;</span>
+              </div>
             )}
             <div className="flex justify-between text-sm text-white font-semibold">
               <span>Total HT</span>
@@ -675,7 +709,7 @@
             {panierOpen ? (
               <div className="max-w-lg mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold mb-4">Votre panier</h2>
-                <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={loading} francoSeuil={partner.franco_seuil ?? 800} fraisPort={partner.frais_port ?? 0} />
+                <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={loading} partner={partner} />
               </div>
             ) : vue === "catalogue" ? (
               <div className="animate-fade-in">

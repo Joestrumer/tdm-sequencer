@@ -49,7 +49,7 @@ module.exports = (db) => {
           contact_nom: matched.contact_nom,
           amenities: matched.amenities || null,
           franco_seuil: matched.franco_seuil ?? 800,
-          frais_port: matched.frais_port ?? 0,
+          frais_exonere: matched.frais_exonere ?? 0,
         },
       });
     } catch (e) {
@@ -64,8 +64,13 @@ module.exports = (db) => {
   // ─── Profil ────────────────────────────────────────────────────────────────
   router.get('/profil', (req, res) => {
     try {
-      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_port FROM vf_partners WHERE id = ?').get(req.partner.id);
+      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere FROM vf_partners WHERE id = ?').get(req.partner.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+      // Ajouter les prix FP/FE pour le calcul côté portail
+      const fp = db.prepare("SELECT prix_ht FROM vf_catalog WHERE ref = 'FP'").get();
+      const fe = db.prepare("SELECT prix_ht FROM vf_catalog WHERE ref = 'FE'").get();
+      partner.fp_prix = fp?.prix_ht || 0;
+      partner.fe_prix = fe?.prix_ht || 0;
       res.json(partner);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -149,18 +154,29 @@ module.exports = (db) => {
 
       totalHT = Math.round(totalHT * 100) / 100;
 
-      // Frais de port si sous le franco
+      // Frais FP/FE : si exonéré → rien, sinon franco atteint → FP, pas atteint → FE
       const francoSeuil = partner.franco_seuil ?? 800;
-      const fraisPort = partner.frais_port ?? 0;
-      const shippingCost = (fraisPort > 0 && totalHT < francoSeuil) ? fraisPort : 0;
-      const totalHTWithShipping = Math.round((totalHT + shippingCost) * 100) / 100;
-      const totalTTC = Math.round(totalHTWithShipping * 1.2 * 100) / 100;
+      const exonere = partner.frais_exonere ?? 0;
+      let fraisRef = null;
+      let fraisNom = '';
+      let fraisMontant = 0;
+      if (!exonere) {
+        const fpEntry = db.prepare("SELECT prix_ht, nom FROM vf_catalog WHERE ref = 'FP'").get();
+        const feEntry = db.prepare("SELECT prix_ht, nom FROM vf_catalog WHERE ref = 'FE'").get();
+        if (totalHT >= francoSeuil) {
+          fraisRef = 'FP'; fraisNom = fpEntry?.nom || 'Frais de préparation'; fraisMontant = fpEntry?.prix_ht || 0;
+        } else {
+          fraisRef = 'FE'; fraisNom = feEntry?.nom || "Frais d'expédition"; fraisMontant = feEntry?.prix_ht || 0;
+        }
+      }
+      const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
+      const totalTTC = Math.round(totalHTWithFrais * 1.2 * 100) / 100;
 
       const orderId = uuidv4();
       db.prepare(`
         INSERT INTO partner_orders (id, partner_id, products, notes, total_ht, total_ttc)
         VALUES (?, ?, ?, ?, ?, ?)
-      `).run(orderId, partnerId, JSON.stringify(orderProducts), notes || null, totalHTWithShipping, totalTTC);
+      `).run(orderId, partnerId, JSON.stringify(orderProducts), notes || null, totalHTWithFrais, totalTTC);
 
       // Email notification admin
       try {
@@ -200,8 +216,8 @@ module.exports = (db) => {
                 <tbody>${productRows}</tbody>
               </table>
               <p style="font-size:14px">Sous-total HT : ${totalHT.toFixed(2)} &euro;</p>
-              ${shippingCost > 0 ? `<p style="font-size:14px">Frais de port : ${shippingCost.toFixed(2)} &euro; HT</p>` : '<p style="font-size:14px;color:#16a34a">Franco de port atteint</p>'}
-              <p style="font-size:16px"><strong>Total HT : ${totalHTWithShipping.toFixed(2)} &euro;</strong></p>
+              ${fraisRef ? `<p style="font-size:14px">${fraisNom} (${fraisRef}) : ${fraisMontant.toFixed(2)} &euro; HT</p>` : '<p style="font-size:14px;color:#16a34a">Exonéré de frais</p>'}
+              <p style="font-size:16px"><strong>Total HT : ${totalHTWithFrais.toFixed(2)} &euro;</strong></p>
               <p style="font-size:16px"><strong>Total TTC : ${totalTTC.toFixed(2)} &euro;</strong></p>
               ${notes ? `<p><strong>Notes :</strong> ${notes}</p>` : ''}
               <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
@@ -220,10 +236,11 @@ module.exports = (db) => {
         statut: 'en_attente',
         products: orderProducts,
         notes: notes || null,
-        total_ht: totalHTWithShipping,
+        total_ht: totalHTWithFrais,
         total_ttc: totalTTC,
         subtotal_ht: totalHT,
-        shipping_cost: shippingCost,
+        frais_ref: fraisRef,
+        frais_montant: fraisMontant,
       });
     } catch (e) {
       logger.error('Erreur création commande partenaire', { error: e.message });
@@ -301,13 +318,22 @@ module.exports = (db) => {
 
       totalHT = Math.round(totalHT * 100) / 100;
       const francoSeuil = partner.franco_seuil ?? 800;
-      const fraisPort = partner.frais_port ?? 0;
-      const shippingCost = (fraisPort > 0 && totalHT < francoSeuil) ? fraisPort : 0;
-      const totalHTWithShipping = Math.round((totalHT + shippingCost) * 100) / 100;
-      const totalTTC = Math.round(totalHTWithShipping * 1.2 * 100) / 100;
+      const exonere = partner.frais_exonere ?? 0;
+      let fraisMontant = 0;
+      if (!exonere) {
+        if (totalHT >= francoSeuil) {
+          const fpEntry = db.prepare("SELECT prix_ht FROM vf_catalog WHERE ref = 'FP'").get();
+          fraisMontant = fpEntry?.prix_ht || 0;
+        } else {
+          const feEntry = db.prepare("SELECT prix_ht FROM vf_catalog WHERE ref = 'FE'").get();
+          fraisMontant = feEntry?.prix_ht || 0;
+        }
+      }
+      const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
+      const totalTTC = Math.round(totalHTWithFrais * 1.2 * 100) / 100;
 
       db.prepare('UPDATE partner_orders SET products = ?, notes = ?, total_ht = ?, total_ttc = ? WHERE id = ?')
-        .run(JSON.stringify(orderProducts), notes || null, totalHTWithShipping, totalTTC, req.params.id);
+        .run(JSON.stringify(orderProducts), notes || null, totalHTWithFrais, totalTTC, req.params.id);
 
       res.json({ ok: true });
     } catch (e) {

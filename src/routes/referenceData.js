@@ -103,6 +103,7 @@ module.exports = (db) => {
       if (req.body.amenities !== undefined) { updates.push('amenities = ?'); params.push(req.body.amenities); }
       if (req.body.franco_seuil !== undefined) { updates.push('franco_seuil = ?'); params.push(req.body.franco_seuil); }
       if (req.body.frais_port !== undefined) { updates.push('frais_port = ?'); params.push(req.body.frais_port); }
+      if (req.body.frais_exonere !== undefined) { updates.push('frais_exonere = ?'); params.push(req.body.frais_exonere ? 1 : 0); }
 
       if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
 
