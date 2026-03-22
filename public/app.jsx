@@ -2300,6 +2300,16 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
     }
   };
 
+  const dupliquerSequence = async (seq) => {
+    try {
+      const res = await api.post(`/sequences/${seq.id}/duplicate`);
+      showToast(`Séquence "${res.nom}" créée`, 'success');
+      if (onRefresh) onRefresh();
+    } catch (err) {
+      showToast('Erreur duplication : ' + err.message, 'error');
+    }
+  };
+
   const envoyerTest = async (seqId) => {
     if (!testEmail.trim()) return;
     setTestLoading(true);
@@ -2352,6 +2362,9 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
               </button>
               <button onClick={() => onEdit(seq)} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
                 Modifier
+              </button>
+              <button onClick={() => dupliquerSequence(seq)} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
+                Dupliquer
               </button>
               <button onClick={() => supprimerSequence(seq)} className="px-3 py-1.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors">
                 Supprimer

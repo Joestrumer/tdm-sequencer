@@ -102,6 +102,36 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/sequences/:id/duplicate — Dupliquer une séquence avec ses étapes
+  router.post('/:id/duplicate', (req, res) => {
+    try {
+      const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
+      if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
+
+      const etapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(req.params.id);
+
+      const newSeqId = uuidv4();
+      const newNom = `${seq.nom} (copie)`;
+
+      db.transaction(() => {
+        db.prepare('INSERT INTO sequences (id, nom, segment, options) VALUES (?, ?, ?, ?)')
+          .run(newSeqId, newNom, seq.segment, seq.options);
+
+        for (const e of etapes) {
+          db.prepare('INSERT INTO etapes (id, sequence_id, ordre, jour_delai, sujet, corps, corps_html, piece_jointe, content_json) VALUES (?,?,?,?,?,?,?,?,?)')
+            .run(uuidv4(), newSeqId, e.ordre, e.jour_delai, e.sujet, e.corps, e.corps_html, e.piece_jointe, e.content_json);
+        }
+      })();
+
+      const newSeq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(newSeqId);
+      const newEtapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(newSeqId);
+      logger.info('📋 Séquence dupliquée', { source: seq.nom, copie: newNom, etapes: etapes.length });
+      res.status(201).json({ ...newSeq, etapes: newEtapes });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // PUT /api/sequences/:id
   router.put('/:id', (req, res) => {
     try {
