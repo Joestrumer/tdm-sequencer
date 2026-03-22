@@ -157,13 +157,21 @@
       if (sections.length === 0) return null;
 
       const getQty = (ref) => panier[ref]?.quantite || 0;
-      const setQty = (ref, qty, moq) => {
-        const minQty = moq || 1;
-        if (qty <= 0 || qty < minQty) {
+
+      const addCarton = (ref) => {
+        const prod = catalogue.find(c => c.ref === ref);
+        const moq = prod.moq || 1;
+        setPanier(p => ({ ...p, [ref]: { ...prod, quantite: getQty(ref) + moq } }));
+      };
+
+      const removeCarton = (ref) => {
+        const prod = catalogue.find(c => c.ref === ref);
+        const moq = prod.moq || 1;
+        const next = getQty(ref) - moq;
+        if (next <= 0) {
           setPanier(p => { const n = { ...p }; delete n[ref]; return n; });
         } else {
-          const prod = catalogue.find(c => c.ref === ref);
-          setPanier(p => ({ ...p, [ref]: { ...prod, quantite: qty } }));
+          setPanier(p => ({ ...p, [ref]: { ...prod, quantite: next } }));
         }
       };
 
@@ -178,32 +186,43 @@
               <div key={type.key}>
                 <div className="text-xs text-slate-400 mb-2">{type.label} — <span className="text-emerald-400">{gammeInfo?.gamme || ''}</span></div>
                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {products.map(p => (
-                    <div key={p.ref} className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 hover:bg-emerald-500/10 transition-colors">
-                      <div className="text-xs text-slate-400 font-mono mb-1">{p.ref}</div>
-                      <div className="text-sm font-medium text-white mb-2 leading-snug">{p.nom}</div>
-                      <div className="flex items-end justify-between">
-                        <div>
-                          {p.discount_pct > 0 && (
-                            <div className="text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)} &euro; HT</div>
-                          )}
-                          <div className="text-base font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; <span className="text-xs font-normal text-slate-400">HT</span></div>
-                          {(p.moq || 1) > 1 && (
-                            <div className="text-[10px] text-slate-400 mt-0.5">Min. {p.moq} unit&eacute;(s)</div>
-                          )}
-                        </div>
-                        <div className="flex items-center gap-2">
-                          {getQty(p.ref) > 0 && (
-                            <button onClick={() => setQty(p.ref, getQty(p.ref) - 1, p.moq)} className="w-7 h-7 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-sm font-bold transition-colors">-</button>
-                          )}
-                          {getQty(p.ref) > 0 && (
-                            <span className="text-white font-semibold text-sm min-w-[20px] text-center">{getQty(p.ref)}</span>
-                          )}
-                          <button onClick={() => setQty(p.ref, getQty(p.ref) === 0 ? (p.moq || 1) : getQty(p.ref) + 1, p.moq)} className="w-7 h-7 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-sm font-bold transition-colors">+</button>
+                  {products.map(p => {
+                    const moq = p.moq || 1;
+                    const qty = getQty(p.ref);
+                    const cartons = moq > 1 ? Math.floor(qty / moq) : qty;
+                    return (
+                      <div key={p.ref} className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 hover:bg-emerald-500/10 transition-colors">
+                        <div className="text-xs text-slate-400 font-mono mb-1">{p.ref}</div>
+                        <div className="text-sm font-medium text-white mb-2 leading-snug">{p.nom}</div>
+                        <div className="flex items-end justify-between">
+                          <div>
+                            {p.discount_pct > 0 && (
+                              <div className="text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)} &euro; HT</div>
+                            )}
+                            <div className="text-base font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; <span className="text-xs font-normal text-slate-400">HT/u</span></div>
+                            {p.discount_pct > 0 && (
+                              <div className="text-xs text-emerald-400/70">-{p.discount_pct}%</div>
+                            )}
+                            {moq > 1 && (
+                              <div className="text-[10px] text-slate-400 mt-0.5">Carton de {moq} u.</div>
+                            )}
+                          </div>
+                          <div className="flex items-center gap-2">
+                            {qty > 0 && (
+                              <button onClick={() => removeCarton(p.ref)} className="w-7 h-7 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-sm font-bold transition-colors">-</button>
+                            )}
+                            {qty > 0 && (
+                              <div className="text-center">
+                                <div className="text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                                {moq > 1 && <div className="text-[9px] text-slate-500">{qty} u.</div>}
+                              </div>
+                            )}
+                            <button onClick={() => addCarton(p.ref)} className="w-7 h-7 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-sm font-bold transition-colors">+</button>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             ))}
@@ -291,17 +310,24 @@
       }, [catalogue, search]);
 
       const getQty = (ref) => panier[ref]?.quantite || 0;
+      const getCartons = (ref, moq) => { const q = getQty(ref); const m = moq || 1; return m > 1 ? Math.floor(q / m) : q; };
 
-      const setQty = (ref, qty, moq) => {
-        const minQty = moq || 1;
-        if (qty <= 0) {
-          setPanier(p => { const n = { ...p }; delete n[ref]; return n; });
-        } else if (qty < minQty) {
-          // Si on descend sous le MOQ, supprimer du panier
+      const addCarton = (ref) => {
+        const prod = catalogue.find(c => c.ref === ref);
+        const moq = prod.moq || 1;
+        const current = getQty(ref);
+        setPanier(p => ({ ...p, [ref]: { ...prod, quantite: current + moq } }));
+      };
+
+      const removeCarton = (ref) => {
+        const prod = catalogue.find(c => c.ref === ref);
+        const moq = prod.moq || 1;
+        const current = getQty(ref);
+        const next = current - moq;
+        if (next <= 0) {
           setPanier(p => { const n = { ...p }; delete n[ref]; return n; });
         } else {
-          const prod = catalogue.find(c => c.ref === ref);
-          setPanier(p => ({ ...p, [ref]: { ...prod, quantite: qty } }));
+          setPanier(p => ({ ...p, [ref]: { ...prod, quantite: next } }));
         }
       };
 
@@ -317,35 +343,43 @@
             />
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(p => (
-              <div key={p.ref} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-colors">
-                <div className="text-xs text-slate-400 font-mono mb-1">{p.ref}</div>
-                <div className="text-sm font-medium text-white mb-3 leading-snug">{p.nom}</div>
-                <div className="flex items-end justify-between">
-                  <div>
-                    {p.discount_pct > 0 && (
-                      <div className="text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)} &euro; HT</div>
-                    )}
-                    <div className="text-lg font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; <span className="text-xs font-normal text-slate-400">HT</span></div>
-                    {p.discount_pct > 0 && (
-                      <div className="text-xs text-emerald-400/70">-{p.discount_pct}%</div>
-                    )}
-                    {(p.moq || 1) > 1 && (
-                      <div className="text-[10px] text-slate-400 mt-0.5">Min. {p.moq} unit&eacute;(s)</div>
-                    )}
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {getQty(p.ref) > 0 && (
-                      <button onClick={() => setQty(p.ref, getQty(p.ref) - 1, p.moq)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-lg font-bold transition-colors">-</button>
-                    )}
-                    {getQty(p.ref) > 0 && (
-                      <span className="text-white font-semibold text-sm min-w-[20px] text-center">{getQty(p.ref)}</span>
-                    )}
-                    <button onClick={() => setQty(p.ref, getQty(p.ref) === 0 ? (p.moq || 1) : getQty(p.ref) + 1, p.moq)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-lg font-bold transition-colors">+</button>
+            {filtered.map(p => {
+              const moq = p.moq || 1;
+              const qty = getQty(p.ref);
+              const cartons = getCartons(p.ref, moq);
+              return (
+                <div key={p.ref} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-colors">
+                  <div className="text-xs text-slate-400 font-mono mb-1">{p.ref}</div>
+                  <div className="text-sm font-medium text-white mb-3 leading-snug">{p.nom}</div>
+                  <div className="flex items-end justify-between">
+                    <div>
+                      {p.discount_pct > 0 && (
+                        <div className="text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)} &euro; HT</div>
+                      )}
+                      <div className="text-lg font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; <span className="text-xs font-normal text-slate-400">HT/u</span></div>
+                      {p.discount_pct > 0 && (
+                        <div className="text-xs text-emerald-400/70">-{p.discount_pct}%</div>
+                      )}
+                      {moq > 1 && (
+                        <div className="text-[10px] text-slate-400 mt-0.5">Carton de {moq} u.</div>
+                      )}
+                    </div>
+                    <div className="flex items-center gap-2">
+                      {qty > 0 && (
+                        <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-lg font-bold transition-colors">-</button>
+                      )}
+                      {qty > 0 && (
+                        <div className="text-center">
+                          <div className="text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                          {moq > 1 && <div className="text-[9px] text-slate-500">{qty} u.</div>}
+                        </div>
+                      )}
+                      <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-lg font-bold transition-colors">+</button>
+                    </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
           {filtered.length === 0 && (
             <div className="text-center py-12 text-slate-400 text-sm">Aucun produit trouv&eacute;</div>
@@ -390,34 +424,46 @@
 
       return (
         <div className="space-y-4">
-          {items.map(i => (
-            <div key={i.ref} className="bg-white/5 rounded-xl p-3">
-              <div className="flex items-center justify-between">
-                <div className="min-w-0 flex-1">
-                  <div className="text-xs text-slate-400 font-mono">{i.ref}</div>
-                  <div className="text-sm text-white truncate">{i.nom}</div>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    <span className="text-xs text-slate-400">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
-                    {i.discount_pct > 0 && (
-                      <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-medium">-{i.discount_pct}%</span>
-                    )}
+          {items.map(i => {
+            const moq = i.moq || 1;
+            const cartons = moq > 1 ? Math.floor(i.quantite / moq) : i.quantite;
+            return (
+              <div key={i.ref} className="bg-white/5 rounded-xl p-3">
+                <div className="flex items-center justify-between">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-xs text-slate-400 font-mono">{i.ref}</div>
+                    <div className="text-sm text-white truncate">{i.nom}</div>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      {i.discount_pct > 0 ? (
+                        <>
+                          <span className="text-xs text-slate-500 line-through">{i.prix_ht.toFixed(2)} &euro;</span>
+                          <span className="text-xs text-emerald-400">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-medium">-{i.discount_pct}%</span>
+                        </>
+                      ) : (
+                        <span className="text-xs text-slate-400">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="flex items-center gap-3 ml-3">
-                  <div className="flex items-center gap-1">
-                    <button onClick={() => setPanier(p => {
-                      const moq = i.moq || 1;
-                      if (i.quantite - 1 < moq) { const n = { ...p }; delete n[i.ref]; return n; }
-                      return { ...p, [i.ref]: { ...i, quantite: i.quantite - 1 } };
-                    })} className="w-6 h-6 rounded bg-white/10 text-white text-xs hover:bg-white/20 flex items-center justify-center">-</button>
-                    <span className="text-white text-sm min-w-[24px] text-center">{i.quantite}</span>
-                    <button onClick={() => setPanier(p => ({ ...p, [i.ref]: { ...i, quantite: i.quantite + 1 } }))} className="w-6 h-6 rounded bg-white/10 text-white text-xs hover:bg-white/20 flex items-center justify-center">+</button>
+                  <div className="flex items-center gap-3 ml-3">
+                    <div className="flex items-center gap-1">
+                      <button onClick={() => setPanier(p => {
+                        const next = i.quantite - moq;
+                        if (next <= 0) { const n = { ...p }; delete n[i.ref]; return n; }
+                        return { ...p, [i.ref]: { ...i, quantite: next } };
+                      })} className="w-6 h-6 rounded bg-white/10 text-white text-xs hover:bg-white/20 flex items-center justify-center">-</button>
+                      <div className="text-center min-w-[32px]">
+                        <div className="text-white text-sm font-semibold">{moq > 1 ? cartons : i.quantite}</div>
+                        {moq > 1 && <div className="text-[9px] text-slate-500 leading-none">{i.quantite} u.</div>}
+                      </div>
+                      <button onClick={() => setPanier(p => ({ ...p, [i.ref]: { ...i, quantite: i.quantite + moq } }))} className="w-6 h-6 rounded bg-white/10 text-white text-xs hover:bg-white/20 flex items-center justify-center">+</button>
+                    </div>
+                    <div className="text-sm text-white font-medium w-20 text-right">{(i.prix_remise * i.quantite).toFixed(2)} &euro;</div>
                   </div>
-                  <div className="text-sm text-white font-medium w-20 text-right">{(i.prix_remise * i.quantite).toFixed(2)} &euro;</div>
                 </div>
               </div>
-            </div>
-          ))}
+            );
+          })}
 
           {/* Barre de progression franco */}
           {!exonere && (
