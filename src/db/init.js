@@ -300,6 +300,12 @@ const MISSING_PRODUCTS = [
   { ref: 'P042-5000', nom: 'Gel Corps Cheveux Reddition Recharge 5L', prix_ht: 39, moq: 4 },
   { ref: 'P008-75', nom: 'Gel nettoyant Reddition 75ml', prix_ht: 0.85, moq: 56 },
   { ref: 'P029', nom: 'Poudre Exfoliante Résurgence', prix_ht: 1, moq: 100 },
+  { ref: 'SPFS', nom: 'Porte flacon Simple Sécurisé Temperproof', prix_ht: 0, moq: 1 },
+  { ref: 'PFS', nom: 'Porte flacon simple (305 Stainless Steel black)', prix_ht: 0, moq: 1 },
+  { ref: 'PFD', nom: 'Porte flacon double (305 Stainless Steel black)', prix_ht: 0, moq: 1 },
+  { ref: 'PFT', nom: 'Porte flacon triple (305 Stainless Steel black)', prix_ht: 0, moq: 1 },
+  { ref: 'P5L', nom: 'POMPE 5L', prix_ht: 0, moq: 1 },
+  { ref: 'P500ml', nom: 'Pompe 500ML', prix_ht: 0, moq: 1 },
 ];
 
 const stmtInsertProduct = db.prepare('INSERT OR IGNORE INTO vf_catalog (ref, nom, prix_ht, moq) VALUES (?, ?, ?, ?)');
@@ -309,6 +315,23 @@ for (const p of MISSING_PRODUCTS) {
   if (r.changes > 0) productsInserted++;
 }
 if (productsInserted > 0) console.log(`🆕 ${productsInserted} produit(s) manquant(s) ajouté(s) au catalogue`);
+
+// ─── Correction noms produits ────────────────────────────────────────────────
+const NOM_CORRECTIONS = {
+  'SPFS': 'Porte flacon Simple Sécurisé Temperproof',
+  'PFS': 'Porte flacon simple (305 Stainless Steel black)',
+  'PFD': 'Porte flacon double (305 Stainless Steel black)',
+  'PFT': 'Porte flacon triple (305 Stainless Steel black)',
+  'P5L': 'POMPE 5L',
+  'P500ml': 'Pompe 500ML',
+};
+const stmtFixNom = db.prepare('UPDATE vf_catalog SET nom = ? WHERE ref = ? AND nom != ?');
+let nomsFixed = 0;
+for (const [ref, nom] of Object.entries(NOM_CORRECTIONS)) {
+  const r = stmtFixNom.run(nom, ref, nom);
+  if (r.changes > 0) nomsFixed++;
+}
+if (nomsFixed > 0) console.log(`✏️  ${nomsFixed} nom(s) de produit(s) corrigé(s)`);
 
 // ─── Seed catégories catalogue ───────────────────────────────────────────────
 const CATEGORIE_MAP = {
