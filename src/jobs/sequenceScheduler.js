@@ -14,14 +14,24 @@ const hubspot = require('../services/hubspotService');
 
 let db; // Injecté par initialiser()
 
+// ─── Helpers date en heure Paris ─────────────────────────────────────────────
+const pad2 = n => String(n).padStart(2, '0');
+
+function maintenant_paris() {
+  const fuseau = process.env.FUSEAU || 'Europe/Paris';
+  return new Date(new Date().toLocaleString('en-US', { timeZone: fuseau }));
+}
+
+function formatSQLite(date) {
+  return `${date.getFullYear()}-${pad2(date.getMonth()+1)}-${pad2(date.getDate())} ${pad2(date.getHours())}:${pad2(date.getMinutes())}:${pad2(date.getSeconds())}`;
+}
+
 // ─── Calcul de la prochaine date d'envoi ──────────────────────────────────────
 function prochaineDateEnvoi(joursDelai) {
   const heureDebut  = parseInt(process.env.SEND_HOUR_START) || 8;
   const joursActifs = (process.env.ACTIVE_DAYS || '1,2,3,4,5').split(',').map(Number);
-  const fuseau = process.env.FUSEAU || 'Europe/Paris';
 
-  // Travailler en heure locale du fuseau configuré
-  let date = new Date(new Date().toLocaleString('en-US', { timeZone: fuseau }));
+  let date = maintenant_paris();
   date.setDate(date.getDate() + joursDelai);
 
   // Avancer au prochain jour ouvré si nécessaire
@@ -33,7 +43,7 @@ function prochaineDateEnvoi(joursDelai) {
 
   // Heure de début + variation aléatoire (0–120 min) pour paraître naturel
   date.setHours(heureDebut, Math.floor(Math.random() * 120), 0, 0);
-  return date.toISOString();
+  return formatSQLite(date);
 }
 
 // ─── Avancer l'inscription à l'étape suivante ─────────────────────────────────
@@ -128,8 +138,10 @@ async function _traiter(inscription) {
 
 // ─── Version planifiée : vérifie l'heure planifiée avant d'envoyer ────────────
 async function traiterInscription(inscription) {
-  const prochainEnvoi = new Date(inscription.prochain_envoi);
-  if (prochainEnvoi > new Date()) return; // Pas encore l'heure
+  // Comparer en heure Paris (prochain_envoi est stocké en heure Paris)
+  const now = maintenant_paris();
+  const prochainEnvoi = new Date(inscription.prochain_envoi.replace(' ', 'T'));
+  if (prochainEnvoi > now) return; // Pas encore l'heure
   return _traiter(inscription);
 }
 
@@ -145,16 +157,18 @@ async function lancerVerification() {
     return;
   }
 
-  logger.info('🔄 Vérification des séquences...');
+  const nowParis = formatSQLite(maintenant_paris());
+  logger.info(`🔄 Vérification des séquences... (heure Paris: ${nowParis})`);
 
+  // Utiliser datetime() pour normaliser les formats (T vs espace) des anciennes données
   const inscriptions = db.prepare(`
     SELECT * FROM inscriptions
     WHERE statut = 'actif'
       AND prochain_envoi IS NOT NULL
-      AND prochain_envoi <= datetime('now')
+      AND datetime(prochain_envoi) <= datetime(?)
     ORDER BY prochain_envoi ASC
     LIMIT 20
-  `).all();
+  `).all(nowParis);
 
   if (!inscriptions.length) { logger.debug('Aucun email à envoyer'); return; }
   logger.info(`📬 ${inscriptions.length} email(s) à traiter`);
@@ -179,9 +193,14 @@ function inscrireLead(leadId, sequenceId) {
 
   // Respecter le jour_delai de la première étape
   // En dev : toujours 1 minute pour tester rapidement
-  const prochainEnvoi = process.env.NODE_ENV === 'development'
-    ? new Date(Date.now() + 60_000).toISOString()
-    : prochaineDateEnvoi(premiereEtape.jour_delai || 0);
+  let prochainEnvoi;
+  if (process.env.NODE_ENV === 'development') {
+    const devDate = maintenant_paris();
+    devDate.setMinutes(devDate.getMinutes() + 1);
+    prochainEnvoi = formatSQLite(devDate);
+  } else {
+    prochainEnvoi = prochaineDateEnvoi(premiereEtape.jour_delai || 0);
+  }
 
   // Vérifier si une inscription active existe déjà pour éviter de reset etape_courante
   const existing = db.prepare(
