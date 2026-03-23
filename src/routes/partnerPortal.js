@@ -105,6 +105,7 @@ module.exports = (db) => {
           discount_pct,
           tva: p.tva,
           moq: p.moq || 1,
+          categorie: p.categorie || null,
         };
       });
 

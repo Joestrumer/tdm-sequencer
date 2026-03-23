@@ -300,6 +300,17 @@
     };
 
     // ─── Catalogue ──────────────────────────────────────────────────────────────
+    const CATEGORIES_ORDER = [
+      'Flacons 500 ml',
+      'Recharges 5 litres',
+      'Portes flacons',
+      'Cadeaux VIP & Spa',
+      'Produits Spa & VIP',
+      'Parfums & gel hydroalcoolique',
+      'Produits hygi\u00e8ne format voyage',
+      'Produits hygi\u00e8ne format 30ml',
+    ];
+
     const CatalogueView = ({ catalogue, panier, setPanier }) => {
       const [search, setSearch] = useState("");
 
@@ -308,6 +319,25 @@
         const q = search.toLowerCase();
         return catalogue.filter(p => p.ref.toLowerCase().includes(q) || p.nom.toLowerCase().includes(q));
       }, [catalogue, search]);
+
+      const grouped = useMemo(() => {
+        const groups = {};
+        for (const p of filtered) {
+          const cat = p.categorie || 'Autres';
+          if (!groups[cat]) groups[cat] = [];
+          groups[cat].push(p);
+        }
+        // Trier selon CATEGORIES_ORDER, puis "Autres" à la fin
+        const ordered = [];
+        for (const cat of CATEGORIES_ORDER) {
+          if (groups[cat]) ordered.push({ categorie: cat, products: groups[cat] });
+        }
+        // Catégories non listées + "Autres"
+        for (const cat of Object.keys(groups)) {
+          if (!CATEGORIES_ORDER.includes(cat)) ordered.push({ categorie: cat, products: groups[cat] });
+        }
+        return ordered;
+      }, [filtered]);
 
       const getQty = (ref) => panier[ref]?.quantite || 0;
       const getCartons = (ref, moq) => { const q = getQty(ref); const m = moq || 1; return m > 1 ? Math.floor(q / m) : q; };
@@ -331,6 +361,44 @@
         }
       };
 
+      const ProductCard = ({ p }) => {
+        const moq = p.moq || 1;
+        const qty = getQty(p.ref);
+        const cartons = getCartons(p.ref, moq);
+        return (
+          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-colors">
+            <div className="text-xs text-slate-400 font-mono mb-1">{p.ref}</div>
+            <div className="text-sm font-medium text-white mb-3 leading-snug">{p.nom}</div>
+            <div className="flex items-end justify-between">
+              <div>
+                {p.discount_pct > 0 && (
+                  <div className="text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)} &euro; HT</div>
+                )}
+                <div className="text-lg font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; <span className="text-xs font-normal text-slate-400">HT/u</span></div>
+                {p.discount_pct > 0 && (
+                  <div className="text-xs text-emerald-400/70">-{p.discount_pct}%</div>
+                )}
+                {moq > 1 && (
+                  <div className="text-[10px] text-slate-400 mt-0.5">Carton de {moq} u.</div>
+                )}
+              </div>
+              <div className="flex items-center gap-2">
+                {qty > 0 && (
+                  <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-lg font-bold transition-colors">-</button>
+                )}
+                {qty > 0 && (
+                  <div className="text-center">
+                    <div className="text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                    {moq > 1 && <div className="text-[9px] text-slate-500">{qty} u.</div>}
+                  </div>
+                )}
+                <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-lg font-bold transition-colors">+</button>
+              </div>
+            </div>
+          </div>
+        );
+      };
+
       return (
         <div>
           <div className="mb-6">
@@ -342,45 +410,18 @@
               className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30"
             />
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-            {filtered.map(p => {
-              const moq = p.moq || 1;
-              const qty = getQty(p.ref);
-              const cartons = getCartons(p.ref, moq);
-              return (
-                <div key={p.ref} className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-colors">
-                  <div className="text-xs text-slate-400 font-mono mb-1">{p.ref}</div>
-                  <div className="text-sm font-medium text-white mb-3 leading-snug">{p.nom}</div>
-                  <div className="flex items-end justify-between">
-                    <div>
-                      {p.discount_pct > 0 && (
-                        <div className="text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)} &euro; HT</div>
-                      )}
-                      <div className="text-lg font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; <span className="text-xs font-normal text-slate-400">HT/u</span></div>
-                      {p.discount_pct > 0 && (
-                        <div className="text-xs text-emerald-400/70">-{p.discount_pct}%</div>
-                      )}
-                      {moq > 1 && (
-                        <div className="text-[10px] text-slate-400 mt-0.5">Carton de {moq} u.</div>
-                      )}
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {qty > 0 && (
-                        <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-lg font-bold transition-colors">-</button>
-                      )}
-                      {qty > 0 && (
-                        <div className="text-center">
-                          <div className="text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                          {moq > 1 && <div className="text-[9px] text-slate-500">{qty} u.</div>}
-                        </div>
-                      )}
-                      <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-lg font-bold transition-colors">+</button>
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
+          {grouped.map(({ categorie, products }) => (
+            <div key={categorie} className="mb-8">
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-1 h-5 bg-slate-500 rounded-full"></div>
+                <h3 className="text-sm font-semibold text-white">{categorie}</h3>
+                <span className="text-xs text-slate-500">{products.length} produit{products.length > 1 ? 's' : ''}</span>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {products.map(p => <ProductCard key={p.ref} p={p} />)}
+              </div>
+            </div>
+          ))}
           {filtered.length === 0 && (
             <div className="text-center py-12 text-slate-400 text-sm">Aucun produit trouv&eacute;</div>
           )}
