@@ -1647,6 +1647,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <div className="flex flex-wrap items-center gap-2 md:gap-3 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm">
             <span className="font-medium">{selectedIds.size} lead{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
             <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer</button>
+            <button onClick={async () => { if(!confirm(`Arrêter les séquences de ${selectedIds.size} lead(s) ?`)) return; try { await api.post('/sequences/stop-batch', { lead_ids: Array.from(selectedIds) }); showToast('Séquences arrêtées','success'); setSelectedIds(new Set()); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600">⏹ Arrêter</button>
             <button onClick={async (e) => { if(!confirm('Supprimer ' + selectedIds.size + ' leads ?')) return; const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Suppression...'; let errCount = 0; for(const id of selectedIds) { try { await api.delete('/leads/' + id); } catch(err) { errCount++; } } setSelectedIds(new Set()); if(onRefresh) onRefresh(); showToast(errCount ? `${selectedIds.size - errCount} supprimé(s), ${errCount} erreur(s)` : `${selectedIds.size} lead(s) supprimé(s)`, errCount ? 'error' : 'success'); btn.disabled = false; btn.textContent = '✕ Supprimer'; }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50">✕ Supprimer</button>
             <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-blue-200 hover:text-white text-xs">Annuler</button>
           </div>
@@ -1677,7 +1678,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     {lead.ouvertures > 0 && <span>👁 {lead.ouvertures}</span>}
                   </div>
                   <div className="flex gap-1" onClick={e => e.stopPropagation()}>
-                    {lead.statut !== "Désabonné" && <button onClick={() => setShowLaunch(lead)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs bg-blue-600 text-white rounded-lg">▶</button>}
+                    {lead.statut !== "Désabonné" && !lead.sequence_active && <button onClick={() => setShowLaunch(lead)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs bg-blue-600 text-white rounded-lg">▶</button>}
+                    {lead.sequence_active && <button onClick={async () => { if(!confirm('Arrêter la séquence ?')) return; try { await api.post(`/sequences/stop-lead/${lead.id}`); showToast('Séquence arrêtée','success'); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs bg-red-500 text-white rounded-lg">⏹</button>}
                     <button onClick={() => setEditLead(lead)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs border border-slate-200 text-slate-500 rounded-lg">✏️</button>
                   </div>
                 </div>
@@ -1784,8 +1786,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                   </td>
                   <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.actions + 'px' }} onClick={e => e.stopPropagation()}>
                     <div className="flex gap-1 justify-end">
-                      {lead.statut !== "Désabonné" && (
+                      {lead.statut !== "Désabonné" && !lead.sequence_active && (
                         <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 whitespace-nowrap">▶</button>
+                      )}
+                      {lead.sequence_active && (
+                        <button onClick={async () => { if(!confirm('Arrêter la séquence pour ce lead ?')) return; try { await api.post(`/sequences/stop-lead/${lead.id}`); showToast('Séquence arrêtée','success'); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} title="Arrêter séquence" className="px-2 py-1 text-xs bg-red-500 text-white rounded-md hover:bg-red-600 whitespace-nowrap">⏹</button>
                       )}
                       <button onClick={() => setEditLead(lead)} title="Modifier" className="px-2 py-1 text-xs border border-slate-200 text-slate-500 rounded-md hover:bg-slate-100">✏️</button>
                       <button onClick={(e) => supprimerLead(lead, e)} title="Supprimer" className="px-2 py-1 text-xs border border-red-100 text-red-400 rounded-md hover:bg-red-50">✕</button>

@@ -341,14 +341,48 @@ module.exports = (db) => {
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.leadId);
       if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
 
-      const result = db.prepare(`
-        UPDATE inscriptions
-        SET statut = 'terminé', prochain_envoi = NULL
-        WHERE lead_id = ? AND statut = 'actif'
-      `).run(req.params.leadId);
+      db.transaction(() => {
+        db.prepare(`
+          UPDATE inscriptions
+          SET statut = 'terminé', prochain_envoi = NULL
+          WHERE lead_id = ? AND statut = 'actif'
+        `).run(req.params.leadId);
 
-      logger.info(`⏹️  Séquences arrêtées pour ${lead.email}`, { count: result.changes });
-      res.json({ message: `${result.changes} séquence(s) arrêtée(s)`, count: result.changes });
+        // Remettre le statut du lead si il était "En séquence"
+        if (lead.statut === 'En séquence') {
+          db.prepare(`UPDATE leads SET statut = 'Nouveau', updated_at = datetime('now') WHERE id = ?`).run(req.params.leadId);
+        }
+      })();
+
+      logger.info(`⏹️  Séquences arrêtées pour ${lead.email}`);
+      res.json({ message: 'Séquence arrêtée' });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // POST /api/sequences/stop-batch — Arrêter les séquences de plusieurs leads
+  router.post('/stop-batch', (req, res) => {
+    try {
+      const { lead_ids } = req.body;
+      if (!Array.isArray(lead_ids) || !lead_ids.length) return res.status(400).json({ erreur: 'lead_ids requis' });
+
+      let stopped = 0;
+      db.transaction(() => {
+        for (const leadId of lead_ids) {
+          const result = db.prepare(`
+            UPDATE inscriptions SET statut = 'terminé', prochain_envoi = NULL
+            WHERE lead_id = ? AND statut = 'actif'
+          `).run(leadId);
+          if (result.changes > 0) {
+            stopped++;
+            db.prepare(`UPDATE leads SET statut = 'Nouveau', updated_at = datetime('now') WHERE id = ? AND statut = 'En séquence'`).run(leadId);
+          }
+        }
+      })();
+
+      logger.info(`⏹️  Batch stop : ${stopped} lead(s) arrêté(s)`);
+      res.json({ message: `${stopped} séquence(s) arrêtée(s)`, count: stopped });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
