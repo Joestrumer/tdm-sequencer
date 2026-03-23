@@ -201,8 +201,12 @@ db.exec(`
   -- ─── Indexes performance ──────────────────────────────────────────────────
   CREATE INDEX IF NOT EXISTS idx_emails_lead_id ON emails(lead_id);
   CREATE INDEX IF NOT EXISTS idx_emails_inscription_id ON emails(inscription_id);
+  CREATE INDEX IF NOT EXISTS idx_emails_brevo_msgid ON emails(brevo_message_id);
   CREATE INDEX IF NOT EXISTS idx_inscriptions_lead_id ON inscriptions(lead_id);
   CREATE INDEX IF NOT EXISTS idx_inscriptions_statut ON inscriptions(statut);
+  CREATE INDEX IF NOT EXISTS idx_inscriptions_seq_statut ON inscriptions(sequence_id, statut);
+  CREATE INDEX IF NOT EXISTS idx_inscriptions_lead_statut ON inscriptions(lead_id, statut);
+  CREATE INDEX IF NOT EXISTS idx_etapes_sequence ON etapes(sequence_id, ordre);
   CREATE INDEX IF NOT EXISTS idx_events_lead_id ON events(lead_id);
   CREATE INDEX IF NOT EXISTS idx_leads_hotel ON leads(hotel);
 

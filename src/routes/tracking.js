@@ -15,6 +15,15 @@ const PIXEL_GIF = Buffer.from(
   'base64'
 );
 
+// Échappement HTML pour prévenir XSS
+function escapeHtml(str) {
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;');
+}
+
 module.exports = (db) => {
 
   // GET /api/tracking/open/:trackingId — Pixel de suivi d'ouverture
@@ -46,7 +55,7 @@ module.exports = (db) => {
         // Enregistrer l'événement
         db.prepare('INSERT INTO events (id, email_id, lead_id, type, meta) VALUES (?, ?, ?, ?, ?)').run(
           uuidv4(), email.id, email.lead_id, 'ouverture',
-          JSON.stringify({ userAgent: req.get('User-Agent'), ip: req.ip })
+          JSON.stringify({ userAgent: req.get('User-Agent') })
         );
 
         // Récupérer le nombre total d'ouvertures pour ce lead
@@ -74,7 +83,20 @@ module.exports = (db) => {
   // GET /api/tracking/click/:trackingId — Redirection avec tracking de clic
   router.get('/click/:trackingId', (req, res) => {
     const { url } = req.query;
-    const destinationUrl = url ? decodeURIComponent(url) : 'https://terre-de-mars.com';
+    let destinationUrl = 'https://www.terredemars.com';
+
+    // Valider que l'URL de destination est bien une URL HTTP(S) absolue
+    if (url) {
+      try {
+        const decoded = decodeURIComponent(url);
+        const parsed = new URL(decoded);
+        if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+          destinationUrl = decoded;
+        }
+      } catch (e) {
+        // URL invalide → redirection par défaut
+      }
+    }
 
     // Redirection immédiate
     res.redirect(302, destinationUrl);
@@ -86,7 +108,13 @@ module.exports = (db) => {
         const email = db.prepare('SELECT * FROM emails WHERE tracking_id = ?').get(trackingId);
         if (!email) return;
 
-        db.prepare('UPDATE emails SET clics = clics + 1, statut = \'cliqué\' WHERE tracking_id = ?').run(trackingId);
+        // Ne pas écraser un statut bounced ou erreur
+        db.prepare(`
+          UPDATE emails SET clics = clics + 1,
+            statut = CASE WHEN statut IN ('envoyé', 'ouvert') THEN 'cliqué' ELSE statut END
+          WHERE tracking_id = ?
+        `).run(trackingId);
+
         db.prepare('INSERT INTO events (id, email_id, lead_id, type, meta) VALUES (?, ?, ?, ?, ?)').run(
           uuidv4(), email.id, email.lead_id, 'clic',
           JSON.stringify({ url: destinationUrl })
@@ -102,8 +130,8 @@ module.exports = (db) => {
     });
   });
 
-  // GET /api/tracking/unsubscribe/:leadId — Page de désabonnement RGPD
-  router.get('/unsubscribe/:leadId', async (req, res) => {
+  // Désabonnement — accepte GET (lien email) et POST (List-Unsubscribe-Post)
+  function handleUnsubscribe(req, res) {
     try {
       const { leadId } = req.params;
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
@@ -112,14 +140,17 @@ module.exports = (db) => {
         return res.status(404).send('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>Lien invalide</h2></body></html>');
       }
 
-      // Désabonner le lead
-      db.prepare('UPDATE leads SET unsubscribed = 1, statut = \'Désabonné\', updated_at = datetime(\'now\') WHERE id = ?').run(leadId);
+      // Déjà désabonné ? Afficher la page sans re-traiter
+      if (lead.unsubscribed) {
+        return sendUnsubPage(res, lead);
+      }
 
-      // Arrêter toutes les inscriptions actives
-      db.prepare(`UPDATE inscriptions SET statut = 'terminé' WHERE lead_id = ? AND statut = 'actif'`).run(leadId);
-
-      // Enregistrer l'événement
-      db.prepare('INSERT INTO events (id, lead_id, type) VALUES (?, ?, ?)').run(uuidv4(), leadId, 'désabonnement');
+      // Transaction atomique pour cohérence
+      db.transaction(() => {
+        db.prepare('UPDATE leads SET unsubscribed = 1, statut = \'Désabonné\', updated_at = datetime(\'now\') WHERE id = ?').run(leadId);
+        db.prepare(`UPDATE inscriptions SET statut = 'terminé', prochain_envoi = NULL WHERE lead_id = ? AND statut = 'actif'`).run(leadId);
+        db.prepare('INSERT INTO events (id, lead_id, type) VALUES (?, ?, ?)').run(uuidv4(), leadId, 'désabonnement');
+      })();
 
       // Notifier HubSpot
       if (process.env.HUBSPOT_API_KEY && lead.hubspot_id) {
@@ -127,9 +158,16 @@ module.exports = (db) => {
       }
 
       logger.info(`🚫 Désabonnement : ${lead.email}`);
+      sendUnsubPage(res, lead);
+    } catch (err) {
+      logger.error('Erreur désabonnement', { error: err.message });
+      res.status(500).send('Erreur lors du désabonnement');
+    }
+  }
 
-      // Page de confirmation
-      res.send(`<!DOCTYPE html>
+  function sendUnsubPage(res, lead) {
+    const safeEmail = escapeHtml(lead.email);
+    res.send(`<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
@@ -147,48 +185,44 @@ module.exports = (db) => {
   <div class="card">
     <div class="logo">Terre de Mars</div>
     <h1>Vous avez bien été désabonné</h1>
-    <p>Votre adresse <strong>${lead.email}</strong> ne recevra plus d'emails de notre part.<br><br>Conformément au RGPD, cette demande est prise en compte immédiatement.</p>
+    <p>Votre adresse <strong>${safeEmail}</strong> ne recevra plus d'emails de notre part.<br><br>Conformément au RGPD, cette demande est prise en compte immédiatement.</p>
   </div>
 </body>
 </html>`);
-    } catch (err) {
-      logger.error('Erreur désabonnement', { error: err.message });
-      res.status(500).send('Erreur lors du désabonnement');
-    }
-  });
+  }
+
+  router.get('/unsubscribe/:leadId', handleUnsubscribe);
+  router.post('/unsubscribe/:leadId', handleUnsubscribe);
 
   // POST /api/tracking/reply — Détection de réponse (webhook Brevo inbound ou polling)
-  // Brevo inbound : configurer https://tdm-sequencer-production.up.railway.app/api/tracking/reply
   router.post('/reply', express.json(), async (req, res) => {
     res.sendStatus(200);
     setImmediate(async () => {
       try {
         const body = req.body;
-        // Support format Brevo inbound email
         const fromEmail = body.from || body.sender || body.From;
         const subject = body.subject || body.Subject || '';
-        const rawHeaders = body.headers || '';
 
         if (!fromEmail) return;
 
-        // Chercher le lead par email expéditeur
-        const lead = db.prepare('SELECT * FROM leads WHERE email = ?').get(
-          typeof fromEmail === 'object' ? fromEmail.address || fromEmail.email : fromEmail
-        );
+        // Normaliser l'email en lowercase pour matcher
+        const emailAddr = (typeof fromEmail === 'object' ? fromEmail.address || fromEmail.email : fromEmail).toLowerCase().trim();
+
+        const lead = db.prepare('SELECT * FROM leads WHERE LOWER(email) = ?').get(emailAddr);
         if (!lead) {
-          logger.debug('Reply reçu mais lead inconnu', { from: fromEmail });
+          logger.debug('Reply reçu mais lead inconnu', { from: emailAddr });
           return;
         }
 
-        // Marquer lead comme Répondu + stopper séquence
-        db.prepare(`UPDATE leads SET statut = 'Répondu', score = MIN(100, score + 50), updated_at = datetime('now') WHERE id = ?`).run(lead.id);
-        db.prepare(`UPDATE inscriptions SET statut = 'répondu', prochain_envoi = NULL WHERE lead_id = ? AND statut = 'actif'`).run(lead.id);
-
-        // Enregistrer l'événement
-        db.prepare('INSERT INTO events (id, lead_id, type, meta) VALUES (?, ?, ?, ?)').run(
-          uuidv4(), lead.id, 'réponse',
-          JSON.stringify({ sujet: subject, recu_at: new Date().toISOString() })
-        );
+        // Marquer lead comme Répondu + stopper séquence (transaction)
+        db.transaction(() => {
+          db.prepare(`UPDATE leads SET statut = 'Répondu', score = MIN(100, score + 50), updated_at = datetime('now') WHERE id = ?`).run(lead.id);
+          db.prepare(`UPDATE inscriptions SET statut = 'terminé', prochain_envoi = NULL WHERE lead_id = ? AND statut = 'actif'`).run(lead.id);
+          db.prepare('INSERT INTO events (id, lead_id, type, meta) VALUES (?, ?, ?, ?)').run(
+            uuidv4(), lead.id, 'réponse',
+            JSON.stringify({ sujet: subject, recu_at: new Date().toISOString() })
+          );
+        })();
 
         // Notifier HubSpot
         if (process.env.HUBSPOT_API_KEY && lead.hubspot_id) {
@@ -212,23 +246,26 @@ module.exports = (db) => {
         for (const event of events) {
           logger.info('Webhook Brevo reçu', { event: event.event, email: event.email });
 
-          if (event.event === 'hard_bounce' || event.event === 'soft_bounce') {
-            // Marquer comme bounced
+          if (event.event === 'hard_bounce') {
             db.prepare('UPDATE emails SET statut = ? WHERE brevo_message_id = ?').run('bounced', event['message-id']);
-            db.prepare('UPDATE leads SET score = 0, updated_at = datetime(\'now\') WHERE email = ?').run(event.email);
+            db.prepare('UPDATE leads SET score = 0, statut_email = \'hard_bounce\', updated_at = datetime(\'now\') WHERE email = ?').run(event.email);
+          }
+
+          if (event.event === 'soft_bounce') {
+            // Soft bounce = temporaire, réduire le score mais ne pas mettre à 0
+            db.prepare('UPDATE emails SET statut = ? WHERE brevo_message_id = ?').run('soft_bounce', event['message-id']);
+            db.prepare('UPDATE leads SET score = MAX(0, score - 20), statut_email = \'soft_bounce\', updated_at = datetime(\'now\') WHERE email = ?').run(event.email);
           }
 
           if (event.event === 'unsubscribe') {
-            db.prepare('UPDATE leads SET unsubscribed = 1, statut = \'Désabonné\' WHERE email = ?').run(event.email);
-            db.prepare(`UPDATE inscriptions SET statut = 'terminé' WHERE lead_id = (SELECT id FROM leads WHERE email = ?)`).run(event.email);
+            db.transaction(() => {
+              db.prepare('UPDATE leads SET unsubscribed = 1, statut = \'Désabonné\', updated_at = datetime(\'now\') WHERE email = ?').run(event.email);
+              db.prepare(`UPDATE inscriptions SET statut = 'terminé', prochain_envoi = NULL WHERE lead_id = (SELECT id FROM leads WHERE email = ?) AND statut = 'actif'`).run(event.email);
+            })();
           }
 
-          if (event.event === 'opened') {
-            const email = db.prepare(`SELECT e.* FROM emails e JOIN leads l ON e.lead_id = l.id WHERE l.email = ? ORDER BY e.envoye_at DESC LIMIT 1`).get(event.email);
-            if (email) {
-              db.prepare('UPDATE emails SET ouvertures = ouvertures + 1, statut = \'ouvert\' WHERE id = ?').run(email.id);
-            }
-          }
+          // Ignorer 'opened' du webhook — déjà tracké par le pixel
+          // Évite le double comptage des ouvertures
         }
       } catch (err) {
         logger.error('Erreur webhook Brevo', { error: err.message });

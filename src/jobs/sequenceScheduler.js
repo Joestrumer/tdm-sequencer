@@ -194,13 +194,14 @@ async function lancerVerification() {
   if (!inscriptions.length) { logger.debug('Aucun email à envoyer'); return; }
   logger.info(`📬 ${inscriptions.length} email(s) à traiter`);
 
+  // Lire le délai une seule fois avant la boucle
+  const delaiConfig = db.prepare("SELECT valeur FROM config WHERE cle = 'delai_entre_emails'").get();
+  const delaiBase = (delaiConfig ? parseFloat(delaiConfig.valeur) : 2) * 1000;
+
   for (const inscription of inscriptions) {
     try {
       await traiterInscription(inscription);
-      // Délai configurable entre chaque email (défaut 2s + jitter)
-      const delaiConfig = db.prepare("SELECT valeur FROM config WHERE cle = 'delai_entre_emails'").get();
-      const delaiMs = ((delaiConfig ? parseFloat(delaiConfig.valeur) : 2) * 1000) + Math.random() * 500;
-      await new Promise(r => setTimeout(r, delaiMs));
+      await new Promise(r => setTimeout(r, delaiBase + Math.random() * 500));
     } catch (err) {
       if (err.message === 'QUOTA_ATTEINT') break;
     }

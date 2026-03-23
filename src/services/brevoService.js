@@ -85,8 +85,10 @@ async function brevoSendEmail(payload) {
     });
     clearTimeout(timeout);
     if (!res.ok) {
-      const err = await res.text();
-      throw new Error('Brevo API ' + res.status + ': ' + err);
+      const errText = await res.text();
+      const err = new Error('Brevo API ' + res.status + ': ' + errText);
+      err.status = res.status;
+      throw err;
     }
     return res.json();
   } catch(e) {
@@ -215,8 +217,15 @@ function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
 }
 
 // ─── Vérification du quota journalier ────────────────────────────────────────
+function todayParis() {
+  const fuseau = process.env.FUSEAU || 'Europe/Paris';
+  const d = new Date(new Date().toLocaleString('en-US', { timeZone: fuseau }));
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
+}
+
 function verifierQuotaJournalier(db) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayParis();
   const maxParJour = parseInt(process.env.MAX_EMAILS_PER_DAY) || 50;
 
   const row = db.prepare('SELECT count FROM envoi_quota WHERE date_jour = ?').get(today);
@@ -303,7 +312,7 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
   try {
     const insc = db.prepare('SELECT s.options FROM inscriptions i JOIN sequences s ON i.sequence_id = s.id WHERE i.id = ?').get(inscriptionId);
     if (insc?.options) seqOptions = JSON.parse(insc.options);
-  } catch(e) {}
+  } catch(e) { logger.warn('Erreur lecture options séquence', { inscriptionId, error: e.message }); }
 
   const corpsHtml = etape.corps_html
     ? texteVersHtml(etape.corps_html, trackingId, lead, true, seqOptions)
@@ -388,7 +397,7 @@ function estDansLaFenetreEnvoi() {
 
 // ─── Quota restant aujourd'hui ───────────────────────────────────────────────
 function getQuotaRestant(db) {
-  const today = new Date().toISOString().split('T')[0];
+  const today = todayParis();
   const maxParJour = parseInt(process.env.MAX_EMAILS_PER_DAY) || 50;
   const row = db.prepare('SELECT count FROM envoi_quota WHERE date_jour = ?').get(today);
   return { envoyes: row?.count || 0, max: maxParJour, restant: maxParJour - (row?.count || 0) };

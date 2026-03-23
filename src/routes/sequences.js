@@ -89,8 +89,8 @@ module.exports = (db) => {
               hasData: !!e.piece_jointe.data
             });
           }
-          db.prepare('INSERT INTO etapes (id, sequence_id, ordre, jour_delai, sujet, corps, corps_html, piece_jointe) VALUES (?,?,?,?,?,?,?,?)')
-            .run(uuidv4(), seqId, i + 1, e.jour_delai ?? e.jour ?? 0, e.sujet || '', e.corps || '', e.corps_html || null, e.piece_jointe ? JSON.stringify(e.piece_jointe) : null);
+          db.prepare('INSERT INTO etapes (id, sequence_id, ordre, jour_delai, sujet, corps, corps_html, piece_jointe, content_json) VALUES (?,?,?,?,?,?,?,?,?)')
+            .run(uuidv4(), seqId, i + 1, e.jour_delai ?? e.jour ?? 0, e.sujet || '', e.corps || '', e.corps_html || null, e.piece_jointe ? JSON.stringify(e.piece_jointe) : null, e.content_json || null);
         });
       })(etapes);
 
@@ -160,12 +160,13 @@ module.exports = (db) => {
               });
             }
 
+            const content_json = e.content_json || null;
             if (i < existantes.length) {
-              db.prepare('UPDATE etapes SET ordre=?,jour_delai=?,sujet=?,corps=?,corps_html=?,piece_jointe=? WHERE id=?')
-                .run(i + 1, e.jour_delai ?? e.jour ?? 0, e.sujet || '', e.corps || '', corps_html, piece_jointe, existantes[i].id);
+              db.prepare('UPDATE etapes SET ordre=?,jour_delai=?,sujet=?,corps=?,corps_html=?,piece_jointe=?,content_json=? WHERE id=?')
+                .run(i + 1, e.jour_delai ?? e.jour ?? 0, e.sujet || '', e.corps || '', corps_html, piece_jointe, content_json, existantes[i].id);
             } else {
-              db.prepare('INSERT INTO etapes (id,sequence_id,ordre,jour_delai,sujet,corps,corps_html,piece_jointe) VALUES (?,?,?,?,?,?,?,?)')
-                .run(uuidv4(), req.params.id, i + 1, e.jour_delai ?? e.jour ?? 0, e.sujet || '', e.corps || '', corps_html, piece_jointe);
+              db.prepare('INSERT INTO etapes (id,sequence_id,ordre,jour_delai,sujet,corps,corps_html,piece_jointe,content_json) VALUES (?,?,?,?,?,?,?,?,?)')
+                .run(uuidv4(), req.params.id, i + 1, e.jour_delai ?? e.jour ?? 0, e.sujet || '', e.corps || '', corps_html, piece_jointe, content_json);
             }
           });
 
@@ -265,8 +266,14 @@ module.exports = (db) => {
       const { lead_ids } = req.body;
       if (!Array.isArray(lead_ids)) return res.status(400).json({ erreur: 'lead_ids doit être un tableau' });
 
+      const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
+      if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
+
       const resultats = lead_ids.map(leadId => {
         try {
+          const lead = db.prepare('SELECT unsubscribed FROM leads WHERE id = ?').get(leadId);
+          if (!lead) return { lead_id: leadId, statut: 'erreur', erreur: 'Lead introuvable' };
+          if (lead.unsubscribed) return { lead_id: leadId, statut: 'erreur', erreur: 'Lead désabonné' };
           return { lead_id: leadId, statut: 'inscrit', inscription: inscrireLead(leadId, req.params.id) };
         } catch (e) {
           return { lead_id: leadId, statut: 'erreur', erreur: e.message };
@@ -298,7 +305,8 @@ module.exports = (db) => {
   // DELETE /api/sequences/inscriptions/:id — Retirer un lead
   router.delete('/inscriptions/:id', (req, res) => {
     try {
-      db.prepare(`UPDATE inscriptions SET statut = 'terminé' WHERE id = ?`).run(req.params.id);
+      const result = db.prepare(`UPDATE inscriptions SET statut = 'terminé', prochain_envoi = NULL WHERE id = ?`).run(req.params.id);
+      if (!result.changes) return res.status(404).json({ erreur: 'Inscription introuvable' });
       res.json({ message: 'Lead retiré de la séquence' });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
@@ -491,7 +499,9 @@ module.exports = (db) => {
   // POST /api/sequences/trigger-now — Envoi direct (bypass fenêtre horaire)
   router.post('/trigger-now', async (req, res) => {
     try {
-      const { lead_ids, async } = req.body || {};
+      const body = req.body || {};
+      const lead_ids = body.lead_ids;
+      const asyncMode = body.async;
 
       let inscriptions;
       if (lead_ids?.length) {
@@ -511,11 +521,11 @@ module.exports = (db) => {
       if (!inscriptions.length) return res.json({ message: 'Aucune inscription active', envoyes: 0 });
 
       // Mode asynchrone : retourne immédiatement et traite en arrière-plan
-      if (async) {
+      if (asyncMode) {
         res.json({
           message: `Envoi de ${inscriptions.length} email(s) en cours en arrière-plan...`,
           count: inscriptions.length,
-          async: true
+          asyncMode: true
         });
 
         // Traitement en arrière-plan (fire and forget)

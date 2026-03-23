@@ -36,6 +36,7 @@ module.exports = (db) => {
           FROM inscriptions i
           JOIN sequences s ON i.sequence_id = s.id
           WHERE i.statut = 'actif'
+          GROUP BY i.lead_id
         ) ia ON ia.lead_id = l.id
         WHERE 1=1
       `;
