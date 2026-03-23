@@ -29,9 +29,11 @@ function formatSQLite(date) {
 // ─── Calcul de la prochaine date d'envoi ──────────────────────────────────────
 function prochaineDateEnvoi(joursDelai) {
   const heureDebut  = parseInt(process.env.SEND_HOUR_START) || 8;
+  const heureFin    = parseInt(process.env.SEND_HOUR_END) || 18;
   const joursActifs = (process.env.ACTIVE_DAYS || '1,2,3,4,5').split(',').map(Number);
 
-  let date = maintenant_paris();
+  const now = maintenant_paris();
+  let date = new Date(now.getTime());
   date.setDate(date.getDate() + joursDelai);
 
   // Avancer au prochain jour ouvré si nécessaire
@@ -43,6 +45,25 @@ function prochaineDateEnvoi(joursDelai) {
 
   // Heure de début + variation aléatoire (0–120 min) pour paraître naturel
   date.setHours(heureDebut, Math.floor(Math.random() * 120), 0, 0);
+
+  // Si l'heure calculée est déjà passée et qu'on est encore dans la fenêtre d'envoi,
+  // programmer dans 2-5 minutes
+  if (date <= now && joursActifs.includes(now.getDay()) && now.getHours() >= heureDebut && now.getHours() < heureFin) {
+    date = new Date(now.getTime());
+    date.setMinutes(date.getMinutes() + 2 + Math.floor(Math.random() * 3));
+  }
+  // Si l'heure est passée et qu'on est hors fenêtre, programmer au prochain jour ouvré
+  else if (date <= now) {
+    date = new Date(now.getTime());
+    date.setDate(date.getDate() + 1);
+    tentatives = 0;
+    while (!joursActifs.includes(date.getDay()) && tentatives < 7) {
+      date.setDate(date.getDate() + 1);
+      tentatives++;
+    }
+    date.setHours(heureDebut, Math.floor(Math.random() * 120), 0, 0);
+  }
+
   return formatSQLite(date);
 }
 
