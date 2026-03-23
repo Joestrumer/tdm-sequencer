@@ -8116,7 +8116,7 @@ const VueCommandes = ({ showToast }) => {
   useEffect(() => { charger(); }, [filtre]);
 
   const openValidateModal = (commande) => {
-    setValidateOptions({ documentType: 'vat', shippingId: '1', sendEmail: true, logGSheets: true, generateCsv: true });
+    setValidateOptions({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true });
     setValidateModal(commande);
   };
 
@@ -8127,11 +8127,17 @@ const VueCommandes = ({ showToast }) => {
     const partnerEmail = validateModal.partner_email || '';
     setValidating(id);
     try {
-      const res = await api.post(`/partner-orders/${id}/validate`, validateOptions);
+      const res = await api.post(`/partner-orders/${id}/validate`, {
+        documentType: validateOptions.documentType,
+        shippingId: validateOptions.shippingId,
+        sendEmail: validateOptions.sendEmailVF,
+        logGSheets: validateOptions.logGSheets,
+        generateCsv: validateOptions.generateCsv,
+      });
       if (res.ok) {
         const invoiceNumber = res.vf_invoice_number || '';
 
-        // 1. Télécharger CSV si retourné
+        // 1. Télécharger CSV + mailto logisticien
         if (res.csv_base64) {
           const blob = new Blob([Uint8Array.from(atob(res.csv_base64), c => c.charCodeAt(0))], { type: 'text/csv;charset=utf-8' });
           const url = URL.createObjectURL(blob);
@@ -8140,29 +8146,31 @@ const VueCommandes = ({ showToast }) => {
           a.download = `logisticien-${invoiceNumber || id}.csv`;
           a.click();
           URL.revokeObjectURL(url);
+
+          // Mailto logisticien (seulement si CSV généré)
+          const logSubject = encodeURIComponent(`Commande : ${partnerNom} ${invoiceNumber}`);
+          const logBody = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${invoiceNumber} (${partnerNom}).\n\nCordialement`);
+          const logCc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+          window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_blank');
         }
 
         // 2. Ouvrir le PDF facture/proforma dans un nouvel onglet
         try {
-          const pdfRes = await api.get(`/partner-orders/${id}/pdf`);
-          if (pdfRes.ok && pdfRes.url) {
-            window.open(pdfRes.url, '_blank');
+          const token = localStorage.getItem('token');
+          const pdfRes = await fetch(`/api/partner-orders/${id}/pdf`, { headers: { 'Authorization': `Bearer ${token}` } });
+          if (pdfRes.ok) {
+            const pdfBlob = await pdfRes.blob();
+            const pdfUrl = URL.createObjectURL(pdfBlob);
+            window.open(pdfUrl, '_blank');
           }
         } catch (e) {}
 
-        // 3. Mailto logisticien
-        const logSubject = encodeURIComponent(`Commande : ${partnerNom} ${invoiceNumber}`);
-        const logBody = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${invoiceNumber} (${partnerNom}).\n\nCordialement`);
-        const logCc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
-        window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_blank');
-
-        // 4. Mailto partenaire (après 800ms de délai)
-        if (partnerEmail) {
+        // 3. Mailto partenaire (après 800ms de délai)
+        if (validateOptions.sendEmailPartner && partnerEmail) {
           setTimeout(() => {
             const partSubject = encodeURIComponent('Confirmation commande — Terre de Mars');
             const partBody = encodeURIComponent(`Bonjour,\n\nNous vous confirmons la bonne réception de votre commande n°${invoiceNumber}.\n\nVotre commande a été mise en préparation et sera expédiée dans les meilleurs délais.\n\nCordialement,\nTerre de Mars`);
-            const partCc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
-            window.location.href = `mailto:${partnerEmail}?cc=${partCc}&subject=${partSubject}&body=${partBody}`;
+            window.location.href = `mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`;
           }, 800);
         }
 
@@ -8290,8 +8298,12 @@ const VueCommandes = ({ showToast }) => {
               {/* Checkboxes */}
               <div className="space-y-2">
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-                  <input type="checkbox" checked={validateOptions.sendEmail} onChange={e => setValidateOptions(o => ({ ...o, sendEmail: e.target.checked }))} className="rounded" />
-                  Envoyer email au partenaire
+                  <input type="checkbox" checked={validateOptions.sendEmailVF} onChange={e => setValidateOptions(o => ({ ...o, sendEmailVF: e.target.checked }))} className="rounded" />
+                  Envoyer email VF (facture)
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={validateOptions.sendEmailPartner} onChange={e => setValidateOptions(o => ({ ...o, sendEmailPartner: e.target.checked }))} className="rounded" />
+                  Envoyer email de confirmation au partenaire
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
                   <input type="checkbox" checked={validateOptions.logGSheets} onChange={e => setValidateOptions(o => ({ ...o, logGSheets: e.target.checked }))} className="rounded" />
@@ -8299,7 +8311,7 @@ const VueCommandes = ({ showToast }) => {
                 </label>
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
                   <input type="checkbox" checked={validateOptions.generateCsv} onChange={e => setValidateOptions(o => ({ ...o, generateCsv: e.target.checked }))} className="rounded" />
-                  Générer CSV logisticien
+                  Générer CSV et email logisticien
                 </label>
               </div>
             </div>
