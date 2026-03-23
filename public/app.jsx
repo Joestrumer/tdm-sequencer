@@ -8123,21 +8123,50 @@ const VueCommandes = ({ showToast }) => {
   const validerCommande = async () => {
     if (!validateModal) return;
     const id = validateModal.id;
+    const partnerNom = validateModal.partner_nom || '';
+    const partnerEmail = validateModal.partner_email || '';
     setValidating(id);
     try {
       const res = await api.post(`/partner-orders/${id}/validate`, validateOptions);
       if (res.ok) {
-        // Télécharger CSV si retourné
+        const invoiceNumber = res.vf_invoice_number || '';
+
+        // 1. Télécharger CSV si retourné
         if (res.csv_base64) {
           const blob = new Blob([Uint8Array.from(atob(res.csv_base64), c => c.charCodeAt(0))], { type: 'text/csv;charset=utf-8' });
           const url = URL.createObjectURL(blob);
           const a = document.createElement('a');
           a.href = url;
-          a.download = `logisticien-${res.vf_invoice_number || id}.csv`;
+          a.download = `logisticien-${invoiceNumber || id}.csv`;
           a.click();
           URL.revokeObjectURL(url);
         }
-        showToast(res.message || `Commande validée — ${res.vf_invoice_number || ''}`, "success");
+
+        // 2. Ouvrir le PDF facture/proforma dans un nouvel onglet
+        try {
+          const pdfRes = await api.get(`/partner-orders/${id}/pdf`);
+          if (pdfRes.ok && pdfRes.url) {
+            window.open(pdfRes.url, '_blank');
+          }
+        } catch (e) {}
+
+        // 3. Mailto logisticien
+        const logSubject = encodeURIComponent(`Commande : ${partnerNom} ${invoiceNumber}`);
+        const logBody = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${invoiceNumber} (${partnerNom}).\n\nCordialement`);
+        const logCc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+        window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_blank');
+
+        // 4. Mailto partenaire (après 800ms de délai)
+        if (partnerEmail) {
+          setTimeout(() => {
+            const partSubject = encodeURIComponent('Confirmation commande — Terre de Mars');
+            const partBody = encodeURIComponent(`Bonjour,\n\nNous vous confirmons la bonne réception de votre commande n°${invoiceNumber}.\n\nVotre commande a été mise en préparation et sera expédiée dans les meilleurs délais.\n\nCordialement,\nTerre de Mars`);
+            const partCc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+            window.location.href = `mailto:${partnerEmail}?cc=${partCc}&subject=${partSubject}&body=${partBody}`;
+          }, 800);
+        }
+
+        showToast(res.message || `Commande validée — ${invoiceNumber}`, "success");
         setValidateModal(null);
         charger();
       } else {
