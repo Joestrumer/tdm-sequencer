@@ -3,6 +3,17 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 // ─── API BACKEND (remplace les données démo) ──────────────────────────────────
 const api = window.tdmApi;
 
+// ─── CONSTANTES PARTAGÉES ─────────────────────────────────────────────────────
+const SEGMENTS = ["5*","4*","Boutique","Retail","SPA","Concept Store"];
+const LANGUES_MAP = { fr: "🇫🇷", en: "🇬🇧", de: "🇩🇪", es: "🇪🇸", it: "🇮🇹" };
+const langueToFlag = (l) => LANGUES_MAP[l] || l;
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+function parseTags(tags) {
+  if (Array.isArray(tags)) return tags;
+  try { return JSON.parse(tags || "[]"); } catch(e) { return []; }
+}
+
 // ─── HOOKS UTILITAIRES ──────────────────────────────────────────────────────────
 function useEscapeClose(onClose) {
   useEffect(() => {
@@ -141,7 +152,7 @@ const ModalAddLead = ({ onClose, onAdd }) => {
       const lead = await api.post('/leads', payload);
       onAdd(lead);
       onClose();
-    } catch(e) { setErr("Erreur lors de l'ajout"); }
+    } catch(e) { setErr(e.message || "Erreur lors de l'ajout"); }
     setSaving(false);
   };
   return (
@@ -222,7 +233,7 @@ const ModalAddLead = ({ onClose, onAdd }) => {
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">Segment</label>
                 <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
-                  {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
+                  {SEGMENTS.map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
@@ -544,10 +555,17 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     return { ...et, [k]: v, ...extra };
   }));
 
-  // Insérer une variable à la position du curseur (adapté pour Tiptap)
+  // Ref stable pour updateEtape (évite closure stale dans le listener Quill)
+  const updateEtapeRef = useRef(updateEtape);
+  updateEtapeRef.current = updateEtape;
+
+  // Insérer une variable à la position du curseur dans Quill
   const insererVar = (v) => {
-    if (editor) {
-      editor.chain().focus().insertContent(v).run();
+    if (quillRef.current) {
+      const quill = quillRef.current;
+      const range = quill.getSelection(true);
+      quill.insertText(range.index, v);
+      quill.setSelection(range.index + v.length);
     }
   };
 
@@ -576,12 +594,12 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
       }
     });
 
-    // Sauvegarder les changements (utilise activeEtapeRef pour avoir toujours la bonne étape)
+    // Sauvegarder les changements (utilise refs pour avoir toujours la bonne étape et le bon setter)
     quill.on('text-change', () => {
       const delta = quill.getContents();
       const html = quill.root.innerHTML;
-      updateEtape(activeEtapeRef.current, 'content_json', JSON.stringify(delta));
-      updateEtape(activeEtapeRef.current, 'corps_html', html);
+      updateEtapeRef.current(activeEtapeRef.current, 'content_json', JSON.stringify(delta));
+      updateEtapeRef.current(activeEtapeRef.current, 'corps_html', html);
     });
 
     quillRef.current = quill;
@@ -624,19 +642,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
           corps: e.corps_html || e.corps || "",
         };
 
-        // Log si pièce jointe présente
-        if (e.piece_jointe) {
-          console.log(`📎 Étape ${i+1} a une pièce jointe:`, {
-            nom: e.piece_jointe.nom,
-            taille: e.piece_jointe.taille,
-            hasData: !!e.piece_jointe.data
-          });
-        }
-
         return etape;
       });
 
-      console.log('💾 Sauvegarde séquence:', { nom, nbEtapes: etapesFinales.length });
       await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options: { desabonnement, bcc: bcc.trim() || undefined } });
       onClose();
     } catch(e) { setErrMsg("Erreur : " + (e.message || "impossible de sauvegarder")); }
@@ -644,26 +652,24 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   };
 
   const etapeCourante = etapes[activeEtape] || {};
-  // Le corps pour la preview - détecter et enlever duplication
-  let corpsPreview = etapeCourante.corps_html || texteVersHtmlPreview(etapeCourante.corps || "");
 
-  // Si le contenu semble dupliqué (même texte apparaît deux fois), prendre seulement la première moitié
-  const tempDiv = document.createElement('div');
-  tempDiv.innerHTML = corpsPreview;
-  const textContent = tempDiv.textContent || '';
-  const halfLength = Math.floor(textContent.length / 2);
-  const firstHalf = textContent.substring(0, halfLength);
-  const secondHalf = textContent.substring(halfLength);
-
-  // Si les deux moitiés sont très similaires (80%+), c'est probablement une duplication
-  if (firstHalf.length > 50 && secondHalf.includes(firstHalf.substring(0, 50))) {
-    // Prendre seulement la première moitié du HTML
-    const allNodes = Array.from(tempDiv.childNodes);
-    const midPoint = Math.floor(allNodes.length / 2);
-    tempDiv.innerHTML = '';
-    allNodes.slice(0, midPoint).forEach(node => tempDiv.appendChild(node.cloneNode(true)));
-    corpsPreview = tempDiv.innerHTML;
-  }
+  // Le corps pour la preview - mémoïsé pour éviter createElement à chaque render
+  const corpsPreview = useMemo(() => {
+    let html = etapeCourante.corps_html || texteVersHtmlPreview(etapeCourante.corps || "");
+    // Détecter et enlever duplication
+    const tempDiv = document.createElement('div');
+    tempDiv.innerHTML = html;
+    const text = tempDiv.textContent || '';
+    const half = Math.floor(text.length / 2);
+    if (half > 50 && text.substring(half).includes(text.substring(0, 50))) {
+      const allNodes = Array.from(tempDiv.childNodes);
+      const mid = Math.floor(allNodes.length / 2);
+      tempDiv.innerHTML = '';
+      allNodes.slice(0, mid).forEach(n => tempDiv.appendChild(n.cloneNode(true)));
+      html = tempDiv.innerHTML;
+    }
+    return html;
+  }, [etapeCourante.corps_html, etapeCourante.corps]);
 
   const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
 
@@ -675,7 +681,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-4 flex-shrink-0">
           <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom de la séquence..." className="flex-1 text-base font-semibold text-slate-900 focus:outline-none bg-transparent placeholder-slate-300" />
           <select value={segment} onChange={e => setSegment(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none">
-            {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
+            {SEGMENTS.map(s => <option key={s}>{s}</option>)}
           </select>
           <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
             <input type="checkbox" checked={desabonnement} onChange={e => setDesabonnement(e.target.checked)} className="rounded" />
@@ -1203,7 +1209,7 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
           <div className="grid grid-cols-3 gap-3">
             <div><label className="text-xs text-slate-500 mb-1 block">Segment</label>
             <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
-              {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
+              {SEGMENTS.map(s => <option key={s}>{s}</option>)}
             </select></div>
             <div><label className="text-xs text-slate-500 mb-1 block">Statut</label>
             <select value={form.statut} onChange={e => set("statut", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
@@ -1368,20 +1374,31 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     };
   }, []);
 
-  const leadsNorm = leads.map(l => ({
+  // ── Helpers extraits ────────────────────────────────────────────────
+  const arreterSequence = async (lead) => {
+    if (!confirm(`Arrêter la séquence pour ${lead.prenom} ${lead.nom} ?`)) return;
+    try {
+      await api.post(`/sequences/stop-lead/${lead.id}`);
+      showToast('Séquence arrêtée', 'success');
+      if (onRefresh) onRefresh();
+      if (selectedLead?.id === lead.id) setSelectedLead(null);
+    } catch(e) { showToast(e.message || 'Erreur', 'error'); }
+  };
+
+  const leadsNorm = useMemo(() => leads.map(l => ({
     ...l,
-    tags: typeof l.tags === "string" ? (() => { try { return JSON.parse(l.tags || "[]"); } catch(e) { return []; } })() : (l.tags || []),
+    tags: parseTags(l.tags),
     ouvertures: l.total_ouvertures || l.ouvertures || 0,
     score: l.score || 50,
     sequence: l.sequence_active || l.sequence || "",
     etape: l.etape_courante || l.etape || 0,
     statut: l.statut || "Nouveau",
-  }));
+  })), [leads]);
 
-  const villes = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.ville).filter(Boolean))).sort()];
-  const segments = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.segment).filter(Boolean))).sort()];
-  const langues = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.langue).filter(Boolean))).sort()];
-  const campaigns = ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.campaign).filter(Boolean))).sort()];
+  const villes = useMemo(() => ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.ville).filter(Boolean))).sort()], [leadsNorm]);
+  const segments = useMemo(() => ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.segment).filter(Boolean))).sort()], [leadsNorm]);
+  const langues = useMemo(() => ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.langue).filter(Boolean))).sort()], [leadsNorm]);
+  const campaigns = useMemo(() => ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.campaign).filter(Boolean))).sort()], [leadsNorm]);
   const statuts = ["Tous", ...Object.keys(STATUT_CONFIG)];
 
   const handleColumnSort = (column) => {
@@ -1394,7 +1411,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     setSortBy(null); // Désactiver le tri par dropdown
   };
 
-  const filtered = leadsNorm.filter(l => {
+  const filtered = useMemo(() => leadsNorm.filter(l => {
     const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email} ${l.campaign||""}`.toLowerCase().includes(search.toLowerCase());
     const matchStatut = filterStatut === "Tous" || l.statut === filterStatut;
     const matchSegment = filterSegment === "Tous" || l.segment === filterSegment;
@@ -1436,9 +1453,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     if (sortBy === "score") return (b.score||0) - (a.score||0);
     if (sortBy === "nom") return `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`);
     return 0; // recent = ordre API
-  });
+  }), [leadsNorm, search, filterStatut, filterSegment, filterVille, filterLangue, filterCampaign, sortColumn, sortDirection, sortBy]);
 
-  const KANBAN_COLS = ["Nouveau", "En séquence", "Répondu", "Converti", "Fin de séquence", "Closed Lost", "Désabonné"];
+  const KANBAN_COLS = useMemo(() => ["Nouveau", "En séquence", "Répondu", "Converti", "Fin de séquence", "Closed Lost", "Désabonné"], []);
 
   // ── Import CSV ──────────────────────────────────────────────────────────
   const importerCSV = async (file) => {
@@ -1568,7 +1585,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             {villes.map(v => <option key={v}>{v}</option>)}
           </select>
           <select value={filterLangue} onChange={e => setFilterLangue(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
-            {langues.map(l => <option key={l} value={l}>{l === "Tous" ? "Toutes langues" : l === "fr" ? "🇫🇷 FR" : l === "en" ? "🇬🇧 EN" : l === "de" ? "🇩🇪 DE" : l === "es" ? "🇪🇸 ES" : l === "it" ? "🇮🇹 IT" : l}</option>)}
+            {langues.map(l => <option key={l} value={l}>{l === "Tous" ? "Toutes langues" : `${langueToFlag(l)} ${l.toUpperCase()}`}</option>)}
           </select>
           <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
             <option value="Tous">Toutes campaigns</option>
@@ -1667,7 +1684,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     <div className="font-medium text-slate-800 text-sm truncate">{lead.prenom} {lead.nom}
                       {lead.hubspot_id && <span className="ml-1 text-orange-300 text-xs">⬡</span>}
                     </div>
-                    <div className="text-xs text-slate-400 truncate">{lead.hotel} · {[lead.ville, lead.segment, lead.langue ? (lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : lead.langue) : null].filter(Boolean).join(" · ")}</div>
+                    <div className="text-xs text-slate-400 truncate">{lead.hotel} · {[lead.ville, lead.segment, lead.langue ? langueToFlag(lead.langue) : null].filter(Boolean).join(" · ")}</div>
                   </div>
                   <Badge statut={lead.statut} />
                 </div>
@@ -1679,7 +1696,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                   </div>
                   <div className="flex gap-1" onClick={e => e.stopPropagation()}>
                     {lead.statut !== "Désabonné" && !lead.sequence_active && <button onClick={() => setShowLaunch(lead)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs bg-blue-600 text-white rounded-lg">▶</button>}
-                    {lead.sequence_active && <button onClick={async () => { if(!confirm('Arrêter la séquence ?')) return; try { await api.post(`/sequences/stop-lead/${lead.id}`); showToast('Séquence arrêtée','success'); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs bg-red-500 text-white rounded-lg">⏹</button>}
+                    {lead.sequence_active && <button onClick={() => arreterSequence(lead)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs bg-red-500 text-white rounded-lg">⏹</button>}
                     <button onClick={() => setEditLead(lead)} className="min-h-[44px] min-w-[44px] flex items-center justify-center text-xs border border-slate-200 text-slate-500 rounded-lg">✏️</button>
                   </div>
                 </div>
@@ -1768,7 +1785,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     <div className="text-xs text-slate-700 font-medium leading-tight truncate">{lead.hotel} · {[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
                   </td>
                   <td className="px-2 py-1.5 text-center overflow-hidden" style={{ width: columnWidths.langue + 'px' }}>
-                    <span className="text-xs">{lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : lead.langue || '—'}</span>
+                    <span className="text-xs">{langueToFlag(lead.langue) || '—'}</span>
                   </td>
                   <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.campaign + 'px' }}>
                     <span className="text-xs text-slate-600 truncate block">{lead.campaign || '—'}</span>
@@ -1790,7 +1807,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                         <button onClick={() => setShowLaunch(lead)} title="Lancer séquence" className="px-2 py-1 text-xs bg-blue-600 text-white rounded-md hover:bg-blue-700 whitespace-nowrap">▶</button>
                       )}
                       {lead.sequence_active && (
-                        <button onClick={async () => { if(!confirm('Arrêter la séquence pour ce lead ?')) return; try { await api.post(`/sequences/stop-lead/${lead.id}`); showToast('Séquence arrêtée','success'); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} title="Arrêter séquence" className="px-2 py-1 text-xs bg-red-500 text-white rounded-md hover:bg-red-600 whitespace-nowrap">⏹</button>
+                        <button onClick={() => arreterSequence(lead)} title="Arrêter séquence" className="px-2 py-1 text-xs bg-red-500 text-white rounded-md hover:bg-red-600 whitespace-nowrap">⏹</button>
                       )}
                       <button onClick={() => setEditLead(lead)} title="Modifier" className="px-2 py-1 text-xs border border-slate-200 text-slate-500 rounded-md hover:bg-slate-100">✏️</button>
                       <button onClick={(e) => supprimerLead(lead, e)} title="Supprimer" className="px-2 py-1 text-xs border border-red-100 text-red-400 rounded-md hover:bg-red-50">✕</button>
@@ -1821,7 +1838,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                           </div>
                           <div className="bg-white rounded-lg p-2.5 border border-slate-100">
                             <div className="text-xs text-slate-400">Langue</div>
-                            <div className="text-lg font-bold text-slate-800">{lead.langue === 'fr' ? '🇫🇷' : lead.langue === 'en' ? '🇬🇧' : lead.langue === 'de' ? '🇩🇪' : lead.langue === 'es' ? '🇪🇸' : lead.langue === 'it' ? '🇮🇹' : '—'}</div>
+                            <div className="text-lg font-bold text-slate-800">{langueToFlag(lead.langue) || '—'}</div>
                           </div>
                         </div>
 
@@ -1849,17 +1866,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                             <button onClick={() => setShowLaunch(lead)} className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">▶ Lancer séquence</button>
                           )}
                           {lead.sequence_active && (
-                            <button onClick={async () => {
-                              if (!confirm('Arrêter la séquence pour ce lead ?')) return;
-                              try {
-                                await api.post(`/sequences/stop-lead/${lead.id}`);
-                                showToast('Séquence arrêtée', 'success');
-                                if (onRefresh) onRefresh();
-                                setSelectedLead(null);
-                              } catch (err) {
-                                showToast(err.message || 'Erreur', 'error');
-                              }
-                            }} className="px-3 py-1.5 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-100">⏹️ Arrêter</button>
+                            <button onClick={() => arreterSequence(lead)} className="px-3 py-1.5 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-100">⏹️ Arrêter</button>
                           )}
                           {lead.hubspot_id && (
                             <a href={`https://app.hubspot.com/contacts/26199813/contact/${lead.hubspot_id}`} target="_blank" className="px-3 py-1.5 text-xs bg-orange-50 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-100">HubSpot ↗</a>
@@ -1924,17 +1931,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <div className="flex items-center justify-end p-4 md:p-5 border-b border-slate-100 gap-2 flex-wrap">
               <button onClick={() => setEditLead(selectedLead)} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50">✏️ Éditer</button>
               {selectedLead.sequence_active && (
-                <button onClick={async () => {
-                  if (!confirm(`Arrêter la séquence "${selectedLead.sequence_active}" pour ce lead ?`)) return;
-                  try {
-                    await api.post(`/sequences/stop-lead/${selectedLead.id}`);
-                    showToast('Séquence arrêtée', 'success');
-                    if (onRefresh) onRefresh();
-                    setSelectedLead(null);
-                  } catch (err) {
-                    showToast(err.message || 'Erreur lors de l\'arrêt', 'error');
-                  }
-                }} className="px-3 py-1.5 text-xs border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50">⏹️ Arrêter séquence</button>
+                <button onClick={() => arreterSequence(selectedLead)} className="px-3 py-1.5 text-xs border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50">⏹️ Arrêter séquence</button>
               )}
               <button onClick={async () => {
                 if (!confirm(`Bloquer ${selectedLead.email} et l'ajouter à la blocklist ?`)) return;
@@ -2665,7 +2662,7 @@ const ModalQualification = ({ email, onClose, onSuccess, sequences, showToast })
             <div className="mt-3">
               <label className="text-xs text-slate-500 mb-1 block">Segment</label>
               <select value={form.segment} onChange={e => set('segment', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                {["5*","4*","Boutique","Retail","SPA","Concept Store"].map(s => <option key={s}>{s}</option>)}
+                {SEGMENTS.map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
           </div>
@@ -8730,14 +8727,18 @@ function App() {
   };
 
   // Charger les données au démarrage
+  const chargerRetries = useRef(0);
   const charger = async () => {
     // Attendre que le token soit disponible (Babel charge async)
     const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
     if (!token) {
-      // Réessayer dans 200ms si pas encore de token
-      setTimeout(charger, 200);
+      if (chargerRetries.current < 25) { // Max 5 secondes (25 × 200ms)
+        chargerRetries.current++;
+        setTimeout(charger, 200);
+      }
       return;
     }
+    chargerRetries.current = 0;
     setLoading(true);
     try {
       const [leadsData, seqData, statsData, seqStatsData] = await Promise.all([
