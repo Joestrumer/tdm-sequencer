@@ -269,35 +269,8 @@ function genererCSVLogisticien(invoiceData, client, shippingNames, options = {})
 function parseAdresseExpedition(adresse) {
   if (!adresse) return { street: '', city: '', zip: '', country: 'FR' };
 
-  const lines = String(adresse).split('\n').map(l => l.trim()).filter(Boolean);
+  const raw = String(adresse).trim();
 
-  let street = '';
-  let city = '';
-  let zip = '';
-  let country = 'FR';
-
-  if (lines.length >= 2) {
-    street = lines.slice(0, -1).join(', ');
-    const lastLine = lines[lines.length - 1];
-
-    // Essayer de parser "75001 Paris" ou "Paris 75001"
-    const matchZipCity = lastLine.match(/^(\d{4,5})\s+(.+)$/);
-    const matchCityZip = lastLine.match(/^(.+?)\s+(\d{4,5})$/);
-
-    if (matchZipCity) {
-      zip = matchZipCity[1];
-      city = matchZipCity[2];
-    } else if (matchCityZip) {
-      city = matchCityZip[1];
-      zip = matchCityZip[2];
-    } else {
-      city = lastLine;
-    }
-  } else {
-    street = lines[0] || '';
-  }
-
-  // Détecter le pays si c'est la dernière ligne
   const countryCodes = {
     'france': 'FR', 'italie': 'IT', 'italy': 'IT', 'suisse': 'CH',
     'switzerland': 'CH', 'belgique': 'BE', 'belgium': 'BE',
@@ -306,9 +279,80 @@ function parseAdresseExpedition(adresse) {
     'pays-bas': 'NL', 'netherlands': 'NL', 'portugal': 'PT',
     'royaume-uni': 'GB', 'united kingdom': 'GB', 'uk': 'GB',
   };
-  const lastWord = city.toLowerCase().trim();
-  if (countryCodes[lastWord]) {
-    country = countryCodes[lastWord];
+
+  let street = '';
+  let city = '';
+  let zip = '';
+  let country = 'FR';
+
+  // Déterminer le séparateur : newlines ou virgules
+  const hasNewlines = raw.includes('\n');
+  const parts = hasNewlines
+    ? raw.split('\n').map(l => l.trim()).filter(Boolean)
+    : raw.split(',').map(l => l.trim()).filter(Boolean);
+
+  if (parts.length >= 3) {
+    // Format: "rue, code postal, ville" ou "rue\ncode postal\nville"
+    // Chercher la partie qui contient un code postal (4-5 chiffres)
+    let streetParts = [];
+    let foundZip = false;
+    for (const part of parts) {
+      const zipMatch = part.match(/^\s*(\d{4,5})\s*$/);
+      if (zipMatch && !foundZip) {
+        zip = zipMatch[1];
+        foundZip = true;
+      } else if (!foundZip) {
+        // Vérifier si le code postal est collé avec la rue: "59 rue Bara 78800"
+        const inlineZip = part.match(/^(.+?)\s+(\d{5})$/);
+        if (inlineZip) {
+          streetParts.push(inlineZip[1]);
+          zip = inlineZip[2];
+          foundZip = true;
+        } else {
+          streetParts.push(part);
+        }
+      } else {
+        // Après le code postal, c'est la ville (ou pays)
+        const lower = part.toLowerCase().trim();
+        if (countryCodes[lower]) {
+          country = countryCodes[lower];
+        } else if (!city) {
+          city = part;
+        }
+      }
+    }
+    street = streetParts.join(', ');
+  } else if (parts.length === 2) {
+    street = parts[0];
+    const lastPart = parts[1];
+    const matchZipCity = lastPart.match(/^(\d{4,5})\s+(.+)$/);
+    const matchCityZip = lastPart.match(/^(.+?)\s+(\d{4,5})$/);
+    if (matchZipCity) {
+      zip = matchZipCity[1];
+      city = matchZipCity[2];
+    } else if (matchCityZip) {
+      city = matchCityZip[1];
+      zip = matchCityZip[2];
+    } else {
+      city = lastPart;
+    }
+  } else {
+    // Une seule partie — essayer d'extraire code postal inline
+    const singleLine = parts[0] || '';
+    const inlineMatch = singleLine.match(/^(.+?),?\s+(\d{5}),?\s+(.+)$/);
+    if (inlineMatch) {
+      street = inlineMatch[1].replace(/,\s*$/, '');
+      zip = inlineMatch[2];
+      city = inlineMatch[3].replace(/,\s*$/, '');
+    } else {
+      street = singleLine;
+    }
+  }
+
+  // Détecter pays dans city si applicable
+  const cityLower = city.toLowerCase().trim();
+  if (countryCodes[cityLower]) {
+    country = countryCodes[cityLower];
     city = '';
   }
 

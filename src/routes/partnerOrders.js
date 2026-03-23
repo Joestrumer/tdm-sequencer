@@ -204,6 +204,30 @@ module.exports = (db) => {
         positions.push(position);
       }
 
+      // Frais de port (FP + FE si total HT < seuil franco)
+      const totalHTProducts = positions.reduce((s, p) => s + parseFloat(p.price_net) * p.quantity, 0);
+      const fraisPort = calculerFraisPort(totalHTProducts);
+      for (const f of fraisPort) {
+        const ref = normalizeRef(f.ref);
+        const qty = f.quantite || 1;
+        const taxRate = f.tva || 20;
+        const priceHT = f.prix_ht || 0;
+        const gross = priceHT * qty * (1 + taxRate / 100);
+
+        const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
+
+        const position = {
+          name: vfProduct.productName || f.nom || ref,
+          code: f.ref || ref,
+          price_net: Number(priceHT).toFixed(2),
+          total_price_gross: Number(gross).toFixed(2),
+          tax: taxRate,
+          quantity: qty,
+        };
+        if (vfProduct.productId) position.product_id = vfProduct.productId;
+        positions.push(position);
+      }
+
       // Résoudre le client VF pour la facture
       const clientMapping = db.prepare('SELECT * FROM vf_client_mappings WHERE file_name = ? OR vf_name = ?')
         .get(canonicalClientName, order.partner_nom);
@@ -313,6 +337,15 @@ module.exports = (db) => {
             priceHT: p.prix_ht || catalog[normalizeRef(p.ref)]?.prix_ht || 0,
             csvRef: catalog[normalizeRef(p.ref)]?.csv_ref,
           }));
+
+          // Ajouter frais de port (FP/FE) au log GSheets
+          for (const f of fraisPort) {
+            gsProducts.push({
+              ref: f.ref,
+              quantity: f.quantite || 1,
+              priceHT: f.prix_ht,
+            });
+          }
 
           const resolvedPartner = (canonicalClientName && canonicalClientName !== order.partner_nom) ? canonicalClientName : undefined;
           const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {

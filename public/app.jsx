@@ -8154,24 +8154,28 @@ const VueCommandes = ({ showToast }) => {
           window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_blank');
         }
 
-        // 2. Ouvrir le PDF facture/proforma dans un nouvel onglet
-        try {
-          const token = localStorage.getItem('token');
-          const pdfRes = await fetch(`/api/partner-orders/${id}/pdf`, { headers: { 'Authorization': `Bearer ${token}` } });
-          if (pdfRes.ok) {
-            const pdfBlob = await pdfRes.blob();
-            const pdfUrl = URL.createObjectURL(pdfBlob);
-            window.open(pdfUrl, '_blank');
-          }
-        } catch (e) {}
+        // 2. Ouvrir le PDF facture/proforma dans un nouvel onglet (délai pour laisser VF générer le PDF)
+        if (res.vf_invoice_id) {
+          setTimeout(async () => {
+            try {
+              const token = localStorage.getItem('token');
+              const pdfRes = await fetch(`/api/partner-orders/${id}/pdf`, { headers: { 'Authorization': `Bearer ${token}` } });
+              if (pdfRes.ok) {
+                const pdfBlob = await pdfRes.blob();
+                const pdfUrl = URL.createObjectURL(pdfBlob);
+                window.open(pdfUrl, '_blank');
+              }
+            } catch (e) {}
+          }, 1500);
+        }
 
-        // 3. Mailto partenaire (après 800ms de délai)
+        // 3. Mailto partenaire (après délai pour ne pas interférer avec le PDF)
         if (validateOptions.sendEmailPartner && partnerEmail) {
           setTimeout(() => {
             const partSubject = encodeURIComponent('Confirmation commande — Terre de Mars');
             const partBody = encodeURIComponent(`Bonjour,\n\nNous vous confirmons la bonne réception de votre commande n°${invoiceNumber}.\n\nVotre commande a été mise en préparation et sera expédiée dans les meilleurs délais.\n\nCordialement,\nTerre de Mars`);
             window.location.href = `mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`;
-          }, 800);
+          }, 2500);
         }
 
         showToast(res.message || `Commande validée — ${invoiceNumber}`, "success");
