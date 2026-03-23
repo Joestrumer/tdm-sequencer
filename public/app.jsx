@@ -19,7 +19,8 @@ function useEscapeClose(onClose) {
   useEffect(() => {
     const handler = (e) => { if (e.key === 'Escape') onClose(); };
     window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    document.body.style.overflow = 'hidden';
+    return () => { window.removeEventListener('keydown', handler); document.body.style.overflow = ''; };
   }, [onClose]);
 }
 
@@ -294,6 +295,7 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
         <div className="p-6 overflow-y-auto flex-1">
           <p className="text-sm text-slate-500 mb-4">Pour <span className="font-medium text-slate-800">{lead.prenom} {lead.nom}</span> — {lead.hotel}</p>
           <div className="space-y-2">
+            {sequences.length === 0 && <p className="text-sm text-slate-400 text-center py-4">Aucune séquence disponible. Créez-en une d'abord.</p>}
             {sequences.map(seq => (
               <label key={seq.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selected === seq.id ? "border-blue-300 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}>
                 <input type="radio" name="seq" value={seq.id} checked={selected === seq.id} onChange={() => setSelected(seq.id)} className="accent-blue-600" />
@@ -309,16 +311,16 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
         </div>
         <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2 flex-shrink-0 border-t border-slate-100">
           <button
-            disabled={status === "loading" || status === "done"}
+            disabled={!selected || status === "loading" || status === "done"}
             onClick={() => handleLaunch(true)}
-            className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 flex items-center justify-center gap-2"
+            className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-center gap-2"
           >
             {status === "loading" ? "⏳ Envoi en cours..." : "⚡ Envoyer le 1er email maintenant"}
           </button>
           <button
-            disabled={status === "loading" || status === "done"}
+            disabled={!selected || status === "loading" || status === "done"}
             onClick={() => handleLaunch(false)}
-            className="w-full py-2.5 text-sm font-medium bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50"
+            className="w-full py-2.5 text-sm font-medium bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
           >
             📅 Lancer la séquence (prochain créneau)
           </button>
@@ -965,7 +967,7 @@ const VueDashboard = ({ showToast }) => {
 
   useEffect(() => {
     loadDashboard();
-    const interval = setInterval(loadDashboard, 60000); // Refresh toutes les minutes
+    const interval = setInterval(() => { if (!document.hidden) loadDashboard(); }, 60000);
     return () => clearInterval(interval);
   }, []);
 
@@ -1260,6 +1262,7 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
         <div className="p-6 overflow-y-auto flex-1">
           <p className="text-sm text-slate-500 mb-4"><span className="font-semibold text-slate-800">{count} leads</span> seront inscrits à la séquence sélectionnée.</p>
           <div className="space-y-2">
+            {sequences.length === 0 && <p className="text-sm text-slate-400 text-center py-4">Aucune séquence disponible. Créez-en une d'abord.</p>}
             {sequences.map(seq => (
               <label key={seq.id} className={`flex items-center gap-3 p-3 rounded-xl border cursor-pointer transition-colors ${selected === seq.id ? "border-blue-300 bg-blue-50" : "border-slate-200 hover:border-slate-300"}`}>
                 <input type="radio" name="bseq" value={seq.id} checked={selected === seq.id} onChange={() => setSelected(seq.id)} className="accent-blue-600" />
@@ -1274,8 +1277,8 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
         </div>
         <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2 flex-shrink-0 border-t border-slate-100">
-          <button disabled={status === "loading" || status === "done"} onClick={() => handleLaunch(true)} className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50">⚡ Envoyer le 1er email maintenant</button>
-          <button disabled={status === "loading" || status === "done"} onClick={() => handleLaunch(false)} className="w-full py-2.5 text-sm font-medium bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 disabled:opacity-50">📅 Lancer (prochain créneau)</button>
+          <button disabled={!selected || status === "loading" || status === "done"} onClick={() => handleLaunch(true)} className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">⚡ Envoyer le 1er email maintenant</button>
+          <button disabled={!selected || status === "loading" || status === "done"} onClick={() => handleLaunch(false)} className="w-full py-2.5 text-sm font-medium bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed">📅 Lancer (prochain créneau)</button>
           <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600 text-center pt-1">Annuler</button>
         </div>
       </div>
@@ -1483,8 +1486,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     try {
       const r = await api.post("/leads/import", { leads: toImport });
       setImportStatus(`✓ ${r.crees} importés`);
+      showToast(`${r.crees} lead(s) importés, ${r.ignores || 0} ignoré(s)`, 'success');
       if (onRefresh) onRefresh();
-    } catch(e) { setImportStatus("✗ Erreur"); }
+    } catch(e) { setImportStatus("✗ Erreur"); showToast('Erreur import CSV', 'error'); }
     setTimeout(() => setImportStatus(null), 4000);
     if (csvRef.current) csvRef.current.value = "";
   };
@@ -1564,6 +1568,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         const ids = Array.from(selectedIds);
         await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids });
         if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(() => {});
+        showToast(`${ids.length} lead(s) inscrits à la séquence`, 'success');
         setSelectedIds(new Set());
         if (onRefresh) onRefresh();
       }} />}
@@ -1625,7 +1630,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <div className="flex items-center gap-1">
             <button onClick={async () => {
               const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
-              if (r && onRefresh) onRefresh();
+              if (r) { showToast('Sync HubSpot terminée', 'success'); if (onRefresh) onRefresh(); }
+              else showToast('Erreur sync HubSpot', 'error');
             }} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-orange-200 bg-orange-50 text-orange-700 hover:bg-orange-100 whitespace-nowrap">
               🔄 Sync HS
             </button>
