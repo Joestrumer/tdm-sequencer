@@ -181,48 +181,72 @@
             <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
             <h3 className="text-sm font-semibold text-white">Vos produits en chambre</h3>
           </div>
-          <div className="space-y-4">
+          <div className="space-y-3">
             {sections.map(({ type, gammeInfo, products }) => (
               <div key={type.key}>
-                <div className="text-xs text-slate-400 mb-2">{type.label} — <span className="text-emerald-400">{gammeInfo?.gamme || ''}</span></div>
-                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
-                  {products.map(p => {
-                    const moq = p.moq || 1;
-                    const qty = getQty(p.ref);
-                    const cartons = moq > 1 ? Math.floor(qty / moq) : qty;
-                    return (
-                      <div key={p.ref} className="bg-emerald-500/5 border border-emerald-500/20 rounded-xl p-4 hover:bg-emerald-500/10 transition-colors">
-                        <div className="text-xs text-slate-400 font-mono mb-1">{p.ref}</div>
-                        <div className="text-sm font-medium text-white mb-2 leading-snug">{p.nom}</div>
-                        <div className="flex items-end justify-between">
-                          <div>
-                            {p.discount_pct > 0 && (
-                              <div className="text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)} &euro; HT</div>
-                            )}
-                            <div className="text-base font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; <span className="text-xs font-normal text-slate-400">HT/u</span></div>
-                            {p.discount_pct > 0 && (
-                              <div className="text-xs text-emerald-400/70">-{p.discount_pct}%</div>
-                            )}
-                            {moq > 1 && (
-                              <div className="text-[10px] text-slate-400 mt-0.5">Carton de {moq} u.</div>
-                            )}
-                          </div>
-                          <div className="flex items-center gap-2">
-                            {qty > 0 && (
-                              <button onClick={() => removeCarton(p.ref)} className="w-7 h-7 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-sm font-bold transition-colors">-</button>
-                            )}
-                            {qty > 0 && (
-                              <div className="text-center">
-                                <div className="text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                                {moq > 1 && <div className="text-[9px] text-slate-500">{qty} u.</div>}
+                <div className="text-xs text-slate-400 mb-1 px-2">{type.label} — <span className="text-emerald-400">{gammeInfo?.gamme || ''}</span></div>
+                <div className="overflow-x-auto">
+                  <table className="w-full">
+                    <thead>
+                      <tr className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider">
+                        <th className="text-left py-1.5 px-2 sm:px-3 font-medium w-16 sm:w-20">Ref</th>
+                        <th className="text-left py-1.5 px-2 sm:px-3 font-medium">Produit</th>
+                        <th className="text-right py-1.5 px-2 sm:px-3 font-medium w-24 sm:w-32">Prix HT/u</th>
+                        <th className="text-center py-1.5 px-2 sm:px-3 font-medium w-24 sm:w-32">Qté</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {products.map(p => {
+                        const moq = p.moq || 1;
+                        const qty = getQty(p.ref);
+                        const cartons = moq > 1 ? Math.floor(qty / moq) : qty;
+                        const inCart = qty > 0;
+                        return (
+                          <tr
+                            key={p.ref}
+                            className={`border-t border-emerald-500/10 transition-colors ${inCart ? 'bg-emerald-500/10 border-l-2 border-l-emerald-500' : 'hover:bg-emerald-500/5'}`}
+                          >
+                            <td className="py-2 px-2 sm:px-3">
+                              <span className="font-mono text-[10px] sm:text-xs text-slate-400">{p.ref}</span>
+                            </td>
+                            <td className="py-2 px-2 sm:px-3">
+                              <div className="text-xs sm:text-sm text-white leading-snug">{p.nom}</div>
+                            </td>
+                            <td className="py-2 px-2 sm:px-3 text-right">
+                              <div className="flex flex-col items-end gap-0.5">
+                                {p.discount_pct > 0 ? (
+                                  <div className="flex items-center gap-1.5">
+                                    <span className="text-[10px] sm:text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)}</span>
+                                    <span className="text-xs sm:text-sm font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro;</span>
+                                    <span className="text-[9px] sm:text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-medium">-{p.discount_pct}%</span>
+                                  </div>
+                                ) : (
+                                  <span className="text-xs sm:text-sm text-emerald-400 font-semibold">{p.prix_remise.toFixed(2)} &euro;</span>
+                                )}
+                                {moq > 1 && (
+                                  <span className="text-[9px] sm:text-[10px] text-slate-500">Carton de {moq}</span>
+                                )}
                               </div>
-                            )}
-                            <button onClick={() => addCarton(p.ref)} className="w-7 h-7 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-sm font-bold transition-colors">+</button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
+                            </td>
+                            <td className="py-2 px-2 sm:px-3">
+                              <div className="flex items-center justify-center gap-1">
+                                {qty > 0 && (
+                                  <button onClick={() => removeCarton(p.ref)} className="w-7 h-7 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-sm font-bold transition-colors flex-shrink-0">-</button>
+                                )}
+                                {qty > 0 && (
+                                  <div className="text-center min-w-[24px]">
+                                    <div className="text-white font-semibold text-xs sm:text-sm">{moq > 1 ? cartons : qty}</div>
+                                    {moq > 1 && <div className="text-[8px] sm:text-[9px] text-slate-500 leading-none">{qty} u.</div>}
+                                  </div>
+                                )}
+                                <button onClick={() => addCarton(p.ref)} className="w-7 h-7 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-sm font-bold transition-colors flex-shrink-0">+</button>
+                              </div>
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
                 </div>
               </div>
             ))}
