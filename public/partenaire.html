@@ -313,6 +313,13 @@
 
     const CatalogueView = ({ catalogue, panier, setPanier }) => {
       const [search, setSearch] = useState("");
+      const [openCats, setOpenCats] = useState(() => {
+        // Toutes les catégories ouvertes par défaut
+        const all = {};
+        for (const cat of CATEGORIES_ORDER) all[cat] = true;
+        all['Autres'] = true;
+        return all;
+      });
 
       const filtered = useMemo(() => {
         if (!search) return catalogue;
@@ -327,17 +334,28 @@
           if (!groups[cat]) groups[cat] = [];
           groups[cat].push(p);
         }
-        // Trier selon CATEGORIES_ORDER, puis "Autres" à la fin
         const ordered = [];
         for (const cat of CATEGORIES_ORDER) {
           if (groups[cat]) ordered.push({ categorie: cat, products: groups[cat] });
         }
-        // Catégories non listées + "Autres"
         for (const cat of Object.keys(groups)) {
           if (!CATEGORIES_ORDER.includes(cat)) ordered.push({ categorie: cat, products: groups[cat] });
         }
         return ordered;
       }, [filtered]);
+
+      // Ouvrir les nouvelles catégories qui apparaissent (ex: après recherche)
+      useEffect(() => {
+        setOpenCats(prev => {
+          const next = { ...prev };
+          for (const g of grouped) {
+            if (!(g.categorie in next)) next[g.categorie] = true;
+          }
+          return next;
+        });
+      }, [grouped]);
+
+      const toggleCat = (cat) => setOpenCats(prev => ({ ...prev, [cat]: !prev[cat] }));
 
       const getQty = (ref) => panier[ref]?.quantite || 0;
       const getCartons = (ref, moq) => { const q = getQty(ref); const m = moq || 1; return m > 1 ? Math.floor(q / m) : q; };
@@ -361,67 +379,130 @@
         }
       };
 
-      const ProductCard = ({ p }) => {
-        const moq = p.moq || 1;
-        const qty = getQty(p.ref);
-        const cartons = getCartons(p.ref, moq);
-        return (
-          <div className="bg-white/5 border border-white/10 rounded-2xl p-5 hover:bg-white/10 transition-colors">
-            <div className="text-xs text-slate-400 font-mono mb-1">{p.ref}</div>
-            <div className="text-sm font-medium text-white mb-3 leading-snug">{p.nom}</div>
-            <div className="flex items-end justify-between">
-              <div>
-                {p.discount_pct > 0 && (
-                  <div className="text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)} &euro; HT</div>
-                )}
-                <div className="text-lg font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; <span className="text-xs font-normal text-slate-400">HT/u</span></div>
-                {p.discount_pct > 0 && (
-                  <div className="text-xs text-emerald-400/70">-{p.discount_pct}%</div>
-                )}
-                {moq > 1 && (
-                  <div className="text-[10px] text-slate-400 mt-0.5">Carton de {moq} u.</div>
-                )}
-              </div>
-              <div className="flex items-center gap-2">
-                {qty > 0 && (
-                  <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-lg font-bold transition-colors">-</button>
-                )}
-                {qty > 0 && (
-                  <div className="text-center">
-                    <div className="text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                    {moq > 1 && <div className="text-[9px] text-slate-500">{qty} u.</div>}
-                  </div>
-                )}
-                <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-lg font-bold transition-colors">+</button>
-              </div>
-            </div>
-          </div>
-        );
-      };
+      // Compte les items du panier par catégorie
+      const panierCountByCat = useMemo(() => {
+        const counts = {};
+        for (const ref of Object.keys(panier)) {
+          const prod = catalogue.find(c => c.ref === ref);
+          if (prod) {
+            const cat = prod.categorie || 'Autres';
+            counts[cat] = (counts[cat] || 0) + 1;
+          }
+        }
+        return counts;
+      }, [panier, catalogue]);
 
       return (
         <div>
+          {/* Barre de recherche */}
           <div className="mb-6">
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher un produit..."
-              className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30"
-            />
-          </div>
-          {grouped.map(({ categorie, products }) => (
-            <div key={categorie} className="mb-8">
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-1 h-5 bg-slate-500 rounded-full"></div>
-                <h3 className="text-sm font-semibold text-white">{categorie}</h3>
-                <span className="text-xs text-slate-500">{products.length} produit{products.length > 1 ? 's' : ''}</span>
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-                {products.map(p => <ProductCard key={p.ref} p={p} />)}
-              </div>
+            <div className="relative">
+              <input
+                type="text"
+                value={search}
+                onChange={e => setSearch(e.target.value)}
+                placeholder="Rechercher un produit..."
+                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30"
+              />
+              {search && (
+                <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400">
+                  {filtered.length} produit{filtered.length !== 1 ? 's' : ''} trouvé{filtered.length !== 1 ? 's' : ''}
+                </div>
+              )}
             </div>
-          ))}
+          </div>
+
+          {/* Catégories avec tableaux compacts */}
+          {grouped.map(({ categorie, products }) => {
+            const isOpen = openCats[categorie] !== false;
+            const catPanierCount = panierCountByCat[categorie] || 0;
+            return (
+              <div key={categorie} className="mb-4">
+                {/* Header catégorie cliquable */}
+                <button
+                  onClick={() => toggleCat(categorie)}
+                  className="w-full flex items-center gap-2 px-3 py-2.5 rounded-xl bg-white/5 hover:bg-white/10 transition-colors group"
+                >
+                  <span className={`text-slate-400 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`}>&#9654;</span>
+                  <div className="w-1 h-4 bg-slate-500 rounded-full"></div>
+                  <span className="text-sm font-semibold text-white flex-1 text-left">{categorie}</span>
+                  <span className="text-xs text-slate-500">{products.length} produit{products.length > 1 ? 's' : ''}</span>
+                  {catPanierCount > 0 && (
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium">{catPanierCount} au panier</span>
+                  )}
+                </button>
+
+                {/* Tableau compact */}
+                {isOpen && (
+                  <div className="mt-1 overflow-x-auto">
+                    <table className="w-full">
+                      <thead>
+                        <tr className="text-[10px] sm:text-xs text-slate-500 uppercase tracking-wider">
+                          <th className="text-left py-2 px-2 sm:px-3 font-medium w-16 sm:w-20">Ref</th>
+                          <th className="text-left py-2 px-2 sm:px-3 font-medium">Produit</th>
+                          <th className="text-right py-2 px-2 sm:px-3 font-medium w-24 sm:w-32">Prix HT/u</th>
+                          <th className="text-center py-2 px-2 sm:px-3 font-medium w-24 sm:w-32">Qté</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {products.map(p => {
+                          const moq = p.moq || 1;
+                          const qty = getQty(p.ref);
+                          const cartons = getCartons(p.ref, moq);
+                          const inCart = qty > 0;
+                          return (
+                            <tr
+                              key={p.ref}
+                              className={`border-t border-white/5 transition-colors ${inCart ? 'bg-emerald-500/10 border-l-2 border-l-emerald-500' : 'hover:bg-white/5'}`}
+                            >
+                              <td className="py-2 px-2 sm:px-3">
+                                <span className="font-mono text-[10px] sm:text-xs text-slate-400">{p.ref}</span>
+                              </td>
+                              <td className="py-2 px-2 sm:px-3">
+                                <div className="text-xs sm:text-sm text-white leading-snug">{p.nom}</div>
+                              </td>
+                              <td className="py-2 px-2 sm:px-3 text-right">
+                                <div className="flex flex-col items-end gap-0.5">
+                                  {p.discount_pct > 0 ? (
+                                    <>
+                                      <div className="flex items-center gap-1.5">
+                                        <span className="text-[10px] sm:text-xs text-slate-500 line-through">{p.prix_ht.toFixed(2)}</span>
+                                        <span className="text-xs sm:text-sm font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro;</span>
+                                        <span className="text-[9px] sm:text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-medium">-{p.discount_pct}%</span>
+                                      </div>
+                                    </>
+                                  ) : (
+                                    <span className="text-xs sm:text-sm text-slate-300">{p.prix_remise.toFixed(2)} &euro;</span>
+                                  )}
+                                  {moq > 1 && (
+                                    <span className="text-[9px] sm:text-[10px] text-slate-500">Carton de {moq}</span>
+                                  )}
+                                </div>
+                              </td>
+                              <td className="py-2 px-2 sm:px-3">
+                                <div className="flex items-center justify-center gap-1">
+                                  {qty > 0 && (
+                                    <button onClick={() => removeCarton(p.ref)} className="w-7 h-7 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-sm font-bold transition-colors flex-shrink-0">-</button>
+                                  )}
+                                  {qty > 0 && (
+                                    <div className="text-center min-w-[24px]">
+                                      <div className="text-white font-semibold text-xs sm:text-sm">{moq > 1 ? cartons : qty}</div>
+                                      {moq > 1 && <div className="text-[8px] sm:text-[9px] text-slate-500 leading-none">{qty} u.</div>}
+                                    </div>
+                                  )}
+                                  <button onClick={() => addCarton(p.ref)} className="w-7 h-7 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-sm font-bold transition-colors flex-shrink-0">+</button>
+                                </div>
+                              </td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            );
+          })}
           {filtered.length === 0 && (
             <div className="text-center py-12 text-slate-400 text-sm">Aucun produit trouv&eacute;</div>
           )}
