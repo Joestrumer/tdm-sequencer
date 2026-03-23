@@ -4,7 +4,7 @@
 
 const express = require('express');
 const {
-  normalizeRef, findVFProduct, calculerRemise, calculerFraisPort, genererCSVLogisticien,
+  normalizeRef, findVFProduct, calculerRemise, calculerFraisPort, genererCSVLogisticien, parseAdresseExpedition,
 } = require('../services/productMatchingService');
 const logger = require('../config/logger');
 
@@ -131,9 +131,12 @@ module.exports = (db) => {
   // ─── Valider commande ─────────────────────────────────────────────────────
   router.post('/:id/validate', async (req, res) => {
     try {
+      const { documentType, shippingId, sendEmail = true, logGSheets = true, generateCsv = false } = req.body || {};
+
       const order = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.nom_normalise, vp.email as partner_email,
-               vp.contact_nom as partner_contact, vp.shipping_id as partner_shipping_id
+               vp.contact_nom as partner_contact, vp.shipping_id as partner_shipping_id,
+               vp.adresse as partner_adresse, vp.telephone as partner_telephone
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         WHERE po.id = ?
@@ -209,7 +212,7 @@ module.exports = (db) => {
       const paymentTo = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       const invoiceData = {
-        kind: 'vat',
+        kind: documentType || 'vat',
         number: null,
         sell_date: today,
         issue_date: today,
@@ -251,7 +254,7 @@ module.exports = (db) => {
       `).run(String(result.id || ''), result.number || '', order.id);
 
       // Email facture au partenaire
-      if (result.id && order.partner_email) {
+      if (sendEmail !== false && result.id && order.partner_email) {
         try {
           await vfService.envoyerEmail(result.id, {});
           db.prepare('UPDATE vf_invoice_logs SET email_sent = 1 WHERE vf_invoice_id = ?').run(String(result.id));
@@ -260,8 +263,44 @@ module.exports = (db) => {
         }
       }
 
+      // Générer CSV logisticien
+      let csv_base64 = null;
+      if (generateCsv && shippingId) {
+        try {
+          const parsedAddr = parseAdresseExpedition(order.partner_adresse);
+          const client = {
+            name: order.partner_nom,
+            recipient_name: order.partner_contact || order.partner_nom,
+            street: parsedAddr.street,
+            city: parsedAddr.city,
+            zip: parsedAddr.zip,
+            country: parsedAddr.country,
+            email: order.partner_email || '',
+            phone: order.partner_telephone || '',
+          };
+          const csvProducts = products.map(p => ({
+            ref: p.ref,
+            csv_ref: catalog[normalizeRef(p.ref)]?.csv_ref || p.ref,
+            quantite: p.quantite || 1,
+          }));
+          const shippingNamesMap = getShippingNames();
+          const csvContent = genererCSVLogisticien(
+            { number: result.number || '', products: csvProducts, notes: order.notes || '' },
+            client,
+            shippingNamesMap,
+            { shippingId }
+          );
+          csv_base64 = Buffer.from(csvContent, 'utf-8').toString('base64');
+          db.prepare('UPDATE vf_invoice_logs SET csv_generated = 1 WHERE vf_invoice_id = ?').run(String(result.id));
+        } catch (csvErr) {
+          logger.warn('Erreur génération CSV commande partenaire', { error: csvErr.message });
+        }
+      }
+
       // Log Google Sheets
-      try {
+      if (logGSheets === false) {
+        // Skip GSheets logging
+      } else try {
         repairGSheetsCredentials();
         const gsheetsService = require('../services/googlesheetsService')(db);
         const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
@@ -291,15 +330,86 @@ module.exports = (db) => {
         logger.warn('Erreur log GSheets commande partenaire', { error: gsErr.message });
       }
 
-      res.json({
+      const response = {
         ok: true,
         order_id: order.id,
         vf_invoice_id: result.id,
         vf_invoice_number: result.number,
-        message: 'Commande validée et facture créée',
-      });
+        message: `Commande validée — ${(documentType || 'vat') === 'proforma' ? 'proforma' : 'facture'} créée`,
+      };
+      if (csv_base64) response.csv_base64 = csv_base64;
+      res.json(response);
     } catch (e) {
       logger.error('Erreur validation commande partenaire', { error: e.message, stack: e.stack });
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── CSV logisticien pour commande validée ───────────────────────────────
+  router.post('/:id/csv', (req, res) => {
+    try {
+      const { shippingId } = req.body || {};
+      if (!shippingId) return res.status(400).json({ erreur: 'shippingId requis' });
+
+      const order = db.prepare(`
+        SELECT po.*, vp.nom as partner_nom, vp.email as partner_email,
+               vp.contact_nom as partner_contact, vp.adresse as partner_adresse,
+               vp.telephone as partner_telephone
+        FROM partner_orders po
+        JOIN vf_partners vp ON vp.id = po.partner_id
+        WHERE po.id = ?
+      `).get(req.params.id);
+
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+
+      const products = JSON.parse(order.products || '[]');
+      const catalog = getCatalogMap();
+      const parsedAddr = parseAdresseExpedition(order.partner_adresse);
+      const client = {
+        name: order.partner_nom,
+        recipient_name: order.partner_contact || order.partner_nom,
+        street: parsedAddr.street,
+        city: parsedAddr.city,
+        zip: parsedAddr.zip,
+        country: parsedAddr.country,
+        email: order.partner_email || '',
+        phone: order.partner_telephone || '',
+      };
+      const csvProducts = products.map(p => ({
+        ref: p.ref,
+        csv_ref: catalog[normalizeRef(p.ref)]?.csv_ref || p.ref,
+        quantite: p.quantite || 1,
+      }));
+      const shippingNamesMap = getShippingNames();
+      const csvContent = genererCSVLogisticien(
+        { number: order.vf_invoice_number || '', products: csvProducts, notes: order.notes || '' },
+        client,
+        shippingNamesMap,
+        { shippingId }
+      );
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="logisticien-${order.vf_invoice_number || order.id}.csv"`);
+      res.send(csvContent);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── PDF pour commande validée ──────────────────────────────────────────────
+  router.get('/:id/pdf', (req, res) => {
+    try {
+      const order = db.prepare('SELECT vf_invoice_id, vf_invoice_number FROM partner_orders WHERE id = ?').get(req.params.id);
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+      if (!order.vf_invoice_id) return res.status(400).json({ erreur: 'Pas de facture associée' });
+
+      res.json({
+        ok: true,
+        url: `https://app.vosfactures.fr/invoices/${order.vf_invoice_id}.pdf`,
+        vf_invoice_id: order.vf_invoice_id,
+        vf_invoice_number: order.vf_invoice_number,
+      });
+    } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
   });

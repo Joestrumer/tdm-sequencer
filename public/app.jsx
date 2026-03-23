@@ -8096,6 +8096,9 @@ const VueCommandes = ({ showToast }) => {
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
   const [validating, setValidating] = useState(null);
+  const [validateModal, setValidateModal] = useState(null);
+  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmail: true, logGSheets: true, generateCsv: true });
+  const [downloadingCsv, setDownloadingCsv] = useState(null);
 
   const charger = async () => {
     setLoading(true);
@@ -8112,13 +8115,30 @@ const VueCommandes = ({ showToast }) => {
 
   useEffect(() => { charger(); }, [filtre]);
 
-  const validerCommande = async (id) => {
-    if (!confirm('Valider cette commande ? Une facture VosFactures sera créée.')) return;
+  const openValidateModal = (commande) => {
+    setValidateOptions({ documentType: 'vat', shippingId: '1', sendEmail: true, logGSheets: true, generateCsv: true });
+    setValidateModal(commande);
+  };
+
+  const validerCommande = async () => {
+    if (!validateModal) return;
+    const id = validateModal.id;
     setValidating(id);
     try {
-      const res = await api.post(`/partner-orders/${id}/validate`);
+      const res = await api.post(`/partner-orders/${id}/validate`, validateOptions);
       if (res.ok) {
-        showToast(`Commande validée — Facture ${res.vf_invoice_number || ''}`, "success");
+        // Télécharger CSV si retourné
+        if (res.csv_base64) {
+          const blob = new Blob([Uint8Array.from(atob(res.csv_base64), c => c.charCodeAt(0))], { type: 'text/csv;charset=utf-8' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `logisticien-${res.vf_invoice_number || id}.csv`;
+          a.click();
+          URL.revokeObjectURL(url);
+        }
+        showToast(res.message || `Commande validée — ${res.vf_invoice_number || ''}`, "success");
+        setValidateModal(null);
         charger();
       } else {
         showToast(res.erreur || 'Erreur validation', "error");
@@ -8142,6 +8162,48 @@ const VueCommandes = ({ showToast }) => {
     } catch (e) {}
   };
 
+  const downloadCsv = async (commande) => {
+    setDownloadingCsv(commande.id);
+    try {
+      const shippingId = prompt('ID transporteur (ex: 1, 300, 600) :', '1');
+      if (!shippingId) { setDownloadingCsv(null); return; }
+      const response = await fetch(`/api/partner-orders/${commande.id}/csv`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        body: JSON.stringify({ shippingId }),
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `logisticien-${commande.vf_invoice_number || commande.id}.csv`;
+        a.click();
+        URL.revokeObjectURL(url);
+        showToast('CSV téléchargé', 'success');
+      } else {
+        const err = await response.json();
+        showToast(err.erreur || 'Erreur CSV', 'error');
+      }
+    } catch (e) {
+      showToast('Erreur réseau', 'error');
+    }
+    setDownloadingCsv(null);
+  };
+
+  const openPdf = async (commande) => {
+    try {
+      const res = await api.get(`/partner-orders/${commande.id}/pdf`);
+      if (res.ok && res.url) {
+        window.open(res.url, '_blank');
+      } else {
+        showToast(res.erreur || 'Erreur PDF', 'error');
+      }
+    } catch (e) {
+      showToast('Erreur réseau', 'error');
+    }
+  };
+
   const statutConfig = {
     en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
     validee: { label: "Validée", bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500" },
@@ -8157,6 +8219,72 @@ const VueCommandes = ({ showToast }) => {
 
   return (
     <div className="space-y-4">
+      {/* Modal de validation */}
+      {validateModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !validating && setValidateModal(null)}>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-100 flex-shrink-0">
+              <h3 className="text-lg font-semibold text-slate-900">Valider la commande</h3>
+              <p className="text-sm text-slate-500">{validateModal.partner_nom}</p>
+            </div>
+
+            <div className="px-6 py-4 overflow-y-auto flex-1 space-y-4">
+              {/* Récap produits */}
+              <div className="bg-slate-50 rounded-xl p-3">
+                <div className="text-xs text-slate-500 mb-1">{validateModal.products?.length || 0} produit{(validateModal.products?.length || 0) > 1 ? 's' : ''} — {validateModal.total_ht?.toFixed(2)} &euro; HT</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {(validateModal.products || []).map((p, i) => (
+                    <span key={i} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-xs text-slate-600 font-mono">{p.ref} x{p.quantite}</span>
+                  ))}
+                </div>
+              </div>
+
+              {/* Type de document */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Type de document</label>
+                <select value={validateOptions.documentType} onChange={e => setValidateOptions(o => ({ ...o, documentType: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                  <option value="vat">Facture</option>
+                  <option value="proforma">Proforma</option>
+                </select>
+              </div>
+
+              {/* Transporteur */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
+                <select value={validateOptions.shippingId} onChange={e => setValidateOptions(o => ({ ...o, shippingId: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                  {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+
+              {/* Checkboxes */}
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={validateOptions.sendEmail} onChange={e => setValidateOptions(o => ({ ...o, sendEmail: e.target.checked }))} className="rounded" />
+                  Envoyer email au partenaire
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={validateOptions.logGSheets} onChange={e => setValidateOptions(o => ({ ...o, logGSheets: e.target.checked }))} className="rounded" />
+                  Logger Google Sheets
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={validateOptions.generateCsv} onChange={e => setValidateOptions(o => ({ ...o, generateCsv: e.target.checked }))} className="rounded" />
+                  Générer CSV logisticien
+                </label>
+              </div>
+            </div>
+
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
+              <button onClick={() => setValidateModal(null)} disabled={validating} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Annuler</button>
+              <button onClick={validerCommande} disabled={validating} className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-500 disabled:opacity-50 transition-colors">
+                {validating ? 'Validation...' : `Créer ${validateOptions.documentType === 'proforma' ? 'proforma' : 'facture'}`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filtres */}
       <div className="flex gap-2 flex-wrap">
         {filtres.map(f => (
@@ -8237,11 +8365,23 @@ const VueCommandes = ({ showToast }) => {
                     </div>
                     <div className="flex items-center gap-2">
                       {c.vf_invoice_number && <span className="text-xs text-emerald-600 font-medium">Facture n&deg;{c.vf_invoice_number}</span>}
+                      {c.statut === 'validee' && c.vf_invoice_id && (
+                        <>
+                          <button onClick={(e) => { e.stopPropagation(); downloadCsv(c); }} disabled={downloadingCsv === c.id}
+                            className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50">
+                            {downloadingCsv === c.id ? 'CSV...' : 'CSV'}
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); openPdf(c); }}
+                            className="px-3 py-1.5 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
+                            PDF
+                          </button>
+                        </>
+                      )}
                       {c.statut === 'en_attente' && (
                         <>
                           <button onClick={(e) => { e.stopPropagation(); annulerCommande(c.id); }} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">Annuler</button>
-                          <button onClick={(e) => { e.stopPropagation(); validerCommande(c.id); }} disabled={validating === c.id} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-colors disabled:opacity-50">
-                            {validating === c.id ? "Validation..." : "Valider la commande"}
+                          <button onClick={(e) => { e.stopPropagation(); openValidateModal(c); }} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-colors">
+                            Valider la commande
                           </button>
                         </>
                       )}
