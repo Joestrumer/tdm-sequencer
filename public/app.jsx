@@ -903,7 +903,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
       {/* Modal de test pour un email spécifique */}
       {showTestModal && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50" onClick={e => e.stopPropagation()}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-6">
             <h3 className="text-base font-semibold text-slate-900 mb-2">Tester l'email {activeEtape + 1}</h3>
             <p className="text-xs text-slate-500 mb-4">Cet email sera envoyé immédiatement à l'adresse indiquée.</p>
