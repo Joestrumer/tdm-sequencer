@@ -5017,6 +5017,12 @@ const FacturesSingle = ({ showToast }) => {
   const [error, setError] = useState(null);
   const [importInvoiceId, setImportInvoiceId] = useState('');
   const [importLoading, setImportLoading] = useState(false);
+  const [catalog, setCatalog] = useState([]);
+  const [addProductSearch, setAddProductSearch] = useState('');
+
+  useEffect(() => {
+    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data.filter(c => c.actif)); }).catch(() => {});
+  }, []);
 
   const handleImportInvoice = async () => {
     const idOrNumber = importInvoiceId.trim();
@@ -5524,6 +5530,7 @@ const FacturesSingle = ({ showToast }) => {
                       <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">P.U. HT</th>
                       <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Remise</th>
                       <th className="text-right px-3 py-2 text-xs font-semibold text-slate-500">Total HT</th>
+                      <th className="px-2 py-2 w-8"></th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -5531,13 +5538,30 @@ const FacturesSingle = ({ showToast }) => {
                       const qty = p.quantite || p.quantity || 1;
                       const discount = p.discount || 0;
                       const unitPrice = p.prix_ht || ((p.total_ht || 0) / qty / (1 - discount / 100) || 0);
+                      const recalcLine = (newQty, newDiscount, newPrice) => {
+                        const q = newQty ?? qty;
+                        const d = newDiscount ?? discount;
+                        const pu = newPrice ?? (p.prix_ht || unitPrice);
+                        const tva = p.tva || 20;
+                        const lineHT = pu * (1 - d / 100) * q;
+                        return { quantite: q, discount: d, prix_ht: pu, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
+                      };
                       return (
                         <tr key={`${p.ref}_${i}`} className="hover:bg-slate-50">
                           <td className="px-3 py-2">
                             <div className="font-medium text-slate-900">{p.ref}</div>
                             <div className="text-xs text-slate-500">{p.nom}</div>
                           </td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-700">{qty}</td>
+                          <td className="px-3 py-2 text-right">
+                            <input type="number" min="1" value={qty}
+                              onChange={e => {
+                                const newQty = Math.max(1, parseInt(e.target.value) || 1);
+                                const newProducts = [...calculation.products];
+                                newProducts[i] = { ...newProducts[i], ...recalcLine(newQty, null, null) };
+                                setCalculation({ ...calculation, products: newProducts });
+                              }}
+                              className="w-16 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                          </td>
                           <td className="px-3 py-2 text-right font-mono text-slate-700">{unitPrice.toFixed(2)}€</td>
                           <td className="px-3 py-2 text-right">
                             <div className="inline-flex items-center">
@@ -5548,10 +5572,7 @@ const FacturesSingle = ({ showToast }) => {
                                   const val = e.target.value;
                                   const newDiscount = val === '' ? 0 : Math.min(100, Math.max(0, parseFloat(val) || 0));
                                   const newProducts = [...calculation.products];
-                                  const priceHT = newProducts[i].prix_ht || unitPrice;
-                                  const tva = newProducts[i].tva || 20;
-                                  const lineHT = priceHT * (1 - newDiscount / 100) * qty;
-                                  newProducts[i] = { ...newProducts[i], discount: newDiscount, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
+                                  newProducts[i] = { ...newProducts[i], ...recalcLine(null, newDiscount, null) };
                                   setCalculation({ ...calculation, products: newProducts });
                                 }}
                                 className="w-16 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
@@ -5559,11 +5580,60 @@ const FacturesSingle = ({ showToast }) => {
                             </div>
                           </td>
                           <td className="px-3 py-2 text-right font-mono font-medium text-slate-900">{(p.total_ht || 0).toFixed(2)}€</td>
+                          <td className="px-2 py-2 text-center">
+                            <button onClick={() => {
+                              const newProducts = calculation.products.filter((_, idx) => idx !== i);
+                              setCalculation({ ...calculation, products: newProducts });
+                            }} className="text-red-400 hover:text-red-600 text-sm" title="Supprimer">✕</button>
+                          </td>
                         </tr>
                       );
                     })}
                   </tbody>
                 </table>
+              </div>
+
+              {/* Ajout de produit */}
+              <div className="relative">
+                <div className="flex gap-2">
+                  <input type="text" value={addProductSearch} onChange={e => setAddProductSearch(e.target.value)}
+                    placeholder="Ajouter un produit (ref ou nom)..."
+                    className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                  {addProductSearch && (
+                    <button onClick={() => setAddProductSearch('')} className="text-xs text-slate-400 hover:text-slate-600 px-2">✕</button>
+                  )}
+                </div>
+                {addProductSearch.length >= 2 && (() => {
+                  const q = addProductSearch.toLowerCase();
+                  const matches = catalog.filter(c =>
+                    c.ref.toLowerCase().includes(q) || (c.nom || '').toLowerCase().includes(q)
+                  ).slice(0, 8);
+                  if (!matches.length) return null;
+                  return (
+                    <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                      {matches.map(c => (
+                        <button key={c.ref} onClick={() => {
+                          const tva = c.tva || 20;
+                          const lineHT = c.prix_ht || 0;
+                          const newProduct = {
+                            ref: c.ref, nom: c.nom, quantite: 1, prix_ht: c.prix_ht || 0, discount: 0, tva,
+                            total_ht: Math.round(lineHT * 100) / 100,
+                            total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100,
+                          };
+                          setCalculation({ ...calculation, products: [...(calculation.products || []), newProduct] });
+                          setAddProductSearch('');
+                          showToast(`${c.ref} ajouté`, 'success');
+                        }} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between border-b border-slate-50 last:border-0">
+                          <div>
+                            <span className="text-sm font-medium text-slate-900">{c.ref}</span>
+                            <span className="text-xs text-slate-500 ml-2">{c.nom}</span>
+                          </div>
+                          <span className="text-xs font-mono text-slate-600">{(c.prix_ht || 0).toFixed(2)}€</span>
+                        </button>
+                      ))}
+                    </div>
+                  );
+                })()}
               </div>
 
               {calculation.frais_port?.map((f, i) => (
