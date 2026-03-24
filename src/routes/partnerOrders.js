@@ -243,6 +243,9 @@ module.exports = (db) => {
       const today = new Date().toISOString().split('T')[0];
       const paymentTo = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
+      // Parser l'adresse du partenaire pour les champs VF
+      const parsedAddr = parseAdresseExpedition(order.partner_adresse);
+
       const invoiceData = {
         kind: documentType || 'vat',
         number: null,
@@ -252,6 +255,11 @@ module.exports = (db) => {
         department_id: parseInt(process.env.VF_DEPARTMENT_ID) || 1553025,
         buyer_name: order.partner_nom,
         buyer_email: order.partner_email || '',
+        buyer_street: parsedAddr.street || '',
+        buyer_city: parsedAddr.city || '',
+        buyer_post_code: parsedAddr.zip || '',
+        buyer_country: parsedAddr.country || 'FR',
+        buyer_phone: order.partner_telephone || '',
         show_discount: hasDiscount,
         discount_kind: hasDiscount ? 'percent_unit' : null,
         positions,

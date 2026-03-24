@@ -8154,19 +8154,25 @@ const VueCommandes = ({ showToast }) => {
           window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_blank');
         }
 
-        // 2. Ouvrir le PDF facture/proforma dans un nouvel onglet (délai pour laisser VF générer le PDF)
+        // 2. Télécharger le PDF facture/proforma (délai pour laisser VF générer le PDF)
         if (res.vf_invoice_id) {
           setTimeout(async () => {
             try {
-              const token = localStorage.getItem('token');
+              const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
               const pdfRes = await fetch(`/api/partner-orders/${id}/pdf`, { headers: { 'Authorization': `Bearer ${token}` } });
               if (pdfRes.ok) {
                 const pdfBlob = await pdfRes.blob();
                 const pdfUrl = URL.createObjectURL(pdfBlob);
-                window.open(pdfUrl, '_blank');
+                const a = document.createElement('a');
+                a.href = pdfUrl;
+                a.download = `facture-${invoiceNumber || id}.pdf`;
+                document.body.appendChild(a);
+                a.click();
+                document.body.removeChild(a);
+                setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
               }
             } catch (e) {}
-          }, 1500);
+          }, 2000);
         }
 
         // 3. Mailto partenaire (après délai pour ne pas interférer avec le PDF)
@@ -8234,11 +8240,21 @@ const VueCommandes = ({ showToast }) => {
 
   const openPdf = async (commande) => {
     try {
-      const res = await api.get(`/partner-orders/${commande.id}/pdf`);
-      if (res.ok && res.url) {
-        window.open(res.url, '_blank');
+      const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const res = await fetch(`/api/partner-orders/${commande.id}/pdf`, { headers: { 'Authorization': `Bearer ${token}` } });
+      if (res.ok) {
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `facture-${commande.vf_invoice_number || commande.id}.pdf`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
       } else {
-        showToast(res.erreur || 'Erreur PDF', 'error');
+        const err = await res.json().catch(() => ({}));
+        showToast(err.erreur || 'Erreur PDF', 'error');
       }
     } catch (e) {
       showToast('Erreur réseau', 'error');
