@@ -9328,8 +9328,25 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
 
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 
+// Helper : trouver la première vue accessible pour un user
+function getDefaultVue(user) {
+  if (!user || user.role === 'admin') return 'dashboard';
+  const perms = user.permissions || {};
+  // Ordre de préférence pour la vue par défaut
+  const vueMap = [
+    ['dashboard', 'dashboard'], ['leads', 'leads'], ['campagnes', 'sequences'],
+    ['factures', 'factures'], ['ventes', 'ventes'], ['portail', 'commandes'],
+    ['emails', 'emails'], ['config', 'parametres'],
+  ];
+  for (const [tabId, vueId] of vueMap) {
+    if (perms[tabId] === 'r' || perms[tabId] === 'rw') return vueId;
+  }
+  return 'dashboard';
+}
+
 function App() {
-  const [vue, setVue] = useState("dashboard");
+  const initUser = (() => { try { return JSON.parse(sessionStorage.getItem('tdm_user') || 'null'); } catch { return null; } })();
+  const [vue, setVue] = useState(getDefaultVue(initUser));
   const [leads, setLeads] = useState([]);
   const [sequences, setSequences] = useState([]);
   const [activites, setActivites] = useState([]);
@@ -9341,9 +9358,7 @@ function App() {
   const toastTimer = useRef(null);
 
   // ─── Multi-user : contexte utilisateur ────────────────────────────────────
-  const [currentUser, setCurrentUser] = useState(() => {
-    try { return JSON.parse(sessionStorage.getItem('tdm_user') || 'null'); } catch { return null; }
-  });
+  const [currentUser, setCurrentUser] = useState(initUser);
   const [showProfile, setShowProfile] = useState(false);
 
   const isAdmin = currentUser?.role === 'admin';
@@ -9372,7 +9387,7 @@ function App() {
     toastTimer.current = setTimeout(() => setToast(t => ({ ...t, visible: false })), 3000);
   };
 
-  // Charger les données au démarrage
+  // Charger les données au démarrage (résilient aux permissions)
   const chargerRetries = useRef(0);
   const charger = async () => {
     // Attendre que le token soit disponible (Babel charge async)
@@ -9386,18 +9401,27 @@ function App() {
     }
     chargerRetries.current = 0;
     setLoading(true);
+
+    // Helper : appel API silencieux (retourne null si 403/erreur)
+    const safeFetch = (path) => api.get(path).catch(() => null);
+
     try {
-      const [leadsData, seqData, statsData, seqStatsData] = await Promise.all([
-        api.get('/leads'),
-        api.get('/sequences'),
-        api.get('/stats/dashboard'),
-        api.get('/stats/sequences'),
-      ]);
-      setLeads(Array.isArray(leadsData) ? leadsData : (leadsData.leads || []));
-      setSequences(Array.isArray(seqData) ? seqData : (seqData.sequences || []));
-      statsData.statsSequences = seqStatsData?.stats || [];
-      setStats(statsData);
-      if (statsData?.activitesRecentes) setActivites(statsData.activitesRecentes);
+      const promises = [];
+      // Ne charger que les données accessibles
+      promises.push(hasAccess('leads') ? safeFetch('/leads') : Promise.resolve(null));
+      promises.push(hasAccess('campagnes') ? safeFetch('/sequences') : Promise.resolve(null));
+      promises.push(hasAccess('ventes') || hasAccess('dashboard') ? safeFetch('/stats/dashboard') : Promise.resolve(null));
+      promises.push(hasAccess('ventes') ? safeFetch('/stats/sequences') : Promise.resolve(null));
+
+      const [leadsData, seqData, statsData, seqStatsData] = await Promise.all(promises);
+
+      if (leadsData) setLeads(Array.isArray(leadsData) ? leadsData : (leadsData.leads || []));
+      if (seqData) setSequences(Array.isArray(seqData) ? seqData : (seqData.sequences || []));
+      if (statsData) {
+        if (seqStatsData) statsData.statsSequences = seqStatsData?.stats || [];
+        setStats(statsData);
+        if (statsData?.activitesRecentes) setActivites(statsData.activitesRecentes);
+      }
     } catch(e) { console.error("Erreur chargement:", e); }
     setLoading(false);
   };
