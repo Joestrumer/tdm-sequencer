@@ -221,6 +221,8 @@ function calculerFraisPort(totalHT, clientRules) {
 
 function genererCSVLogisticien(invoiceData, client, shippingNames, options = {}) {
   const lines = [];
+  // Sanitiser un champ CSV : retirer les ; et les sauts de ligne
+  const clean = (val) => String(val || '').replace(/;/g, ',').replace(/[\n\r]+/g, ' ').trim();
 
   // Header 16 colonnes (format identique au HTML standalone)
   lines.push([
@@ -241,21 +243,21 @@ function genererCSVLogisticien(invoiceData, client, shippingNames, options = {})
 
     const csvRef = p.csv_ref || p.ref;
     lines.push([
-      invoiceData.number || '',                                          // Numéro de commande
-      invoiceData.orderNumber || '',                                     // Réf. Commande
-      csvRef,                                                            // référence de l article
+      clean(invoiceData.number),                                         // Numéro de commande
+      clean(invoiceData.orderNumber),                                    // Réf. Commande
+      clean(csvRef),                                                     // référence de l article
       p.quantite || p.quantity || 0,                                     // quantité de l article
-      client.recipient_name || client.name || '',                        // Nom livraison
-      client.name || '',                                                 // Nom du client
-      (client.street || client.address || '').replace(/;/g, ',').replace(/\n/g, ' '), // Adresse (rue)
-      client.city || '',                                                 // Ville
-      client.zip || client.post_code || '',                              // Code postal
-      client.country || 'FR',                                            // Pays
-      shippingId,                                                        // id du transporteur
-      transporterName,                                                   // Nom du transporteur
-      (invoiceData.notes || '').replace(/;/g, ','),                      // Commentaire de livraison
-      client.email || '',                                                // Adresse mail
-      client.phone || '',                                                // Téléphone 1
+      clean(client.recipient_name || client.name),                       // Nom livraison
+      clean(client.name),                                                // Nom du client
+      clean(client.street || client.address),                            // Adresse (rue)
+      clean(client.city),                                                // Ville
+      clean(client.zip || client.post_code),                             // Code postal
+      clean(client.country) || 'FR',                                     // Pays
+      clean(shippingId),                                                 // id du transporteur
+      clean(transporterName),                                            // Nom du transporteur
+      clean(invoiceData.notes),                                          // Commentaire de livraison
+      clean(client.email),                                               // Adresse mail
+      clean(client.phone),                                               // Téléphone 1
       '',                                                                // Téléphone 2
     ].join(';'));
   }
@@ -266,7 +268,7 @@ function genererCSVLogisticien(invoiceData, client, shippingNames, options = {})
 
 // ─── Parsing adresse ──────────────────────────────────────────────────────────
 
-function parseAdresseExpedition(adresse) {
+function parseAdresseExpedition(adresse, partnerName) {
   if (!adresse) return { street: '', city: '', zip: '', country: 'FR' };
 
   const raw = String(adresse).trim();
@@ -280,39 +282,62 @@ function parseAdresseExpedition(adresse) {
     'royaume-uni': 'GB', 'united kingdom': 'GB', 'uk': 'GB',
   };
 
+  // Déterminer le séparateur : newlines ou virgules
+  const hasNewlines = raw.includes('\n');
+  let parts = hasNewlines
+    ? raw.split('\n').map(l => l.trim()).filter(Boolean)
+    : raw.split(',').map(l => l.trim()).filter(Boolean);
+
+  // Retirer le nom du partenaire s'il apparaît en première ligne de l'adresse
+  if (partnerName && parts.length > 1) {
+    const nameNorm = partnerName.toLowerCase().replace(/\s+/g, ' ').trim();
+    const firstNorm = parts[0].toLowerCase().replace(/\s+/g, ' ').trim();
+    if (firstNorm === nameNorm || firstNorm.includes(nameNorm) || nameNorm.includes(firstNorm)) {
+      parts = parts.slice(1);
+    }
+  }
+
+  // Fonction utilitaire : extraire zip+ville d'une partie
+  const extractZipCity = (part) => {
+    // "78800" seul
+    const pureZip = part.match(/^\s*(\d{4,5})\s*$/);
+    if (pureZip) return { zip: pureZip[1], city: '' };
+    // "78800 Houilles" (zip avant ville)
+    const zipCity = part.match(/^\s*(\d{4,5})\s+(.+)$/);
+    if (zipCity) return { zip: zipCity[1], city: zipCity[2].trim() };
+    // "Houilles 78800" (ville avant zip)
+    const cityZip = part.match(/^(.+?)\s+(\d{4,5})\s*$/);
+    if (cityZip) return { zip: cityZip[2], city: cityZip[1].trim() };
+    return null;
+  };
+
   let street = '';
   let city = '';
   let zip = '';
   let country = 'FR';
 
-  // Déterminer le séparateur : newlines ou virgules
-  const hasNewlines = raw.includes('\n');
-  const parts = hasNewlines
-    ? raw.split('\n').map(l => l.trim()).filter(Boolean)
-    : raw.split(',').map(l => l.trim()).filter(Boolean);
-
   if (parts.length >= 3) {
-    // Format: "rue, code postal, ville" ou "rue\ncode postal\nville"
-    // Chercher la partie qui contient un code postal (4-5 chiffres)
     let streetParts = [];
     let foundZip = false;
     for (const part of parts) {
-      const zipMatch = part.match(/^\s*(\d{4,5})\s*$/);
-      if (zipMatch && !foundZip) {
-        zip = zipMatch[1];
-        foundZip = true;
-      } else if (!foundZip) {
-        // Vérifier si le code postal est collé avec la rue: "59 rue Bara 78800"
-        const inlineZip = part.match(/^(.+?)\s+(\d{5})$/);
-        if (inlineZip) {
-          streetParts.push(inlineZip[1]);
-          zip = inlineZip[2];
+      if (!foundZip) {
+        const zc = extractZipCity(part);
+        if (zc) {
+          zip = zc.zip;
+          if (zc.city) city = zc.city;
           foundZip = true;
         } else {
-          streetParts.push(part);
+          // Vérifier si le code postal est collé à la fin: "59 rue Bara 78800"
+          const inlineZip = part.match(/^(.+?)\s+(\d{5})$/);
+          if (inlineZip) {
+            streetParts.push(inlineZip[1]);
+            zip = inlineZip[2];
+            foundZip = true;
+          } else {
+            streetParts.push(part);
+          }
         }
       } else {
-        // Après le code postal, c'est la ville (ou pays)
         const lower = part.toLowerCase().trim();
         if (countryCodes[lower]) {
           country = countryCodes[lower];
@@ -323,18 +348,23 @@ function parseAdresseExpedition(adresse) {
     }
     street = streetParts.join(', ');
   } else if (parts.length === 2) {
-    street = parts[0];
-    const lastPart = parts[1];
-    const matchZipCity = lastPart.match(/^(\d{4,5})\s+(.+)$/);
-    const matchCityZip = lastPart.match(/^(.+?)\s+(\d{4,5})$/);
-    if (matchZipCity) {
-      zip = matchZipCity[1];
-      city = matchZipCity[2];
-    } else if (matchCityZip) {
-      city = matchCityZip[1];
-      zip = matchCityZip[2];
+    // Essayer d'abord : parts[1] contient zip+ville ?
+    const zc = extractZipCity(parts[1]);
+    if (zc) {
+      street = parts[0];
+      zip = zc.zip;
+      city = zc.city;
     } else {
-      city = lastPart;
+      // Essayer : parts[0] contient zip+ville et parts[1] est la rue ?
+      const zc0 = extractZipCity(parts[0]);
+      if (zc0) {
+        zip = zc0.zip;
+        city = zc0.city;
+        street = parts[1];
+      } else {
+        street = parts[0];
+        city = parts[1];
+      }
     }
   } else {
     // Une seule partie — essayer d'extraire code postal inline

@@ -244,7 +244,7 @@ module.exports = (db) => {
       const paymentTo = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
       // Parser l'adresse du partenaire pour les champs VF
-      const parsedAddr = parseAdresseExpedition(order.partner_adresse);
+      const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
 
       const invoiceData = {
         kind: documentType || 'vat',
@@ -307,7 +307,7 @@ module.exports = (db) => {
       let csv_base64 = null;
       if (generateCsv && shippingId) {
         try {
-          const parsedAddr = parseAdresseExpedition(order.partner_adresse);
+          const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
           const client = {
             name: order.partner_nom,
             recipient_name: order.partner_contact || order.partner_nom,
@@ -413,7 +413,7 @@ module.exports = (db) => {
 
       const products = JSON.parse(order.products || '[]');
       const catalog = getCatalogMap();
-      const parsedAddr = parseAdresseExpedition(order.partner_adresse);
+      const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
       const client = {
         name: order.partner_nom,
         recipient_name: order.partner_contact || order.partner_nom,
