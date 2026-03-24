@@ -62,6 +62,16 @@ module.exports = (db) => {
     return map;
   }
 
+  // Résoudre le spreadsheet GSheets selon le user connecté
+  // - User avec gsheets_spreadsheet_id → son spreadsheet perso
+  // - Admin sans gsheets_spreadsheet_id → spreadsheet global (config)
+  // - Member sans gsheets_spreadsheet_id → null (pas de log)
+  function getUserSpreadsheet(req) {
+    if (req.user?.gsheets_spreadsheet_id) return req.user.gsheets_spreadsheet_id;
+    if (req.user?.role === 'admin') return db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur || null;
+    return null;
+  }
+
   function getPartners() {
     return db.prepare('SELECT * FROM vf_partners WHERE actif = 1').all();
   }
@@ -426,7 +436,7 @@ module.exports = (db) => {
         try {
           repairGSheetsCredentials();
           const gsheetsService = require('../services/googlesheetsService')(db);
-          const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
+          const spreadsheetId = getUserSpreadsheet(req);
           const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
 
           if (spreadsheetId) {
@@ -629,11 +639,11 @@ module.exports = (db) => {
 
       repairGSheetsCredentials();
       const gsheetsService = require('../services/googlesheetsService')(db);
-      const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
+      const spreadsheetId = getUserSpreadsheet(req);
       const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
 
       if (!spreadsheetId) {
-        return res.status(400).json({ erreur: 'Spreadsheet ID non configuré' });
+        return res.status(400).json({ erreur: 'Spreadsheet ID non configuré pour votre compte' });
       }
 
       const catalog = getCatalogMap();
@@ -690,12 +700,12 @@ module.exports = (db) => {
       const gsheetsService = require('../services/googlesheetsService')(db);
       const { invoiceData, partnerName } = req.body;
 
-      // Lire config GSheets
-      const spreadsheetId = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_spreadsheet_id'").get()?.valeur;
+      // Lire config GSheets selon le user
+      const spreadsheetId = getUserSpreadsheet(req);
       const sheetName = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_sheet_name'").get()?.valeur || 'Log sold';
 
       if (!spreadsheetId) {
-        return res.status(400).json({ erreur: 'Spreadsheet ID non configuré' });
+        return res.status(400).json({ erreur: 'Spreadsheet ID non configuré pour votre compte' });
       }
 
       // Résoudre le nom partenaire via clientNameMapping d'abord

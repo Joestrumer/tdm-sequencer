@@ -34,7 +34,7 @@ function authMiddleware(db) {
     // Mode 2 : JWT
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
-      const user = db.prepare('SELECT id, email, nom, role, permissions, vf_api_token, actif FROM users WHERE id = ?').get(decoded.userId);
+      const user = db.prepare('SELECT id, email, nom, role, permissions, vf_api_token, gsheets_spreadsheet_id, actif FROM users WHERE id = ?').get(decoded.userId);
 
       if (!user || !user.actif) {
         return res.status(401).json({ erreur: 'Compte désactivé ou introuvable' });
@@ -50,6 +50,7 @@ function authMiddleware(db) {
         role: user.role,
         permissions,
         vf_api_token: user.vf_api_token,
+        gsheets_spreadsheet_id: user.gsheets_spreadsheet_id,
       };
       next();
     } catch (e) {

@@ -15,7 +15,7 @@ module.exports = (db) => {
 
   // GET /api/users — Liste tous les utilisateurs
   router.get('/', (req, res) => {
-    const users = db.prepare('SELECT id, email, nom, role, permissions, actif, vf_api_token, created_at, updated_at FROM users ORDER BY created_at').all();
+    const users = db.prepare('SELECT id, email, nom, role, permissions, actif, vf_api_token, gsheets_spreadsheet_id, created_at, updated_at FROM users ORDER BY created_at').all();
     res.json(users.map(u => ({
       ...u,
       permissions: JSON.parse(u.permissions || '{}'),
@@ -66,7 +66,7 @@ module.exports = (db) => {
     const user = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
     if (!user) return res.status(404).json({ erreur: 'Utilisateur introuvable' });
 
-    const { nom, role, permissions, actif, password } = req.body;
+    const { nom, role, permissions, actif, password, gsheets_spreadsheet_id } = req.body;
     const updates = [];
     const values = [];
 
@@ -74,6 +74,7 @@ module.exports = (db) => {
     if (role !== undefined && (role === 'admin' || role === 'member')) { updates.push('role = ?'); values.push(role); }
     if (permissions !== undefined) { updates.push('permissions = ?'); values.push(JSON.stringify(permissions)); }
     if (actif !== undefined) { updates.push('actif = ?'); values.push(actif ? 1 : 0); }
+    if (gsheets_spreadsheet_id !== undefined) { updates.push('gsheets_spreadsheet_id = ?'); values.push(gsheets_spreadsheet_id || null); }
     if (password) {
       if (password.length < 6) return res.status(400).json({ erreur: 'Mot de passe trop court (min 6)' });
       updates.push('password_hash = ?'); values.push(bcrypt.hashSync(password, 10));
@@ -86,7 +87,7 @@ module.exports = (db) => {
 
     db.prepare(`UPDATE users SET ${updates.join(', ')} WHERE id = ?`).run(...values);
 
-    const updated = db.prepare('SELECT id, email, nom, role, permissions, actif, vf_api_token, created_at, updated_at FROM users WHERE id = ?').get(id);
+    const updated = db.prepare('SELECT id, email, nom, role, permissions, actif, vf_api_token, gsheets_spreadsheet_id, created_at, updated_at FROM users WHERE id = ?').get(id);
     res.json({
       ...updated,
       permissions: JSON.parse(updated.permissions || '{}'),

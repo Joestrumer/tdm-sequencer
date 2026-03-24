@@ -9318,6 +9318,7 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
     password: '',
     role: user?.role || 'member',
     permissions: user?.permissions || {},
+    gsheets_spreadsheet_id: user?.gsheets_spreadsheet_id || '',
   });
   const [saving, setSaving] = useState(false);
   const [createdUser, setCreatedUser] = useState(null);
@@ -9451,6 +9452,14 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
               </div>
             </div>
           )}
+
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Google Sheet ID (log ventes)</label>
+            <input value={form.gsheets_spreadsheet_id} onChange={e => setField('gsheets_spreadsheet_id', e.target.value)}
+              className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-mono"
+              placeholder="ID du spreadsheet Google (laisser vide = pas de log)" />
+            <p className="text-[11px] text-slate-400 mt-1">Si vide, les ventes de ce membre ne seront pas loggées dans Google Sheets</p>
+          </div>
         </div>
 
         <div className="flex-shrink-0 p-6 border-t border-slate-100 flex justify-end gap-3">
