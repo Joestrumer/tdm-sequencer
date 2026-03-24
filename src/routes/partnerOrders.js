@@ -12,7 +12,16 @@ const DEFAULT_FRANCO_SEUIL = 800;
 
 module.exports = (db) => {
   const router = express.Router();
-  const vfService = require('../services/vosfacturesService')(db);
+  const vfServiceFactory = require('../services/vosfacturesService');
+  const vfService = vfServiceFactory(db);
+
+  // Middleware : injecter le vfService adapté au user si token perso
+  router.use((req, res, next) => {
+    req.vfService = (req.user && req.user.vf_api_token)
+      ? vfServiceFactory(db, req.user.vf_api_token)
+      : vfService;
+    next();
+  });
 
   function getCatalogMap() {
     const rows = db.prepare('SELECT * FROM vf_catalog WHERE actif = 1').all();
@@ -276,7 +285,7 @@ module.exports = (db) => {
       }
 
       // Créer la facture VF
-      const result = await vfService.creerFacture(invoiceData);
+      const result = await req.vfService.creerFacture(invoiceData);
 
       // Logger dans vf_invoice_logs
       db.prepare(`
@@ -302,7 +311,7 @@ module.exports = (db) => {
       // Email facture au partenaire
       if (sendEmail !== false && result.id && order.partner_email) {
         try {
-          await vfService.envoyerEmail(result.id, {});
+          await req.vfService.envoyerEmail(result.id, {});
           db.prepare('UPDATE vf_invoice_logs SET email_sent = 1 WHERE vf_invoice_id = ?').run(String(result.id));
         } catch (emailErr) {
           logger.warn('Erreur envoi email facture partenaire', { error: emailErr.message });

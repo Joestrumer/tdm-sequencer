@@ -8962,6 +8962,370 @@ const VuePartenaires = ({ showToast }) => {
   );
 };
 
+// ─── MODAL PROFIL UTILISATEUR ─────────────────────────────────────────────────
+
+const ModalProfile = ({ onClose, showToast }) => {
+  useEscapeClose(onClose);
+  const [currentUser] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('tdm_user') || 'null'); } catch { return null; }
+  });
+  const [oldPwd, setOldPwd] = useState('');
+  const [newPwd, setNewPwd] = useState('');
+  const [confirmPwd, setConfirmPwd] = useState('');
+  const [vfToken, setVfToken] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [testingVf, setTestingVf] = useState(false);
+
+  const handleChangePassword = async () => {
+    if (!oldPwd || !newPwd) return;
+    if (newPwd !== confirmPwd) { showToast('Les mots de passe ne correspondent pas', 'error'); return; }
+    if (newPwd.length < 6) { showToast('Mot de passe trop court (min 6 caractères)', 'error'); return; }
+    setSaving(true);
+    try {
+      const res = await api.patch('/auth/profile', { old_password: oldPwd, new_password: newPwd });
+      if (res.erreur) throw new Error(res.erreur);
+      showToast('Mot de passe modifié', 'success');
+      setOldPwd(''); setNewPwd(''); setConfirmPwd('');
+    } catch (e) { showToast(e.message, 'error'); }
+    setSaving(false);
+  };
+
+  const handleSaveVfToken = async () => {
+    setSaving(true);
+    try {
+      const res = await api.patch('/auth/profile', { vf_api_token: vfToken || null });
+      if (res.erreur) throw new Error(res.erreur);
+      showToast(vfToken ? 'Clé VosFactures enregistrée' : 'Clé VosFactures supprimée', 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+    setSaving(false);
+  };
+
+  const handleTestVf = async () => {
+    setTestingVf(true);
+    try {
+      const res = await api.get('/factures/status');
+      if (res.ok) showToast('Connexion VosFactures OK', 'success');
+      else showToast('Échec connexion : ' + (res.erreur || 'erreur'), 'error');
+    } catch (e) { showToast(e.message, 'error'); }
+    setTestingVf(false);
+  };
+
+  // Permissions lisibles
+  const PERM_LABELS = {
+    dashboard: 'Séquences', ventes: 'Ventes', portail: 'Portail', leads: 'Leads',
+    campagnes: 'Campagnes', factures: 'Factures', emails: 'Validation Email', config: 'Configuration'
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-6 border-b border-slate-100">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900">Mon Profil</h2>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+          </div>
+          <p className="text-sm text-slate-500 mt-1">{currentUser?.email} ({currentUser?.role === 'admin' ? 'Administrateur' : 'Membre'})</p>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-6">
+          {/* Changer mot de passe */}
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Changer le mot de passe</h3>
+            <div className="space-y-2">
+              <input type="password" value={oldPwd} onChange={e => setOldPwd(e.target.value)} placeholder="Ancien mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="Nouveau mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+              <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} placeholder="Confirmer le mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+              <button onClick={handleChangePassword} disabled={saving || !oldPwd || !newPwd} className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+                {saving ? 'Enregistrement...' : 'Modifier'}
+              </button>
+            </div>
+          </div>
+
+          {/* Clé VosFactures */}
+          <div>
+            <h3 className="text-sm font-semibold text-slate-700 mb-3">Clé API VosFactures</h3>
+            <p className="text-xs text-slate-400 mb-2">Votre clé personnelle pour accéder à vos propres clients/factures.</p>
+            <div className="flex gap-2">
+              <input type="text" value={vfToken} onChange={e => setVfToken(e.target.value)} placeholder="Clé API VosFactures..." className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg font-mono" />
+              <button onClick={handleSaveVfToken} disabled={saving} className="px-3 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+                Sauver
+              </button>
+            </div>
+            <button onClick={handleTestVf} disabled={testingVf} className="mt-2 text-xs text-indigo-600 hover:text-indigo-800">
+              {testingVf ? 'Test en cours...' : 'Tester la connexion'}
+            </button>
+          </div>
+
+          {/* Permissions (lecture seule pour les membres) */}
+          {currentUser?.role !== 'admin' && (
+            <div>
+              <h3 className="text-sm font-semibold text-slate-700 mb-3">Vos permissions</h3>
+              <div className="space-y-1">
+                {Object.entries(PERM_LABELS).map(([key, label]) => {
+                  const perm = currentUser?.permissions?.[key];
+                  return (
+                    <div key={key} className="flex justify-between text-xs py-1">
+                      <span className="text-slate-600">{label}</span>
+                      <span className={perm === 'rw' ? 'text-emerald-600 font-medium' : perm === 'r' ? 'text-blue-600 font-medium' : 'text-slate-300'}>
+                        {perm === 'rw' ? 'Lecture + Écriture' : perm === 'r' ? 'Lecture seule' : 'Aucun'}
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
+// ─── VUE EQUIPE (admin only) ──────────────────────────────────────────────────
+
+const PERM_TABS = [
+  { id: 'dashboard', label: 'Séquences' },
+  { id: 'ventes', label: 'Ventes' },
+  { id: 'portail', label: 'Portail' },
+  { id: 'leads', label: 'Leads' },
+  { id: 'campagnes', label: 'Campagnes' },
+  { id: 'factures', label: 'Factures' },
+  { id: 'emails', label: 'Valid. Email' },
+  { id: 'config', label: 'Configuration' },
+];
+
+const VueEquipe = ({ showToast }) => {
+  const [users, setUsers] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showModal, setShowModal] = useState(false);
+  const [editUser, setEditUser] = useState(null);
+
+  const chargerUsers = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/users');
+      setUsers(Array.isArray(data) ? data : []);
+    } catch (e) { showToast('Erreur chargement utilisateurs', 'error'); }
+    setLoading(false);
+  };
+
+  useEffect(() => { chargerUsers(); }, []);
+
+  const toggleActif = async (user) => {
+    try {
+      await api.patch(`/users/${user.id}`, { actif: !user.actif });
+      showToast(user.actif ? 'Utilisateur désactivé' : 'Utilisateur réactivé', 'success');
+      chargerUsers();
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+
+  return (
+    <div>
+      <div className="flex items-center justify-between mb-6">
+        <div>
+          <h2 className="text-lg font-semibold text-slate-900">Gestion de l'équipe</h2>
+          <p className="text-sm text-slate-500">{users.length} membre(s)</p>
+        </div>
+        <button onClick={() => { setEditUser(null); setShowModal(true); }} className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-800 transition-colors">
+          + Nouveau membre
+        </button>
+      </div>
+
+      {loading ? (
+        <div className="flex items-center gap-2 text-sm text-slate-400"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin" /> Chargement...</div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-xs text-slate-500 uppercase">
+                <th className="px-4 py-3 text-left font-medium">Utilisateur</th>
+                <th className="px-4 py-3 text-left font-medium">Rôle</th>
+                <th className="px-4 py-3 text-left font-medium">VF</th>
+                <th className="px-4 py-3 text-left font-medium">Statut</th>
+                <th className="px-4 py-3 text-left font-medium">Permissions</th>
+                <th className="px-4 py-3 text-right font-medium">Actions</th>
+              </tr>
+            </thead>
+            <tbody>
+              {users.map(u => (
+                <tr key={u.id} className={`border-b border-slate-50 hover:bg-slate-50 ${!u.actif ? 'opacity-50' : ''}`}>
+                  <td className="px-4 py-3">
+                    <div className="font-medium text-slate-900">{u.nom}</div>
+                    <div className="text-xs text-slate-400">{u.email}</div>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`inline-flex px-2 py-0.5 rounded-full text-xs font-medium ${u.role === 'admin' ? 'bg-indigo-50 text-indigo-700' : 'bg-slate-100 text-slate-600'}`}>
+                      {u.role === 'admin' ? 'Admin' : 'Membre'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <span className={`text-xs ${u.vf_api_token ? 'text-emerald-600' : 'text-slate-300'}`}>
+                      {u.vf_api_token ? 'Configuré' : '—'}
+                    </span>
+                  </td>
+                  <td className="px-4 py-3">
+                    <button onClick={() => toggleActif(u)} className={`inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-xs font-medium cursor-pointer ${u.actif ? 'bg-emerald-50 text-emerald-700' : 'bg-red-50 text-red-600'}`}>
+                      <span className={`w-1.5 h-1.5 rounded-full ${u.actif ? 'bg-emerald-500' : 'bg-red-400'}`} />
+                      {u.actif ? 'Actif' : 'Inactif'}
+                    </button>
+                  </td>
+                  <td className="px-4 py-3">
+                    {u.role === 'admin' ? (
+                      <span className="text-xs text-slate-400">Accès total</span>
+                    ) : (
+                      <div className="flex flex-wrap gap-1">
+                        {PERM_TABS.map(t => {
+                          const p = u.permissions?.[t.id];
+                          if (!p) return null;
+                          return (
+                            <span key={t.id} className={`text-[10px] px-1.5 py-0.5 rounded ${p === 'rw' ? 'bg-emerald-50 text-emerald-700' : 'bg-blue-50 text-blue-600'}`}>
+                              {t.label}{p === 'r' ? ' (R)' : ''}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </td>
+                  <td className="px-4 py-3 text-right">
+                    <button onClick={() => { setEditUser(u); setShowModal(true); }} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
+                      Modifier
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showModal && (
+        <ModalEditUser
+          user={editUser}
+          onClose={() => { setShowModal(false); setEditUser(null); }}
+          onSave={() => { setShowModal(false); setEditUser(null); chargerUsers(); }}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── MODAL CRÉATION / ÉDITION UTILISATEUR ────────────────────────────────────
+
+const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
+  useEscapeClose(onClose);
+  const isEdit = !!user;
+  const [form, setForm] = useState({
+    email: user?.email || '',
+    nom: user?.nom || '',
+    password: '',
+    role: user?.role || 'member',
+    permissions: user?.permissions || {},
+  });
+  const [saving, setSaving] = useState(false);
+
+  const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
+  const setPerm = (tabId, val) => setForm(f => ({
+    ...f,
+    permissions: { ...f.permissions, [tabId]: val }
+  }));
+
+  const handleSave = async () => {
+    if (!form.email || !form.nom) { showToast('Email et nom requis', 'error'); return; }
+    if (!isEdit && !form.password) { showToast('Mot de passe requis', 'error'); return; }
+    if (form.password && form.password.length < 6) { showToast('Mot de passe trop court (min 6)', 'error'); return; }
+    setSaving(true);
+    try {
+      const payload = { ...form };
+      if (isEdit && !payload.password) delete payload.password;
+
+      const res = isEdit
+        ? await api.patch(`/users/${user.id}`, payload)
+        : await api.post('/users', payload);
+
+      if (res.erreur) throw new Error(res.erreur);
+      showToast(isEdit ? 'Utilisateur modifié' : 'Utilisateur créé', 'success');
+      onSave();
+    } catch (e) { showToast(e.message, 'error'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-6 border-b border-slate-100">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900">{isEdit ? 'Modifier le membre' : 'Nouveau membre'}</h2>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+          </div>
+        </div>
+
+        <div className="flex-1 overflow-y-auto p-6 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Nom</label>
+              <input value={form.nom} onChange={e => setField('nom', e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" placeholder="Prénom Nom" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Email</label>
+              <input type="email" value={form.email} onChange={e => setField('email', e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" placeholder="email@exemple.com" disabled={isEdit} />
+            </div>
+          </div>
+
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">{isEdit ? 'Nouveau mot de passe (laisser vide pour ne pas changer)' : 'Mot de passe'}</label>
+              <input type="password" value={form.password} onChange={e => setField('password', e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" placeholder="Min. 6 caractères" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Rôle</label>
+              <select value={form.role} onChange={e => setField('role', e.target.value)} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg bg-white">
+                <option value="member">Membre</option>
+                <option value="admin">Administrateur</option>
+              </select>
+            </div>
+          </div>
+
+          {form.role === 'member' && (
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-2">Permissions par onglet</label>
+              <div className="bg-slate-50 rounded-xl p-3 space-y-2">
+                {PERM_TABS.map(tab => (
+                  <div key={tab.id} className="flex items-center justify-between py-1">
+                    <span className="text-sm text-slate-700">{tab.label}</span>
+                    <div className="flex bg-white rounded-lg border border-slate-200 p-0.5">
+                      {[
+                        { val: false, label: 'Aucun' },
+                        { val: 'r', label: 'Lecture' },
+                        { val: 'rw', label: 'L+É' },
+                      ].map(opt => (
+                        <button
+                          key={String(opt.val)}
+                          onClick={() => setPerm(tab.id, opt.val)}
+                          className={`px-2.5 py-1 text-xs rounded-md transition-colors ${(form.permissions[tab.id] || false) === opt.val ? 'bg-slate-900 text-white font-medium' : 'text-slate-500 hover:text-slate-700'}`}
+                        >
+                          {opt.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+
+        <div className="flex-shrink-0 p-6 border-t border-slate-100 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
+          <button onClick={handleSave} disabled={saving} className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+            {saving ? 'Enregistrement...' : isEdit ? 'Enregistrer' : 'Créer le membre'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 
 function App() {
@@ -8975,6 +9339,32 @@ function App() {
   const [showSeqEditor, setShowSeqEditor] = useState(false);
   const [toast, setToast] = useState({ message: "", type: "info", visible: false });
   const toastTimer = useRef(null);
+
+  // ─── Multi-user : contexte utilisateur ────────────────────────────────────
+  const [currentUser, setCurrentUser] = useState(() => {
+    try { return JSON.parse(sessionStorage.getItem('tdm_user') || 'null'); } catch { return null; }
+  });
+  const [showProfile, setShowProfile] = useState(false);
+
+  const isAdmin = currentUser?.role === 'admin';
+
+  function hasAccess(tabId) {
+    if (!currentUser || isAdmin) return true;
+    const perm = currentUser.permissions?.[tabId];
+    return perm === 'r' || perm === 'rw';
+  }
+
+  function canWrite(tabId) {
+    if (!currentUser || isAdmin) return true;
+    return currentUser.permissions?.[tabId] === 'rw';
+  }
+
+  function handleLogout() {
+    sessionStorage.removeItem('tdm_token');
+    sessionStorage.removeItem('tdm_user');
+    window.AUTH_TOKEN = '';
+    window.location.reload();
+  }
 
   const showToast = (message, type = "info") => {
     clearTimeout(toastTimer.current);
@@ -9049,7 +9439,7 @@ function App() {
     charger();
   };
 
-  const NAV = [
+  const NAV_ALL = [
     { id: "dashboard", icon: "📧", label: "Séquences" },
     { id: "ventes", icon: "📈", label: "Ventes" },
     { id: "portail", icon: "📦", label: "Portail", children: [
@@ -9066,8 +9456,23 @@ function App() {
     { id: "config", icon: "⚙️", label: "Configuration", children: [
       { id: "parametres", label: "Paramètres" },
       { id: "blocklist", label: "Blocklist" },
+      ...(isAdmin ? [{ id: "equipe", label: "Équipe" }] : []),
     ]},
   ];
+
+  // Filtrer la NAV selon les permissions de l'utilisateur
+  const NAV = NAV_ALL.filter(item => {
+    if (item.children) return item.children.some(c => hasAccess(c.id === 'equipe' ? 'config' : (c.id === 'commandes' || c.id === 'partenaires') ? 'portail' : (c.id === 'sequences' || c.id === 'templates') ? 'campagnes' : (c.id === 'parametres' || c.id === 'blocklist') ? 'config' : c.id));
+    return hasAccess(item.id);
+  }).map(item => {
+    if (!item.children) return item;
+    const filtered = item.children.filter(c => {
+      if (c.id === 'equipe') return isAdmin;
+      const tabId = (c.id === 'commandes' || c.id === 'partenaires') ? 'portail' : (c.id === 'sequences' || c.id === 'templates') ? 'campagnes' : (c.id === 'parametres' || c.id === 'blocklist') ? 'config' : c.id;
+      return hasAccess(tabId);
+    });
+    return { ...item, children: filtered };
+  });
 
   // Trouver le groupe parent actif et le label de la vue courante
   const activeGroup = NAV.find(n => n.children?.some(c => c.id === vue));
@@ -9098,6 +9503,7 @@ function App() {
       <Toast toast={toast} onDismiss={() => setToast(t => ({ ...t, visible: false }))} />
 
       {showSeqEditor && <ModalEmailEditor seq={editSeq} onClose={() => { setShowSeqEditor(false); setEditSeq(null); }} onSave={saveSeq} />}
+      {showProfile && <ModalProfile onClose={() => setShowProfile(false)} showToast={showToast} />}
 
       {/* Sidebar — desktop only */}
       <div className="hidden md:flex fixed left-0 top-0 h-full w-56 bg-white border-r border-slate-100 flex-col z-40">
@@ -9140,13 +9546,25 @@ function App() {
             );
           })}
         </nav>
-        <div className="p-4 border-t border-slate-100">
+        <div className="p-4 border-t border-slate-100 space-y-2">
           <div className="flex items-center gap-2.5">
-            <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">J</div>
-            <div className="min-w-0">
-              <div className="text-xs font-medium text-slate-800 truncate">Joe</div>
-              <div className="text-xs text-slate-400 truncate">Commercial</div>
+            <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
+              {(currentUser?.nom || 'U').charAt(0).toUpperCase()}
             </div>
+            <div className="min-w-0 flex-1">
+              <div className="text-xs font-medium text-slate-800 truncate">{currentUser?.nom || 'Utilisateur'}</div>
+              <div className="text-xs text-slate-400 truncate">{isAdmin ? 'Admin' : 'Commercial'}</div>
+            </div>
+          </div>
+          <div className="flex gap-1.5">
+            {currentUser?.id !== '_legacy_admin' && (
+              <button onClick={() => setShowProfile(true)} className="flex-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded-lg transition-colors">
+                Profil
+              </button>
+            )}
+            <button onClick={handleLogout} className="flex-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1.5 rounded-lg transition-colors">
+              Déconnexion
+            </button>
           </div>
         </div>
       </div>
@@ -9188,6 +9606,7 @@ function App() {
               {vue === "emails" && "Vérification & nettoyage des adresses email"}
               {vue === "factures" && "Commandes, factures & relances VosFactures"}
               {vue === "parametres" && "Configuration Brevo & envoi"}
+              {vue === "equipe" && "Gestion des utilisateurs et permissions"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -9214,15 +9633,16 @@ function App() {
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
           {vue === "dashboard" && <VueDashboard showToast={showToast} />}
           {vue === "ventes" && <AnalyticsSpreadsheet showToast={showToast} />}
-          {vue === "commandes" && <VueCommandes showToast={showToast} />}
-          {vue === "partenaires" && <VuePartenaires showToast={showToast} />}
-          {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} />}
-          {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} />}
-          {vue === "templates" && <VueTemplates showToast={showToast} />}
-          {vue === "factures" && <VueFactures showToast={showToast} />}
-          {vue === "blocklist" && <VueBlocklist onRefresh={charger} showToast={showToast} />}
-          {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} showToast={showToast} />}
-          {vue === "parametres" && <VueParametres />}
+          {vue === "commandes" && <VueCommandes showToast={showToast} readOnly={!canWrite('portail')} />}
+          {vue === "partenaires" && <VuePartenaires showToast={showToast} readOnly={!canWrite('portail')} />}
+          {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}
+          {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} readOnly={!canWrite('campagnes')} />}
+          {vue === "templates" && <VueTemplates showToast={showToast} readOnly={!canWrite('campagnes')} />}
+          {vue === "factures" && <VueFactures showToast={showToast} readOnly={!canWrite('factures')} />}
+          {vue === "blocklist" && <VueBlocklist onRefresh={charger} showToast={showToast} readOnly={!canWrite('config')} />}
+          {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} showToast={showToast} readOnly={!canWrite('emails')} />}
+          {vue === "parametres" && <VueParametres readOnly={!canWrite('config')} />}
+          {vue === "equipe" && isAdmin && <VueEquipe showToast={showToast} />}
         </main>
       </div>
     </div>

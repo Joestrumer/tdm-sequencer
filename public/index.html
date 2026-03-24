@@ -142,10 +142,11 @@
         </div>
       </div>
       <h2>Bienvenue</h2>
-      <p>Entrez votre mot de passe pour accéder à l'outil.</p>
+      <p>Connectez-vous pour accéder à l'outil.</p>
+      <input type="email" id="email-input" placeholder="Email…" style="margin-bottom: 10px;" />
       <input type="password" id="password-input" placeholder="Mot de passe…" />
-      <div class="error" id="login-error">Mot de passe incorrect</div>
-      <button onclick="tryLogin()">Accéder →</button>
+      <div class="error" id="login-error">Identifiants incorrects</div>
+      <button onclick="tryLogin()">Se connecter →</button>
     </div>
   </div>
 
@@ -158,29 +159,58 @@
     window.AUTH_TOKEN = sessionStorage.getItem('tdm_token') || '';
 
     async function tryLogin() {
+      const email = document.getElementById('email-input').value.trim();
       const pwd = document.getElementById('password-input').value.trim();
-      if (!pwd) return;
+      const errEl = document.getElementById('login-error');
+      errEl.style.display = 'none';
 
-      // Tester le token contre l'API
+      if (!email || !pwd) return;
+
       try {
-        const res = await fetch(API_BASE + '/health', {
-          headers: { 'Authorization': 'Bearer ' + pwd }
+        // D'abord essayer le login par email/mot de passe (JWT)
+        const res = await fetch(API_BASE + '/auth/login', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email, password: pwd }),
         });
-        if (res.ok) {
-          window.AUTH_TOKEN = pwd;
-          sessionStorage.setItem('tdm_token', pwd);
+        const data = await res.json();
+
+        if (res.ok && data.token) {
+          window.AUTH_TOKEN = data.token;
+          sessionStorage.setItem('tdm_token', data.token);
+          sessionStorage.setItem('tdm_user', JSON.stringify(data.user));
           document.getElementById('login-screen').classList.remove('visible');
           lancerApp();
-        } else {
-          document.getElementById('login-error').style.display = 'block';
+          return;
         }
+
+        // Fallback : essayer l'ancien mode AUTH_SECRET (mot de passe = token)
+        const fallbackRes = await fetch(API_BASE + '/health', {
+          headers: { 'Authorization': 'Bearer ' + pwd }
+        });
+        if (fallbackRes.ok) {
+          window.AUTH_TOKEN = pwd;
+          sessionStorage.setItem('tdm_token', pwd);
+          sessionStorage.setItem('tdm_user', JSON.stringify({
+            id: '_legacy_admin', nom: 'Admin', email: email, role: 'admin', permissions: {}
+          }));
+          document.getElementById('login-screen').classList.remove('visible');
+          lancerApp();
+          return;
+        }
+
+        errEl.textContent = data.erreur || 'Identifiants incorrects';
+        errEl.style.display = 'block';
       } catch (e) {
-        document.getElementById('login-error').textContent = 'Impossible de contacter le serveur';
-        document.getElementById('login-error').style.display = 'block';
+        errEl.textContent = 'Impossible de contacter le serveur';
+        errEl.style.display = 'block';
       }
     }
 
-    // Enter pour valider
+    // Enter pour valider sur les deux champs
+    document.getElementById('email-input').addEventListener('keydown', e => {
+      if (e.key === 'Enter') { document.getElementById('password-input').focus(); }
+    });
     document.getElementById('password-input').addEventListener('keydown', e => {
       if (e.key === 'Enter') tryLogin();
     });
@@ -205,10 +235,20 @@
     async function verifierSession() {
       if (!window.AUTH_TOKEN) return false;
       try {
-        const res = await fetch(API_BASE + '/health', {
+        // Essayer /api/auth/me (JWT)
+        const res = await fetch(API_BASE + '/auth/me', {
           headers: { 'Authorization': 'Bearer ' + window.AUTH_TOKEN }
         });
-        return res.ok;
+        if (res.ok) {
+          const data = await res.json();
+          if (data.user) sessionStorage.setItem('tdm_user', JSON.stringify(data.user));
+          return true;
+        }
+        // Fallback pour legacy AUTH_SECRET
+        const fallback = await fetch(API_BASE + '/health', {
+          headers: { 'Authorization': 'Bearer ' + window.AUTH_TOKEN }
+        });
+        return fallback.ok;
       } catch { return false; }
     }
 

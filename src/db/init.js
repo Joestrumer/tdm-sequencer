@@ -231,6 +231,23 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_email_templates_categorie ON email_templates(categorie);
 
+  -- ─── Table Utilisateurs (multi-user) ───────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS users (
+    id TEXT PRIMARY KEY,
+    email TEXT NOT NULL UNIQUE,
+    password_hash TEXT NOT NULL,
+    nom TEXT NOT NULL,
+    role TEXT NOT NULL DEFAULT 'member' CHECK(role IN ('admin','member')),
+    vf_api_token TEXT,
+    permissions TEXT DEFAULT '{}',
+    actif INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_users_email ON users(email);
+
   -- ─── Table Commandes Partenaires ─────────────────────────────────────────
 
   CREATE TABLE IF NOT EXISTS partner_orders (
@@ -417,6 +434,27 @@ for (const [ref, moq] of Object.entries(MOQ_MAP)) {
   if (r.changes > 0) moqUpdated++;
 }
 if (moqUpdated > 0) console.log(`📦 ${moqUpdated} MOQ mis à jour`);
+
+// ─── Seed admin initial si table users vide ────────────────────────────────
+if (process.env.ADMIN_EMAIL) {
+  const userCount = db.prepare('SELECT COUNT(*) as n FROM users').get().n;
+  if (userCount === 0) {
+    try {
+      const bcrypt = require('bcryptjs');
+      const { randomUUID } = require('crypto');
+      const password = process.env.ADMIN_PASSWORD || process.env.AUTH_SECRET || 'admin';
+      const hash = bcrypt.hashSync(password, 10);
+      db.prepare(`INSERT INTO users (id, email, password_hash, nom, role, permissions) VALUES (?, ?, ?, ?, 'admin', '{}')`).run(
+        randomUUID(), process.env.ADMIN_EMAIL, hash, process.env.ADMIN_NAME || 'Admin'
+      );
+      console.log(`👤 Admin initial créé : ${process.env.ADMIN_EMAIL}`);
+    } catch (e) {
+      if (!e.message.includes('UNIQUE constraint')) {
+        console.error('⚠️  Erreur création admin:', e.message);
+      }
+    }
+  }
+}
 
 console.log('✅ Base de données initialisée :', DB_PATH);
 module.exports = db;

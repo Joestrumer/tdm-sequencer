@@ -13,7 +13,16 @@ const logger = require('../config/logger');
 
 module.exports = (db) => {
   const router = express.Router();
-  const vfService = require('../services/vosfacturesService')(db);
+  const vfServiceFactory = require('../services/vosfacturesService');
+  const vfService = vfServiceFactory(db); // default (config/env token)
+
+  // Middleware : injecter le vfService adapté au user si token perso
+  router.use((req, res, next) => {
+    req.vfService = (req.user && req.user.vf_api_token)
+      ? vfServiceFactory(db, req.user.vf_api_token)
+      : vfService;
+    next();
+  });
 
   // Helpers pour lire les données de référence
   function getCatalogMap() {
@@ -87,7 +96,7 @@ module.exports = (db) => {
 
   router.get('/status', async (req, res) => {
     try {
-      const result = await vfService.testConnexion();
+      const result = await req.vfService.testConnexion();
       res.json(result);
     } catch (e) {
       res.json({ ok: false, erreur: e.message });
@@ -102,9 +111,9 @@ module.exports = (db) => {
       if (!q) return res.json([]);
       // Si refresh=true, forcer le rechargement du cache
       if (refresh === 'true') {
-        await vfService.getAllClients(true);
+        await req.vfService.getAllClients(true);
       }
-      const data = await vfService.rechercherClients(q);
+      const data = await req.vfService.rechercherClients(q);
       res.json(data);
     } catch (e) {
       logger.error('Erreur recherche clients VF', { error: e.message });
@@ -114,7 +123,7 @@ module.exports = (db) => {
 
   router.get('/clients/:id', async (req, res) => {
     try {
-      const data = await vfService.getClient(req.params.id);
+      const data = await req.vfService.getClient(req.params.id);
       res.json(data);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -134,7 +143,7 @@ module.exports = (db) => {
 
   router.post('/produits/sync', async (req, res) => {
     try {
-      const vfProducts = await vfService.getAllProducts(true);
+      const vfProducts = await req.vfService.getAllProducts(true);
       res.json({ ok: true, count: vfProducts.length, products: vfProducts.slice(0, 10) });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -374,7 +383,7 @@ module.exports = (db) => {
 
       if (client.id) invoiceData.client_id = client.id;
 
-      const result = await vfService.creerFacture(invoiceData);
+      const result = await req.vfService.creerFacture(invoiceData);
 
       // Logger dans la DB
       const montantHT = (products || []).reduce((s, p) => {
@@ -403,7 +412,7 @@ module.exports = (db) => {
       let emailSent = false;
       if (sendEmail && result.id) {
         try {
-          await vfService.envoyerEmail(result.id, emailOpts || {});
+          await req.vfService.envoyerEmail(result.id, emailOpts || {});
           db.prepare('UPDATE vf_invoice_logs SET email_sent = 1 WHERE vf_invoice_id = ?').run(String(result.id));
           emailSent = true;
         } catch (emailErr) {
@@ -474,7 +483,7 @@ module.exports = (db) => {
       const results = [];
       for (const order of orders) {
         try {
-          const result = await vfService.creerFacture(order.invoiceData || order);
+          const result = await req.vfService.creerFacture(order.invoiceData || order);
           results.push({ ok: true, ...result });
         } catch (e) {
           results.push({ ok: false, erreur: e.message, order: order.id });
@@ -493,7 +502,7 @@ module.exports = (db) => {
     try {
       const { number } = req.query;
       if (!number) return res.json([]);
-      const data = await vfService.rechercherFacture(number);
+      const data = await req.vfService.rechercherFacture(number);
       res.json(data);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -504,7 +513,7 @@ module.exports = (db) => {
     try {
       let data;
       try {
-        data = await vfService.getFacture(req.params.id);
+        data = await req.vfService.getFacture(req.params.id);
       } catch (vfErr) {
         return res.status(404).json({ erreur: `Facture #${req.params.id} non trouvée sur VosFactures: ${vfErr.message}` });
       }
@@ -557,7 +566,7 @@ module.exports = (db) => {
 
   router.get('/invoices/:id', async (req, res) => {
     try {
-      const data = await vfService.getFacture(req.params.id);
+      const data = await req.vfService.getFacture(req.params.id);
       res.json(data);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -568,7 +577,7 @@ module.exports = (db) => {
 
   router.post('/invoices/:id/send-email', async (req, res) => {
     try {
-      const data = await vfService.envoyerEmail(req.params.id, req.body);
+      const data = await req.vfService.envoyerEmail(req.params.id, req.body);
       res.json(data);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -577,7 +586,7 @@ module.exports = (db) => {
 
   router.post('/invoices/:id/send-reminder', async (req, res) => {
     try {
-      const data = await vfService.envoyerRelance(req.params.id, req.body);
+      const data = await req.vfService.envoyerRelance(req.params.id, req.body);
       res.json(data);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -774,7 +783,7 @@ module.exports = (db) => {
   // ─── DEBUG Analytics ─────────────────────────────────────────────────────────
   router.get('/analytics/debug', async (req, res) => {
     try {
-      const page1 = await vfService.rechercherFacture('', { page: 1, per_page: 20 });
+      const page1 = await req.vfService.rechercherFacture('', { page: 1, per_page: 20 });
       const sample = page1.slice(0, 5).map(inv => ({
         id: inv.id,
         number: inv.number,
@@ -811,7 +820,7 @@ module.exports = (db) => {
       const maxPages = 50; // Limiter à 50 pages max pour éviter boucle infinie
 
       while (page <= maxPages) {
-        const invoices = await vfService.rechercherFacture('', { page, per_page: perPage });
+        const invoices = await req.vfService.rechercherFacture('', { page, per_page: perPage });
 
         // Arrêter si plus aucune facture
         if (!invoices || invoices.length === 0) {

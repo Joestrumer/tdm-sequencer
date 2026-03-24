@@ -1,19 +1,20 @@
 /**
- * vosfacturesService.js — Proxy VosFactures API
+ * vosfacturesService.js — Proxy VosFactures API (multi-user support)
  */
 
 const logger = require('../config/logger');
 const VF_BASE_URL = process.env.VF_BASE_URL || 'https://terredemars.vosfactures.fr';
 
-function getToken(db) {
+function getToken(db, userToken) {
+  if (userToken) return userToken;
   const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('vf_api_token');
   const token = (row?.valeur || process.env.VF_API_TOKEN || '').trim();
   if (token) logger.debug(`🔑 VF token: ${token.substring(0, 6)}... (${token.length} chars)`);
   return token;
 }
 
-async function vfFetch(path, opts = {}, db) {
-  const token = getToken(db);
+async function vfFetch(path, opts = {}, db, userToken) {
+  const token = getToken(db, userToken);
   if (!token) throw new Error('Token VosFactures non configuré');
 
   const url = `${VF_BASE_URL}${path}${path.includes('?') ? '&' : '?'}api_token=${token}`;
@@ -63,17 +64,22 @@ async function vfFetch(path, opts = {}, db) {
   }
 }
 
-// Cache mémoire
-let productsCache = null;
-let productsCacheTime = 0;
-let clientsCache = null;
-let clientsCacheTime = 0;
+// Cache mémoire par token (pour supporter multi-user)
+const cacheByToken = new Map();
 const CACHE_TTL = 10 * 60 * 1000; // 10 minutes
 
-module.exports = (db) => ({
+function getCache(userToken, db) {
+  const key = userToken || getToken(db, null) || '_default';
+  if (!cacheByToken.has(key)) {
+    cacheByToken.set(key, { products: null, productsTime: 0, clients: null, clientsTime: 0 });
+  }
+  return cacheByToken.get(key);
+}
+
+module.exports = (db, userToken = null) => ({
   async testConnexion() {
     try {
-      await vfFetch('/invoices.json?page=1&per_page=1', { timeout: 8000 }, db);
+      await vfFetch('/invoices.json?page=1&per_page=1', { timeout: 8000 }, db, userToken);
       return { ok: true };
     } catch (e) {
       return { ok: false, erreur: e.message };
@@ -81,21 +87,22 @@ module.exports = (db) => ({
   },
 
   async getAllClients(forceRefresh = false) {
-    if (!forceRefresh && clientsCache && Date.now() - clientsCacheTime < CACHE_TTL) {
-      return clientsCache;
+    const cache = getCache(userToken, db);
+    if (!forceRefresh && cache.clients && Date.now() - cache.clientsTime < CACHE_TTL) {
+      return cache.clients;
     }
     const allClients = [];
     let page = 1;
     while (true) {
-      const data = await vfFetch(`/clients.json?page=${page}&per_page=100`, {}, db);
+      const data = await vfFetch(`/clients.json?page=${page}&per_page=100`, {}, db, userToken);
       if (!Array.isArray(data) || data.length === 0) break;
       allClients.push(...data);
       if (data.length < 100) break;
       page++;
     }
     allClients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
-    clientsCache = allClients;
-    clientsCacheTime = Date.now();
+    cache.clients = allClients;
+    cache.clientsTime = Date.now();
     logger.debug(`📇 ${allClients.length} clients VF chargés en cache`);
     return allClients;
   },
@@ -112,25 +119,26 @@ module.exports = (db) => ({
   },
 
   async getClient(id) {
-    return vfFetch(`/clients/${id}.json`, {}, db);
+    return vfFetch(`/clients/${id}.json`, {}, db, userToken);
   },
 
   async getAllProducts(forceRefresh = false) {
-    if (!forceRefresh && productsCache && Date.now() - productsCacheTime < CACHE_TTL) {
-      return productsCache;
+    const cache = getCache(userToken, db);
+    if (!forceRefresh && cache.products && Date.now() - cache.productsTime < CACHE_TTL) {
+      return cache.products;
     }
 
     const allProducts = [];
     let page = 1;
     while (true) {
-      const data = await vfFetch(`/products.json?page=${page}&per_page=100`, {}, db);
+      const data = await vfFetch(`/products.json?page=${page}&per_page=100`, {}, db, userToken);
       if (!Array.isArray(data) || data.length === 0) break;
       allProducts.push(...data);
       if (data.length < 100) break;
       page++;
     }
-    productsCache = allProducts;
-    productsCacheTime = Date.now();
+    cache.products = allProducts;
+    cache.productsTime = Date.now();
     return allProducts;
   },
 
@@ -138,22 +146,22 @@ module.exports = (db) => ({
     return vfFetch('/invoices.json', {
       method: 'POST',
       body: { invoice: data },
-    }, db);
+    }, db, userToken);
   },
 
   async getFacture(id) {
-    return vfFetch(`/invoices/${id}.json`, {}, db);
+    return vfFetch(`/invoices/${id}.json`, {}, db, userToken);
   },
 
   async rechercherFacture(number) {
-    return vfFetch(`/invoices.json?number=${encodeURIComponent(number)}`, {}, db);
+    return vfFetch(`/invoices.json?number=${encodeURIComponent(number)}`, {}, db, userToken);
   },
 
   async envoyerEmail(id, opts = {}) {
     return vfFetch(`/invoices/${id}/send_by_email.json`, {
       method: 'POST',
       body: opts,
-    }, db);
+    }, db, userToken);
   },
 
   async envoyerRelance(id, opts = {}) {
@@ -161,14 +169,13 @@ module.exports = (db) => ({
       return await vfFetch(`/invoices/${id}/send_reminder.json`, {
         method: 'POST',
         body: opts,
-      }, db);
+      }, db, userToken);
     } catch (e) {
-      // Fallback vers send_by_email si send_reminder n'est pas disponible
       logger.debug('⚠️ send_reminder indisponible, fallback send_by_email');
       return await vfFetch(`/invoices/${id}/send_by_email.json`, {
         method: 'POST',
         body: opts,
-      }, db);
+      }, db, userToken);
     }
   },
 });

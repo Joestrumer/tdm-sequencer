@@ -105,33 +105,49 @@ app.get('/api/health', (req, res) => {
   });
 });
 
-// Auth
+// Auth middleware (JWT + fallback AUTH_SECRET)
 const authMiddleware = require('./middleware/auth');
+const { requireAccessAuto } = require('./middleware/permissions');
+
+// Route login PUBLIQUE (avant auth middleware)
+const authRoutes = require('./routes/auth')(db);
+app.post('/api/auth/login', (req, res, next) => {
+  // Forward vers le routeur auth
+  req.url = '/login';
+  authRoutes(req, res, next);
+});
+
+// Auth middleware global
 app.use('/api', (req, res, next) => {
   if (req.path === '/health') return next();
   if (req.path.startsWith('/tracking')) return next();
   if (req.path.startsWith('/partenaire')) return next();
-  authMiddleware(req, res, next);
+  if (req.path === '/auth/login') return next();
+  authMiddleware(db)(req, res, next);
 });
 
-// Routes
-app.use('/api/leads',     require('./routes/leads')(db));
-app.use('/api/email-validation', require('./routes/emailValidation')(db));
-app.use('/api/sequences', require('./routes/sequences')(db));
+// Routes auth protégées (me, profile)
+app.use('/api/auth', authRoutes);
+
+// Routes protégées avec permissions par onglet
+app.use('/api/users',       require('./routes/users')(db));
+app.use('/api/dashboard',     requireAccessAuto('dashboard'), require('./routes/dashboard')(db));
+app.use('/api/stats',         requireAccessAuto('ventes'), require('./routes/stats')(db));
+app.use('/api/leads',         requireAccessAuto('leads'), require('./routes/leads')(db));
+app.use('/api/hubspot',       requireAccessAuto('leads'), require('./routes/hubspot')(db));
+app.use('/api/sequences',     requireAccessAuto('campagnes'), require('./routes/sequences')(db));
+app.use('/api/email-templates', requireAccessAuto('campagnes'), require('./routes/emailTemplates')(db));
+app.use('/api/factures',      requireAccessAuto('factures'), require('./routes/factures')(db));
+app.use('/api/gsheets',       requireAccessAuto('factures'), require('./routes/googlesheets')(db));
+app.use('/api/partner-orders', requireAccessAuto('portail'), require('./routes/partnerOrders')(db));
+app.use('/api/reference',     requireAccessAuto('portail'), require('./routes/referenceData')(db));
+app.use('/api/shipments',     requireAccessAuto('portail'), require('./routes/shipments')(db));
+app.use('/api/email-validation', requireAccessAuto('emails'), require('./routes/emailValidation')(db));
+app.use('/api/config',        requireAccessAuto('config'), require('./routes/config')(db));
+app.use('/api/blocklist',     requireAccessAuto('config'), require('./routes/blocklist')(db));
+app.use('/api/qualification', requireAccessAuto('leads'), require('./routes/qualification')(db));
 app.use('/api/tracking',  require('./routes/tracking')(db));
-app.use('/api/stats',     require('./routes/stats')(db));
-app.use('/api/hubspot',   require('./routes/hubspot')(db));
-app.use('/api/config',    require('./routes/config')(db));
-app.use('/api/blocklist', require('./routes/blocklist')(db));
-app.use('/api/qualification', require('./routes/qualification')(db));
-app.use('/api/factures',      require('./routes/factures')(db));
-app.use('/api/gsheets',       require('./routes/googlesheets')(db));
-app.use('/api/reference',     require('./routes/referenceData')(db));
-app.use('/api/shipments',     require('./routes/shipments')(db));
-app.use('/api/dashboard',     require('./routes/dashboard')(db));
-app.use('/api/email-templates', require('./routes/emailTemplates')(db));
 app.use('/api/partenaire', require('./routes/partnerPortal')(db));
-app.use('/api/partner-orders', require('./routes/partnerOrders')(db));
 
 // Backup manuel
 app.post('/api/backup', async (req, res) => {
