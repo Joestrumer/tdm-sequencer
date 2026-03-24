@@ -8692,7 +8692,9 @@ const VuePartenaires = ({ showToast }) => {
           <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
             <div className="text-slate-300 text-4xl mb-3">&#128101;</div>
             <div className="text-sm text-slate-400">Sélectionnez un partenaire dans la liste pour gérer son accès au portail.</div>
-            <div className="text-xs text-slate-300 mt-2">Portail accessible sur <code className="bg-slate-50 px-1.5 py-0.5 rounded">/partenaire</code></div>
+            <a href="/partenaire" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors">
+              Ouvrir le portail partenaire &rarr;
+            </a>
             <button onClick={syncVF} disabled={syncing} className="mt-4 px-4 py-2 rounded-lg text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 transition-colors disabled:opacity-50">
               {syncing ? 'Synchronisation...' : 'Synchroniser depuis VosFactures'}
             </button>
@@ -8715,6 +8717,9 @@ const VuePartenaires = ({ showToast }) => {
                   ) : (
                     <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-400 font-medium">Pas d'accès portail</span>
                   )}
+                  <button onClick={() => window.open('/partenaire', '_blank')} className="text-[11px] px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 font-medium transition-colors">
+                    Ouvrir le portail &rarr;
+                  </button>
                 </div>
               </div>
 
@@ -9223,6 +9228,8 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
     permissions: user?.permissions || {},
   });
   const [saving, setSaving] = useState(false);
+  const [createdUser, setCreatedUser] = useState(null);
+  const [sendingCreds, setSendingCreds] = useState(false);
 
   const setField = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const setPerm = (tabId, val) => setForm(f => ({
@@ -9244,10 +9251,27 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
         : await api.post('/users', payload);
 
       if (res.erreur) throw new Error(res.erreur);
-      showToast(isEdit ? 'Utilisateur modifié' : 'Utilisateur créé', 'success');
-      onSave();
+      if (isEdit) {
+        showToast('Utilisateur modifié', 'success');
+        onSave();
+      } else {
+        showToast('Utilisateur créé', 'success');
+        setCreatedUser(res);
+      }
     } catch (e) { showToast(e.message, 'error'); }
     setSaving(false);
+  };
+
+  const handleSendCredentials = async () => {
+    if (!createdUser) return;
+    setSendingCreds(true);
+    try {
+      const res = await api.post(`/users/${createdUser.id}/send-credentials`, { password: form.password });
+      if (res.erreur) throw new Error(res.erreur);
+      showToast('Identifiants envoyés par email', 'success');
+      onSave();
+    } catch (e) { showToast(e.message, 'error'); }
+    setSendingCreds(false);
   };
 
   return (
@@ -9260,6 +9284,28 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
           </div>
         </div>
 
+        {createdUser ? (
+          <div className="flex-1 overflow-y-auto p-6">
+            <div className="text-center py-6">
+              <div className="text-4xl mb-4">&#9989;</div>
+              <h3 className="text-lg font-semibold text-slate-900 mb-2">Membre créé avec succès</h3>
+              <p className="text-sm text-slate-500 mb-6">{createdUser.nom} ({createdUser.email})</p>
+              <div className="bg-slate-50 rounded-xl p-4 text-left mb-6">
+                <div className="text-xs font-medium text-slate-600 mb-2">Identifiants de connexion</div>
+                <div className="text-sm text-slate-700"><strong>Email :</strong> {createdUser.email}</div>
+                <div className="text-sm text-slate-700"><strong>Mot de passe :</strong> {form.password}</div>
+              </div>
+              <div className="flex flex-col gap-3">
+                <button onClick={handleSendCredentials} disabled={sendingCreds} className="w-full px-4 py-2.5 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 font-medium">
+                  {sendingCreds ? 'Envoi en cours...' : 'Envoyer les identifiants par email'}
+                </button>
+                <button onClick={onSave} className="w-full px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">
+                  Fermer sans envoyer
+                </button>
+              </div>
+            </div>
+          </div>
+        ) : (<>
         <div className="flex-1 overflow-y-auto p-6 space-y-4">
           <div className="grid grid-cols-2 gap-3">
             <div>
@@ -9321,6 +9367,7 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
             {saving ? 'Enregistrement...' : isEdit ? 'Enregistrer' : 'Créer le membre'}
           </button>
         </div>
+        </>)}
       </div>
     </div>
   );

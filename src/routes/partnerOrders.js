@@ -84,10 +84,16 @@ module.exports = (db) => {
         JOIN vf_partners vp ON vp.id = po.partner_id
       `;
       const params = [];
+      const conditions = [];
       if (statut) {
-        sql += ' WHERE po.statut = ?';
+        conditions.push('po.statut = ?');
         params.push(statut);
       }
+      if (req.user.role !== 'admin') {
+        conditions.push('po.validated_by = ?');
+        params.push(req.user.id);
+      }
+      if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
       sql += ' ORDER BY po.created_at DESC';
 
       const orders = db.prepare(sql).all(...params);
@@ -104,9 +110,14 @@ module.exports = (db) => {
   // ─── Compteurs par statut ─────────────────────────────────────────────────
   router.get('/counts', (req, res) => {
     try {
-      const counts = db.prepare(`
-        SELECT statut, COUNT(*) as count FROM partner_orders GROUP BY statut
-      `).all();
+      let countSql = 'SELECT statut, COUNT(*) as count FROM partner_orders';
+      const countParams = [];
+      if (req.user.role !== 'admin') {
+        countSql += ' WHERE validated_by = ?';
+        countParams.push(req.user.id);
+      }
+      countSql += ' GROUP BY statut';
+      const counts = db.prepare(countSql).all(...countParams);
       const result = { en_attente: 0, validee: 0, annulee: 0 };
       for (const c of counts) result[c.statut] = c.count;
       result.total = result.en_attente + result.validee + result.annulee;
@@ -129,6 +140,9 @@ module.exports = (db) => {
       `).get(req.params.id);
 
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+      if (req.user.role !== 'admin' && order.validated_by !== req.user.id) {
+        return res.status(403).json({ erreur: 'Accès non autorisé à cette commande' });
+      }
 
       res.json({
         ...order,
@@ -304,9 +318,9 @@ module.exports = (db) => {
       // Mettre à jour la commande
       db.prepare(`
         UPDATE partner_orders
-        SET statut = 'validee', vf_invoice_id = ?, vf_invoice_number = ?, validated_at = datetime('now')
+        SET statut = 'validee', vf_invoice_id = ?, vf_invoice_number = ?, validated_at = datetime('now'), validated_by = ?
         WHERE id = ?
-      `).run(String(result.id || ''), result.number || '', order.id);
+      `).run(String(result.id || ''), result.number || '', req.user.id, order.id);
 
       // Email facture au partenaire
       if (sendEmail !== false && result.id && order.partner_email) {

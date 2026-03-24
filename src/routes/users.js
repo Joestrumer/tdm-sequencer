@@ -94,6 +94,48 @@ module.exports = (db) => {
     });
   });
 
+  // POST /api/users/:id/send-credentials — Envoyer les identifiants par email
+  router.post('/:id/send-credentials', async (req, res) => {
+    try {
+      const { id } = req.params;
+      const { password } = req.body;
+      if (!password) return res.status(400).json({ erreur: 'Mot de passe requis' });
+
+      const user = db.prepare('SELECT id, email, nom, role FROM users WHERE id = ?').get(id);
+      if (!user) return res.status(404).json({ erreur: 'Utilisateur introuvable' });
+
+      const { brevoSendEmail } = require('../services/brevoService');
+      const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3001';
+
+      const htmlContent = `
+        <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
+          <h2 style="color:#1a1a1a;margin-bottom:16px;">Bienvenue sur TDM Sequencer</h2>
+          <p style="color:#444;font-size:14px;line-height:1.6;">Bonjour <strong>${user.nom}</strong>,</p>
+          <p style="color:#444;font-size:14px;line-height:1.6;">Votre compte a été créé. Voici vos identifiants de connexion :</p>
+          <div style="background:#f8f9fa;border:1px solid #e9ecef;border-radius:8px;padding:16px;margin:20px 0;">
+            <p style="margin:4px 0;font-size:14px;"><strong>Email :</strong> ${user.email}</p>
+            <p style="margin:4px 0;font-size:14px;"><strong>Mot de passe :</strong> ${password}</p>
+          </div>
+          <p style="color:#444;font-size:14px;line-height:1.6;">
+            Connectez-vous ici : <a href="${PUBLIC_URL}" style="color:#aa8d3e;">${PUBLIC_URL}</a>
+          </p>
+          <p style="color:#999;font-size:12px;margin-top:24px;">Nous vous recommandons de changer votre mot de passe après votre première connexion.</p>
+        </div>
+      `;
+
+      await brevoSendEmail({
+        sender: { email: 'hugo@terredemars.com', name: 'Hugo Montiel' },
+        to: [{ email: user.email, name: user.nom }],
+        subject: 'Vos identifiants TDM Sequencer',
+        htmlContent,
+      });
+
+      res.json({ ok: true, message: 'Identifiants envoyés par email' });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // DELETE /api/users/:id — Désactiver (soft delete)
   router.delete('/:id', (req, res) => {
     const { id } = req.params;

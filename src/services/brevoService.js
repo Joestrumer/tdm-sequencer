@@ -408,4 +408,5 @@ module.exports = {
   estDansLaFenetreEnvoi,
   getQuotaRestant,
   substituerVariables,
+  brevoSendEmail,
 };
