@@ -8097,8 +8097,10 @@ const VueCommandes = ({ showToast }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [validating, setValidating] = useState(null);
   const [validateModal, setValidateModal] = useState(null);
-  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmail: true, logGSheets: true, generateCsv: true });
+  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true });
   const [downloadingCsv, setDownloadingCsv] = useState(null);
+
+  useEscapeClose(() => { if (!validating) setValidateModal(null); });
 
   const charger = async () => {
     setLoading(true);
@@ -8109,7 +8111,9 @@ const VueCommandes = ({ showToast }) => {
       ]);
       if (Array.isArray(orders)) setCommandes(orders);
       if (c && !c.erreur) setCounts(c);
-    } catch (e) {}
+    } catch (e) {
+      showToast('Erreur chargement commandes', 'error');
+    }
     setLoading(false);
   };
 
@@ -8171,7 +8175,9 @@ const VueCommandes = ({ showToast }) => {
                 document.body.removeChild(a);
                 setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
               }
-            } catch (e) {}
+            } catch (e) {
+              showToast('Erreur téléchargement PDF', 'error');
+            }
           }, 2000);
         }
 
@@ -8180,7 +8186,7 @@ const VueCommandes = ({ showToast }) => {
           setTimeout(() => {
             const partSubject = encodeURIComponent('Confirmation commande — Terre de Mars');
             const partBody = encodeURIComponent(`Bonjour,\n\nNous vous confirmons la bonne réception de votre commande n°${invoiceNumber}.\n\nVotre commande a été mise en préparation et sera expédiée dans les meilleurs délais.\n\nCordialement,\nTerre de Mars`);
-            window.location.href = `mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`;
+            window.open(`mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`, '_blank');
           }, 2500);
         }
 
@@ -8206,7 +8212,9 @@ const VueCommandes = ({ showToast }) => {
       } else {
         showToast(res.erreur || 'Erreur', "error");
       }
-    } catch (e) {}
+    } catch (e) {
+      showToast('Erreur réseau', 'error');
+    }
   };
 
   const downloadCsv = async (commande) => {
@@ -8216,7 +8224,7 @@ const VueCommandes = ({ showToast }) => {
       if (!shippingId) { setDownloadingCsv(null); return; }
       const response = await fetch(`/api/partner-orders/${commande.id}/csv`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${localStorage.getItem('token')}` },
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || ''}` },
         body: JSON.stringify({ shippingId }),
       });
       if (response.ok) {
@@ -8480,13 +8488,15 @@ const VuePartenaires = ({ showToast }) => {
     try {
       const data = await api.get('/reference/partners');
       if (Array.isArray(data)) setPartners(data);
-    } catch (e) {}
+    } catch (e) {
+      showToast('Erreur chargement partenaires', 'error');
+    }
     setLoading(false);
   };
 
   useEffect(() => {
     charger();
-    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data); });
+    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data); }).catch(() => {});
   }, []);
 
   const syncVF = async () => {
@@ -8573,7 +8583,9 @@ const VuePartenaires = ({ showToast }) => {
       await api.patch(`/reference/partners/${selected.id}`, { actif: !selected.actif });
       showToast(selected.actif ? 'Partenaire désactivé' : 'Partenaire activé', "success");
       charger();
-    } catch (e) {}
+    } catch (e) {
+      showToast('Erreur réseau', 'error');
+    }
   };
 
   const copyToClipboard = (text) => {
@@ -8802,7 +8814,6 @@ const VuePartenaires = ({ showToast }) => {
                   try {
                     await api.patch(`/reference/partners/${selected.id}`, { amenities: JSON.stringify(newAm) });
                     showToast('Amenities mis à jour', 'success');
-                    charger();
                   } catch (e) { showToast('Erreur sauvegarde amenities', 'error'); }
                 };
                 return (
@@ -8850,9 +8861,13 @@ const VuePartenaires = ({ showToast }) => {
                           <td className="py-1.5 text-right text-emerald-600 font-medium">{d.discount_pct}%</td>
                           <td className="py-1.5 text-right">
                             <button onClick={async () => {
-                              await api.delete(`/reference/partners/${selected.id}/discounts/${d.id}`);
-                              setDiscounts(ds => ds.filter(x => x.id !== d.id));
-                              showToast('Réduction supprimée', 'success');
+                              try {
+                                await api.delete(`/reference/partners/${selected.id}/discounts/${d.id}`);
+                                setDiscounts(ds => ds.filter(x => x.id !== d.id));
+                                showToast('Réduction supprimée', 'success');
+                              } catch (e) {
+                                showToast('Erreur suppression', 'error');
+                              }
                             }} className="text-red-400 hover:text-red-600 text-[10px]">✕</button>
                           </td>
                         </tr>
@@ -8881,17 +8896,21 @@ const VuePartenaires = ({ showToast }) => {
                 <button
                   onClick={async () => {
                     if (!newDiscount.product_code || !newDiscount.discount_pct) return;
-                    const res = await api.post(`/reference/partners/${selected.id}/discounts`, {
-                      product_code: newDiscount.product_code,
-                      discount_pct: parseFloat(newDiscount.discount_pct),
-                    });
-                    if (res.ok) {
-                      showToast('Réduction ajoutée', 'success');
-                      setNewDiscount({ product_code: '', discount_pct: '' });
-                      const data = await api.get(`/reference/partners/${selected.id}/discounts`);
-                      if (Array.isArray(data)) setDiscounts(data);
-                    } else {
-                      showToast(res.erreur || 'Erreur', 'error');
+                    try {
+                      const res = await api.post(`/reference/partners/${selected.id}/discounts`, {
+                        product_code: newDiscount.product_code,
+                        discount_pct: parseFloat(newDiscount.discount_pct),
+                      });
+                      if (res.ok) {
+                        showToast('Réduction ajoutée', 'success');
+                        setNewDiscount({ product_code: '', discount_pct: '' });
+                        const data = await api.get(`/reference/partners/${selected.id}/discounts`);
+                        if (Array.isArray(data)) setDiscounts(data);
+                      } else {
+                        showToast(res.erreur || 'Erreur', 'error');
+                      }
+                    } catch (e) {
+                      showToast('Erreur réseau', 'error');
                     }
                   }}
                   disabled={!newDiscount.product_code || !newDiscount.discount_pct}
