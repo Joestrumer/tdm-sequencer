@@ -556,6 +556,8 @@ module.exports = (db) => {
         city: data.buyer_city || '',
         zip: data.buyer_post_code || '',
         country: data.buyer_country || '',
+        email: data.buyer_email || '',
+        phone: data.buyer_phone || '',
       } : null;
 
       res.json({ products, client, invoiceNumber: data.number || data.id });
