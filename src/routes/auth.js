@@ -13,40 +13,58 @@ module.exports = (db) => {
   // POST /api/auth/login — Connexion (route publique)
   router.post('/login', (req, res) => {
     const { email, password } = req.body;
-    if (!email || !password) {
-      return res.status(400).json({ erreur: 'Email et mot de passe requis' });
+
+    // Permettre le login avec juste le mot de passe (AUTH_SECRET legacy)
+    if (!password) {
+      return res.status(400).json({ erreur: 'Mot de passe requis' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email.trim());
+    // Mode 1 : login par email + mot de passe (table users)
+    if (email) {
+      const user = db.prepare('SELECT * FROM users WHERE email = ? COLLATE NOCASE').get(email.trim());
 
-    if (!user) {
-      return res.status(401).json({ erreur: 'Email ou mot de passe incorrect' });
+      if (user) {
+        if (!user.actif) {
+          return res.status(403).json({ erreur: 'Compte désactivé' });
+        }
+
+        if (bcrypt.compareSync(password, user.password_hash)) {
+          const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
+
+          let permissions = {};
+          try { permissions = JSON.parse(user.permissions || '{}'); } catch (_) {}
+
+          return res.json({
+            token,
+            user: {
+              id: user.id,
+              email: user.email,
+              nom: user.nom,
+              role: user.role,
+              permissions,
+              vf_api_token: user.vf_api_token ? true : false,
+            },
+          });
+        }
+      }
     }
 
-    if (!user.actif) {
-      return res.status(403).json({ erreur: 'Compte désactivé' });
+    // Mode 2 : fallback AUTH_SECRET (rétro-compatibilité)
+    if (process.env.AUTH_SECRET && password === process.env.AUTH_SECRET) {
+      return res.json({
+        token: process.env.AUTH_SECRET,
+        user: {
+          id: '_legacy_admin',
+          nom: 'Admin',
+          email: email || 'admin@terredemars.com',
+          role: 'admin',
+          permissions: {},
+          vf_api_token: false,
+        },
+      });
     }
 
-    if (!bcrypt.compareSync(password, user.password_hash)) {
-      return res.status(401).json({ erreur: 'Email ou mot de passe incorrect' });
-    }
-
-    const token = jwt.sign({ userId: user.id }, JWT_SECRET, { expiresIn: '7d' });
-
-    let permissions = {};
-    try { permissions = JSON.parse(user.permissions || '{}'); } catch (_) {}
-
-    res.json({
-      token,
-      user: {
-        id: user.id,
-        email: user.email,
-        nom: user.nom,
-        role: user.role,
-        permissions,
-        vf_api_token: user.vf_api_token ? true : false,
-      },
-    });
+    return res.status(401).json({ erreur: 'Email ou mot de passe incorrect' });
   });
 
   // GET /api/auth/me — Utilisateur courant (protégé)

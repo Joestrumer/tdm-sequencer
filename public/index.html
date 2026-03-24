@@ -143,7 +143,7 @@
       </div>
       <h2>Bienvenue</h2>
       <p>Connectez-vous pour accéder à l'outil.</p>
-      <input type="email" id="email-input" placeholder="Email…" style="margin-bottom: 10px;" />
+      <input type="email" id="email-input" placeholder="Email (optionnel)…" style="margin-bottom: 10px;" />
       <input type="password" id="password-input" placeholder="Mot de passe…" />
       <div class="error" id="login-error">Identifiants incorrects</div>
       <button onclick="tryLogin()">Se connecter →</button>
@@ -164,14 +164,14 @@
       const errEl = document.getElementById('login-error');
       errEl.style.display = 'none';
 
-      if (!email || !pwd) return;
+      if (!pwd) return;
 
       try {
-        // D'abord essayer le login par email/mot de passe (JWT)
+        // Un seul appel — le backend gère JWT et fallback AUTH_SECRET
         const res = await fetch(API_BASE + '/auth/login', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ email, password: pwd }),
+          body: JSON.stringify({ email: email || undefined, password: pwd }),
         });
         const data = await res.json();
 
@@ -179,21 +179,6 @@
           window.AUTH_TOKEN = data.token;
           sessionStorage.setItem('tdm_token', data.token);
           sessionStorage.setItem('tdm_user', JSON.stringify(data.user));
-          document.getElementById('login-screen').classList.remove('visible');
-          lancerApp();
-          return;
-        }
-
-        // Fallback : essayer l'ancien mode AUTH_SECRET (mot de passe = token)
-        const fallbackRes = await fetch(API_BASE + '/health', {
-          headers: { 'Authorization': 'Bearer ' + pwd }
-        });
-        if (fallbackRes.ok) {
-          window.AUTH_TOKEN = pwd;
-          sessionStorage.setItem('tdm_token', pwd);
-          sessionStorage.setItem('tdm_user', JSON.stringify({
-            id: '_legacy_admin', nom: 'Admin', email: email, role: 'admin', permissions: {}
-          }));
           document.getElementById('login-screen').classList.remove('visible');
           lancerApp();
           return;
@@ -235,7 +220,6 @@
     async function verifierSession() {
       if (!window.AUTH_TOKEN) return false;
       try {
-        // Essayer /api/auth/me (JWT)
         const res = await fetch(API_BASE + '/auth/me', {
           headers: { 'Authorization': 'Bearer ' + window.AUTH_TOKEN }
         });
@@ -244,11 +228,7 @@
           if (data.user) sessionStorage.setItem('tdm_user', JSON.stringify(data.user));
           return true;
         }
-        // Fallback pour legacy AUTH_SECRET
-        const fallback = await fetch(API_BASE + '/health', {
-          headers: { 'Authorization': 'Bearer ' + window.AUTH_TOKEN }
-        });
-        return fallback.ok;
+        return false;
       } catch { return false; }
     }
 
