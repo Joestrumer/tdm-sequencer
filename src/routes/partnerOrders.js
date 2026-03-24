@@ -136,7 +136,9 @@ module.exports = (db) => {
       const order = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.nom_normalise, vp.email as partner_email,
                vp.contact_nom as partner_contact, vp.shipping_id as partner_shipping_id,
-               vp.adresse as partner_adresse, vp.telephone as partner_telephone
+               vp.adresse as partner_adresse, vp.telephone as partner_telephone,
+               vp.franco_seuil as partner_franco_seuil, vp.frais_port as partner_frais_port,
+               vp.frais_exonere as partner_frais_exonere
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         WHERE po.id = ?
@@ -204,28 +206,34 @@ module.exports = (db) => {
         positions.push(position);
       }
 
-      // Frais de port (FP + FE si total HT < seuil franco)
-      const totalHTProducts = positions.reduce((s, p) => s + parseFloat(p.price_net) * p.quantity, 0);
-      const fraisPort = calculerFraisPort(totalHTProducts);
-      for (const f of fraisPort) {
-        const ref = normalizeRef(f.ref);
-        const qty = f.quantite || 1;
-        const taxRate = f.tva || 20;
-        const priceHT = f.prix_ht || 0;
-        const gross = priceHT * qty * (1 + taxRate / 100);
+      // Frais de port — règle : >= seuil franco → FP 25€, sinon FP 80€ (ou montant custom partenaire)
+      const fraisPort = [];
+      if (!order.partner_frais_exonere) {
+        const totalHTProducts = positions.reduce((s, p) => s + parseFloat(p.price_net) * p.quantity, 0);
+        const francoSeuil = order.partner_franco_seuil || 800;
+        let fpMontant;
+        if (totalHTProducts >= francoSeuil) {
+          fpMontant = 25;
+        } else {
+          fpMontant = (order.partner_frais_port && order.partner_frais_port > 0) ? order.partner_frais_port : 80;
+        }
 
-        const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
+        const fpRef = 'FP';
+        const fpTax = 20;
+        const fpGross = roundPrice(fpMontant * (1 + fpTax / 100));
+        const vfProduct = findVFProduct(fpRef, fpMontant, catalog, codeMappings, productIdMappings, productNameMappings);
 
-        const position = {
-          name: vfProduct.productName || f.nom || ref,
-          code: f.ref || ref,
-          price_net: Number(priceHT).toFixed(2),
-          total_price_gross: Number(gross).toFixed(2),
-          tax: taxRate,
-          quantity: qty,
+        const fpPosition = {
+          name: vfProduct.productName || 'FRAIS DE PORT',
+          code: fpRef,
+          price_net: Number(fpMontant).toFixed(2),
+          total_price_gross: Number(fpGross).toFixed(2),
+          tax: fpTax,
+          quantity: 1,
         };
-        if (vfProduct.productId) position.product_id = vfProduct.productId;
-        positions.push(position);
+        if (vfProduct.productId) fpPosition.product_id = vfProduct.productId;
+        positions.push(fpPosition);
+        fraisPort.push({ ref: fpRef, nom: 'FRAIS DE PORT', prix_ht: fpMontant, quantite: 1, tva: fpTax });
       }
 
       // Résoudre le client VF pour la facture
