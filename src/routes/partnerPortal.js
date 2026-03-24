@@ -10,6 +10,8 @@ const partnerAuth = require('../middleware/partnerAuth');
 const { normalizeRef, calculerRemise } = require('../services/productMatchingService');
 const logger = require('../config/logger');
 
+const DEFAULT_FRANCO_SEUIL = 800;
+
 module.exports = (db) => {
   const router = express.Router();
 
@@ -48,7 +50,7 @@ module.exports = (db) => {
           email: matched.email,
           contact_nom: matched.contact_nom,
           amenities: matched.amenities || null,
-          franco_seuil: matched.franco_seuil ?? 800,
+          franco_seuil: matched.franco_seuil ?? DEFAULT_FRANCO_SEUIL,
           frais_exonere: matched.frais_exonere ?? 0,
         },
       });
@@ -163,7 +165,7 @@ module.exports = (db) => {
       totalHT = Math.round(totalHT * 100) / 100;
 
       // Frais FP/FE : si exonéré → rien, sinon franco atteint → FP, pas atteint → FE
-      const francoSeuil = partner.franco_seuil ?? 800;
+      const francoSeuil = partner.franco_seuil ?? DEFAULT_FRANCO_SEUIL;
       const exonere = partner.frais_exonere ?? 0;
       let fraisRef = null;
       let fraisNom = '';
@@ -330,7 +332,7 @@ module.exports = (db) => {
       });
 
       totalHT = Math.round(totalHT * 100) / 100;
-      const francoSeuil = partner.franco_seuil ?? 800;
+      const francoSeuil = partner.franco_seuil ?? DEFAULT_FRANCO_SEUIL;
       const exonere = partner.frais_exonere ?? 0;
       let fraisMontant = 0;
       if (!exonere) {

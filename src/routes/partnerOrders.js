@@ -8,6 +8,8 @@ const {
 } = require('../services/productMatchingService');
 const logger = require('../config/logger');
 
+const DEFAULT_FRANCO_SEUIL = 800;
+
 module.exports = (db) => {
   const router = express.Router();
   const vfService = require('../services/vosfacturesService')(db);
@@ -212,7 +214,7 @@ module.exports = (db) => {
       const fraisPort = [];
       if (!order.partner_frais_exonere) {
         const totalHTProducts = positions.reduce((s, p) => s + parseFloat(p.price_net) * p.quantity, 0);
-        const francoSeuil = order.partner_franco_seuil || 800;
+        const francoSeuil = order.partner_franco_seuil || DEFAULT_FRANCO_SEUIL;
         const fpCatalog = catalog['FP'];
         const feCatalog = catalog['FE'];
         let fpMontant;

@@ -4960,6 +4960,8 @@ const getShippingIdForClient = (client) => {
   return isIDF ? '101' : '1302';
 };
 
+const DEFAULT_FRANCO_SEUIL = 800;
+
 const SHIPPING_OPTIONS = [
   { value: '1', label: '1 - Enlevement Colis' },
   { value: '2', label: '2 - Enlevement Palette' },
@@ -8217,11 +8219,13 @@ const VueCommandes = ({ showToast }) => {
     }
   };
 
-  const downloadCsv = async (commande) => {
+  const [csvModal, setCsvModal] = useState(null);
+  const [csvShippingId, setCsvShippingId] = useState('1');
+
+  const downloadCsv = async (commande, shippingId) => {
     setDownloadingCsv(commande.id);
+    setCsvModal(null);
     try {
-      const shippingId = prompt('ID transporteur (ex: 1, 300, 600) :', '1');
-      if (!shippingId) { setDownloadingCsv(null); return; }
       const response = await fetch(`/api/partner-orders/${commande.id}/csv`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || ''}` },
@@ -8284,6 +8288,29 @@ const VueCommandes = ({ showToast }) => {
 
   return (
     <div className="space-y-4">
+      {/* Modal CSV transporteur */}
+      {csvModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setCsvModal(null)}>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-900">Télécharger CSV logisticien</h3>
+              <p className="text-xs text-slate-500">{csvModal.partner_nom}</p>
+            </div>
+            <div className="px-6 py-4">
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
+              <select value={csvShippingId} onChange={e => setCsvShippingId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={() => setCsvModal(null)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
+              <button onClick={() => downloadCsv(csvModal, csvShippingId)} className="px-4 py-2 text-sm bg-slate-900 text-white rounded-xl hover:bg-slate-700">Télécharger</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Modal de validation */}
       {validateModal && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !validating && setValidateModal(null)}>
@@ -8346,7 +8373,7 @@ const VueCommandes = ({ showToast }) => {
 
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
               <button onClick={() => setValidateModal(null)} disabled={validating} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Annuler</button>
-              <button onClick={validerCommande} disabled={validating} className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-500 disabled:opacity-50 transition-colors">
+              <button onClick={validerCommande} disabled={validating} className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
                 {validating ? 'Validation...' : `Créer ${validateOptions.documentType === 'proforma' ? 'proforma' : 'facture'}`}
               </button>
             </div>
@@ -8368,7 +8395,9 @@ const VueCommandes = ({ showToast }) => {
 
       {/* Tableau */}
       {!loading && commandes.length === 0 && (
-        <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-sm text-slate-400">Aucune commande</div>
+        <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center text-sm text-slate-400">
+          {filtre === 'en_attente' ? 'Aucune commande en attente de validation' : filtre === 'validee' ? 'Aucune commande validée' : filtre === 'annulee' ? 'Aucune commande annulée' : 'Aucune commande'}
+        </div>
       )}
 
       <div className="space-y-3">
@@ -8436,8 +8465,8 @@ const VueCommandes = ({ showToast }) => {
                       {c.vf_invoice_number && <span className="text-xs text-emerald-600 font-medium">Facture n&deg;{c.vf_invoice_number}</span>}
                       {c.statut === 'validee' && c.vf_invoice_id && (
                         <>
-                          <button onClick={(e) => { e.stopPropagation(); downloadCsv(c); }} disabled={downloadingCsv === c.id}
-                            className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50">
+                          <button onClick={(e) => { e.stopPropagation(); setCsvShippingId(c.shipping_id || '1'); setCsvModal(c); }} disabled={downloadingCsv === c.id}
+                            className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {downloadingCsv === c.id ? 'CSV...' : 'CSV'}
                           </button>
                           <button onClick={(e) => { e.stopPropagation(); openPdf(c); }}
@@ -8533,7 +8562,7 @@ const VuePartenaires = ({ showToast }) => {
     setSelectedId(p.id);
     setEditing(false);
     setShowPwd(false);
-    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? 800, frais_exonere: p.frais_exonere ?? 0 });
+    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0 });
     // Charger amenities depuis le partenaire
     try {
       const am = p.amenities ? JSON.parse(p.amenities) : {};
@@ -8598,7 +8627,7 @@ const VuePartenaires = ({ showToast }) => {
     if (selectedId && partners.length) {
       const p = partners.find(x => x.id === selectedId);
       if (p) {
-        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? 800, frais_exonere: p.frais_exonere ?? 0 });
+        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0 });
         try { setAmenities(p.amenities ? JSON.parse(p.amenities) : {}); } catch (e) { setAmenities({}); }
       }
     }
@@ -8729,7 +8758,7 @@ const VuePartenaires = ({ showToast }) => {
                     <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.telephone || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Adresse</span><span className="text-sm text-slate-700">{selected.adresse || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Shipping ID</span><span className="text-sm text-slate-700 font-mono">{selected.shipping_id || '—'}</span></div>
-                    <div><span className="text-[10px] text-slate-400 block">Franco (seuil HT)</span><span className="text-sm text-slate-700">{(selected.franco_seuil ?? 800).toFixed(0)} &euro;</span></div>
+                    <div><span className="text-[10px] text-slate-400 block">Franco (seuil HT)</span><span className="text-sm text-slate-700">{(selected.franco_seuil ?? DEFAULT_FRANCO_SEUIL).toFixed(0)} &euro;</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Frais FP/FE</span><span className="text-sm text-slate-700">{selected.frais_exonere ? 'Exonéré' : 'Standard (FP/FE)'}</span></div>
                   </div>
                 </div>
@@ -8761,7 +8790,7 @@ const VuePartenaires = ({ showToast }) => {
                     </div>
                     <div>
                       <label className="text-[10px] text-slate-400 block mb-0.5">Franco (seuil HT &euro;)</label>
-                      <input type="number" step="1" value={editForm.franco_seuil ?? 800} onChange={e => setEditForm(f => ({ ...f, franco_seuil: parseFloat(e.target.value) || 0 }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      <input type="number" step="1" value={editForm.franco_seuil ?? DEFAULT_FRANCO_SEUIL} onChange={e => setEditForm(f => ({ ...f, franco_seuil: parseFloat(e.target.value) || 0 }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
                     </div>
                     <div className="flex items-center gap-2 pt-4">
                       <input type="checkbox" id="frais_exonere" checked={!!editForm.frais_exonere} onChange={e => setEditForm(f => ({ ...f, frais_exonere: e.target.checked ? 1 : 0 }))} className="rounded border-slate-300" />
@@ -8861,6 +8890,7 @@ const VuePartenaires = ({ showToast }) => {
                           <td className="py-1.5 text-right text-emerald-600 font-medium">{d.discount_pct}%</td>
                           <td className="py-1.5 text-right">
                             <button onClick={async () => {
+                              if (!confirm(`Supprimer la réduction ${d.product_code} (${d.discount_pct}%) ?`)) return;
                               try {
                                 await api.delete(`/reference/partners/${selected.id}/discounts/${d.id}`);
                                 setDiscounts(ds => ds.filter(x => x.id !== d.id));
@@ -8914,7 +8944,7 @@ const VuePartenaires = ({ showToast }) => {
                     }
                   }}
                   disabled={!newDiscount.product_code || !newDiscount.discount_pct}
-                  className="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-30 flex-shrink-0"
+                  className="text-xs px-3 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
                 >+</button>
               </div>
             </div>
