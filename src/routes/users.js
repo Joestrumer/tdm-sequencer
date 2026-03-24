@@ -136,20 +136,20 @@ module.exports = (db) => {
     }
   });
 
-  // DELETE /api/users/:id — Désactiver (soft delete)
+  // DELETE /api/users/:id — Supprimer un utilisateur
   router.delete('/:id', (req, res) => {
     const { id } = req.params;
 
     // Empêcher de se supprimer soi-même
     if (req.user.id === id) {
-      return res.status(400).json({ erreur: 'Impossible de désactiver votre propre compte' });
+      return res.status(400).json({ erreur: 'Impossible de supprimer votre propre compte' });
     }
 
     const user = db.prepare('SELECT id FROM users WHERE id = ?').get(id);
     if (!user) return res.status(404).json({ erreur: 'Utilisateur introuvable' });
 
-    db.prepare("UPDATE users SET actif = 0, updated_at = datetime('now') WHERE id = ?").run(id);
-    res.json({ ok: true, message: 'Utilisateur désactivé' });
+    db.prepare('DELETE FROM users WHERE id = ?').run(id);
+    res.json({ ok: true, message: 'Utilisateur supprimé' });
   });
 
   return router;

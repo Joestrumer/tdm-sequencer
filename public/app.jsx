@@ -5271,7 +5271,7 @@ const FacturesSingle = ({ showToast }) => {
   const downloadCSVAndEmail = async (isSample = false) => {
     try {
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
-      const invoiceData = { ...result, products: calculation?.products || matchedProducts, orderNumber };
+      const invoiceData = { ...(result || {}), number: result?.number || orderNumber, products: calculation?.products || matchedProducts, orderNumber };
       const res = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -5282,7 +5282,7 @@ const FacturesSingle = ({ showToast }) => {
         throw new Error(errData.erreur || 'Erreur CSV: ' + res.status);
       }
       const blob = await res.blob();
-      const fileName = `logisticien-${result?.number || 'facture'}.csv`;
+      const fileName = `logisticien-${result?.number || orderNumber || 'facture'}.csv`;
 
       // Essayer File System Access API avec mémorisation du dossier
       let saved = false;
@@ -5652,6 +5652,12 @@ const FacturesSingle = ({ showToast }) => {
               {processing ? '...' : 'Logger uniquement'}
             </button>
           </div>
+          {orderNumber && (
+            <button onClick={() => downloadCSVAndEmail()} disabled={!selectedClient || !shippingId}
+              className="w-full py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
+              CSV + Email Logisticien (sans créer de facture)
+            </button>
+          )}
         </div>
       )}
 
@@ -9104,6 +9110,7 @@ const VueEquipe = ({ showToast }) => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editUser, setEditUser] = useState(null);
+  const currentUserId = (() => { try { return JSON.parse(sessionStorage.getItem('tdm_user') || '{}').id; } catch { return null; } })();
 
   const chargerUsers = async () => {
     setLoading(true);
@@ -9120,6 +9127,16 @@ const VueEquipe = ({ showToast }) => {
     try {
       await api.patch(`/users/${user.id}`, { actif: !user.actif });
       showToast(user.actif ? 'Utilisateur désactivé' : 'Utilisateur réactivé', 'success');
+      chargerUsers();
+    } catch (e) { showToast(e.message, 'error'); }
+  };
+
+  const supprimerUser = async (user) => {
+    if (!confirm(`Supprimer définitivement ${user.nom} (${user.email}) ?`)) return;
+    try {
+      const res = await api.delete(`/users/${user.id}`);
+      if (res.erreur) throw new Error(res.erreur);
+      showToast('Utilisateur supprimé', 'success');
       chargerUsers();
     } catch (e) { showToast(e.message, 'error'); }
   };
@@ -9191,10 +9208,15 @@ const VueEquipe = ({ showToast }) => {
                       </div>
                     )}
                   </td>
-                  <td className="px-4 py-3 text-right">
+                  <td className="px-4 py-3 text-right space-x-2">
                     <button onClick={() => { setEditUser(u); setShowModal(true); }} className="text-xs text-indigo-600 hover:text-indigo-800 font-medium">
                       Modifier
                     </button>
+                    {u.id !== currentUserId && (
+                      <button onClick={() => supprimerUser(u)} className="text-xs text-red-500 hover:text-red-700 font-medium">
+                        Supprimer
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
