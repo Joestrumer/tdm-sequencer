@@ -8545,7 +8545,7 @@ const VuePartenaires = ({ showToast }) => {
   };
 
   const filtered = useMemo(() => {
-    let list = partners;
+    let list = partners.filter(p => p.vf_client_id);
     if (tab === "portail") list = list.filter(p => p.has_password);
     if (search) {
       const q = search.toLowerCase();
@@ -8554,7 +8554,7 @@ const VuePartenaires = ({ showToast }) => {
     return list;
   }, [partners, search, tab]);
 
-  const portalCount = useMemo(() => partners.filter(p => p.has_password).length, [partners]);
+  const portalCount = useMemo(() => partners.filter(p => p.vf_client_id && p.has_password).length, [partners]);
 
   const selected = partners.find(p => p.id === selectedId);
 
