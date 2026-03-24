@@ -813,6 +813,20 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                 {/* Quill Editor */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
                   <div ref={editorRef} className="bg-white" style={{ minHeight: '300px' }}></div>
+                  <div className="px-3 py-1.5 border-t border-slate-100 bg-slate-50/30 flex items-center gap-1">
+                    <span className="text-xs text-slate-400 mr-1">Variables :</span>
+                    {VARS.map(v => (
+                      <button key={v} type="button" onClick={() => {
+                        const q = quillRef.current;
+                        if (!q) return;
+                        const range = q.getSelection(true);
+                        if (range) {
+                          q.insertText(range.index, v);
+                          q.setSelection(range.index + v.length);
+                        }
+                      }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
+                    ))}
+                  </div>
                   {/* Pièce jointe */}
                   <div className="px-4 py-2.5 border-t border-slate-100 bg-slate-50/50">
                     {etapeCourante.piece_jointe ? (
@@ -915,7 +929,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
       {/* Modal sélection template */}
       {showTemplateSelector && (
-        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4">
+        <div className="absolute inset-0 bg-black/50 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={e => e.stopPropagation()}>
           <div className="bg-white rounded-xl shadow-2xl w-full max-w-3xl max-h-[80vh] flex flex-col">
             <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
               <h3 className="text-base font-semibold text-slate-900">Choisir un template</h3>
@@ -8207,10 +8221,21 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
             <label className="text-xs font-medium text-slate-500 mb-1 block">Contenu</label>
             <div className="border border-slate-200 rounded-lg bg-white">
               <div ref={editorRef} />
+              <div className="px-3 py-1.5 border-t border-slate-100 bg-slate-50/30 flex items-center gap-1">
+                <span className="text-xs text-slate-400 mr-1">Variables :</span>
+                {["{{prenom}}", "{{nom}}", "{{etablissement}}", "{{ville}}", "{{segment}}"].map(v => (
+                  <button key={v} type="button" onClick={() => {
+                    const q = quillRef.current;
+                    if (!q) return;
+                    const range = q.getSelection(true);
+                    if (range) {
+                      q.insertText(range.index, v);
+                      q.setSelection(range.index + v.length);
+                    }
+                  }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
+                ))}
+              </div>
             </div>
-            <p className="text-xs text-slate-400 mt-1">
-              Variables disponibles : {'{{'} prenom {'}}'}, {'{{'} nom {'}}'}, {'{{'} etablissement {'}}'}, {'{{'} ville {'}}'}, {'{{'} segment {'}}'}
-            </p>
           </div>
         </div>
 
