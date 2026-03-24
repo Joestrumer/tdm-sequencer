@@ -134,6 +134,7 @@ function substituerVariables(texte, lead) {
     .replace(/\{\{prenom\}\}/gi, lead.prenom || '')
     .replace(/\{\{nom\}\}/gi, lead.nom || '')
     .replace(/\{\{hotel\}\}/gi, lead.hotel || '')
+    .replace(/\{\{etablissement\}\}/gi, lead.hotel || '')
     .replace(/\{\{ville\}\}/gi, lead.ville || '')
     .replace(/\{\{segment\}\}/gi, lead.segment || '');
 }

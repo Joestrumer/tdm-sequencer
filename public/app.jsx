@@ -94,11 +94,13 @@ function relTime(iso) {
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
 
-const ModalAddLead = ({ onClose, onAdd }) => {
+const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
   useEscapeClose(onClose);
   const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "", langue: "fr", campaign: "", comment: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [showCampaignDropdown, setShowCampaignDropdown] = useState(false);
+  const campaignRef = useRef(null);
 
   // Recherche HubSpot
   const [queryCompany, setQueryCompany] = useState("");
@@ -214,12 +216,38 @@ const ModalAddLead = ({ onClose, onAdd }) => {
                 </div>
               ))}
             </div>
-            {[["hotel","Établissement"],["ville","Ville"],["email","Email"],["poste","Poste / Fonction"],["campaign","Campaign"]].map(([k,l]) => (
+            {[["hotel","Établissement"],["ville","Ville"],["email","Email"],["poste","Poste / Fonction"]].map(([k,l]) => (
               <div key={k} className="mt-3">
                 <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
                 <input type={k === "email" ? "email" : "text"} value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
               </div>
             ))}
+            <div className="mt-3 relative" ref={campaignRef}>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Campaign</label>
+              <input
+                value={form.campaign}
+                onChange={e => { set("campaign", e.target.value); setShowCampaignDropdown(true); }}
+                onFocus={() => setShowCampaignDropdown(true)}
+                onBlur={() => setTimeout(() => setShowCampaignDropdown(false), 200)}
+                placeholder="Sélectionner ou saisir une campagne..."
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              />
+              {showCampaignDropdown && (() => {
+                const allOptions = [...new Set([...campaigns, ...sequences.map(s => s.nom)])].sort();
+                const filtered = allOptions.filter(o => !form.campaign || o.toLowerCase().includes(form.campaign.toLowerCase()));
+                if (filtered.length === 0) return null;
+                return (
+                  <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                    {filtered.map(opt => (
+                      <button key={opt} type="button" onClick={() => { set("campaign", opt); setShowCampaignDropdown(false); }}
+                        className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 truncate">
+                        {opt}
+                      </button>
+                    ))}
+                  </div>
+                );
+              })()}
+            </div>
             <div className="mt-3">
               <label className="text-xs font-medium text-slate-500 mb-1 block">Commentaire</label>
               <textarea
@@ -367,6 +395,7 @@ function substituerVarsPreview(texte, lead = DEMO_LEAD_PREVIEW) {
     .replace(/\{\{prenom\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.prenom)}</span>`)
     .replace(/\{\{nom\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.nom)}</span>`)
     .replace(/\{\{hotel\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.hotel)}</span>`)
+    .replace(/\{\{etablissement\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.hotel)}</span>`)
     .replace(/\{\{ville\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.ville)}</span>`)
     .replace(/\{\{segment\}\}/gi, `<span style="background:#fef9c3;padding:0 2px">${escapeHtml(lead.segment)}</span>`);
 }
@@ -427,12 +456,18 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     updateEtape(activeEtape, 'content_json', template.content_json || '');
 
     // Recharger le contenu dans Quill
-    if (quillRef.current && template.content_json) {
-      try {
-        const delta = JSON.parse(template.content_json);
-        quillRef.current.setContents(delta);
-      } catch (e) {
-        console.error('Erreur chargement template dans Quill:', e);
+    if (quillRef.current) {
+      if (template.content_json) {
+        try {
+          const delta = JSON.parse(template.content_json);
+          quillRef.current.setContents(delta);
+        } catch (e) {
+          quillRef.current.root.innerHTML = template.corps_html || '';
+        }
+      } else if (template.corps_html) {
+        quillRef.current.root.innerHTML = template.corps_html;
+      } else {
+        quillRef.current.setText('');
       }
     }
 
@@ -673,7 +708,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     return html;
   }, [etapeCourante.corps_html, etapeCourante.corps]);
 
-  const VARS = ["{{prenom}}", "{{hotel}}", "{{ville}}", "{{segment}}"];
+  const VARS = ["{{prenom}}", "{{nom}}", "{{etablissement}}", "{{ville}}", "{{segment}}"];
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -750,7 +785,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       ref={objetRef}
                       value={etapeCourante.sujet || ""}
                       onChange={e => updateEtape(activeEtape, "sujet", e.target.value)}
-                      placeholder="Ex: Découvrez Terre de Mars — {{hotel}}"
+                      placeholder="Ex: Découvrez Terre de Mars — {{etablissement}}"
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                     />
                     <div className="flex gap-1 mt-1.5">
@@ -1165,11 +1200,13 @@ const VueDashboard = ({ showToast }) => {
 };
 
 // ─── Modal édition lead ────────────────────────────────────────────────────
-const ModalEditLead = ({ lead, onClose, onSave }) => {
+const ModalEditLead = ({ lead, onClose, onSave, campaigns = [], sequences = [] }) => {
   useEscapeClose(onClose);
   const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"", langue: lead.langue||"fr", campaign: lead.campaign||"", comment: lead.comment||"" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
+  const [showCampaignDropdown, setShowCampaignDropdown] = useState(false);
+  const campaignRef = useRef(null);
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
   const handleSave = async () => {
     if (!form.email || !form.hotel) { setErr("Email et établissement requis"); return; }
@@ -1194,10 +1231,35 @@ const ModalEditLead = ({ lead, onClose, onSave }) => {
               <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
             ))}
           </div>
-          {[["Email","email"],["Établissement","hotel"],["Ville","ville"],["Poste / Fonction","poste"],["Campaign","campaign"]].map(([l,k]) => (
+          {[["Email","email"],["Établissement","hotel"],["Ville","ville"],["Poste / Fonction","poste"]].map(([l,k]) => (
             <div key={k}><label className="text-xs text-slate-500 mb-1 block">{l}</label>
             <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
           ))}
+          <div className="relative" ref={campaignRef}>
+            <label className="text-xs text-slate-500 mb-1 block">Campaign</label>
+            <input
+              value={form.campaign}
+              onChange={e => { set("campaign", e.target.value); setShowCampaignDropdown(true); }}
+              onFocus={() => setShowCampaignDropdown(true)}
+              placeholder="Sélectionner ou saisir une campagne..."
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+            />
+            {showCampaignDropdown && (() => {
+              const allOptions = [...new Set([...campaigns, ...sequences.map(s => s.nom)])].sort();
+              const filtered = allOptions.filter(o => !form.campaign || o.toLowerCase().includes(form.campaign.toLowerCase()));
+              if (filtered.length === 0) return null;
+              return (
+                <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                  {filtered.map(opt => (
+                    <button key={opt} type="button" onClick={() => { set("campaign", opt); setShowCampaignDropdown(false); }}
+                      className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 truncate">
+                      {opt}
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
           <div>
             <label className="text-xs text-slate-500 mb-1 block">Commentaire</label>
             <textarea
@@ -1562,7 +1624,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   // ── Render ──────────────────────────────────────────────────────────────
   return (
     <div className="space-y-4">
-      {showAdd && <ModalAddLead onClose={() => setShowAdd(false)} onAdd={(l) => { onAdd(l); if(onRefresh) onRefresh(); }} />}
+      {showAdd && <ModalAddLead onClose={() => setShowAdd(false)} onAdd={(l) => { onAdd(l); if(onRefresh) onRefresh(); }} campaigns={campaigns.filter(c => c !== "Tous")} sequences={sequences} />}
       {showLaunch && <ModalLaunchSequence lead={showLaunch} sequences={sequences} onClose={() => setShowLaunch(null)} onLaunch={onLaunch} />}
       {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow) => {
         const ids = Array.from(selectedIds);
@@ -1572,7 +1634,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         setSelectedIds(new Set());
         if (onRefresh) onRefresh();
       }} />}
-      {editLead && <ModalEditLead lead={editLead} onClose={() => setEditLead(null)} onSave={() => { setEditLead(null); if(onRefresh) onRefresh(); }} />}
+      {editLead && <ModalEditLead lead={editLead} onClose={() => setEditLead(null)} onSave={() => { setEditLead(null); if(onRefresh) onRefresh(); }} campaigns={campaigns.filter(c => c !== "Tous")} sequences={sequences} />}
 
       {/* ── Filtres ── */}
       <div className="flex flex-col md:flex-row flex-wrap gap-2 md:items-center bg-white rounded-2xl border border-slate-100 px-4 py-3">
@@ -8147,7 +8209,7 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
               <div ref={editorRef} />
             </div>
             <p className="text-xs text-slate-400 mt-1">
-              Variables disponibles : {'{{'} prenom {'}}'}, {'{{'} nom {'}}'}, {'{{'} hotel {'}}'}, {'{{'} ville {'}}'}, {'{{'} segment {'}}'}
+              Variables disponibles : {'{{'} prenom {'}}'}, {'{{'} nom {'}}'}, {'{{'} etablissement {'}}'}, {'{{'} ville {'}}'}, {'{{'} segment {'}}'}
             </p>
           </div>
         </div>
