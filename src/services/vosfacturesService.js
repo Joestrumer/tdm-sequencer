@@ -37,8 +37,8 @@ async function vfFetch(path, opts = {}, db) {
       clearTimeout(timeout);
 
       if (res.status === 429 && attempt < maxRetries) {
-        const wait = Math.pow(2, attempt) * 1000;
-        logger.debug(`⏳ VF rate limit, retry ${attempt}/${maxRetries} dans ${wait}ms`);
+        const wait = Math.pow(2, attempt) * 1000 + Math.random() * 1000;
+        logger.debug(`⏳ VF rate limit, retry ${attempt}/${maxRetries} dans ${Math.round(wait)}ms`);
         await new Promise(r => setTimeout(r, wait));
         continue;
       }
@@ -85,11 +85,13 @@ module.exports = (db) => ({
       return clientsCache;
     }
     const allClients = [];
-    for (let page = 1; page <= 10; page++) {
+    let page = 1;
+    while (true) {
       const data = await vfFetch(`/clients.json?page=${page}&per_page=100`, {}, db);
       if (!Array.isArray(data) || data.length === 0) break;
       allClients.push(...data);
       if (data.length < 100) break;
+      page++;
     }
     allClients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     clientsCache = allClients;

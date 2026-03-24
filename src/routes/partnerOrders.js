@@ -157,6 +157,9 @@ module.exports = (db) => {
       // Résoudre le client VF
       const canonicalClientName = resolveCanonicalClientName(order.partner_nom) || order.nom_normalise;
       const discountsDb = getDiscountsForClient(canonicalClientName);
+      // Pré-construire Map pour lookup O(1) au lieu de O(n) par produit
+      const discountMap = new Map();
+      for (const d of discountsDb) discountMap.set(normalizeRef(d.product_code), d.discount_pct);
 
       // Construire les positions
       const positions = [];
@@ -171,8 +174,7 @@ module.exports = (db) => {
 
         let discount = p.discount_pct || 0;
         if (!discount && canonicalClientName) {
-          const discEntry = discountsDb.find(d => normalizeRef(d.product_code) === ref);
-          discount = discEntry ? discEntry.discount_pct : 0;
+          discount = discountMap.get(ref) || 0;
         }
         if (discount > 0) hasDiscount = true;
 
@@ -206,16 +208,18 @@ module.exports = (db) => {
         positions.push(position);
       }
 
-      // Frais de port — règle : >= seuil franco → FP 25€, sinon FP 80€ (ou montant custom partenaire)
+      // Frais de port — règle : >= seuil franco → FP (catalogue), sinon FE (catalogue ou custom partenaire)
       const fraisPort = [];
       if (!order.partner_frais_exonere) {
         const totalHTProducts = positions.reduce((s, p) => s + parseFloat(p.price_net) * p.quantity, 0);
         const francoSeuil = order.partner_franco_seuil || 800;
+        const fpCatalog = catalog['FP'];
+        const feCatalog = catalog['FE'];
         let fpMontant;
         if (totalHTProducts >= francoSeuil) {
-          fpMontant = 25;
+          fpMontant = fpCatalog?.prix_ht || 25;
         } else {
-          fpMontant = (order.partner_frais_port && order.partner_frais_port > 0) ? order.partner_frais_port : 80;
+          fpMontant = (order.partner_frais_port && order.partner_frais_port > 0) ? order.partner_frais_port : (feCatalog?.prix_ht || 80);
         }
 
         const fpRef = 'FP';

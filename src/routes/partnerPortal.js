@@ -66,14 +66,16 @@ module.exports = (db) => {
     try {
       const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere FROM vf_partners WHERE id = ?').get(req.partner.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
-      // Ajouter les prix FP/FE pour le calcul côté portail
-      const fp = db.prepare("SELECT prix_ht FROM vf_catalog WHERE ref = 'FP'").get();
-      const fe = db.prepare("SELECT prix_ht FROM vf_catalog WHERE ref = 'FE'").get();
-      partner.fp_prix = fp?.prix_ht || 0;
-      partner.fe_prix = fe?.prix_ht || 0;
+      // Ajouter les prix FP/FE pour le calcul côté portail (1 seule requête)
+      const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
+      const fraisMap = {};
+      for (const r of fraisRows) fraisMap[r.ref] = r.prix_ht;
+      partner.fp_prix = fraisMap['FP'] || 0;
+      partner.fe_prix = fraisMap['FE'] || 0;
       res.json(partner);
     } catch (e) {
-      res.status(500).json({ erreur: e.message });
+      logger.error('Erreur profil partenaire', { error: e.message, partnerId: req.partner?.id });
+      res.status(500).json({ erreur: 'Erreur serveur' });
     }
   });
 
@@ -111,7 +113,8 @@ module.exports = (db) => {
 
       res.json(catalogue);
     } catch (e) {
-      res.status(500).json({ erreur: e.message });
+      logger.error('Erreur catalogue partenaire', { error: e.message, partnerId: req.partner?.id });
+      res.status(500).json({ erreur: 'Erreur serveur' });
     }
   });
 
@@ -166,12 +169,13 @@ module.exports = (db) => {
       let fraisNom = '';
       let fraisMontant = 0;
       if (!exonere) {
-        const fpEntry = db.prepare("SELECT prix_ht, nom FROM vf_catalog WHERE ref = 'FP'").get();
-        const feEntry = db.prepare("SELECT prix_ht, nom FROM vf_catalog WHERE ref = 'FE'").get();
+        const fraisRows = db.prepare("SELECT ref, prix_ht, nom FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
+        const fraisMap = {};
+        for (const r of fraisRows) fraisMap[r.ref] = r;
         if (totalHT >= francoSeuil) {
-          fraisRef = 'FP'; fraisNom = fpEntry?.nom || 'Frais de préparation'; fraisMontant = fpEntry?.prix_ht || 0;
+          fraisRef = 'FP'; fraisNom = fraisMap['FP']?.nom || 'Frais de préparation'; fraisMontant = fraisMap['FP']?.prix_ht || 0;
         } else {
-          fraisRef = 'FE'; fraisNom = feEntry?.nom || "Frais d'expédition"; fraisMontant = feEntry?.prix_ht || 0;
+          fraisRef = 'FE'; fraisNom = fraisMap['FE']?.nom || "Frais d'expédition"; fraisMontant = fraisMap['FE']?.prix_ht || 0;
         }
       }
       const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
@@ -270,7 +274,8 @@ module.exports = (db) => {
 
       res.json(result);
     } catch (e) {
-      res.status(500).json({ erreur: e.message });
+      logger.error('Erreur historique commandes', { error: e.message, partnerId: req.partner?.id });
+      res.status(500).json({ erreur: 'Erreur serveur' });
     }
   });
 
@@ -284,7 +289,8 @@ module.exports = (db) => {
       db.prepare('DELETE FROM partner_orders WHERE id = ?').run(req.params.id);
       res.json({ ok: true });
     } catch (e) {
-      res.status(500).json({ erreur: e.message });
+      logger.error('Erreur suppression commande', { error: e.message, orderId: req.params.id });
+      res.status(500).json({ erreur: 'Erreur serveur' });
     }
   });
 
@@ -328,12 +334,13 @@ module.exports = (db) => {
       const exonere = partner.frais_exonere ?? 0;
       let fraisMontant = 0;
       if (!exonere) {
+        const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
+        const fraisMap = {};
+        for (const r of fraisRows) fraisMap[r.ref] = r;
         if (totalHT >= francoSeuil) {
-          const fpEntry = db.prepare("SELECT prix_ht FROM vf_catalog WHERE ref = 'FP'").get();
-          fraisMontant = fpEntry?.prix_ht || 0;
+          fraisMontant = fraisMap['FP']?.prix_ht || 0;
         } else {
-          const feEntry = db.prepare("SELECT prix_ht FROM vf_catalog WHERE ref = 'FE'").get();
-          fraisMontant = feEntry?.prix_ht || 0;
+          fraisMontant = fraisMap['FE']?.prix_ht || 0;
         }
       }
       const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
@@ -344,7 +351,10 @@ module.exports = (db) => {
 
       res.json({ ok: true });
     } catch (e) {
-      res.status(500).json({ erreur: e.message });
+      // Produit inconnu = erreur client, sinon erreur serveur
+      const status = e.message?.startsWith('Produit inconnu') ? 400 : 500;
+      if (status === 500) logger.error('Erreur modification commande', { error: e.message, orderId: req.params.id });
+      res.status(status).json({ erreur: e.message });
     }
   });
 

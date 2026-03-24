@@ -11,7 +11,7 @@ function authMiddleware(req, res, next) {
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
 
   if (!token || token !== process.env.AUTH_SECRET) {
-    return res.status(401).json({ erreur: 'Non autorisé. Fournissez un token valide dans le header Authorization.' });
+    return res.status(401).json({ erreur: 'Authentification requise' });
   }
 
   next();
