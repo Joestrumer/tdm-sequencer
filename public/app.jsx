@@ -5220,6 +5220,12 @@ const FacturesSingle = ({ showToast }) => {
       if (sendEmail && res.email_error) {
         showToast('Attention : email non envoyé — ' + res.email_error, 'error');
       }
+      // Enchaîner CSV + email logisticien automatiquement
+      setProcessing(false);
+      try { await downloadCSVAndEmail(false, res); } catch (csvErr) {
+        showToast('Erreur CSV logisticien: ' + csvErr.message, 'error');
+      }
+      return;
     } catch (err) {
       setError(err.message);
       showToast('Erreur: ' + err.message, 'error');
@@ -5274,10 +5280,11 @@ const FacturesSingle = ({ showToast }) => {
     }
   };
 
-  const downloadCSVAndEmail = async (isSample = false) => {
+  const downloadCSVAndEmail = async (isSample = false, resultOverride = null) => {
     try {
+      const r = resultOverride || result;
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
-      const invoiceData = { ...(result || {}), number: result?.number || orderNumber, products: calculation?.products || matchedProducts, orderNumber };
+      const invoiceData = { ...(r || {}), number: r?.number || orderNumber, products: calculation?.products || matchedProducts, orderNumber };
       const res = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -5288,7 +5295,7 @@ const FacturesSingle = ({ showToast }) => {
         throw new Error(errData.erreur || 'Erreur CSV: ' + res.status);
       }
       const blob = await res.blob();
-      const fileName = `logisticien-${result?.number || orderNumber || 'facture'}.csv`;
+      const fileName = `logisticien-${r?.number || orderNumber || 'facture'}.csv`;
 
       // Essayer File System Access API avec mémorisation du dossier
       let saved = false;
@@ -5346,7 +5353,7 @@ const FacturesSingle = ({ showToast }) => {
 
       // Ouvrir mailto logisticien avec bon objet
       const clientName = selectedClient?.name || '';
-      const invoiceNum = orderNumber || result?.number || '';
+      const invoiceNum = orderNumber || r?.number || '';
       const subjectPrefix = isSample ? 'Échantillons' : 'Commande';
       const subject = encodeURIComponent(`${subjectPrefix} : ${clientName} ${invoiceNum}`);
       const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la ${isSample ? 'demande d\'échantillons' : 'commande'} ${invoiceNum} (${clientName}).\n\nCordialement`);
@@ -5715,7 +5722,7 @@ const FacturesSingle = ({ showToast }) => {
           <div className="flex gap-2">
             <button onClick={createInvoice} disabled={processing || !selectedClient || !calculation?.products?.length}
               className="flex-1 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
-              {processing ? 'En cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'}`}
+              {processing ? 'En cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'} et envoyer au logisticien`}
             </button>
             <button onClick={logOnly} disabled={processing || !selectedClient || !calculation?.products?.length}
               className="py-3 px-4 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors whitespace-nowrap">
@@ -5762,7 +5769,7 @@ const FacturesSingle = ({ showToast }) => {
               </button>
             )}
             {result.id && !result.logOnly && (
-              <a href={`https://app.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
+              <a href={`https://terredemars.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
                 className="px-4 py-2 bg-blue-600 text-white text-sm rounded-lg hover:bg-blue-700">
                 Voir sur VosFactures ↗
               </a>
@@ -6459,7 +6466,7 @@ const FacturesBatch = ({ showToast }) => {
                   </span>
                   <div className="flex items-center gap-1">
                     {r.ok && !r.logOnly && r.id && (
-                      <a href={`https://app.vosfactures.fr/invoices/${r.id}`} target="_blank" rel="noopener"
+                      <a href={`https://terredemars.vosfactures.fr/invoices/${r.id}`} target="_blank" rel="noopener"
                         className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">
                         VF ↗
                       </a>
@@ -6749,7 +6756,7 @@ const FacturesSamples = ({ showToast }) => {
             <p className="text-sm font-medium text-emerald-700">Proforma N° {result.number || result.id} créée !</p>
             <div className="flex gap-2 justify-center flex-wrap">
               {result.id && (
-                <a href={`https://app.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
+                <a href={`https://terredemars.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
                   className="px-3 py-1.5 bg-blue-600 text-white text-xs rounded-lg">Voir ↗</a>
               )}
               <button onClick={downloadCSVAndEmailSamples}
@@ -6831,7 +6838,7 @@ const FacturesReminders = ({ showToast }) => {
         <div>
           <label className="text-xs font-medium text-slate-500 mb-1 block">Numéros de facture, URLs ou IDs VosFactures</label>
           <textarea value={input} onChange={e => setInput(e.target.value)}
-            placeholder={"FV 2024/12/001\n1234567\nhttps://app.vosfactures.fr/invoices/123456"}
+            placeholder={"FV 2024/12/001\n1234567\nhttps://terredemars.vosfactures.fr/invoices/123456"}
             rows={4} className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono resize-y" />
         </div>
         <button onClick={resolveDocuments} disabled={loading || !input.trim()}
