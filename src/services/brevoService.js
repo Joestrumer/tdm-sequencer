@@ -171,7 +171,11 @@ const SENDER = {
   name: process.env.BREVO_SENDER_NAME || 'Hugo Montiel',
 };
 
-const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3001';
+const PUBLIC_URL = process.env.PUBLIC_URL && process.env.PUBLIC_URL !== 'http://localhost:3001'
+  ? process.env.PUBLIC_URL
+  : process.env.RAILWAY_PUBLIC_DOMAIN
+    ? `https://${process.env.RAILWAY_PUBLIC_DOMAIN}`
+    : 'http://localhost:3001';
 
 // ─── Substitution des variables dynamiques ───────────────────────────────────
 function substituerVariables(texte, lead) {
