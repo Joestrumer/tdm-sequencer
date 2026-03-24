@@ -190,31 +190,26 @@ function calculerRemise(clientName, productCode, discountsDb) {
 // ─── Frais de port ────────────────────────────────────────────────────────────
 
 function calculerFraisPort(totalHT, clientRules) {
-  // Par défaut : FP (25€ HT) toujours, FE (80€ HT) si total < seuil franco
-  const frais = [];
+  // >= seuil franco → FP (préparation 25€), sinon FE (expédition 80€)
+  const francoSeuil = (clientRules && clientRules.francoSeuil) || 800;
 
-  // Frais de préparation
-  frais.push({
-    ref: 'FP',
-    nom: 'FRAIS PREPARATION',
-    prix_ht: 25.00,
-    quantite: 1,
-    tva: 20,
-  });
-
-  // Frais d'expédition (sauf si franco de port)
-  const francoSeuil = (clientRules && clientRules.francoSeuil) || 500;
-  if (totalHT < francoSeuil) {
-    frais.push({
-      ref: 'FE',
-      nom: 'FRAIS EXPEDITION',
-      prix_ht: 80.00,
+  if (totalHT >= francoSeuil) {
+    return [{
+      ref: 'FP',
+      nom: 'FRAIS PREPARATION',
+      prix_ht: 25.00,
       quantite: 1,
       tva: 20,
-    });
+    }];
   }
 
-  return frais;
+  return [{
+    ref: 'FE',
+    nom: 'FRAIS EXPEDITION',
+    prix_ht: 80.00,
+    quantite: 1,
+    tva: 20,
+  }];
 }
 
 // ─── CSV Logisticien ──────────────────────────────────────────────────────────
