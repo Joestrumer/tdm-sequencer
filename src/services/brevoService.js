@@ -101,7 +101,7 @@ async function brevoSendEmail(payload) {
 // ─── Nettoyage HTML éditeur (supprime attributs Froala/isPasted) ─────────────
 function nettoyerHtml(html) {
   if (!html) return html;
-  return html
+  let result = html
     .replace(/\s*fr-original-style="[^"]*"/g, '')
     .replace(/\s*fr-original-class="[^"]*"/g, '')
     .replace(/\s*id="isPasted"/g, '')
@@ -119,6 +119,51 @@ function nettoyerHtml(html) {
     .replace(/<div><br\s*\/?><\/div>/gi, '<br>')
     // Convertir <p><br></p> en <br>
     .replace(/<p><br\s*\/?><\/p>/gi, '<br>');
+
+  // Convertir les listes Quill (tout dans <ol> avec data-list="bullet"|"ordered") en HTML standard
+  result = result.replace(/<ol>([\s\S]*?)<\/ol>/gi, (match, inner) => {
+    const hasBullet = /data-list="bullet"/.test(inner);
+    const hasOrdered = /data-list="ordered"/.test(inner);
+    // Si mix ou uniquement bullets, on traite par groupes
+    if (hasBullet || hasOrdered) {
+      // Extraire tous les <li>
+      const items = [];
+      const liRegex = /<li[^>]*data-list="(bullet|ordered)"[^>]*>([\s\S]*?)<\/li>/gi;
+      let m;
+      while ((m = liRegex.exec(inner)) !== null) {
+        items.push({ type: m[1], content: m[2] });
+      }
+      if (items.length === 0) return match;
+      // Grouper les items consécutifs par type
+      let output = '';
+      let currentType = null;
+      let currentItems = [];
+      for (const item of items) {
+        if (item.type !== currentType) {
+          if (currentItems.length > 0) {
+            const tag = currentType === 'ordered' ? 'ol' : 'ul';
+            output += `<${tag}>${currentItems.map(c => `<li>${c}</li>`).join('')}</${tag}>`;
+          }
+          currentType = item.type;
+          currentItems = [item.content];
+        } else {
+          currentItems.push(item.content);
+        }
+      }
+      if (currentItems.length > 0) {
+        const tag = currentType === 'ordered' ? 'ol' : 'ul';
+        output += `<${tag}>${currentItems.map(c => `<li>${c}</li>`).join('')}</${tag}>`;
+      }
+      return output;
+    }
+    return match;
+  });
+
+  // Nettoyer les attributs Quill restants
+  result = result.replace(/\s*class="ql-[^"]*"/g, '');
+  result = result.replace(/\s*data-list="[^"]*"/g, '');
+
+  return result;
 }
 
 const SENDER = {
