@@ -105,7 +105,7 @@ module.exports = (db) => {
       if (!user) return res.status(404).json({ erreur: 'Utilisateur introuvable' });
 
       const { brevoSendEmail } = require('../services/brevoService');
-      const PUBLIC_URL = process.env.PUBLIC_URL || 'http://localhost:3001';
+      const PUBLIC_URL = `${req.protocol}://${req.get('host')}`;
 
       const htmlContent = `
         <div style="font-family:Arial,Helvetica,sans-serif;max-width:600px;margin:0 auto;padding:24px;">
