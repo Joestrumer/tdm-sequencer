@@ -60,37 +60,31 @@ module.exports = (db) => {
         await new Promise(r => setTimeout(r, 150));
       }
 
-      // 2. Pull depuis HubSpot pour les leads déjà liés
+      // 2. Pull depuis HubSpot pour les leads déjà liés (infos contact uniquement, PAS le statut)
       if (API_KEY) {
         const leadsLies = db.prepare('SELECT * FROM leads WHERE hubspot_id IS NOT NULL').all();
-        const stageMap = {
-          subscriber: 'Nouveau', lead: 'Nouveau',
-          marketingqualifiedlead: 'En séquence', salesqualifiedlead: 'Répondu',
-          opportunity: 'Répondu', customer: 'Converti',
-        };
 
         for (const lead of leadsLies) {
           try {
             const resp = await fetch(
-              `https://api.hubapi.com/crm/v3/objects/contacts/${lead.hubspot_id}?properties=email,firstname,lastname,company,city,lifecyclestage`,
+              `https://api.hubapi.com/crm/v3/objects/contacts/${lead.hubspot_id}?properties=email,firstname,lastname,company,city`,
               { headers: { Authorization: `Bearer ${API_KEY}` } }
             );
             if (!resp.ok) continue;
             const { properties: p } = await resp.json();
-            const nouveauStatut = stageMap[p.lifecyclestage] || null;
 
+            // Mettre à jour seulement les infos contact, jamais le statut
+            // Le statut est géré par la logique métier locale (séquences, réponses, etc.)
             db.prepare(`
               UPDATE leads SET
                 prenom = COALESCE(NULLIF(?, ''), prenom),
                 nom    = COALESCE(NULLIF(?, ''), nom),
                 hotel  = COALESCE(NULLIF(?, ''), hotel),
                 ville  = COALESCE(NULLIF(?, ''), ville),
-                ${nouveauStatut ? 'statut = ?,' : ''}
                 updated_at = datetime('now')
               WHERE id = ?
             `).run(
               p.firstname || '', p.lastname || '', p.company || '', p.city || '',
-              ...(nouveauStatut ? [nouveauStatut] : []),
               lead.id
             );
           } catch (_) { /* continuer */ }
@@ -135,6 +129,54 @@ module.exports = (db) => {
       res.json(contacts);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // POST /api/hubspot/fix-statuts — Corriger les statuts écrasés par sync-all
+  router.post('/fix-statuts', (req, res) => {
+    try {
+      // 1. Leads avec inscription active → "En séquence"
+      const r1 = db.prepare(`
+        UPDATE leads SET statut = 'En séquence', updated_at = datetime('now')
+        WHERE id IN (
+          SELECT DISTINCT l.id FROM leads l
+          JOIN inscriptions i ON i.lead_id = l.id
+          WHERE i.statut = 'actif' AND l.statut = 'Répondu'
+        )
+      `).run();
+
+      // 2. Leads "Répondu" sans event réponse, avec inscription terminée → "Fin de séquence"
+      const r2 = db.prepare(`
+        UPDATE leads SET statut = 'Fin de séquence', updated_at = datetime('now')
+        WHERE statut = 'Répondu'
+          AND hubspot_id IS NOT NULL
+          AND id NOT IN (SELECT DISTINCT lead_id FROM events WHERE type IN ('réponse', 'clic'))
+          AND id NOT IN (SELECT DISTINCT lead_id FROM inscriptions WHERE statut = 'actif')
+          AND id IN (SELECT DISTINCT lead_id FROM inscriptions WHERE statut = 'terminé')
+      `).run();
+
+      // 3. Leads "Répondu" sans aucune interaction ni inscription → "Nouveau"
+      const r3 = db.prepare(`
+        UPDATE leads SET statut = 'Nouveau', updated_at = datetime('now')
+        WHERE statut = 'Répondu'
+          AND hubspot_id IS NOT NULL
+          AND id NOT IN (SELECT DISTINCT lead_id FROM events WHERE type IN ('réponse', 'clic'))
+          AND id NOT IN (SELECT DISTINCT lead_id FROM inscriptions WHERE statut = 'actif')
+          AND id NOT IN (SELECT DISTINCT lead_id FROM inscriptions WHERE statut = 'terminé')
+      `).run();
+
+      const stats = db.prepare(`SELECT statut, COUNT(*) as c FROM leads WHERE hubspot_id IS NOT NULL GROUP BY statut`).all();
+      res.json({
+        message: 'Statuts corrigés',
+        corrections: {
+          enSequence: r1.changes,
+          finSequence: r2.changes,
+          nouveau: r3.changes,
+        },
+        repartition: stats,
+      });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
     }
   });
 
