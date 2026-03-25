@@ -1914,6 +1914,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                       <div className="min-w-0">
                         <div className="font-medium text-slate-800 text-xs leading-tight truncate">{lead.prenom} {lead.nom}
                           {lead.hubspot_id && <span title="Synchronisé HubSpot" className="ml-1 text-orange-300 text-[10px]">⬡</span>}
+                          {lead.last_event_type && (() => {
+                            const diff = Date.now() - new Date(lead.last_event_at).getTime();
+                            if (diff > 7 * 86400000) return null; // Plus de 7 jours = pas d'icône
+                            const icons = { ouverture: '👁', clic: '🔗', envoi: '📧', réponse: '💬', désabonnement: '🚫' };
+                            const colors = { ouverture: 'text-blue-400', clic: 'text-purple-400', envoi: 'text-slate-400', réponse: 'text-emerald-500', désabonnement: 'text-red-400' };
+                            return <span title={`${lead.last_event_type} — ${relTime(lead.last_event_at)}`} className={`ml-1 text-[10px] ${colors[lead.last_event_type] || 'text-slate-400'}`}>{icons[lead.last_event_type] || '📌'}</span>;
+                          })()}
                         </div>
                         <div className="text-[10px] text-slate-400 leading-tight truncate">{lead.email}</div>
                       </div>
@@ -2229,15 +2236,28 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                         const ICONS = { ouverture: '👁', clic: '🔗', envoi: '📧', réponse: '💬', désabonnement: '🚫', bounce: '⚠️' };
                         let meta = null;
                         try { meta = ev.meta ? JSON.parse(ev.meta) : null; } catch (_) {}
+                        const desc = {
+                          ouverture: 'a ouvert',
+                          clic: 'a cliqué',
+                          envoi: 'email envoyé',
+                          réponse: 'a répondu',
+                          désabonnement: 's\'est désabonné',
+                          bounce: 'bounce détecté',
+                        };
                         return (
-                          <div key={i} className="flex items-start gap-2.5 py-1.5 border-b border-slate-50 last:border-0">
+                          <div key={i} className="flex items-start gap-2.5 py-2 border-b border-slate-50 last:border-0">
                             <span className="text-sm flex-shrink-0 mt-0.5">{ICONS[ev.type] || '📌'}</span>
                             <div className="min-w-0 flex-1">
-                              <span className="text-xs text-slate-700 capitalize">{ev.type}</span>
-                              {meta?.sujet && <span className="text-xs text-slate-400 block truncate">{meta.sujet}</span>}
-                              {meta?.url && <span className="text-xs text-slate-400 block truncate">{meta.url}</span>}
+                              <div className="text-xs text-slate-700">
+                                <span className="font-medium">{selectedLead.prenom} {selectedLead.nom}</span>
+                                <span className="text-slate-500"> {desc[ev.type] || ev.type}</span>
+                              </div>
+                              {meta?.sujet && <div className="text-xs text-slate-400 truncate mt-0.5">{meta.sujet}</div>}
+                              {meta?.url && <div className="text-xs text-slate-400 truncate mt-0.5">{meta.url}</div>}
                             </div>
-                            <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">{relTime(ev.created_at)}</span>
+                            <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">
+                              {new Date(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                            </span>
                           </div>
                         );
                       })}
@@ -9423,7 +9443,7 @@ const ModalProfile = ({ onClose, showToast }) => {
 
   // Permissions lisibles
   const PERM_LABELS = {
-    dashboard: 'Séquences', ventes: 'Ventes', portail: 'Portail', leads: 'Leads',
+    dashboard: 'Ventes', ventes: 'Ventes', portail: 'Portail', leads: 'Leads',
     campagnes: 'Campagnes', factures: 'Factures', emails: 'Validation Email', config: 'Configuration'
   };
 
@@ -9495,8 +9515,8 @@ const ModalProfile = ({ onClose, showToast }) => {
 // ─── VUE EQUIPE (admin only) ──────────────────────────────────────────────────
 
 const PERM_TABS = [
-  { id: 'dashboard', label: 'Séquences' },
-  { id: 'ventes', label: 'Ventes' },
+  { id: 'dashboard', label: 'Ventes' },
+  { id: 'ventes', label: 'Dash Ventes' },
   { id: 'portail', label: 'Portail' },
   { id: 'leads', label: 'Leads' },
   { id: 'campagnes', label: 'Campagnes' },
@@ -9942,7 +9962,7 @@ function App() {
   };
 
   const NAV_ALL = [
-    { id: "dashboard", icon: "📧", label: "Séquences" },
+    { id: "dashboard", icon: "📈", label: "Ventes" },
     { id: "ventes", icon: "📈", label: "Ventes" },
     { id: "portail", icon: "📦", label: "Portail", children: [
       { id: "commandes", label: "Commandes" },

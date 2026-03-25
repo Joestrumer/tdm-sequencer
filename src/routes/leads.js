@@ -23,7 +23,9 @@ module.exports = (db) => {
           ia.etape_courante,
           ia.prochain_envoi,
           ia.inscription_id_active,
-          ia.nb_etapes_sequence
+          ia.nb_etapes_sequence,
+          (SELECT type FROM events WHERE lead_id = l.id ORDER BY created_at DESC LIMIT 1) as last_event_type,
+          (SELECT created_at FROM events WHERE lead_id = l.id ORDER BY created_at DESC LIMIT 1) as last_event_at
         FROM leads l
         LEFT JOIN (
           SELECT lead_id, COUNT(*) as emails_envoyes, SUM(ouvertures) as total_ouvertures
