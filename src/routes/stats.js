@@ -89,7 +89,12 @@ module.exports = (db) => {
       const connexion = await hubspot.verifierConnexion();
       const offset = parseInt(req.query.offset) || 0;
       const limit = parseInt(req.query.limit) || 30;
-      const logsRecents = db.prepare('SELECT * FROM hubspot_logs ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset);
+      const logsRecents = db.prepare(`
+        SELECT hl.*, l.email as lead_email, l.prenom as lead_prenom, l.hotel as lead_hotel
+        FROM hubspot_logs hl
+        LEFT JOIN leads l ON hl.lead_id = l.id
+        ORDER BY hl.created_at DESC LIMIT ? OFFSET ?
+      `).all(limit, offset);
       const totalLogs = db.prepare('SELECT COUNT(*) as c FROM hubspot_logs').get().c;
       res.json({ connexion, logsRecents, totalLogs });
     } catch (err) {

@@ -2723,16 +2723,26 @@ const VueHubspot = () => {
     return icons[type] || '⚡';
   };
 
-  const tempsRelatif = (date) => {
+  const hsLogDescription = (log) => {
+    const nom = log.lead_prenom || log.lead_email?.split('@')[0] || '';
+    const hotel = log.lead_hotel ? ` (${log.lead_hotel})` : '';
+    const labels = {
+      'contact:create': `Contact créé pour ${nom}${hotel}`,
+      'contact:update': `Contact mis à jour — ${nom}${hotel}`,
+      'contact:error': `Erreur sync contact — ${nom}${hotel}`,
+      'deal:create': `Deal créé pour ${nom}${hotel}`,
+      'task:create': `Tâche créée pour ${nom}${hotel}`,
+      'email:log': `Email loggé pour ${nom}${hotel}`,
+      'lifecycle:update': `Lifecycle mis à jour — ${nom}${hotel}`,
+    };
+    return labels[`${log.type}:${log.action}`] || `${log.type} ${log.action} — ${nom}${hotel}`;
+  };
+
+  const formatDateLog = (date) => {
     if (!date) return '';
-    const diff = Date.now() - new Date(date).getTime();
-    const mins = Math.floor(diff / 60000);
-    if (mins < 1) return 'à l\'instant';
-    if (mins < 60) return `il y a ${mins}min`;
-    const heures = Math.floor(mins / 60);
-    if (heures < 24) return `il y a ${heures}h`;
-    const jours = Math.floor(heures / 24);
-    return `il y a ${jours}j`;
+    return new Date(date).toLocaleDateString('fr-FR', {
+      day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
+    });
   };
 
   return (
@@ -2803,13 +2813,10 @@ const VueHubspot = () => {
                 <div key={log.id || i} className="flex items-start gap-2.5 py-2 border-b border-slate-50 last:border-0">
                   <span className="text-sm flex-shrink-0 mt-0.5">{hsLogIcon(log.type)}</span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs text-slate-700">
-                      <span className="font-medium">{log.action || log.type}</span>
-                      {log.lead_email && <span className="text-slate-400 ml-1">— {log.lead_email}</span>}
-                    </div>
+                    <div className="text-xs text-slate-700">{hsLogDescription(log)}</div>
                     {log.erreur && <div className="text-xs text-red-500 mt-0.5">{log.erreur}</div>}
                   </div>
-                  <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">{tempsRelatif(log.created_at)}</span>
+                  <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">{formatDateLog(log.created_at)}</span>
                 </div>
               ))}
             </div>
