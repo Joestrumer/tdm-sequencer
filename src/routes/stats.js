@@ -87,8 +87,11 @@ module.exports = (db) => {
   router.get('/hubspot', async (req, res) => {
     try {
       const connexion = await hubspot.verifierConnexion();
-      const logsRecents = db.prepare('SELECT * FROM hubspot_logs ORDER BY created_at DESC LIMIT 20').all();
-      res.json({ connexion, logsRecents });
+      const offset = parseInt(req.query.offset) || 0;
+      const limit = parseInt(req.query.limit) || 30;
+      const logsRecents = db.prepare('SELECT * FROM hubspot_logs ORDER BY created_at DESC LIMIT ? OFFSET ?').all(limit, offset);
+      const totalLogs = db.prepare('SELECT COUNT(*) as c FROM hubspot_logs').get().c;
+      res.json({ connexion, logsRecents, totalLogs });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }

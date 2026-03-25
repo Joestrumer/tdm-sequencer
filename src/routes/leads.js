@@ -111,12 +111,16 @@ module.exports = (db) => {
 
       // Synchroniser dans HubSpot (avec company_hubspot_id si fourni)
       if (process.env.HUBSPOT_API_KEY) {
-        const leadAvecCompany = { ...lead, company_hubspot_id: company_hubspot_id || null };
-        hubspot.syncContact(db, leadAvecCompany)
-          .then(hubspotId => {
-            if (hubspotId) logger.info('✅ Lead synchronisé HubSpot', { email, hubspotId });
-          })
-          .catch(err => logger.error('HubSpot sync lead échoué', { error: err.message }));
+        const cfgSync = db.prepare("SELECT valeur FROM config WHERE cle = 'hs_sync_contact'").get();
+        const syncEnabled = cfgSync ? cfgSync.valeur !== '0' && cfgSync.valeur !== 'false' : true;
+        if (syncEnabled) {
+          const leadAvecCompany = { ...lead, company_hubspot_id: company_hubspot_id || null };
+          hubspot.syncContact(db, leadAvecCompany)
+            .then(hubspotId => {
+              if (hubspotId) logger.info('✅ Lead synchronisé HubSpot', { email, hubspotId });
+            })
+            .catch(err => logger.error('HubSpot sync lead échoué', { error: err.message }));
+        }
       }
 
       logger.info('✅ Lead créé', { email, hotel });

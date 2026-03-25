@@ -138,6 +138,31 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/hubspot/logs/:leadId — Historique sync d'un lead
+  router.get('/logs/:leadId', (req, res) => {
+    try {
+      const logs = db.prepare('SELECT * FROM hubspot_logs WHERE lead_id = ? ORDER BY created_at DESC LIMIT 20').all(req.params.leadId);
+      res.json(logs);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // POST /api/hubspot/force-lifecycle/:leadId — Forcer un lifecycle stage
+  router.post('/force-lifecycle/:leadId', async (req, res) => {
+    try {
+      const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.leadId);
+      if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
+      if (!lead.hubspot_id) return res.status(400).json({ erreur: 'Lead non synchronisé avec HubSpot' });
+      const { stage } = req.body;
+      if (!stage) return res.status(400).json({ erreur: 'Stage requis' });
+      await hubspot.mettreAJourLifecycle(db, lead, stage);
+      res.json({ message: `Lifecycle mis à jour → ${stage}` });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // GET /api/hubspot/status
   router.get('/status', async (req, res) => {
     const status = await hubspot.verifierConnexion();

@@ -414,6 +414,11 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [segment, setSegment] = useState(seq?.segment || "5*");
   const [desabonnement, setDesabonnement] = useState(seq?.options?.desabonnement !== false);
   const [bcc, setBcc] = useState(seq?.options?.bcc || "");
+  // HubSpot options par séquence (undefined = hérite du global)
+  const [hsLogEmail, setHsLogEmail] = useState(seq?.options?.hs_log_email);
+  const [hsLifecycle, setHsLifecycle] = useState(seq?.options?.hs_lifecycle);
+  const [hsTaskFin, setHsTaskFin] = useState(seq?.options?.hs_task_fin_sequence);
+  const [showHsOptions, setShowHsOptions] = useState(false);
   const [activeEtape, setActiveEtape] = useState(0);
   const [saving, setSaving] = useState(false);
   const [errMsg, setErrMsg] = useState("");
@@ -688,7 +693,11 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
         return etape;
       });
 
-      await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options: { desabonnement, bcc: bcc.trim() || undefined } });
+      const options = { desabonnement, bcc: bcc.trim() || undefined };
+      if (hsLogEmail !== undefined) options.hs_log_email = hsLogEmail;
+      if (hsLifecycle !== undefined) options.hs_lifecycle = hsLifecycle;
+      if (hsTaskFin !== undefined) options.hs_task_fin_sequence = hsTaskFin;
+      await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options });
       onClose();
     } catch(e) { setErrMsg("Erreur : " + (e.message || "impossible de sauvegarder")); }
     setSaving(false);
@@ -731,6 +740,36 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
             Désabo
           </label>
           <input type="email" value={bcc} onChange={e => setBcc(e.target.value)} placeholder="BCC (optionnel)" className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400 w-40" title="Adresse email en copie cachée pour tous les envois de cette séquence" />
+          {/* HubSpot options */}
+          <div className="relative">
+            <button onClick={() => setShowHsOptions(!showHsOptions)} className={`px-2 py-1.5 text-xs rounded-lg border transition-colors ${showHsOptions ? 'bg-orange-50 border-orange-200 text-orange-600' : 'border-slate-200 text-slate-500 hover:bg-slate-50'}`} title="Options HubSpot">
+              🔗 HS
+            </button>
+            {showHsOptions && (
+              <div className="absolute right-0 top-full mt-1 bg-white rounded-xl shadow-xl border border-slate-200 p-4 z-50 w-72" onClick={e => e.stopPropagation()}>
+                <div className="text-xs font-semibold text-slate-800 mb-3">Options HubSpot</div>
+                <div className="space-y-2.5">
+                  {[
+                    { key: 'hs_log_email', label: 'Logger les envois', val: hsLogEmail, set: setHsLogEmail },
+                    { key: 'hs_lifecycle', label: 'Mettre à jour lifecycle', val: hsLifecycle, set: setHsLifecycle },
+                    { key: 'hs_task_fin_sequence', label: 'Tâche fin de séquence', val: hsTaskFin, set: setHsTaskFin },
+                  ].map(({ key, label, val, set }) => (
+                    <div key={key} className="flex items-center justify-between">
+                      <span className="text-xs text-slate-600">{label}</span>
+                      <div className="flex items-center gap-1.5">
+                        {val === undefined && <span className="text-xs text-slate-400 italic">global</span>}
+                        <button onClick={() => set(val === undefined ? true : val ? false : undefined)}
+                          className={`relative w-9 h-[18px] rounded-full transition-colors flex-shrink-0 ${val === undefined ? 'bg-slate-200' : val ? 'bg-emerald-500' : 'bg-red-300'}`}>
+                          <span className={`absolute top-[1px] w-4 h-4 bg-white rounded-full shadow transition-transform ${val === undefined ? 'translate-x-[9px]' : val ? 'translate-x-[19px]' : 'translate-x-[1px]'}`} />
+                        </button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+                <p className="text-xs text-slate-400 mt-3 leading-snug">Cliquez pour alterner : activé → désactivé → global (hérite de la config)</p>
+              </div>
+            )}
+          </div>
           {/* Tabs edit/preview */}
           <div className="flex bg-slate-100 rounded-lg p-0.5">
             <button onClick={() => setMode("edit")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${mode === "edit" ? "bg-white shadow-sm text-slate-900" : "text-slate-500 hover:text-slate-700"}`}>✏️ Éditer</button>
@@ -1397,6 +1436,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [showBulkLaunch, setShowBulkLaunch] = useState(false);
   const [hsDetails, setHsDetails] = useState(null);
   const [loadingHs, setLoadingHs] = useState(false);
+  const [hsLeadLogs, setHsLeadLogs] = useState([]);
   const [detailData, setDetailData] = useState(null);     // détail complet lead (emails + events)
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailTab, setDetailTab] = useState('timeline'); // 'timeline' | 'emails' | 'hubspot'
@@ -1612,16 +1652,18 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   // ── HubSpot détails ─────────────────────────────────────────────────────
   const chargerHubspot = async (lead) => {
     if (!lead.hubspot_id) return;
-    setLoadingHs(true); setHsDetails(null);
+    setLoadingHs(true); setHsDetails(null); setHsLeadLogs([]);
     try {
-      const [deals, notes] = await Promise.all([
+      const [deals, notes, logs] = await Promise.all([
         api.get(`/hubspot/deals/${lead.hubspot_id}`).catch(() => ({ deals: [] })),
         api.get(`/hubspot/notes/${lead.hubspot_id}`).catch(() => ({ notes: [] })),
+        api.get(`/hubspot/logs/${lead.id}`).catch(() => []),
       ]);
       setHsDetails({
         deals: deals.deals || deals || [],
         notes: notes.notes || notes || [],
       });
+      setHsLeadLogs(Array.isArray(logs) ? logs : []);
     } catch(e) { setHsDetails({ deals: [], notes: [] }); }
     setLoadingHs(false);
   };
@@ -2309,49 +2351,126 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 {selectedLead.hubspot_id ? (
                   <div>
                     <div className="flex items-center justify-between mb-4">
-                      <span className="text-xs text-slate-400">Contact #{selectedLead.hubspot_id}</span>
+                      <div>
+                        <span className="text-xs text-slate-400">Contact #{selectedLead.hubspot_id}</span>
+                        {hsLeadLogs.length > 0 && (
+                          <span className="text-xs text-slate-400 ml-3">
+                            Dernier sync : {(() => {
+                              const diff = Date.now() - new Date(hsLeadLogs[0].created_at).getTime();
+                              const mins = Math.floor(diff / 60000);
+                              if (mins < 1) return 'à l\'instant';
+                              if (mins < 60) return `il y a ${mins}min`;
+                              const h = Math.floor(mins / 60);
+                              if (h < 24) return `il y a ${h}h`;
+                              return `il y a ${Math.floor(h / 24)}j`;
+                            })()}
+                          </span>
+                        )}
+                      </div>
                       <button onClick={() => chargerHubspot(selectedLead)} className="text-xs text-orange-600 hover:underline">↻ Actualiser</button>
                     </div>
+
+                    {/* Historique synchronisation */}
+                    {hsLeadLogs.length > 0 && (
+                      <div className="mb-4">
+                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Historique synchronisation</div>
+                        <div className="space-y-1 max-h-40 overflow-y-auto">
+                          {hsLeadLogs.slice(0, 10).map((log, i) => (
+                            <div key={log.id || i} className="flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0">
+                              <span className="text-xs flex-shrink-0">{({contact:'👤',email:'✉️',deal:'💰',task:'📋',lifecycle:'🔄'})[log.type] || '⚡'}</span>
+                              <span className="text-xs text-slate-600 flex-1 truncate">{log.action || log.type}</span>
+                              {log.erreur && <span className="text-xs text-red-500 truncate max-w-[120px]">{log.erreur}</span>}
+                              <span className="text-xs text-slate-400 flex-shrink-0">{new Date(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
                     {loadingHs ? (
                       <div className="flex items-center gap-2 text-xs text-slate-400">
                         <span className="w-3 h-3 border-2 border-slate-200 border-t-orange-400 rounded-full animate-spin" />
                         Chargement HubSpot...
                       </div>
                     ) : hsDetails ? (
-                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-                        <div>
-                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                            Deals ({hsDetails.deals?.length || 0})
-                          </div>
-                          {!hsDetails.deals?.length ? (
-                            <p className="text-xs text-slate-300 italic">Aucun deal</p>
-                          ) : hsDetails.deals.map((d, i) => (
-                            <div key={i} className="bg-orange-50 rounded-lg p-3 mb-2 border border-orange-100">
-                              <div className="text-sm font-medium text-slate-800">{d.properties?.dealname || 'Deal'}</div>
-                              <div className="flex gap-3 text-xs text-slate-500 mt-1 flex-wrap">
-                                <span>{d.properties?.dealstage || ''}</span>
-                                {d.properties?.amount && <span className="text-emerald-600 font-semibold">{d.properties.amount}€</span>}
-                                {d.properties?.closedate && <span>{new Date(d.properties.closedate).toLocaleDateString('fr-FR')}</span>}
+                      <div>
+                        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                          <div>
+                            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                              Deals ({hsDetails.deals?.length || 0})
+                            </div>
+                            {!hsDetails.deals?.length ? (
+                              <p className="text-xs text-slate-300 italic">Aucun deal</p>
+                            ) : hsDetails.deals.map((d, i) => (
+                              <div key={i} className="bg-orange-50 rounded-lg p-3 mb-2 border border-orange-100">
+                                <div className="text-sm font-medium text-slate-800">{d.properties?.dealname || 'Deal'}</div>
+                                <div className="flex gap-3 text-xs text-slate-500 mt-1 flex-wrap">
+                                  <span>{d.properties?.dealstage || ''}</span>
+                                  {d.properties?.amount && <span className="text-emerald-600 font-semibold">{d.properties.amount}€</span>}
+                                  {d.properties?.closedate && <span>{new Date(d.properties.closedate).toLocaleDateString('fr-FR')}</span>}
+                                </div>
                               </div>
-                            </div>
-                          ))}
-                        </div>
-                        <div>
-                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
-                            Notes ({hsDetails.notes?.length || 0})
+                            ))}
                           </div>
-                          {!hsDetails.notes?.length ? (
-                            <p className="text-xs text-slate-300 italic">Aucune note</p>
-                          ) : hsDetails.notes.slice(0, 5).map((n, i) => (
-                            <div key={i} className="bg-orange-50 rounded-lg p-3 mb-2 border border-orange-100">
-                              <p className="text-xs text-slate-700 line-clamp-3">{n.properties?.hs_note_body || ''}</p>
-                              <p className="text-xs text-slate-400 mt-1">
-                                {n.properties?.hs_lastmodifieddate
-                                  ? new Date(n.properties.hs_lastmodifieddate).toLocaleDateString('fr-FR')
-                                  : ''}
-                              </p>
+                          <div>
+                            <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">
+                              Notes ({hsDetails.notes?.length || 0})
                             </div>
-                          ))}
+                            {!hsDetails.notes?.length ? (
+                              <p className="text-xs text-slate-300 italic">Aucune note</p>
+                            ) : hsDetails.notes.slice(0, 5).map((n, i) => (
+                              <div key={i} className="bg-orange-50 rounded-lg p-3 mb-2 border border-orange-100">
+                                <p className="text-xs text-slate-700 line-clamp-3">{n.properties?.hs_note_body || ''}</p>
+                                <p className="text-xs text-slate-400 mt-1">
+                                  {n.properties?.hs_lastmodifieddate
+                                    ? new Date(n.properties.hs_lastmodifieddate).toLocaleDateString('fr-FR')
+                                    : ''}
+                                </p>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Actions manuelles */}
+                        <div className="border-t border-slate-100 pt-4 space-y-3">
+                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions manuelles</div>
+                          <div className="flex flex-wrap gap-2">
+                            <div className="flex items-center gap-1.5">
+                              <select id="hs-lifecycle-select" className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600">
+                                <option value="lead">Lead</option>
+                                <option value="marketingqualifiedlead">MQL</option>
+                                <option value="salesqualifiedlead">SQL</option>
+                                <option value="opportunity">Opportunity</option>
+                                <option value="customer">Customer</option>
+                              </select>
+                              <button onClick={async (e) => {
+                                const btn = e.currentTarget; btn.disabled = true;
+                                const stage = document.getElementById('hs-lifecycle-select').value;
+                                try {
+                                  await api.post(`/hubspot/force-lifecycle/${selectedLead.id}`, { stage });
+                                  showToast(`Lifecycle → ${stage}`, 'success');
+                                  chargerHubspot(selectedLead);
+                                } catch(err) { showToast('Erreur : ' + err.message, 'error'); }
+                                btn.disabled = false;
+                              }} className="px-3 py-1.5 text-xs bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50">
+                                Forcer lifecycle
+                              </button>
+                            </div>
+                            {!hsDetails.deals?.length && (
+                              <button onClick={async (e) => {
+                                const btn = e.currentTarget; btn.disabled = true;
+                                try {
+                                  await api.post(`/hubspot/creer-deal/${selectedLead.id}`);
+                                  showToast('Deal créé', 'success');
+                                  chargerHubspot(selectedLead);
+                                  if (onRefresh) onRefresh();
+                                } catch(err) { showToast('Erreur : ' + err.message, 'error'); }
+                                btn.disabled = false;
+                              }} className="px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50">
+                                Créer un deal
+                              </button>
+                            )}
+                          </div>
                         </div>
                       </div>
                     ) : (
@@ -2525,6 +2644,32 @@ const VueHubspot = () => {
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
 
+  // Toggles HubSpot
+  const HS_TOGGLES = [
+    { key: 'hs_sync_contact', label: 'Synchroniser les contacts', desc: 'Créer/mettre à jour le contact HubSpot à la création d\'un lead' },
+    { key: 'hs_log_email', label: 'Logger les emails envoyés', desc: 'Enregistrer chaque email envoyé dans le timeline du contact' },
+    { key: 'hs_lifecycle', label: 'Mettre à jour le lifecycle stage', desc: 'Passer automatiquement les contacts en MQL/SQL selon l\'engagement' },
+    { key: 'hs_task_fin_sequence', label: 'Créer une tâche fin de séquence', desc: 'Créer une tâche de suivi quand un lead termine une séquence' },
+    { key: 'hs_deal_conversion', label: 'Créer un deal à la conversion', desc: 'Créer automatiquement un deal quand un lead est converti' },
+  ];
+  const [toggles, setToggles] = useState({});
+  const [hsLogs, setHsLogs] = useState([]);
+  const [hsLogsTotal, setHsLogsTotal] = useState(0);
+  const [hsLogsOffset, setHsLogsOffset] = useState(0);
+  const [loadingLogs, setLoadingLogs] = useState(false);
+
+  const chargerLogs = async (offset = 0, append = false) => {
+    setLoadingLogs(true);
+    try {
+      const res = await api.get(`/stats/hubspot?offset=${offset}&limit=30`);
+      if (append) setHsLogs(prev => [...prev, ...(res.logsRecents || [])]);
+      else setHsLogs(res.logsRecents || []);
+      setHsLogsTotal(res.totalLogs || 0);
+      setHsLogsOffset(offset + (res.logsRecents?.length || 0));
+    } catch(e) { console.error(e); }
+    setLoadingLogs(false);
+  };
+
   // Charger la config au montage
   useEffect(() => {
     api.get('/health').then(h => {
@@ -2532,8 +2677,25 @@ const VueHubspot = () => {
     }).catch(() => {});
     api.get('/config').then(cfg => {
       if (cfg.hubspot_api_key_configured) setConnected(true);
+      // Charger les toggles depuis la config
+      const t = {};
+      HS_TOGGLES.forEach(({ key }) => {
+        t[key] = cfg[key] !== '0' && cfg[key] !== 'false';
+      });
+      setToggles(t);
     }).catch(() => {});
+    chargerLogs();
   }, []);
+
+  const toggleHs = async (key) => {
+    const newVal = !toggles[key];
+    setToggles(prev => ({ ...prev, [key]: newVal }));
+    try {
+      await api.post('/config', { [key]: newVal ? '1' : '0' });
+    } catch(e) {
+      setToggles(prev => ({ ...prev, [key]: !newVal }));
+    }
+  };
 
   const sauvegarder = async () => {
     if (!apiKey) return;
@@ -2554,6 +2716,23 @@ const VueHubspot = () => {
     await api.post('/config', { hubspot_api_key: '' });
     setConnected(false);
     setMsg("");
+  };
+
+  const hsLogIcon = (type) => {
+    const icons = { contact: '👤', email: '✉️', deal: '💰', task: '📋', lifecycle: '🔄' };
+    return icons[type] || '⚡';
+  };
+
+  const tempsRelatif = (date) => {
+    if (!date) return '';
+    const diff = Date.now() - new Date(date).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return 'à l\'instant';
+    if (mins < 60) return `il y a ${mins}min`;
+    const heures = Math.floor(mins / 60);
+    if (heures < 24) return `il y a ${heures}h`;
+    const jours = Math.floor(heures / 24);
+    return `il y a ${jours}j`;
   };
 
   return (
@@ -2592,19 +2771,55 @@ const VueHubspot = () => {
 
       {connected && (
         <div className="bg-white rounded-2xl border border-slate-100 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-3">Règles d'automatisation actives</h3>
-          <div className="space-y-2 text-sm">
-            {[
-              "Email ouvert 2× → Lifecycle Stage: MQL",
-              "Réponse reçue → Lifecycle Stage: SQL + Deal créé",
-              "Lead converti → Deal pipeline «Nouveaux Clients»",
-              "Désabonnement → Contact bloqué + tag HubSpot",
-            ].map(r => (
-              <div key={r} className="flex items-center gap-2 text-slate-600">
-                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 flex-shrink-0" />{r}
+          <h3 className="text-sm font-semibold text-slate-800 mb-3">Actions automatiques</h3>
+          <div className="space-y-3">
+            {HS_TOGGLES.map(({ key, label, desc }) => (
+              <div key={key} className="flex items-center justify-between py-2 border-b border-slate-50 last:border-0">
+                <div className="flex-1 mr-4">
+                  <div className="text-sm text-slate-700 font-medium">{label}</div>
+                  <div className="text-xs text-slate-400 mt-0.5">{desc}</div>
+                </div>
+                <button onClick={() => toggleHs(key)}
+                  className={`relative w-10 h-5 rounded-full transition-colors flex-shrink-0 ${toggles[key] ? 'bg-emerald-500' : 'bg-slate-200'}`}>
+                  <span className={`absolute top-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${toggles[key] ? 'translate-x-5' : 'translate-x-0.5'}`} />
+                </button>
               </div>
             ))}
           </div>
+        </div>
+      )}
+
+      {connected && (
+        <div className="bg-white rounded-2xl border border-slate-100 p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-slate-800">Activité récente</h3>
+            <button onClick={() => chargerLogs(0)} className="text-xs text-orange-600 hover:underline">↻ Actualiser</button>
+          </div>
+          {hsLogs.length === 0 && !loadingLogs ? (
+            <p className="text-xs text-slate-400 italic">Aucune activité HubSpot enregistrée</p>
+          ) : (
+            <div className="space-y-1.5 max-h-96 overflow-y-auto">
+              {hsLogs.map((log, i) => (
+                <div key={log.id || i} className="flex items-start gap-2.5 py-2 border-b border-slate-50 last:border-0">
+                  <span className="text-sm flex-shrink-0 mt-0.5">{hsLogIcon(log.type)}</span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs text-slate-700">
+                      <span className="font-medium">{log.action || log.type}</span>
+                      {log.lead_email && <span className="text-slate-400 ml-1">— {log.lead_email}</span>}
+                    </div>
+                    {log.erreur && <div className="text-xs text-red-500 mt-0.5">{log.erreur}</div>}
+                  </div>
+                  <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">{tempsRelatif(log.created_at)}</span>
+                </div>
+              ))}
+            </div>
+          )}
+          {loadingLogs && <div className="text-xs text-slate-400 text-center py-2">Chargement...</div>}
+          {hsLogsOffset < hsLogsTotal && !loadingLogs && (
+            <button onClick={() => chargerLogs(hsLogsOffset, true)} className="w-full mt-2 py-2 text-xs text-orange-600 hover:bg-orange-50 rounded-lg transition-colors">
+              Voir plus ({hsLogsTotal - hsLogsOffset} restants)
+            </button>
+          )}
         </div>
       )}
     </div>

@@ -67,9 +67,13 @@ module.exports = (db) => {
 
         // Règle HubSpot : 2+ ouvertures → MQL
         if (totalOuvertures >= 2 && process.env.HUBSPOT_API_KEY) {
-          const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(email.lead_id);
-          if (lead) {
-            await hubspot.mettreAJourLifecycle(db, lead, 'MQL').catch(e => logger.warn('HubSpot MQL update échoué', { error: e.message, leadId: lead.id }));
+          const cfgLifecycle = db.prepare("SELECT valeur FROM config WHERE cle = 'hs_lifecycle'").get();
+          const lifecycleEnabled = cfgLifecycle ? cfgLifecycle.valeur !== '0' && cfgLifecycle.valeur !== 'false' : true;
+          if (lifecycleEnabled) {
+            const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(email.lead_id);
+            if (lead) {
+              await hubspot.mettreAJourLifecycle(db, lead, 'MQL').catch(e => logger.warn('HubSpot MQL update échoué', { error: e.message, leadId: lead.id }));
+            }
           }
         }
 

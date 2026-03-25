@@ -14,6 +14,14 @@ const hubspot = require('../services/hubspotService');
 
 let db; // Injecté par initialiser()
 
+// ─── Helper : vérifier si une action HubSpot est activée ─────────────────────
+function isHsEnabled(seqOptions, configKey, database) {
+  const d = database || db;
+  if (seqOptions && seqOptions[configKey] !== undefined) return !!seqOptions[configKey];
+  const cfg = d.prepare("SELECT valeur FROM config WHERE cle = ?").get(configKey);
+  return cfg ? cfg.valeur !== '0' && cfg.valeur !== 'false' : true;
+}
+
 // ─── Helpers date en heure Paris ─────────────────────────────────────────────
 const pad2 = n => String(n).padStart(2, '0');
 
@@ -90,8 +98,11 @@ async function avancerInscription(inscription, etapesParsed, lead) {
     logger.info(`📭 Séquence terminée pour ${lead.email}`);
 
     if (process.env.HUBSPOT_API_KEY) {
-      const seq = db.prepare('SELECT nom FROM sequences WHERE id = ?').get(inscription.sequence_id);
-      await hubspot.creerTaskFinSequence(db, lead, seq?.nom || 'Séquence').catch(e => logger.warn('HubSpot task fin séquence échouée', { error: e.message }));
+      const seq = db.prepare('SELECT nom, options FROM sequences WHERE id = ?').get(inscription.sequence_id);
+      const seqOptions = seq?.options ? JSON.parse(seq.options) : {};
+      if (isHsEnabled(seqOptions, 'hs_task_fin_sequence')) {
+        await hubspot.creerTaskFinSequence(db, lead, seq?.nom || 'Séquence').catch(e => logger.warn('HubSpot task fin séquence échouée', { error: e.message }));
+      }
     }
   } else {
     const prochainEtape = etapesParsed[prochainIndex];
@@ -141,8 +152,14 @@ async function _traiter(inscription) {
     await envoyerEmail(db, { lead, etape, inscriptionId: inscription.id });
 
     if (process.env.HUBSPOT_API_KEY) {
-      await hubspot.logEmailTimeline(db, lead, { sujet: etape.sujet }).catch(e => logger.warn('HubSpot logEmailTimeline échoué', { error: e.message, leadId: lead.id }));
-      if (index === 0) await hubspot.mettreAJourLifecycle(db, lead, 'lead').catch(e => logger.warn('HubSpot lifecycle update échoué', { error: e.message, leadId: lead.id }));
+      const seq = db.prepare('SELECT options FROM sequences WHERE id = ?').get(inscription.sequence_id);
+      const seqOptions = seq?.options ? JSON.parse(seq.options) : {};
+      if (isHsEnabled(seqOptions, 'hs_log_email')) {
+        await hubspot.logEmailTimeline(db, lead, { sujet: etape.sujet }).catch(e => logger.warn('HubSpot logEmailTimeline échoué', { error: e.message, leadId: lead.id }));
+      }
+      if (index === 0 && isHsEnabled(seqOptions, 'hs_lifecycle')) {
+        await hubspot.mettreAJourLifecycle(db, lead, 'lead').catch(e => logger.warn('HubSpot lifecycle update échoué', { error: e.message, leadId: lead.id }));
+      }
     }
 
     await avancerInscription(inscription, etapesParsed, lead);
