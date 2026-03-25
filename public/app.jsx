@@ -1446,16 +1446,22 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   // État pour les largeurs de colonnes redimensionnables
   const [columnWidths, setColumnWidths] = useState(() => {
     const saved = localStorage.getItem('leadTableColumnWidths');
-    return saved ? JSON.parse(saved) : {
+    const defaults = {
       checkbox: 32,
       contact: 200,
       hotel: 250,
       langue: 80,
       campaign: 150,
       sequence: 120,
+      infos: 50,
       statut: 140,
       actions: 150
     };
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      return { ...defaults, ...parsed };
+    }
+    return defaults;
   });
   const resizeRef = useRef({ isResizing: false, column: null, startX: 0, startWidth: 0 });
 
@@ -1577,6 +1583,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
       } else if (sortColumn === "campaign") {
         aVal = (a.campaign || "").toLowerCase();
         bVal = (b.campaign || "").toLowerCase();
+      } else if (sortColumn === "sequence") {
+        aVal = (a.sequence_active || a.sequence || "").toLowerCase();
+        bVal = (b.sequence_active || b.sequence || "").toLowerCase();
       }
 
       const comparison = typeof aVal === "number" ? aVal - bVal : aVal.localeCompare(bVal);
@@ -1878,9 +1887,15 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
                   </div>
                 </th>
-                <th className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide relative" style={{ width: columnWidths.sequence + 'px' }}>
-                  Séquence
+                <th onClick={() => handleColumnSort("sequence")} className="text-left px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide cursor-pointer hover:text-slate-700 select-none relative" style={{ width: columnWidths.sequence + 'px' }}>
+                  Séquence {sortColumn === "sequence" && (sortDirection === "asc" ? "↑" : "↓")}
                   <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors" onMouseDown={e => handleResizeStart(e, 'sequence')}>
+                    <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
+                  </div>
+                </th>
+                <th className="text-center px-2 py-2 text-[10px] font-semibold text-slate-500 uppercase tracking-wide relative" style={{ width: (columnWidths.infos || 50) + 'px' }}>
+                  Infos
+                  <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors" onMouseDown={e => handleResizeStart(e, 'infos')}>
                     <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
                   </div>
                 </th>
@@ -1914,13 +1929,6 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                       <div className="min-w-0">
                         <div className="font-medium text-slate-800 text-xs leading-tight truncate">{lead.prenom} {lead.nom}
                           {lead.hubspot_id && <span title="Synchronisé HubSpot" className="ml-1 text-orange-300 text-[10px]">⬡</span>}
-                          {lead.last_event_type && (() => {
-                            const diff = Date.now() - new Date(lead.last_event_at).getTime();
-                            if (diff > 7 * 86400000) return null; // Plus de 7 jours = pas d'icône
-                            const icons = { ouverture: '👁', clic: '🔗', envoi: '📧', réponse: '💬', désabonnement: '🚫' };
-                            const colors = { ouverture: 'text-blue-400', clic: 'text-purple-400', envoi: 'text-slate-400', réponse: 'text-emerald-500', désabonnement: 'text-red-400' };
-                            return <span title={`${lead.last_event_type} — ${relTime(lead.last_event_at)}`} className={`ml-1 text-[10px] ${colors[lead.last_event_type] || 'text-slate-400'}`}>{icons[lead.last_event_type] || '📌'}</span>;
-                          })()}
                         </div>
                         <div className="text-[10px] text-slate-400 leading-tight truncate">{lead.email}</div>
                       </div>
@@ -1939,6 +1947,14 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     {lead.sequence
                       ? <div className="text-[10px] text-blue-600 font-medium truncate">E{(lead.etape||0)+1} · {lead.sequence}</div>
                       : <span className="text-xs text-slate-300">—</span>}
+                  </td>
+                  <td className="px-2 py-1.5 text-center overflow-hidden" style={{ width: (columnWidths.infos || 50) + 'px' }}>
+                    {lead.last_event_type && (() => {
+                      const icons = { ouverture: '👁', clic: '🔗', envoi: '📧', réponse: '💬', désabonnement: '🚫' };
+                      const diff = Date.now() - new Date(lead.last_event_at).getTime();
+                      const fresh = diff < 24 * 3600000;
+                      return <span title={`${lead.last_event_type} — ${relTime(lead.last_event_at)}`} className={`text-sm ${fresh ? 'opacity-100' : 'opacity-40'}`}>{icons[lead.last_event_type] || '📌'}</span>;
+                    })()}
                   </td>
                   <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.statut + 'px' }} onClick={e => e.stopPropagation()}>
                     <select value={lead.statut} onChange={e => changerStatut(lead, e.target.value)}
@@ -1962,7 +1978,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 {/* Panneau de détails inline */}
                 {selectedLead?.id === lead.id && (
                   <tr>
-                    <td colSpan="8" className="p-0 bg-gradient-to-b from-blue-50/50 to-transparent">
+                    <td colSpan="9" className="p-0 bg-gradient-to-b from-blue-50/50 to-transparent">
                       <div className="p-4 border-t-2 border-blue-400">
                         <div className="flex justify-end mb-2">
                           <button onClick={() => { setSelectedLead(null); setDetailData(null); }} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
@@ -9443,7 +9459,7 @@ const ModalProfile = ({ onClose, showToast }) => {
 
   // Permissions lisibles
   const PERM_LABELS = {
-    dashboard: 'Ventes', ventes: 'Ventes', portail: 'Portail', leads: 'Leads',
+    dashboard: 'Dash Séquences', ventes: 'Dash Ventes', portail: 'Portail', leads: 'Leads',
     campagnes: 'Campagnes', factures: 'Factures', emails: 'Validation Email', config: 'Configuration'
   };
 
@@ -9515,7 +9531,7 @@ const ModalProfile = ({ onClose, showToast }) => {
 // ─── VUE EQUIPE (admin only) ──────────────────────────────────────────────────
 
 const PERM_TABS = [
-  { id: 'dashboard', label: 'Ventes' },
+  { id: 'dashboard', label: 'Dash Séquences' },
   { id: 'ventes', label: 'Dash Ventes' },
   { id: 'portail', label: 'Portail' },
   { id: 'leads', label: 'Leads' },
@@ -9962,8 +9978,8 @@ function App() {
   };
 
   const NAV_ALL = [
-    { id: "dashboard", icon: "📈", label: "Ventes" },
-    { id: "ventes", icon: "📈", label: "Ventes" },
+    { id: "dashboard", icon: "📧", label: "Dash Séquences" },
+    { id: "ventes", icon: "📈", label: "Dash Ventes" },
     { id: "portail", icon: "📦", label: "Portail", children: [
       { id: "commandes", label: "Commandes" },
       { id: "partenaires", label: "Partenaires" },
