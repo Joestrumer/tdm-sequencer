@@ -138,6 +138,18 @@ module.exports = (db) => {
       if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
 
       const { prenom, nom, email, hotel, ville, segment, tags, statut, score, poste, langue, campaign, comment } = req.body;
+
+      // Si le statut change et n'est plus "En séquence", stopper les inscriptions actives
+      if (statut && statut !== 'En séquence') {
+        const stopped = db.prepare(`
+          UPDATE inscriptions SET statut = 'terminé', prochain_envoi = NULL
+          WHERE lead_id = ? AND statut = 'actif'
+        `).run(req.params.id);
+        if (stopped.changes > 0) {
+          logger.info(`🛑 Séquence stoppée pour ${lead.email} — statut changé manuellement → ${statut}`);
+        }
+      }
+
       db.prepare(`
         UPDATE leads SET
           prenom = COALESCE(?, prenom),
