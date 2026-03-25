@@ -365,7 +365,7 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
   } catch(e) { logger.warn('Erreur lecture options séquence', { inscriptionId, error: e.message }); }
 
   const corpsHtml = etape.corps_html
-    ? texteVersHtml(etape.corps_html, trackingId, lead, true, seqOptions)
+    ? texteVersHtml(substituerVariables(etape.corps_html, lead), trackingId, lead, true, seqOptions)
     : texteVersHtml(corpsTexte, trackingId, lead, false, seqOptions);
 
   // 7. Préparer le payload Brevo
