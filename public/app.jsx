@@ -585,6 +585,12 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     setEtapes(e => [...e, { jour: nextJour, jour_delai: nextJour, sujet: "", corps: "" }]);
   };
   const removeEtape = (i) => { if (etapes.length > 1) { setEtapes(e => e.filter((_, idx) => idx !== i)); setActiveEtape(Math.max(0, i-1)); }};
+  const moveEtape = (i, dir) => {
+    const j = i + dir;
+    if (j < 0 || j >= etapes.length) return;
+    setEtapes(e => { const arr = [...e]; [arr[i], arr[j]] = [arr[j], arr[i]]; return arr; });
+    setActiveEtape(j);
+  };
   const updateEtape = (i, k, v) => setEtapes(e => e.map((et, idx) => {
     if (idx !== i) return et;
     // Garder jour et jour_delai en sync (DB stocke jour_delai, UI utilise jour)
@@ -741,9 +747,17 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                 <button onClick={() => setActiveEtape(i)} className="w-full text-left px-3 py-2.5">
                   <div className="flex items-center justify-between mb-1">
                     <span className={`font-semibold text-sm ${activeEtape === i ? "text-white" : "text-slate-800"}`}>Email {i + 1}</span>
-                    {etapes.length > 1 && (
-                      <button onClick={(ev) => { ev.stopPropagation(); removeEtape(i); }} className={`opacity-0 group-hover:opacity-100 transition-opacity text-xs w-5 h-5 rounded flex items-center justify-center ${activeEtape === i ? "text-slate-400 hover:text-red-300 hover:bg-white/10" : "text-slate-400 hover:text-red-500 hover:bg-red-50"}`}>✕</button>
-                    )}
+                    <div className="flex items-center gap-0.5 opacity-0 group-hover:opacity-100 transition-opacity">
+                      {i > 0 && (
+                        <button onClick={(ev) => { ev.stopPropagation(); moveEtape(i, -1); }} className={`text-xs w-5 h-5 rounded flex items-center justify-center ${activeEtape === i ? "text-slate-400 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"}`}>↑</button>
+                      )}
+                      {i < etapes.length - 1 && (
+                        <button onClick={(ev) => { ev.stopPropagation(); moveEtape(i, 1); }} className={`text-xs w-5 h-5 rounded flex items-center justify-center ${activeEtape === i ? "text-slate-400 hover:text-white hover:bg-white/10" : "text-slate-400 hover:text-slate-700 hover:bg-slate-100"}`}>↓</button>
+                      )}
+                      {etapes.length > 1 && (
+                        <button onClick={(ev) => { ev.stopPropagation(); removeEtape(i); }} className={`text-xs w-5 h-5 rounded flex items-center justify-center ${activeEtape === i ? "text-slate-400 hover:text-red-300 hover:bg-white/10" : "text-slate-400 hover:text-red-500 hover:bg-red-50"}`}>✕</button>
+                      )}
+                    </div>
                   </div>
                   <div className={`text-xs ${activeEtape === i ? "text-slate-300" : "text-slate-500"}`}>
                     <span className="font-medium">J+{e.jour || 0}</span> · {e.sujet ? e.sujet.substring(0, 25) + (e.sujet.length > 25 ? '...' : '') : 'Sans objet'}
