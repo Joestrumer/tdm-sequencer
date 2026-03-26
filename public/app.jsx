@@ -14,6 +14,47 @@ function parseTags(tags) {
   try { return JSON.parse(tags || "[]"); } catch(e) { return []; }
 }
 
+// ─── FILE SYSTEM ACCESS API HELPER ─────────────────────────────────────────────
+async function saveFileWithPicker(blob, fileName) {
+  if (!window.showDirectoryPicker) return false;
+  try {
+    let dirHandle = null;
+    const savedHandleName = localStorage.getItem('csvDirHandleName');
+    if (savedHandleName && window.savedCSVDirHandle) {
+      try {
+        const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
+        if (permission === 'granted' || await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+          dirHandle = window.savedCSVDirHandle;
+        }
+      } catch (e) { /* handle invalide */ }
+    }
+    if (!dirHandle) {
+      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      window.savedCSVDirHandle = dirHandle;
+      localStorage.setItem('csvDirHandleName', dirHandle.name);
+    }
+    const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
+    const writable = await fileHandle.createWritable();
+    await writable.write(blob);
+    await writable.close();
+    return dirHandle.name;
+  } catch (fsErr) {
+    if (fsErr.name !== 'AbortError') {
+      console.warn('File System Access fallback:', fsErr);
+      delete window.savedCSVDirHandle;
+      localStorage.removeItem('csvDirHandleName');
+    }
+    return false;
+  }
+}
+
+function downloadFallback(blob, fileName) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = fileName; a.click();
+  URL.revokeObjectURL(url);
+}
+
 // ─── HOOKS UTILITAIRES ──────────────────────────────────────────────────────────
 function useEscapeClose(onClose) {
   useEffect(() => {
@@ -1708,7 +1749,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
       {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow) => {
         const ids = Array.from(selectedIds);
         await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids });
-        if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(() => {});
+        if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(e => console.error(e));
         showToast(`${ids.length} lead(s) inscrits à la séquence`, 'success');
         setSelectedIds(new Set());
         if (onRefresh) onRefresh();
@@ -2710,7 +2751,7 @@ const VueHubspot = () => {
   useEffect(() => {
     api.get('/health').then(h => {
       if (h.hubspot === 'configuré') setConnected(true);
-    }).catch(() => {});
+    }).catch(e => console.error(e));
     api.get('/config').then(cfg => {
       if (cfg.hubspot_api_key_configured) setConnected(true);
       // Charger les toggles depuis la config
@@ -2719,7 +2760,7 @@ const VueHubspot = () => {
         t[key] = cfg[key] !== '0' && cfg[key] !== 'false';
       });
       setToggles(t);
-    }).catch(() => {});
+    }).catch(e => console.error(e));
     chargerLogs();
   }, []);
 
@@ -3147,7 +3188,7 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
         setZbConfigured(true);
         chargerCredits();
       }
-    }).catch(() => {});
+    }).catch(e => console.error(e));
   }, []);
 
   const sauvegarderCle = async () => {
@@ -3822,77 +3863,6 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
       }
     });
   }, [analytics, viewMode]);
-
-  // Create years comparison chart (monthly cumulative)
-  useEffect(() => {
-    if (!comparisonChartRef.current || !yearsComparison || viewMode !== 'comparison' || selectedYears.length === 0) return;
-
-    if (comparisonChartInstance.current) {
-      comparisonChartInstance.current.destroy();
-    }
-
-    const months = ['01', '02', '03', '04', '05', '06', '07', '08', '09', '10', '11', '12'];
-    const monthLabels = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
-
-    const datasets = selectedYears
-      .sort((a, b) => b - a)
-      .map((year, idx) => {
-        const yearData = yearsComparison.years.find(y => y.year === year.toString() || y.year === year);
-        if (!yearData) return null;
-
-        const colors = [
-          'rgb(59, 130, 246)',   // blue
-          'rgb(16, 185, 129)',   // green
-          'rgb(245, 158, 11)',   // amber
-          'rgb(239, 68, 68)',    // red
-          'rgb(139, 92, 246)',   // purple
-        ];
-
-        return {
-          label: year.toString(),
-          data: months.map(month => yearData.byMonth?.[month]?.cumulative_ht || 0),
-          borderColor: colors[idx % colors.length],
-          backgroundColor: colors[idx % colors.length].replace('rgb', 'rgba').replace(')', ', 0.1)'),
-          tension: 0.4,
-          fill: false,
-          pointRadius: 4,
-          pointHoverRadius: 6
-        };
-      })
-      .filter(Boolean);
-
-    const ctx = comparisonChartRef.current.getContext('2d');
-    comparisonChartInstance.current = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: monthLabels,
-        datasets
-      },
-      options: {
-        responsive: true,
-        maintainAspectRatio: false,
-        plugins: {
-          legend: {
-            display: true,
-            position: 'top'
-          },
-          tooltip: {
-            callbacks: {
-              label: (context) => `${context.dataset.label}: ${Math.round(context.parsed.y).toLocaleString('fr-FR')}€`
-            }
-          }
-        },
-        scales: {
-          y: {
-            beginAtZero: true,
-            ticks: {
-              callback: (value) => `${value.toLocaleString('fr-FR')}€`
-            }
-          }
-        }
-      }
-    });
-  }, [yearsComparison, viewMode, selectedYears]);
 
   // Create top clients chart
   useEffect(() => {
@@ -5369,7 +5339,7 @@ const FacturesSingle = ({ showToast }) => {
   const [addProductSearch, setAddProductSearch] = useState('');
 
   useEffect(() => {
-    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data.filter(c => c.actif)); }).catch(() => {});
+    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data.filter(c => c.actif)); }).catch(e => console.error(e));
   }, []);
 
   const handleImportInvoice = async () => {
@@ -5645,57 +5615,11 @@ const FacturesSingle = ({ showToast }) => {
       const blob = await res.blob();
       const fileName = `logisticien-${r?.number || orderNumber || 'facture'}.csv`;
 
-      // Essayer File System Access API avec mémorisation du dossier
-      let saved = false;
-      if (window.showDirectoryPicker) {
-        try {
-          // Essayer de récupérer le handle sauvegardé
-          let dirHandle = null;
-          const savedHandleName = localStorage.getItem('csvDirHandleName');
-
-          if (savedHandleName && window.savedCSVDirHandle) {
-            try {
-              // Vérifier les permissions
-              const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
-              if (permission === 'granted' || await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
-                dirHandle = window.savedCSVDirHandle;
-                console.log('📁 Réutilisation du dossier:', savedHandleName);
-              }
-            } catch (e) {
-              console.log('📁 Handle sauvegardé invalide, demande nouveau dossier');
-            }
-          }
-
-          // Si pas de handle valide, demander à l'utilisateur
-          if (!dirHandle) {
-            dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-            window.savedCSVDirHandle = dirHandle;
-            localStorage.setItem('csvDirHandleName', dirHandle.name);
-            console.log('📁 Nouveau dossier mémorisé:', dirHandle.name);
-          }
-
-          // Sauvegarder le fichier
-          const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          showToast(`✅ CSV sauvé: ${dirHandle.name}/${fileName}`, 'success');
-          saved = true;
-        } catch (fsErr) {
-          if (fsErr.name !== 'AbortError') {
-            console.warn('File System Access fallback:', fsErr);
-            delete window.savedCSVDirHandle;
-            localStorage.removeItem('csvDirHandleName');
-          }
-        }
-      }
-
-      // Fallback : download classique
-      if (!saved) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = fileName; a.click();
-        URL.revokeObjectURL(url);
+      const dirName = await saveFileWithPicker(blob, fileName);
+      if (dirName) {
+        showToast(`CSV sauvé: ${dirName}/${fileName}`, 'success');
+      } else {
+        downloadFallback(blob, fileName);
         showToast('CSV téléchargé', 'success');
       }
 
@@ -6510,44 +6434,11 @@ const FacturesBatch = ({ showToast }) => {
       const blob = await res2.blob();
       const fileName = `logisticien-${r.number || 'facture'}.csv`;
 
-      let saved = false;
-      if (window.showDirectoryPicker) {
-        try {
-          let dirHandle = null;
-          const savedHandleName = localStorage.getItem('csvDirHandleName');
-          if (savedHandleName && window.savedCSVDirHandle) {
-            try {
-              const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
-              if (permission === 'granted' || await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
-                dirHandle = window.savedCSVDirHandle;
-              }
-            } catch (e) { /* ignore */ }
-          }
-          if (!dirHandle) {
-            dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-            window.savedCSVDirHandle = dirHandle;
-            localStorage.setItem('csvDirHandleName', dirHandle.name);
-          }
-          const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          showToast(`CSV sauvé: ${dirHandle.name}/${fileName}`, 'success');
-          saved = true;
-        } catch (fsErr) {
-          if (fsErr.name !== 'AbortError') {
-            console.warn('File System Access fallback:', fsErr);
-            delete window.savedCSVDirHandle;
-            localStorage.removeItem('csvDirHandleName');
-          }
-        }
-      }
-
-      if (!saved) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = fileName; a.click();
-        URL.revokeObjectURL(url);
+      const dirName = await saveFileWithPicker(blob, fileName);
+      if (dirName) {
+        showToast(`CSV sauvé: ${dirName}/${fileName}`, 'success');
+      } else {
+        downloadFallback(blob, fileName);
         showToast('CSV téléchargé', 'success');
       }
 
@@ -6860,7 +6751,7 @@ const FacturesSamples = ({ showToast }) => {
   const [shippingId, setShippingId] = useState('300');
 
   useEffect(() => {
-    api.get('/factures/produits').then(data => setCatalog(Array.isArray(data) ? data : [])).catch(() => {});
+    api.get('/factures/produits').then(data => setCatalog(Array.isArray(data) ? data : [])).catch(e => console.error(e));
   }, []);
 
   const addProduct = (ref) => {
@@ -6944,57 +6835,18 @@ const FacturesSamples = ({ showToast }) => {
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ invoiceData, client, shippingId }),
       });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.erreur || 'Erreur CSV: ' + res.status);
+      }
       const blob = await res.blob();
       const fileName = `logisticien-${result?.number || 'proforma'}.csv`;
 
-      // Essayer File System Access API avec mémorisation du dossier
-      let saved = false;
-      if (window.showDirectoryPicker) {
-        try {
-          // Essayer de récupérer le handle sauvegardé
-          let dirHandle = null;
-          const savedHandleName = localStorage.getItem('csvDirHandleName');
-
-          if (savedHandleName && window.savedCSVDirHandle) {
-            try {
-              const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
-              if (permission === 'granted' || await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
-                dirHandle = window.savedCSVDirHandle;
-                console.log('📁 Réutilisation du dossier:', savedHandleName);
-              }
-            } catch (e) {
-              console.log('📁 Handle sauvegardé invalide, demande nouveau dossier');
-            }
-          }
-
-          // Si pas de handle valide, demander à l'utilisateur
-          if (!dirHandle) {
-            dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
-            window.savedCSVDirHandle = dirHandle;
-            localStorage.setItem('csvDirHandleName', dirHandle.name);
-            console.log('📁 Nouveau dossier mémorisé:', dirHandle.name);
-          }
-
-          const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
-          const writable = await fileHandle.createWritable();
-          await writable.write(blob);
-          await writable.close();
-          showToast(`✅ CSV sauvé: ${dirHandle.name}/${fileName}`, 'success');
-          saved = true;
-        } catch (fsErr) {
-          if (fsErr.name !== 'AbortError') {
-            console.warn('File System Access fallback:', fsErr);
-            delete window.savedCSVDirHandle;
-            localStorage.removeItem('csvDirHandleName');
-          }
-        }
-      }
-
-      if (!saved) {
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url; a.download = fileName; a.click();
-        URL.revokeObjectURL(url);
+      const dirName = await saveFileWithPicker(blob, fileName);
+      if (dirName) {
+        showToast(`CSV sauvé: ${dirName}/${fileName}`, 'success');
+      } else {
+        downloadFallback(blob, fileName);
         showToast('CSV téléchargé', 'success');
       }
 
@@ -7163,18 +7015,19 @@ const FacturesReminders = ({ showToast }) => {
   const sendReminders = async () => {
     setSending(true);
     let sent = 0;
-    for (let i = 0; i < docs.length; i++) {
-      const doc = docs[i];
+    let updated = [...docs];
+    for (let i = 0; i < updated.length; i++) {
+      const doc = updated[i];
       if (!doc.id || !doc.sendEmail) continue;
       try {
         await api.post(`/factures/invoices/${doc.id}/send-reminder`, {});
-        docs[i] = { ...doc, sent: true };
+        updated[i] = { ...doc, sent: true };
         sent++;
       } catch (err) {
-        docs[i] = { ...doc, sendError: err.message };
+        updated[i] = { ...doc, sendError: err.message };
       }
     }
-    setDocs([...docs]);
+    setDocs(updated);
     setSending(false);
     showToast(`${sent} relance(s) envoyée(s)`, 'success');
   };
@@ -7212,7 +7065,7 @@ const FacturesReminders = ({ showToast }) => {
                       {!doc.sent && (
                         <label className="flex items-center gap-1 text-xs">
                           <input type="checkbox" checked={doc.sendEmail}
-                            onChange={() => { docs[i].sendEmail = !docs[i].sendEmail; setDocs([...docs]); }} />
+                            onChange={() => setDocs(prev => prev.map((d, idx) => idx === i ? { ...d, sendEmail: !d.sendEmail } : d))} />
                           Relancer
                         </label>
                       )}
@@ -7825,7 +7678,7 @@ const VueParametres = () => {
     // Vérifier via /health si Brevo est configuré (variable Railway)
     api.get('/health').then(h => {
       if (h.brevo === 'configuré') setBrevoConfigured(true);
-    }).catch(() => {});
+    }).catch(e => console.error(e));
     // Charger les autres paramètres depuis la DB
     api.get('/config').then(cfg => {
       if (cfg.brevo_api_key_configured) setBrevoConfigured(true);
@@ -7835,7 +7688,7 @@ const VueParametres = () => {
       if (cfg.jours_actifs) setLimites(l => ({ ...l, joursActifs: cfg.jours_actifs.split(',') }));
       if (cfg.fuseau) setLimites(l => ({ ...l, fuseau: cfg.fuseau }));
       if (cfg.delai_entre_emails) setLimites(l => ({ ...l, delaiEntreEmails: +cfg.delai_entre_emails }));
-    }).catch(() => {});
+    }).catch(e => console.error(e));
   }, []);
 
   const sauvegarder = async () => {
@@ -7942,7 +7795,7 @@ const VueApiExterne = () => {
         setConfigured(true);
         setCurrentKey(cfg.external_api_key);
       }
-    }).catch(() => {});
+    }).catch(e => console.error(e));
   }, []);
 
   const genererCle = () => {
@@ -8043,7 +7896,7 @@ const VueVosFacturesConfig = () => {
       if (cfg.gsheets_credentials_configured) setGsConfigured(true);
       if (cfg.gsheets_spreadsheet_id) setSpreadsheetId(cfg.gsheets_spreadsheet_id);
       if (cfg.gsheets_sheet_name) setSheetName(cfg.gsheets_sheet_name);
-    }).catch(() => {});
+    }).catch(e => console.error(e));
   }, []);
 
   const sauvegarder = async () => {
@@ -9067,7 +8920,7 @@ const VuePartenaires = ({ showToast }) => {
 
   useEffect(() => {
     charger();
-    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data); }).catch(() => {});
+    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data); }).catch(e => console.error(e));
   }, []);
 
   const syncVF = async () => {
