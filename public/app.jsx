@@ -1524,8 +1524,18 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [detailData, setDetailData] = useState(null);     // détail complet lead (emails + events)
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailTab, setDetailTab] = useState('timeline'); // 'timeline' | 'emails' | 'hubspot'
-  const [showTooltip, setShowTooltip] = useState(null);   // "csv" | "sync" | "envoyer" | null
+  const [showTooltip, setShowTooltip] = useState(null);   // "csv" | "sync" | "trigger" | null
   const csvRef = useRef(null);
+
+  // Fermer le popover au clic en dehors
+  useEffect(() => {
+    if (!showTooltip) return;
+    const close = (e) => {
+      if (!e.target.closest('.relative.flex.items-center.gap-1')) setShowTooltip(null);
+    };
+    document.addEventListener('click', close);
+    return () => document.removeEventListener('click', close);
+  }, [showTooltip]);
 
   // État pour les largeurs de colonnes redimensionnables
   const [columnWidths, setColumnWidths] = useState(() => {
@@ -1840,19 +1850,26 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
         <div className="flex gap-2 overflow-x-auto">
-          <div className="flex items-center gap-1">
+          <div className="relative flex items-center gap-1">
             <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
               {importStatus || "📥 Import CSV"}
             </button>
             <button
-              title="Format CSV : prenom,nom,email,hotel,ville,segment,poste,langue&#10;Requis: email, hotel, prenom"
+              onClick={() => setShowTooltip(showTooltip === 'csv' ? null : 'csv')}
               className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs flex items-center justify-center font-bold"
             >
               ℹ️
             </button>
+            {showTooltip === 'csv' && (
+              <div className="absolute top-full left-0 mt-1 z-50 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-64">
+                <p className="font-medium mb-1">Format CSV :</p>
+                <p className="text-slate-300">prenom, nom, email, hotel, ville, segment, poste, langue</p>
+                <p className="text-slate-300 mt-1">Requis : <span className="text-white font-medium">email, hotel, prenom</span></p>
+              </div>
+            )}
           </div>
           <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
-          <div className="flex items-center gap-1">
+          <div className="relative flex items-center gap-1">
             <button onClick={async () => {
               const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
               if (r) { showToast('Sync HubSpot terminée', 'success'); if (onRefresh) onRefresh(); }
@@ -1861,13 +1878,18 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               🔄 Sync HS
             </button>
             <button
-              title="Synchroniser tous les leads avec HubSpot"
+              onClick={() => setShowTooltip(showTooltip === 'sync' ? null : 'sync')}
               className="w-5 h-5 rounded-full bg-orange-100 text-orange-500 hover:bg-orange-200 text-xs flex items-center justify-center font-bold"
             >
               ℹ️
             </button>
+            {showTooltip === 'sync' && (
+              <div className="absolute top-full left-0 mt-1 z-50 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-64">
+                <p>Synchroniser tous les leads avec HubSpot (contacts + entreprises)</p>
+              </div>
+            )}
           </div>
-          <div className="flex items-center gap-1">
+          <div className="relative flex items-center gap-1">
             <button onClick={async () => {
               if (!await confirmDialog("Forcer l'envoi immédiat des emails en attente ?\n\nCela enverra tous les emails planifiés pour aujourd'hui.", { danger: true, confirmLabel: 'Forcer l\'envoi' })) return;
               setTriggerStatus("sending");
@@ -1878,11 +1900,16 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               {triggerStatus === "sending" ? "⟳ Envoi..." : triggerStatus === "done" ? "✓ Envoyé" : triggerStatus === "error" ? "✗ Erreur" : "⚡ Envoyer"}
             </button>
             <button
-              title="⚠️ Force l'envoi immédiat des emails planifiés aujourd'hui (bypass fenêtre horaire)"
+              onClick={() => setShowTooltip(showTooltip === 'trigger' ? null : 'trigger')}
               className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 text-xs flex items-center justify-center font-bold"
             >
               ℹ️
             </button>
+            {showTooltip === 'trigger' && (
+              <div className="absolute top-full right-0 mt-1 z-50 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-72">
+                <p>Force l'envoi immédiat des emails planifiés (bypass fenêtre horaire)</p>
+              </div>
+            )}
           </div>
           <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors whitespace-nowrap">+ Ajouter</button>
         </div>
@@ -2629,6 +2656,15 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
   const [testModal, setTestModal] = useState(null); // seq id
   const [testEmail, setTestEmail] = useState("");
   const [testLoading, setTestLoading] = useState(false);
+  const [expandedSeqs, setExpandedSeqs] = useState(new Set());
+
+  const toggleSeq = (id) => {
+    setExpandedSeqs(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   const supprimerSequence = async (seq) => {
     if (!await confirmDialog(`Supprimer la séquence "${seq.nom}" ? Cette action est irréversible.`, { danger: true, confirmLabel: 'Supprimer' })) return;
@@ -2689,15 +2725,19 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
       {sequences.length === 0 && (
         <div className="text-center py-12 text-slate-400 text-sm">Aucune séquence. Créez-en une pour commencer.</div>
       )}
-      {sequences.map(seq => (
-        <div key={seq.id} className="bg-white rounded-xl border border-slate-100 p-4">
-          <div className="flex items-center justify-between mb-3">
+      {sequences.map(seq => {
+        const isExpanded = expandedSeqs.has(seq.id);
+        return (
+        <div key={seq.id} className="bg-white rounded-xl border border-slate-100">
+          <div className={`flex items-center justify-between p-4 cursor-pointer select-none hover:bg-slate-50/50 transition-colors ${isExpanded ? '' : 'rounded-xl'}`} onClick={() => toggleSeq(seq.id)}>
             <div className="flex items-center gap-3 min-w-0">
+              <span className={`text-slate-400 text-xs transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
               <h3 className="text-sm font-semibold text-slate-800 truncate">{seq.nom}</h3>
               <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full flex-shrink-0">{seq.segment}</span>
               <span className="text-xs text-slate-400 flex-shrink-0">{seq.leadsActifs} actifs</span>
+              <span className="text-xs text-slate-400 flex-shrink-0">{seq.etapes?.length || 0} étape{(seq.etapes?.length || 0) !== 1 ? 's' : ''}</span>
             </div>
-            <div className="flex gap-2 flex-shrink-0">
+            <div className="flex gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
               <button onClick={() => { setTestModal(seq.id); setTestEmail(""); }} className="px-3 py-1.5 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
                 Tester
               </button>
@@ -2712,30 +2752,35 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
               </button>
             </div>
           </div>
-          <div className="overflow-x-auto rounded-lg border border-slate-100">
-            <table className="w-full text-xs">
-              <thead className="bg-slate-50">
-                <tr>
-                  <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase w-8">#</th>
-                  <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase w-16">Délai</th>
-                  <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase">Objet</th>
-                  <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase hidden md:table-cell">Aperçu</th>
-                </tr>
-              </thead>
-              <tbody>
-                {seq.etapes.map((etape, i) => (
-                  <tr key={i} className="border-t border-slate-50">
-                    <td className="px-3 py-2 font-bold text-slate-400">{i + 1}</td>
-                    <td className="px-3 py-2 text-slate-500">J+{etape.jour}</td>
-                    <td className="px-3 py-2 font-medium text-slate-800 truncate max-w-[200px]">{etape.sujet || "(sans objet)"}</td>
-                    <td className="px-3 py-2 text-slate-400 truncate max-w-[300px] hidden md:table-cell">{(etape.corps_html ? etape.corps_html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : etape.corps?.split("\n")[0]) || "(vide)"}</td>
+          {isExpanded && (
+          <div className="px-4 pb-4">
+            <div className="overflow-x-auto rounded-lg border border-slate-100">
+              <table className="w-full text-xs">
+                <thead className="bg-slate-50">
+                  <tr>
+                    <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase w-8">#</th>
+                    <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase w-16">Délai</th>
+                    <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase">Objet</th>
+                    <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase hidden md:table-cell">Aperçu</th>
                   </tr>
-                ))}
-              </tbody>
-            </table>
+                </thead>
+                <tbody>
+                  {seq.etapes.map((etape, i) => (
+                    <tr key={i} className="border-t border-slate-50">
+                      <td className="px-3 py-2 font-bold text-slate-400">{i + 1}</td>
+                      <td className="px-3 py-2 text-slate-500">J+{etape.jour}</td>
+                      <td className="px-3 py-2 font-medium text-slate-800 truncate max-w-[200px]">{etape.sujet || "(sans objet)"}</td>
+                      <td className="px-3 py-2 text-slate-400 truncate max-w-[300px] hidden md:table-cell">{(etape.corps_html ? etape.corps_html.replace(/<[^>]*>/g, " ").replace(/\s+/g, " ").trim() : etape.corps?.split("\n")[0]) || "(vide)"}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
           </div>
+          )}
         </div>
-      ))}
+        );
+      })}
     </div>
 
     {/* Mini-modal test */}
