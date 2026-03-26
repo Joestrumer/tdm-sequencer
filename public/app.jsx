@@ -6848,10 +6848,46 @@ const FacturesSamples = ({ showToast }) => {
   const [result, setResult] = useState(null);
   const [searchRef, setSearchRef] = useState('');
   const [shippingId, setShippingId] = useState('300');
+  const [clientSearch, setClientSearch] = useState('');
+  const [clientResults, setClientResults] = useState([]);
+  const [searchingClient, setSearchingClient] = useState(false);
+  const clientSearchTimer = useRef(null);
+  const clientAbortRef = useRef(null);
 
   useEffect(() => {
     api.get('/factures/produits').then(data => setCatalog(Array.isArray(data) ? data : [])).catch(e => console.error(e));
   }, []);
+
+  const rechercherClient = (q) => {
+    setClientSearch(q);
+    clearTimeout(clientSearchTimer.current);
+    if (clientAbortRef.current) clientAbortRef.current.abort();
+    if (!q || q.length < 2) { setClientResults([]); return; }
+    clientSearchTimer.current = setTimeout(async () => {
+      const controller = new AbortController();
+      clientAbortRef.current = controller;
+      setSearchingClient(true);
+      try {
+        const data = await api.get('/factures/clients?q=' + encodeURIComponent(q));
+        if (!controller.signal.aborted) setClientResults(Array.isArray(data) ? data : []);
+      } catch (e) {
+        if (!controller.signal.aborted) setClientResults([]);
+      }
+      if (!controller.signal.aborted) setSearchingClient(false);
+    }, 400);
+  };
+
+  const selectClient = (c) => {
+    setClientName(c.name || '');
+    setClientEmail(c.email || '');
+    setClientAddress(c.street || '');
+    setClientCity(c.city || '');
+    setClientZip(c.post_code || '');
+    setClientCountry(c.country || 'FR');
+    setClientPhone(c.phone || '');
+    setClientSearch('');
+    setClientResults([]);
+  };
 
   const addProduct = (ref) => {
     const existing = products.find(p => p.ref === ref);
@@ -6997,6 +7033,26 @@ const FacturesSamples = ({ showToast }) => {
               </div>
             )}
           </div>
+        </div>
+
+        {/* Client search */}
+        <div className="relative">
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Rechercher un client VosFactures</label>
+          <input value={clientSearch} onChange={e => rechercherClient(e.target.value)}
+            placeholder="Nom, email ou ville..."
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          {searchingClient && <div className="absolute right-3 top-8 text-xs text-slate-400">Recherche...</div>}
+          {clientResults.length > 0 && (
+            <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
+              {clientResults.slice(0, 10).map(c => (
+                <button key={c.id} onClick={() => selectClient(c)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 border-b border-slate-50 last:border-0">
+                  <span className="font-medium">{c.name}</span>
+                  {c.city && <span className="text-slate-400 ml-2">{c.city}</span>}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
 
         {/* Recipient */}
