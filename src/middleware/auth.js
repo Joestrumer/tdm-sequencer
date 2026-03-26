@@ -4,7 +4,11 @@
 
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.JWT_SECRET || process.env.AUTH_SECRET || 'tdm-sequencer-secret';
+const JWT_SECRET = process.env.JWT_SECRET || process.env.AUTH_SECRET;
+if (!JWT_SECRET) {
+  console.error('⛔ FATAL : JWT_SECRET ou AUTH_SECRET doit être défini dans les variables d\'environnement');
+  process.exit(1);
+}
 
 function authMiddleware(db) {
   return (req, res, next) => {

@@ -9,9 +9,10 @@ const NAMESPACE = 'https://wms.endurancelogistique.fr/secure/ws_order_info.wsdl'
 
 function getCredentials(db) {
   const user = db?.prepare?.("SELECT valeur FROM config WHERE cle = 'wms_user'")?.get()?.valeur
-    || process.env.WMS_USER || 'terreDeMarsShopify';
+    || process.env.WMS_USER;
   const pass = db?.prepare?.("SELECT valeur FROM config WHERE cle = 'wms_password'")?.get()?.valeur
-    || process.env.WMS_PASSWORD || 'SPff4haedeafic';
+    || process.env.WMS_PASSWORD;
+  if (!user || !pass) throw new Error('Identifiants WMS non configurés (config wms_user/wms_password ou env WMS_USER/WMS_PASSWORD)');
   return { user, pass };
 }
 

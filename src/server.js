@@ -48,53 +48,6 @@ app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Santé AVANT auth
-// Route diagnostic Brevo (pas d'auth requise)
-app.get('/api/test-brevo', async (req, res) => {
-  const results = {};
-
-  // Test 1 : API REST
-  try {
-    const controller = new AbortController();
-    setTimeout(() => controller.abort(), 8000);
-    const r = await fetch('https://api.brevo.com/v3/senders', {
-      headers: { 'api-key': process.env.BREVO_API_KEY || '', 'accept': 'application/json' },
-      signal: controller.signal,
-    });
-    const data = await r.json();
-    results.api_rest = r.ok ? { ok: true, senders: data.senders?.length } : { ok: false, status: r.status, detail: JSON.stringify(data).slice(0, 200) };
-  } catch(e) {
-    results.api_rest = { ok: false, erreur: e.name === 'AbortError' ? 'TIMEOUT 8s' : e.message };
-  }
-
-  // Test 2 : SMTP via nodemailer (si clé dispo)
-  if (process.env.BREVO_SMTP_KEY) {
-    try {
-      const nodemailer = require('nodemailer');
-      for (const port of [587, 465, 2525]) {
-        try {
-          const t = nodemailer.createTransport({
-            host: 'smtp-relay.brevo.com', port, secure: port === 465,
-            auth: { user: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com', pass: process.env.BREVO_SMTP_KEY },
-            connectionTimeout: 6000, greetingTimeout: 6000,
-          });
-          await t.verify();
-          results['smtp_' + port] = { ok: true };
-          break;
-        } catch(e) {
-          results['smtp_' + port] = { ok: false, erreur: e.message.slice(0, 100) };
-        }
-      }
-    } catch(e) {
-      results.smtp = { ok: false, erreur: 'nodemailer non disponible: ' + e.message };
-    }
-  } else {
-    results.smtp = { ok: false, erreur: 'BREVO_SMTP_KEY non définie' };
-  }
-
-  results.ip_sortante = req.headers['x-forwarded-for'] || 'inconnue';
-  res.json(results);
-});
-
 app.get('/api/health', (req, res) => {
   res.json({
     statut: 'ok',
@@ -107,7 +60,7 @@ app.get('/api/health', (req, res) => {
 
 // Auth middleware (JWT + fallback AUTH_SECRET)
 const authMiddleware = require('./middleware/auth');
-const { requireAccessAuto } = require('./middleware/permissions');
+const { requireAccessAuto, requireAdmin } = require('./middleware/permissions');
 
 // Route login PUBLIQUE (avant auth middleware)
 const authRoutes = require('./routes/auth')(db);
@@ -153,8 +106,50 @@ app.use('/api/qualification', requireAccessAuto('leads'), require('./routes/qual
 app.use('/api/tracking',  require('./routes/tracking')(db));
 app.use('/api/partenaire', require('./routes/partnerPortal')(db));
 
-// Backup manuel
-app.post('/api/backup', async (req, res) => {
+// Diagnostic Brevo (protégé par auth)
+app.get('/api/test-brevo', async (req, res) => {
+  const results = {};
+  try {
+    const controller = new AbortController();
+    setTimeout(() => controller.abort(), 8000);
+    const r = await fetch('https://api.brevo.com/v3/senders', {
+      headers: { 'api-key': process.env.BREVO_API_KEY || '', 'accept': 'application/json' },
+      signal: controller.signal,
+    });
+    const data = await r.json();
+    results.api_rest = r.ok ? { ok: true, senders: data.senders?.length } : { ok: false, status: r.status, detail: JSON.stringify(data).slice(0, 200) };
+  } catch(e) {
+    results.api_rest = { ok: false, erreur: e.name === 'AbortError' ? 'TIMEOUT 8s' : e.message };
+  }
+  if (process.env.BREVO_SMTP_KEY) {
+    try {
+      const nodemailer = require('nodemailer');
+      for (const port of [587, 465, 2525]) {
+        try {
+          const t = nodemailer.createTransport({
+            host: 'smtp-relay.brevo.com', port, secure: port === 465,
+            auth: { user: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com', pass: process.env.BREVO_SMTP_KEY },
+            connectionTimeout: 6000, greetingTimeout: 6000,
+          });
+          await t.verify();
+          results['smtp_' + port] = { ok: true };
+          break;
+        } catch(e) {
+          results['smtp_' + port] = { ok: false, erreur: e.message.slice(0, 100) };
+        }
+      }
+    } catch(e) {
+      results.smtp = { ok: false, erreur: 'nodemailer non disponible: ' + e.message };
+    }
+  } else {
+    results.smtp = { ok: false, erreur: 'BREVO_SMTP_KEY non définie' };
+  }
+  results.ip_sortante = req.headers['x-forwarded-for'] || 'inconnue';
+  res.json(results);
+});
+
+// Backup manuel (admin uniquement)
+app.post('/api/backup', requireAdmin, async (req, res) => {
   try {
     const data = backup.exporterDonnees(db);
     const localPath = backup.sauvegarderLocal(data);
@@ -170,24 +165,36 @@ app.post('/api/backup', async (req, res) => {
   }
 });
 
-// Restauration depuis un backup
-app.post('/api/backup/restore', (req, res) => {
+// Colonnes autorisées par table pour la restauration (whitelist anti-injection SQL)
+const RESTORE_SCHEMA = {
+  events: ['id', 'lead_id', 'email_id', 'type', 'meta', 'created_at'],
+  emails: ['id', 'lead_id', 'inscription_id', 'etape_id', 'sujet', 'tracking_id', 'brevo_message_id', 'statut', 'ouvertures', 'clics', 'envoye_at', 'created_at'],
+  inscriptions: ['id', 'lead_id', 'sequence_id', 'etape_courante', 'prochain_envoi', 'statut', 'created_at'],
+  etapes: ['id', 'sequence_id', 'ordre', 'jour_delai', 'sujet', 'corps', 'corps_html', 'piece_jointe', 'created_at'],
+  sequences: ['id', 'nom', 'segment', 'options', 'actif', 'created_at'],
+  leads: ['id', 'prenom', 'nom', 'email', 'hotel', 'ville', 'segment', 'tags', 'poste', 'langue', 'campaign', 'comment', 'statut', 'score', 'hubspot_id', 'unsubscribed', 'statut_email', 'email_score', 'created_at', 'updated_at'],
+  email_blocklist: ['id', 'type', 'value', 'raison', 'override_allowed', 'created_at'],
+  email_templates: ['id', 'nom', 'sujet', 'corps_html', 'categorie', 'created_at', 'updated_at'],
+  envoi_quota: ['date', 'count'],
+};
+
+// Restauration depuis un backup (admin uniquement)
+app.post('/api/backup/restore', requireAdmin, (req, res) => {
   try {
     const { data } = req.body;
     if (!data || !data._meta) return res.status(400).json({ erreur: 'Format de backup invalide' });
 
-    const tables = ['events', 'emails', 'inscriptions', 'etapes', 'sequences', 'leads',
-                     'email_blocklist', 'email_templates', 'envoi_quota'];
+    const tables = Object.keys(RESTORE_SCHEMA);
 
     const restore = db.transaction(() => {
-      // Vider les tables dans l'ordre (foreign keys)
       for (const t of tables) {
         db.prepare(`DELETE FROM ${t}`).run();
       }
-      // Réinsérer dans l'ordre inverse
       for (const t of [...tables].reverse()) {
         if (!data[t] || data[t].length === 0) continue;
-        const cols = Object.keys(data[t][0]);
+        const allowedCols = RESTORE_SCHEMA[t];
+        const cols = Object.keys(data[t][0]).filter(c => allowedCols.includes(c));
+        if (cols.length === 0) continue;
         const placeholders = cols.map(() => '?').join(', ');
         const stmt = db.prepare(`INSERT OR IGNORE INTO ${t} (${cols.join(', ')}) VALUES (${placeholders})`);
         for (const row of data[t]) {
@@ -258,6 +265,7 @@ process.on('SIGINT', () => gracefulShutdown('SIGINT'));
 
 process.on('uncaughtException', (err) => {
   console.error('UNCAUGHT EXCEPTION:', err.message, err.stack);
+  process.exit(1);
 });
 process.on('unhandledRejection', (reason) => {
   console.error('UNHANDLED REJECTION:', reason);

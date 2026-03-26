@@ -15,23 +15,23 @@ module.exports = (db) => {
   // GET /api/email-validation/credits
   router.get('/credits', async (req, res) => {
     const key = getKey();
-    if (!key) return res.status(400).json({ error: 'Clé ZeroBounce non configurée' });
+    if (!key) return res.status(400).json({ erreur: 'Clé ZeroBounce non configurée' });
     try {
       const r    = await fetch(`https://api.zerobounce.net/v2/getcredits?api_key=${key}`);
       const data = await r.json();
       res.json(data);
     } catch (e) {
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ erreur: e.message });
     }
   });
 
   // POST /api/email-validation/single — Body: { email, lead_id? }
   router.post('/single', async (req, res) => {
     const key = getKey();
-    if (!key) return res.status(400).json({ error: 'Clé ZeroBounce non configurée' });
+    if (!key) return res.status(400).json({ erreur: 'Clé ZeroBounce non configurée' });
 
     const { email, lead_id } = req.body;
-    if (!email) return res.status(400).json({ error: 'email requis' });
+    if (!email) return res.status(400).json({ erreur: 'email requis' });
 
     try {
       const r = await fetch(`https://api.zerobounce.net/v2/validate?api_key=${key}&email=${encodeURIComponent(email)}&ip_address=`);
@@ -47,7 +47,7 @@ module.exports = (db) => {
       res.json(data);
     } catch (e) {
       logger.error('ZeroBounce erreur', { email, error: e.message });
-      res.status(500).json({ error: e.message });
+      res.status(500).json({ erreur: e.message });
     }
   });
 

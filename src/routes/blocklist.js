@@ -59,21 +59,23 @@ module.exports = (db) => {
       const id = uuidv4();
 
       try {
-        db.prepare(`
-          INSERT INTO email_blocklist (id, type, value, raison)
-          VALUES (?, 'email', ?, ?)
-        `).run(id, lead.email.toLowerCase().trim(), raison || `Lead ${lead.prenom} ${lead.nom}`);
+        const bloquerLead = db.transaction(() => {
+          db.prepare(`
+            INSERT INTO email_blocklist (id, type, value, raison)
+            VALUES (?, 'email', ?, ?)
+          `).run(id, lead.email.toLowerCase().trim(), raison || `Lead ${lead.prenom} ${lead.nom}`);
 
-        // Marquer le lead comme désabonné
-        db.prepare(`
-          UPDATE leads SET unsubscribed = 1, statut = 'Désabonné', updated_at = datetime('now')
-          WHERE id = ?
-        `).run(lead.id);
+          db.prepare(`
+            UPDATE leads SET unsubscribed = 1, statut = 'Désabonné', updated_at = datetime('now')
+            WHERE id = ?
+          `).run(lead.id);
 
-        // Arrêter toutes les séquences actives
-        db.prepare(`
-          UPDATE inscriptions SET statut = 'terminé' WHERE lead_id = ? AND statut = 'actif'
-        `).run(lead.id);
+          db.prepare(`
+            UPDATE inscriptions SET statut = 'terminé' WHERE lead_id = ? AND statut = 'actif'
+          `).run(lead.id);
+        });
+
+        bloquerLead();
 
         const entry = db.prepare('SELECT * FROM email_blocklist WHERE id = ?').get(id);
         logger.info('📛 Lead ajouté à la blocklist', { email: lead.email });

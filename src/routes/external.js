@@ -164,7 +164,7 @@ module.exports = (db) => {
       const sequences = db.prepare(`
         SELECT id, nom, segment,
           (SELECT COUNT(*) FROM etapes WHERE sequence_id = sequences.id) as nb_etapes
-        FROM sequences WHERE archived = 0
+        FROM sequences WHERE actif = 1
         ORDER BY nom ASC
       `).all();
       res.json({ sequences });

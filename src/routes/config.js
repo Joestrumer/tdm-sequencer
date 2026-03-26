@@ -31,6 +31,13 @@ module.exports = (db) => {
     }
   });
 
+  // Clés autorisées à être écrites dans process.env
+  const CLES_ENV_AUTORISEES = ['brevo_api_key', 'hubspot_api_key', 'zerobounce_api_key', 'vf_api_token',
+    'brevo_smtp_key', 'brevo_smtp_user', 'brevo_smtp_port', 'max_emails_per_day',
+    'send_hour_start', 'send_hour_end', 'active_days', 'public_url',
+    'hs_sync_contact', 'hs_log_email', 'hs_lifecycle', 'hs_task_fin_sequence', 'hs_deal_conversion',
+    'external_api_key', 'gsheets_credentials', 'wms_user', 'wms_password'];
+
   // Sauvegarder une ou plusieurs clés
   router.post('/', (req, res) => {
     try {
@@ -44,9 +51,11 @@ module.exports = (db) => {
         for (const [cle, valeur] of entries) {
           if (valeur !== undefined && valeur !== null) {
             upsert.run(cle, String(valeur));
-            // Mettre à jour process.env en temps réel
-            const envKey = cle.toUpperCase();
-            process.env[envKey] = String(valeur);
+            // Mettre à jour process.env uniquement pour les clés autorisées
+            if (CLES_ENV_AUTORISEES.includes(cle)) {
+              const envKey = cle.toUpperCase();
+              process.env[envKey] = String(valeur);
+            }
           }
         }
       });
@@ -58,11 +67,15 @@ module.exports = (db) => {
     }
   });
 
-  // Lire une clé spécifique (valeur complète, pour usage interne)
+  // Lire une clé spécifique
   router.get('/:cle', (req, res) => {
     try {
       const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get(req.params.cle);
       if (!row) return res.status(404).json({ erreur: 'Clé introuvable' });
+      // Masquer les clés sensibles
+      if (CLES_SENSIBLES.includes(req.params.cle) && row.valeur) {
+        return res.json({ cle: req.params.cle, valeur: row.valeur.substring(0, 8) + '••••••••', configured: true });
+      }
       res.json({ cle: req.params.cle, valeur: row.valeur });
     } catch (e) {
       res.status(500).json({ erreur: e.message });

@@ -21,22 +21,20 @@ module.exports = (db) => {
         FROM sequences s ORDER BY s.created_at DESC
       `).all();
 
-      const result = sequences.map(s => {
-        const etapes = db.prepare('SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC').all(s.id);
-        // Parser les pièces jointes JSON
-        const etapesParsed = etapes.map(e => {
-          let pieceJointe = null;
-          if (e.piece_jointe) {
-            try {
-              pieceJointe = JSON.parse(e.piece_jointe);
-            } catch (err) {
-              logger.warn('Erreur parsing piece_jointe', { etapeId: e.id, error: err.message });
-            }
-          }
-          return { ...e, piece_jointe: pieceJointe };
-        });
-        return { ...s, etapes: etapesParsed };
-      });
+      // Charger toutes les étapes en une seule requête (évite N+1)
+      const allEtapes = db.prepare('SELECT * FROM etapes ORDER BY sequence_id, ordre ASC').all();
+      const etapesParSequence = {};
+      for (const e of allEtapes) {
+        let pieceJointe = null;
+        if (e.piece_jointe) {
+          try { pieceJointe = JSON.parse(e.piece_jointe); }
+          catch (err) { logger.warn('Erreur parsing piece_jointe', { etapeId: e.id, error: err.message }); }
+        }
+        if (!etapesParSequence[e.sequence_id]) etapesParSequence[e.sequence_id] = [];
+        etapesParSequence[e.sequence_id].push({ ...e, piece_jointe: pieceJointe });
+      }
+
+      const result = sequences.map(s => ({ ...s, etapes: etapesParSequence[s.id] || [] }));
 
       res.json({ sequences: result });
     } catch (err) {

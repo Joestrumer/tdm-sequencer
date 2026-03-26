@@ -4,7 +4,11 @@
 
 const jwt = require('jsonwebtoken');
 
-const JWT_SECRET = process.env.PARTNER_JWT_SECRET || process.env.AUTH_SECRET || 'tdm-partner-secret';
+const JWT_SECRET = process.env.PARTNER_JWT_SECRET || process.env.AUTH_SECRET;
+if (!JWT_SECRET) {
+  console.error('⛔ FATAL : PARTNER_JWT_SECRET ou AUTH_SECRET doit être défini dans les variables d\'environnement');
+  process.exit(1);
+}
 
 function partnerAuth(req, res, next) {
   const header = req.headers.authorization || '';
