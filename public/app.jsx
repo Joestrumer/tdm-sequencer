@@ -1531,10 +1531,10 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   useEffect(() => {
     if (!showTooltip) return;
     const close = (e) => {
-      if (!e.target.closest('.relative.flex.items-center.gap-1')) setShowTooltip(null);
+      if (!e.target.closest('[data-info-popup]')) setShowTooltip(null);
     };
-    document.addEventListener('click', close);
-    return () => document.removeEventListener('click', close);
+    document.addEventListener('mousedown', close);
+    return () => document.removeEventListener('mousedown', close);
   }, [showTooltip]);
 
   // État pour les largeurs de colonnes redimensionnables
@@ -1850,7 +1850,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
         <div className="flex gap-2 overflow-x-auto">
-          <div className="relative flex items-center gap-1">
+          <div className="relative flex items-center gap-1" data-info-popup>
             <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
               {importStatus || "📥 Import CSV"}
             </button>
@@ -1869,7 +1869,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             )}
           </div>
           <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
-          <div className="relative flex items-center gap-1">
+          <div className="relative flex items-center gap-1" data-info-popup>
             <button onClick={async () => {
               const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
               if (r) { showToast('Sync HubSpot terminée', 'success'); if (onRefresh) onRefresh(); }
@@ -1889,7 +1889,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               </div>
             )}
           </div>
-          <div className="relative flex items-center gap-1">
+          <div className="relative flex items-center gap-1" data-info-popup>
             <button onClick={async () => {
               if (!await confirmDialog("Forcer l'envoi immédiat des emails en attente ?\n\nCela enverra tous les emails planifiés pour aujourd'hui.", { danger: true, confirmLabel: 'Forcer l\'envoi' })) return;
               setTriggerStatus("sending");
