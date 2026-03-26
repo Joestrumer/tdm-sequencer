@@ -55,6 +55,46 @@ function downloadFallback(blob, fileName) {
   URL.revokeObjectURL(url);
 }
 
+// ─── CONFIRM DIALOG ─────────────────────────────────────────────────────────
+const ConfirmDialog = ({ title, message, onConfirm, onCancel, confirmLabel = 'Confirmer', cancelLabel = 'Annuler', danger = false }) => {
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onCancel]);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[60]" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6" onClick={e => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-slate-900 mb-2">{title || 'Confirmation'}</h3>
+        <p className="text-sm text-slate-600 mb-6 whitespace-pre-line">{message}</p>
+        <div className="flex justify-end gap-2">
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200">{cancelLabel}</button>
+          <button onClick={onConfirm} className={`px-4 py-2 text-sm font-medium text-white rounded-lg ${danger ? 'bg-red-600 hover:bg-red-700' : 'bg-slate-900 hover:bg-slate-700'}`}>{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+function useConfirmDialog() {
+  const [state, setState] = useState(null);
+  const confirm = useCallback((message, options = {}) => {
+    return new Promise(resolve => {
+      setState({ message, ...options, resolve });
+    });
+  }, []);
+  const dialog = state ? (
+    <ConfirmDialog
+      title={state.title} message={state.message}
+      confirmLabel={state.confirmLabel} cancelLabel={state.cancelLabel} danger={state.danger}
+      onConfirm={() => { state.resolve(true); setState(null); }}
+      onCancel={() => { state.resolve(false); setState(null); }}
+    />
+  ) : null;
+  return { confirm, dialog };
+}
+
 // ─── HOOKS UTILITAIRES ──────────────────────────────────────────────────────────
 function useEscapeClose(onClose) {
   useEffect(() => {
@@ -450,6 +490,7 @@ function texteVersHtmlPreview(texte) {
 
 const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   useEscapeClose(onClose);
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [etapes, setEtapes] = useState(seq ? [...seq.etapes] : [{ jour: 0, sujet: "", corps: "" }]);
   const [nom, setNom] = useState(seq?.nom || "");
   const [segment, setSegment] = useState(seq?.segment || "5*");
@@ -528,7 +569,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const chargerPj = (file) => {
     if (!file) return;
     if (file.size > 5000000) {
-      alert("❌ Fichier trop volumineux (max 5 MB)");
+      window.showToast?.("Fichier trop volumineux (max 5 MB)", "error");
       return;
     }
     const reader = new FileReader();
@@ -543,13 +584,13 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
     // Si la séquence n'est pas encore sauvegardée, sauvegarder d'abord
     if (!seq?.id) {
-      if (!confirm("La séquence doit être sauvegardée avant de pouvoir tester un email. Sauvegarder maintenant ?")) {
+      if (!await confirmDialog("La séquence doit être sauvegardée avant de pouvoir tester un email. Sauvegarder maintenant ?", { confirmLabel: 'Sauvegarder' })) {
         setShowTestModal(false);
         return;
       }
       await handleSave();
       setShowTestModal(false);
-      alert("✅ Séquence sauvegardée. Veuillez rouvrir et cliquer à nouveau sur 'Tester cet email'");
+      window.showToast?.("Séquence sauvegardée. Rouvrez pour tester l'email.", "success");
       return;
     }
 
@@ -565,7 +606,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     setTestLoading(false);
 
     // Toast de confirmation
-    alert(`⏳ Envoi du test en cours vers ${emailToSend}...`);
+    window.showToast?.(`Envoi du test vers ${emailToSend}...`, "info");
 
     // Lancer l'envoi en background
     (async () => {
@@ -611,13 +652,13 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
           // Envoyer SEULEMENT cet email (nouvel endpoint dédié)
           await api.post('/sequences/test-email', { inscription_id: inscription.id });
 
-          alert(`✅ Test envoyé avec succès à ${emailToSend}`);
+          window.showToast?.(`Test envoyé à ${emailToSend}`, "success");
         } else {
           throw new Error("Inscription non trouvée");
         }
       } catch(err) {
         console.error(err);
-        alert('❌ Erreur : ' + (err.message || 'impossible d\'envoyer le test'));
+        window.showToast?.('Erreur : ' + (err.message || "impossible d'envoyer le test"), "error");
       } finally {
         // Libérer le verrou après 3 secondes pour permettre un nouveau test
         setTimeout(() => setTestInProgress(false), 3000);
@@ -1087,6 +1128,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
           </div>
         </div>
       )}
+      {confirmDialogEl}
     </div>
   );
 };
@@ -1457,6 +1499,7 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
 };
 
 const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [search, setSearch] = useState("");
   const [filterStatut, setFilterStatut] = useState("Tous");
   const [filterSegment, setFilterSegment] = useState("Tous");
@@ -1556,7 +1599,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 
   // ── Helpers extraits ────────────────────────────────────────────────
   const arreterSequence = async (lead) => {
-    if (!confirm(`Arrêter la séquence pour ${lead.prenom} ${lead.nom} ?`)) return;
+    if (!await confirmDialog(`Arrêter la séquence pour ${lead.prenom} ${lead.nom} ?`, { danger: true, confirmLabel: 'Arrêter' })) return;
     try {
       await api.post(`/sequences/stop-lead/${lead.id}`);
       showToast('Séquence arrêtée', 'success');
@@ -1676,7 +1719,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   // ── Actions lead ────────────────────────────────────────────────────────
   const supprimerLead = async (lead, e) => {
     if (e) e.stopPropagation();
-    if (!confirm(`Supprimer ${lead.prenom} ${lead.nom} (${lead.hotel}) ?`)) return;
+    if (!await confirmDialog(`Supprimer ${lead.prenom} ${lead.nom} (${lead.hotel}) ?`, { danger: true, confirmLabel: 'Supprimer' })) return;
     try {
       const result = await api.delete(`/leads/${lead.id}`);
       if (result?.erreur) {
@@ -1826,7 +1869,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           </div>
           <div className="flex items-center gap-1">
             <button onClick={async () => {
-              if (!confirm('Forcer l\'envoi immédiat des emails en attente ?\n\nCela enverra tous les emails planifiés pour aujourd\'hui.')) return;
+              if (!await confirmDialog("Forcer l'envoi immédiat des emails en attente ?\n\nCela enverra tous les emails planifiés pour aujourd'hui.", { danger: true, confirmLabel: 'Forcer l\'envoi' })) return;
               setTriggerStatus("sending");
               try { const r = await api.post("/sequences/trigger-now", {}); setTriggerStatus(r.erreur ? "error" : "done"); }
               catch(e) { setTriggerStatus("error"); }
@@ -1852,8 +1895,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <div className="flex flex-wrap items-center gap-2 md:gap-3 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm">
             <span className="font-medium">{selectedIds.size} lead{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
             <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer</button>
-            <button onClick={async () => { if(!confirm(`Arrêter les séquences de ${selectedIds.size} lead(s) ?`)) return; try { await api.post('/sequences/stop-batch', { lead_ids: Array.from(selectedIds) }); showToast('Séquences arrêtées','success'); setSelectedIds(new Set()); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600">⏹ Arrêter</button>
-            <button onClick={async (e) => { if(!confirm('Supprimer ' + selectedIds.size + ' leads ?')) return; const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Suppression...'; let errCount = 0; for(const id of selectedIds) { try { await api.delete('/leads/' + id); } catch(err) { errCount++; } } setSelectedIds(new Set()); if(onRefresh) onRefresh(); showToast(errCount ? `${selectedIds.size - errCount} supprimé(s), ${errCount} erreur(s)` : `${selectedIds.size} lead(s) supprimé(s)`, errCount ? 'error' : 'success'); btn.disabled = false; btn.textContent = '✕ Supprimer'; }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50">✕ Supprimer</button>
+            <button onClick={async () => { if(!await confirmDialog(`Arrêter les séquences de ${selectedIds.size} lead(s) ?`, { danger: true, confirmLabel: 'Arrêter' })) return; try { await api.post('/sequences/stop-batch', { lead_ids: Array.from(selectedIds) }); showToast('Séquences arrêtées','success'); setSelectedIds(new Set()); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600">⏹ Arrêter</button>
+            <button onClick={async (e) => { if(!await confirmDialog('Supprimer ' + selectedIds.size + ' leads ?', { danger: true, confirmLabel: 'Supprimer' })) return; const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Suppression...'; let errCount = 0; for(const id of selectedIds) { try { await api.delete('/leads/' + id); } catch(err) { errCount++; } } setSelectedIds(new Set()); if(onRefresh) onRefresh(); showToast(errCount ? `${selectedIds.size - errCount} supprimé(s), ${errCount} erreur(s)` : `${selectedIds.size} lead(s) supprimé(s)`, errCount ? 'error' : 'success'); btn.disabled = false; btn.textContent = '✕ Supprimer'; }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50">✕ Supprimer</button>
             <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-blue-200 hover:text-white text-xs">Annuler</button>
           </div>
         )}
@@ -2136,7 +2179,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 <button onClick={() => arreterSequence(selectedLead)} className="px-3 py-1.5 text-xs border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50">⏹️ Arrêter séquence</button>
               )}
               <button onClick={async () => {
-                if (!confirm(`Bloquer ${selectedLead.email} et l'ajouter à la blocklist ?`)) return;
+                if (!await confirmDialog(`Bloquer ${selectedLead.email} et l'ajouter à la blocklist ?`, { danger: true, confirmLabel: 'Bloquer' })) return;
                 try {
                   await api.post(`/blocklist/from-lead/${selectedLead.id}`, { raison: `Lead ${selectedLead.prenom} ${selectedLead.nom}` });
                   showToast('Lead ajouté à la blocklist', 'success');
@@ -2576,17 +2619,19 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           </div>
         </div>
       )}
+      {confirmDialogEl}
     </div>
   );
 };
 
 const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [testModal, setTestModal] = useState(null); // seq id
   const [testEmail, setTestEmail] = useState("");
   const [testLoading, setTestLoading] = useState(false);
 
   const supprimerSequence = async (seq) => {
-    if (!confirm(`Supprimer la séquence "${seq.nom}" ? Cette action est irréversible.`)) return;
+    if (!await confirmDialog(`Supprimer la séquence "${seq.nom}" ? Cette action est irréversible.`, { danger: true, confirmLabel: 'Supprimer' })) return;
     try {
       await api.delete(`/sequences/${seq.id}`);
       showToast('Séquence supprimée', 'success');
@@ -2711,6 +2756,7 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
         </div>
       </div>
     )}
+    {confirmDialogEl}
   </div>
   );
 };
@@ -7298,6 +7344,7 @@ const ModalAddShipment = ({ isOpen, onClose, onAdded, showToast }) => {
 
 // ─── Factures Envois (Dashboard tous les envois) ──────────────────────────────
 const FacturesShipments = ({ showToast }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [shipments, setShipments] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(false);
@@ -7356,7 +7403,7 @@ const FacturesShipments = ({ showToast }) => {
   };
 
   const deleteShipment = async (id) => {
-    if (!confirm('Supprimer cet envoi ?')) return;
+    if (!await confirmDialog('Supprimer cet envoi ?', { danger: true, confirmLabel: 'Supprimer' })) return;
     try {
       await api.delete(`/shipments/${id}`);
       showToast('Envoi supprimé', 'success');
@@ -7538,6 +7585,7 @@ const FacturesShipments = ({ showToast }) => {
           </div>
         )}
       </div>
+      {confirmDialogEl}
     </div>
   );
 };
@@ -7963,6 +8011,7 @@ const VueVosFacturesConfig = () => {
 
 // ─── Vue Blocklist ────────────────────────────────────────────────────────────
 const VueBlocklist = ({ onRefresh, showToast }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [blocklist, setBlocklist] = useState([]);
   const [loading, setLoading] = useState(false);
   const [newEntry, setNewEntry] = useState({ type: 'email', value: '', raison: '' });
@@ -7999,7 +8048,7 @@ const VueBlocklist = ({ onRefresh, showToast }) => {
   };
 
   const supprimerEntree = async (id) => {
-    if (!confirm('Retirer cette entrée de la blocklist ?')) return;
+    if (!await confirmDialog('Retirer cette entrée de la blocklist ?', { confirmLabel: 'Retirer' })) return;
     try {
       await api.delete(`/blocklist/${id}`);
       chargerBlocklist();
@@ -8162,12 +8211,14 @@ const VueBlocklist = ({ onRefresh, showToast }) => {
         <p className="mt-1"><strong>🌐 Domaine bloqué :</strong> Tous les emails du domaine (ex: @example.com) sont refusés</p>
         <p className="mt-1"><strong>✅ Permission expresse :</strong> Permet l'envoi malgré le blocage (à activer manuellement)</p>
       </div>
+      {confirmDialogEl}
     </div>
   );
 };
 
 // ─── VUE TEMPLATES ────────────────────────────────────────────────────────────
 const VueTemplates = ({ showToast }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [templates, setTemplates] = useState([]);
   const [categories, setCategories] = useState(['Tous']);
   const [filterCategorie, setFilterCategorie] = useState('Tous');
@@ -8194,7 +8245,7 @@ const VueTemplates = ({ showToast }) => {
   }, [filterCategorie]);
 
   const deleteTemplate = async (id) => {
-    if (!confirm('Supprimer ce template ?')) return;
+    if (!await confirmDialog('Supprimer ce template ?', { danger: true, confirmLabel: 'Supprimer' })) return;
     try {
       await api.delete('/email-templates/' + id);
       showToast('Template supprimé', 'success');
@@ -8311,6 +8362,7 @@ const VueTemplates = ({ showToast }) => {
           showToast={showToast}
         />
       )}
+      {confirmDialogEl}
     </div>
   );
 };
@@ -8487,6 +8539,7 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
 
 // ─── VUE COMMANDES PARTENAIRES ────────────────────────────────────────────────
 const VueCommandes = ({ showToast }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [commandes, setCommandes] = useState([]);
   const [counts, setCounts] = useState({ en_attente: 0, validee: 0, annulee: 0, total: 0 });
   const [filtre, setFiltre] = useState("tous");
@@ -8600,7 +8653,7 @@ const VueCommandes = ({ showToast }) => {
   };
 
   const annulerCommande = async (id) => {
-    if (!confirm('Annuler cette commande ?')) return;
+    if (!await confirmDialog('Annuler cette commande ?', { danger: true, confirmLabel: 'Annuler la commande' })) return;
     try {
       const res = await api.post(`/partner-orders/${id}/cancel`);
       if (res.ok) {
@@ -8886,12 +8939,14 @@ const VueCommandes = ({ showToast }) => {
           );
         })}
       </div>
+      {confirmDialogEl}
     </div>
   );
 };
 
 // ─── VUE PARTENAIRES (onglet dédié) ──────────────────────────────────────────
 const VuePartenaires = ({ showToast }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -9290,7 +9345,7 @@ const VuePartenaires = ({ showToast }) => {
                           <td className="py-1.5 text-right text-emerald-600 font-medium">{d.discount_pct}%</td>
                           <td className="py-1.5 text-right">
                             <button onClick={async () => {
-                              if (!confirm(`Supprimer la réduction ${d.product_code} (${d.discount_pct}%) ?`)) return;
+                              if (!await confirmDialog(`Supprimer la réduction ${d.product_code} (${d.discount_pct}%) ?`, { danger: true, confirmLabel: 'Supprimer' })) return;
                               try {
                                 await api.delete(`/reference/partners/${selected.id}/discounts/${d.id}`);
                                 setDiscounts(ds => ds.filter(x => x.id !== d.id));
@@ -9358,6 +9413,7 @@ const VuePartenaires = ({ showToast }) => {
           </div>
         )}
       </div>
+      {confirmDialogEl}
     </div>
   );
 };
@@ -9495,6 +9551,7 @@ const PERM_TABS = [
 ];
 
 const VueEquipe = ({ showToast }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [users, setUsers] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -9521,7 +9578,7 @@ const VueEquipe = ({ showToast }) => {
   };
 
   const supprimerUser = async (user) => {
-    if (!confirm(`Supprimer définitivement ${user.nom} (${user.email}) ?`)) return;
+    if (!await confirmDialog(`Supprimer définitivement ${user.nom} (${user.email}) ?`, { danger: true, confirmLabel: 'Supprimer' })) return;
     try {
       const res = await api.delete(`/users/${user.id}`);
       if (res.erreur) throw new Error(res.erreur);
@@ -9622,6 +9679,7 @@ const VueEquipe = ({ showToast }) => {
           showToast={showToast}
         />
       )}
+      {confirmDialogEl}
     </div>
   );
 };
@@ -9848,11 +9906,14 @@ function App() {
     window.location.reload();
   }
 
-  const showToast = (message, type = "info") => {
+  const showToast = useCallback((message, type = "info") => {
     clearTimeout(toastTimer.current);
     setToast({ message, type, visible: true });
     toastTimer.current = setTimeout(() => setToast(t => ({ ...t, visible: false })), 3000);
-  };
+  }, []);
+
+  // Exposer showToast globalement pour les composants sans prop
+  useEffect(() => { window.showToast = showToast; }, [showToast]);
 
   // Charger les données au démarrage (résilient aux permissions)
   const chargerRetries = useRef(0);
