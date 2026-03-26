@@ -7920,8 +7920,108 @@ const VueParametres = () => {
         {saving ? "Sauvegarde..." : "Enregistrer les paramètres"}
       </button>
 
+      <VueApiExterne />
       <VueHubspot />
       <VueVosFacturesConfig />
+    </div>
+  );
+};
+
+// ─── Config API Externe ───────────────────────────────────────────────────────
+const VueApiExterne = () => {
+  const [apiKey, setApiKey] = useState('');
+  const [configured, setConfigured] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [currentKey, setCurrentKey] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.external_api_key && cfg.external_api_key !== '') {
+        setConfigured(true);
+        setCurrentKey(cfg.external_api_key);
+      }
+    }).catch(() => {});
+  }, []);
+
+  const genererCle = () => {
+    const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
+    let key = 'tdm_';
+    for (let i = 0; i < 32; i++) key += chars.charAt(Math.floor(Math.random() * chars.length));
+    setApiKey(key);
+  };
+
+  const sauvegarderCle = async () => {
+    if (!apiKey) return;
+    setSaving(true); setMsg('');
+    try {
+      await api.post('/config', { external_api_key: apiKey });
+      setConfigured(true);
+      setCurrentKey(apiKey.substring(0, 8) + '••••••••');
+      setApiKey('');
+      setMsg('Clé API externe sauvegardée');
+    } catch(e) { setMsg('Erreur'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">API Externe</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Pour Make, Zapier, n8n ou tout outil externe</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs ${configured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${configured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {configured ? "Configurée" : "Non configurée"}
+        </div>
+      </div>
+
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Clé API (X-API-Key)</label>
+        <div className="flex gap-2">
+          <input type={showKey ? "text" : "password"} value={apiKey} onChange={e => setApiKey(e.target.value)} placeholder={configured ? "Nouvelle clé (laisser vide pour conserver)" : "Générer ou coller une clé"} className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <button onClick={() => setShowKey(!showKey)} className="px-2 text-xs text-slate-400 hover:text-slate-600">{showKey ? '🙈' : '👁'}</button>
+          <button onClick={genererCle} className="px-3 py-2 text-xs bg-slate-100 text-slate-600 rounded-lg hover:bg-slate-200">Générer</button>
+        </div>
+      </div>
+
+      {apiKey && (
+        <button onClick={sauvegarderCle} disabled={saving} className="px-4 py-2 bg-slate-900 text-white text-sm rounded-lg hover:bg-slate-700 disabled:opacity-50">
+          {saving ? "Sauvegarde..." : "Sauvegarder la clé"}
+        </button>
+      )}
+
+      {msg && <p className="text-xs text-emerald-600">{msg}</p>}
+
+      {configured && (
+        <div className="bg-slate-50 rounded-xl p-4 text-xs text-slate-600 space-y-2">
+          <div className="font-semibold text-slate-800">Endpoint</div>
+          <code className="block bg-white border border-slate-200 rounded-lg px-3 py-2 text-[11px] font-mono">POST /api/external/push-lead</code>
+          <div className="font-semibold text-slate-800 mt-3">Exemple</div>
+          <pre className="bg-white border border-slate-200 rounded-lg px-3 py-2 text-[11px] font-mono overflow-x-auto whitespace-pre">{`curl -X POST https://votre-domaine/api/external/push-lead \\
+  -H "X-API-Key: votre-cle" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+    "email": "sophie@hotel.com",
+    "prenom": "Sophie",
+    "hotel": "Le Bristol",
+    "sequence_nom": "Luxe Welcome"
+  }'`}</pre>
+          <div className="font-semibold text-slate-800 mt-3">Champs acceptés</div>
+          <div className="grid grid-cols-2 gap-1 text-[11px]">
+            <span><strong>email</strong> (requis)</span>
+            <span><strong>prenom</strong> (requis)</span>
+            <span><strong>hotel</strong> (requis)</span>
+            <span>nom, ville, segment</span>
+            <span>poste, langue, campaign</span>
+            <span>comment, tags[]</span>
+            <span>sequence_id ou sequence_nom</span>
+            <span>hubspot_sync (default: true)</span>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

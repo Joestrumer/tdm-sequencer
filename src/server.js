@@ -117,11 +117,15 @@ app.post('/api/auth/login', (req, res, next) => {
   authRoutes(req, res, next);
 });
 
+// API externe (auth par X-API-Key, avant le middleware JWT)
+app.use('/api/external', require('./routes/external')(db));
+
 // Auth middleware global
 app.use('/api', (req, res, next) => {
   if (req.path === '/health') return next();
   if (req.path.startsWith('/tracking')) return next();
   if (req.path.startsWith('/partenaire')) return next();
+  if (req.path.startsWith('/external')) return next();
   if (req.path === '/auth/login') return next();
   authMiddleware(db)(req, res, next);
 });
