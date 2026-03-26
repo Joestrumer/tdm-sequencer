@@ -1525,13 +1525,21 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailTab, setDetailTab] = useState('timeline'); // 'timeline' | 'emails' | 'hubspot'
   const [showTooltip, setShowTooltip] = useState(null);   // "csv" | "sync" | "trigger" | null
+  const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
   const csvRef = useRef(null);
+
+  const toggleTooltip = (key, e) => {
+    if (showTooltip === key) { setShowTooltip(null); return; }
+    const rect = e.currentTarget.getBoundingClientRect();
+    setTooltipPos({ top: rect.bottom + 6, left: Math.max(8, rect.left - 100) });
+    setShowTooltip(key);
+  };
 
   // Fermer le popover au clic en dehors
   useEffect(() => {
     if (!showTooltip) return;
     const close = (e) => {
-      if (!e.target.closest('[data-info-popup]')) setShowTooltip(null);
+      if (!e.target.closest('[data-info-popup]') && !e.target.closest('[data-info-popover]')) setShowTooltip(null);
     };
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
@@ -1850,26 +1858,19 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
         <div className="flex gap-2 overflow-x-auto">
-          <div className="relative flex items-center gap-1" data-info-popup>
+          <div className="flex items-center gap-1" data-info-popup>
             <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
               {importStatus || "📥 Import CSV"}
             </button>
             <button
-              onClick={() => setShowTooltip(showTooltip === 'csv' ? null : 'csv')}
+              onClick={(e) => toggleTooltip('csv', e)}
               className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs flex items-center justify-center font-bold"
             >
               ℹ️
             </button>
-            {showTooltip === 'csv' && (
-              <div className="absolute top-full left-0 mt-1 z-50 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-64">
-                <p className="font-medium mb-1">Format CSV :</p>
-                <p className="text-slate-300">prenom, nom, email, hotel, ville, segment, poste, langue</p>
-                <p className="text-slate-300 mt-1">Requis : <span className="text-white font-medium">email, hotel, prenom</span></p>
-              </div>
-            )}
           </div>
           <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
-          <div className="relative flex items-center gap-1" data-info-popup>
+          <div className="flex items-center gap-1" data-info-popup>
             <button onClick={async () => {
               const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
               if (r) { showToast('Sync HubSpot terminée', 'success'); if (onRefresh) onRefresh(); }
@@ -1878,18 +1879,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               🔄 Sync HS
             </button>
             <button
-              onClick={() => setShowTooltip(showTooltip === 'sync' ? null : 'sync')}
+              onClick={(e) => toggleTooltip('sync', e)}
               className="w-5 h-5 rounded-full bg-orange-100 text-orange-500 hover:bg-orange-200 text-xs flex items-center justify-center font-bold"
             >
               ℹ️
             </button>
-            {showTooltip === 'sync' && (
-              <div className="absolute top-full left-0 mt-1 z-50 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-64">
-                <p>Synchroniser tous les leads avec HubSpot (contacts + entreprises)</p>
-              </div>
-            )}
           </div>
-          <div className="relative flex items-center gap-1" data-info-popup>
+          <div className="flex items-center gap-1" data-info-popup>
             <button onClick={async () => {
               if (!await confirmDialog("Forcer l'envoi immédiat des emails en attente ?\n\nCela enverra tous les emails planifiés pour aujourd'hui.", { danger: true, confirmLabel: 'Forcer l\'envoi' })) return;
               setTriggerStatus("sending");
@@ -1900,16 +1896,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               {triggerStatus === "sending" ? "⟳ Envoi..." : triggerStatus === "done" ? "✓ Envoyé" : triggerStatus === "error" ? "✗ Erreur" : "⚡ Envoyer"}
             </button>
             <button
-              onClick={() => setShowTooltip(showTooltip === 'trigger' ? null : 'trigger')}
+              onClick={(e) => toggleTooltip('trigger', e)}
               className="w-5 h-5 rounded-full bg-amber-100 text-amber-600 hover:bg-amber-200 text-xs flex items-center justify-center font-bold"
             >
               ℹ️
             </button>
-            {showTooltip === 'trigger' && (
-              <div className="absolute top-full right-0 mt-1 z-50 bg-slate-800 text-white text-xs rounded-lg px-3 py-2 shadow-lg w-72">
-                <p>Force l'envoi immédiat des emails planifiés (bypass fenêtre horaire)</p>
-              </div>
-            )}
           </div>
           <button onClick={() => setShowAdd(true)} className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors whitespace-nowrap">+ Ajouter</button>
         </div>
@@ -2644,6 +2635,23 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             )}
 
           </div>
+        </div>
+      )}
+      {/* Popover ℹ️ en position fixe (hors overflow) */}
+      {showTooltip && (
+        <div data-info-popover style={{ position: 'fixed', top: tooltipPos.top, left: tooltipPos.left, zIndex: 9999 }}
+          className="bg-slate-800 text-white text-xs rounded-lg px-3 py-2.5 shadow-xl max-w-xs animate-in fade-in">
+          {showTooltip === 'csv' && (<>
+            <p className="font-semibold mb-1">Format CSV :</p>
+            <p className="text-slate-300">prenom, nom, email, hotel, ville, segment, poste, langue</p>
+            <p className="text-slate-300 mt-1.5">Requis : <span className="text-white font-semibold">email, hotel, prenom</span></p>
+          </>)}
+          {showTooltip === 'sync' && (
+            <p>Synchroniser tous les leads avec HubSpot (contacts + entreprises)</p>
+          )}
+          {showTooltip === 'trigger' && (
+            <p>Force l'envoi immédiat des emails planifiés (bypass fenêtre horaire)</p>
+          )}
         </div>
       )}
       {confirmDialogEl}
