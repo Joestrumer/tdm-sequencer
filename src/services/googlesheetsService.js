@@ -97,6 +97,7 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
     'groupe franck putelat attn aurore': 'Hôtel Le Parc',
     'groupe franck putelat': 'Hôtel Le Parc',
     'franck putelat': 'Hôtel Le Parc',
+    'hotel le rodrigue boronali': 'Hôtel Boronali (Le Rodrigue)',
   };
   if (manualAliases[vfNorm]) {
     logger.debug(`🎯 Alias manuel: "${vfName}" → "${manualAliases[vfNorm]}"`);

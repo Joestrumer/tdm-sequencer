@@ -306,6 +306,19 @@ for (const sql of migrations) {
   }
 }
 
+// ─── Data fixes : mappings clients manquants ────────────────────────────────
+const missingClientMappings = [
+  { vf_name: 'Hotel Le Rodrigue (Boronali)', file_name: 'Hôtel Boronali (Le Rodrigue)' },
+];
+for (const m of missingClientMappings) {
+  const exists = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(m.vf_name);
+  if (!exists) {
+    try {
+      db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name) VALUES (?, ?)').run(m.vf_name, m.file_name);
+    } catch (e) { /* ignore */ }
+  }
+}
+
 // ─── Seed produits manquants ──────────────────────────────────────────────────
 const MISSING_PRODUCTS = [
   { ref: 'P036', nom: 'Lotion Mains & Corps Élégance 500ml', prix_ht: 10, moq: 6 },

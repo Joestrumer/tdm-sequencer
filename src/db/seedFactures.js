@@ -267,6 +267,7 @@ const clientNameMapping = {
   "Relais de Saint-Preuil": "Relais de Saint-Preuil",
   "DS Café": "DS_Niel et Franklin",
   "Hôtel Boronali": "Hôtel Boronali (Le Rodrigue)",
+  "Hotel Le Rodrigue (Boronali)": "Hôtel Boronali (Le Rodrigue)",
   "Escale Marine": "Escale Marine",
   "Chateauform Hotel de France": "Chateauform",
   "Le Domaine de l'Ecorcerie": "Le Domaine de l'Ecorcerie",
