@@ -477,7 +477,8 @@ const seedAll = db.transaction(() => {
     ON CONFLICT(ref) DO UPDATE SET
       vf_product_id = excluded.vf_product_id, nom = excluded.nom,
       prix_ht = excluded.prix_ht, tva = excluded.tva,
-      csv_ref = excluded.csv_ref, vf_ref = excluded.vf_ref
+      csv_ref = excluded.csv_ref, vf_ref = excluded.vf_ref,
+      actif = 1
   `);
   let catCount = 0;
   for (const [ref, entry] of Object.entries(masterCatalog)) {

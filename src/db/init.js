@@ -341,12 +341,19 @@ const MISSING_PRODUCTS = [
 ];
 
 const stmtInsertProduct = db.prepare('INSERT OR IGNORE INTO vf_catalog (ref, nom, prix_ht, moq) VALUES (?, ?, ?, ?)');
+const stmtActivateProduct = db.prepare('UPDATE vf_catalog SET actif = 1 WHERE ref = ? AND actif = 0');
 let productsInserted = 0;
+let productsActivated = 0;
 for (const p of MISSING_PRODUCTS) {
   const r = stmtInsertProduct.run(p.ref, p.nom, p.prix_ht, p.moq);
   if (r.changes > 0) productsInserted++;
+  else {
+    const a = stmtActivateProduct.run(p.ref);
+    if (a.changes > 0) productsActivated++;
+  }
 }
 if (productsInserted > 0) console.log(`🆕 ${productsInserted} produit(s) manquant(s) ajouté(s) au catalogue`);
+if (productsActivated > 0) console.log(`✅ ${productsActivated} produit(s) réactivé(s) dans le catalogue`);
 
 // ─── Correction noms produits ────────────────────────────────────────────────
 const NOM_CORRECTIONS = {
