@@ -476,10 +476,13 @@ function parseOrderText(text) {
     .replace(/\s+/g, ' ')
     .trim();
 
+  const knownAccRefs = new Set(['PFS', 'PFD', 'PFT', 'SPFS', 'PFDS', 'PFSS', 'PFTS', 'P500ML', 'BAV', 'COFFRETS', 'SPRAY-VIDE']);
+
   const localNormalizeRef = (ref, lineNorm) => {
     if (!ref) return null;
     let r = ref.toUpperCase().replace(/\s+/g, '').replace(/_/g, '-');
     if (r === 'P5L') return 'P5L';
+    if (knownAccRefs.has(r)) return r === 'P500ML' ? 'P500ml' : r;
 
     const hn = r.match(/^[HN]-?(\d{3})$/);
     if (hn) {
@@ -513,6 +516,10 @@ function parseOrderText(text) {
     { re: /(?=.*(gel|wash|nettoyant|lavant))(?=.*(corps|corporel|body))(?=.*(cheveu|hair))(?=.*(irrever|irr[eé]ver))(?=.*5\s*l)/, ref: 'P014-5000' },
     { re: /(?=.*(gel|wash|nettoyant|lavant))(?=.*(corps|corporel|body))(?=.*(cheveu|hair))(?=.*(irrever|irr[eé]ver))/, ref: 'P014' },
     { re: /coffret/, ref: 'COFFRETS' },
+    { re: /porte.?flacon.*triple/, ref: 'PFT' },
+    { re: /porte.?flacon.*double/, ref: 'PFD' },
+    { re: /porte.?flacon.*simple.*securi|porte.?flacon.*temperproof/, ref: 'SPFS' },
+    { re: /porte.?flacon.*simple/, ref: 'PFS' },
   ];
 
   const lines = cleaned.split('\n')
@@ -520,16 +527,29 @@ function parseOrderText(text) {
     .filter(Boolean)
     .filter(l => !/^bonjour\b/i.test(l) && !/^j['']esp[eè]re\b/i.test(l));
 
+  // Refs accessoires reconnues (non-numériques)
+  const accRefs = 'PFS|PFD|PFT|SPFS|PFDS|PFSS|PFTS|P500ml|BAV|COFFRETS|SPRAY-VIDE';
+  const accPat = new RegExp(`(${accRefs})`, 'gi');
+
   const refPatterns = [
+    // Accessoires: 2 x PFS, PFD x 3, 10 PFT, PFS 5, etc.
+    new RegExp(`(\\d+)\\s*x\\s*(${accRefs})`, 'gi'),
+    new RegExp(`(${accRefs})\\s*x\\s*(\\d+)`, 'gi'),
+    new RegExp(`(\\d+)\\s+(${accRefs})\\b`, 'gi'),
+    new RegExp(`(${accRefs})\\s+(\\d+)\\b`, 'gi'),
+    new RegExp(`(${accRefs})\\s*:\\s*(\\d+)`, 'gi'),
+    // P5L
     /(\d+)\s*x\s*(P5L)/gi,
     /(P5L)\s*x\s*(\d+)/gi,
     /(\d+)\s+(P5L)\b/gi,
     /(P5L)\s+(\d+)\b/gi,
+    // Pxxx standard
     /(\d+)\s*x\s*([Pp]\d{3}(?:-\d+)?)/g,
     /([Pp]\d{3}(?:-\d+)?)\s*x\s*(\d+)/g,
     /(\d+)\s+([Pp]\d{3}(?:-\d+)?)/g,
     /([Pp]\d{3}(?:-\d+)?)\s*:\s*(\d+)/g,
     /([Pp]\d{3}(?:-\d+)?)\s+(\d+)/g,
+    // H/N refs
     /(\d+)\s*x\s*([HhNn]\s*-?\s*\d{3})/g,
     /([HhNn]\s*-?\s*\d{3})\s*x\s*(\d+)/g,
   ];
@@ -550,7 +570,7 @@ function parseOrderText(text) {
 
     // Format tabulaire: P039 Description... 12 ( 24,00)
     // Ligne commence par une référence, quantité plus loin
-    const tabularMatch = line.match(/^([Pp]\d{3}(?:-\d+)?|P5L|[HhNn]\s*-?\s*\d{3})\s+(.+?)(\d{1,4})\s+[\(\[]?\s*[\d,\.]+\s*[\)\]]?\s*€/);
+    const tabularMatch = line.match(new RegExp(`^([Pp]\\d{3}(?:-\\d+)?|P5L|${accRefs}|[HhNn]\\s*-?\\s*\\d{3})\\s+(.+?)(\\d{1,4})\\s+[\\(\\[]?\\s*[\\d,\\.]+\\s*[\\)\\]]?\\s*€`, 'i'));
     if (tabularMatch) {
       const ref = tabularMatch[1];
       const quantity = parseInt(tabularMatch[3], 10);
