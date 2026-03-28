@@ -48,7 +48,15 @@ module.exports = (db) => {
   function resolveCanonicalClientName(vfName) {
     if (!vfName) return vfName;
     const mapping = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
-    return (mapping && mapping.file_name) || vfName;
+    if (mapping && mapping.file_name) return mapping.file_name;
+    // Essayer sans le nom de contact (ex: "Loire Valley Lodges - Anne Caroline FREY" → "Loire Valley Lodges")
+    const dashIdx = vfName.indexOf(' - ');
+    if (dashIdx > 0) {
+      const stripped = vfName.substring(0, dashIdx).trim();
+      const m2 = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(stripped);
+      if (m2 && m2.file_name) return m2.file_name;
+    }
+    return vfName;
   }
 
   function getForcedPrices() {

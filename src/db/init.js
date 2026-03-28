@@ -319,6 +319,67 @@ for (const m of missingClientMappings) {
   }
 }
 
+// ─── Sync partenaires canoniques manquants ──────────────────────────────────
+const CANONICAL_PARTNERS = [
+  "MyNestinn", "KYRIAD PRESTIGE PERPIGNAN", "Maison Eugenie", "Villa Panthéon",
+  "ACCOR ALL Hearties 1", "Douglas Italy", "Hôtel de La Groirie", "Villa Beaumarchais",
+  "ACCOR ALL Hearties 2", "ACCOR ALL Hearties 3", "ACCOR ALL Hearties 4",
+  "AVIS website 1", "AVIS website 2", "Sofitel Paris Baltimore Tour Eiffel",
+  "Nocibe reappro new products", "AVIS website 3", "1K Paris", "Coupon HELLOCSE",
+  "AVIS website 4", "HK MONTMARTRE", "HK Montparnasse", "HK Eiffel", "HK Saint Marcel",
+  "club employé", "AVIS website 5", "Life Hotels Bordeaux", "Escale Blanche",
+  "Kraft Hotel", "Hello CSE - 17,5€", "Hotel Waldorf Trocadero",
+  "Dream Hotel Opera (Théorème)", "Flacons vides entrepot SHURGARD SELF STORAGE ASNIERES",
+  "HK Sorbonne", "Better Beauty Box", "Monsieur Alfred", "Barry's Bootcamp Paris",
+  "HK OPERA", "Hôtel Oré Saint Malo", "Hotel Claridge", "HK Etoile",
+  "Hôtel Grand Cœur Latin", "Hôtel Le Renaissance",
+  "Shooting photo Lancaster Mrs Dong Jihyun 11/02/24", "Hôtel La Balance",
+  "Chateau des Arpentis", "Château de Sannes", "BAO Chambres d'hôtes",
+  "Hôtel de Mougins", "Le Château de Cop Choux", "Holmes Place Austria",
+  "le Beau Moulin", "Lodging Le Lac", "Domaine de Canaille",
+  "Hôtel Restaurant des Iles", "Auberge Du Cabestan", "Hotel Le A",
+  "HK LOUVRE", "HK CHÂTELET", "Sangha Hotels", "Hotel Nyx", "Hotel Marina Adelphia",
+  "Le Château d'Argens", "Hôtel Le Parc", "Hotel Clairefontaine", "Hôtel La Résidence",
+  "Domaine des Bidaudières", "Au Lion Rouge", "La Fraichette", "Le Saint Nicolas",
+  "Les Chalets De La Clusaz", "My Ginger", "Stendhal", "Hotel Stanley",
+  "Hôtel L'Ormaie", "Hôtel Moderniste", "Marcel Aymé", "Le Swann", "Arthur Rimbaud",
+  "Daroco Bourse", "Daroco 16", "Daroco Soho",
+  "Kyriad Prestige Residence & Spa Cabourg-Dives-sur-Mer", "Les chalets Covarel",
+  "Alexandre Vialatte", "Gustave Flaubert", "Manoir des Douets Fleuris",
+  "Snov.io Starter Monthly Subscription - October 2024", "Omar Dhiab", "Institut Corpo",
+  "Yangon Excelsior Hotel", "Le Domaine du Pech Eternel",
+  "Snov.io Starter Monthly Subscription - November 2024", "Château des Ayes",
+  "Snov.io Starter 2025 Annual Subscription - Black Friday offer", "HOTEL 96",
+  "Hôtel au Coq Dort Spa", "Chalet B", "IMMOBILIERE DU BOURGAGE",
+  "La Maison Normande", "Pantoufle Hôtels", "La Source", "Relais de Saint-Preuil",
+  "DS_Niel et Franklin", "DS_Defense et Lafayette", "DS_Victor Hugo", "DS_Boulogne",
+  "DS_Parly 2", "DS_Lyon", "DS_Bordeaux", "Hôtel Boronali (Le Rodrigue)",
+  "Escale Marine", "Chateauform", "Hotel de France", "Le Domaine de l'Ecorcerie",
+  "Hôtel Abbaye du Golf", "Suite Balnéo Canet", "Carlton Hotel St. Moritz",
+  "Les Rives Oceanik", "Causse Comtal", "Hôtel du golf lacanau (La Baignoire)",
+  "Château de Blanat", "Casa del Capitan", "Globe et Cecil Hotel", "Jost Hotel Lille",
+  "Chalets Uto", "Loire Valley Lodges", "Le Mas Vidau", "Les Relais Du Capitole",
+  "The Central (Loewe)", "The Bradery", "Hôtel Elysées Bassano",
+  "Conquer Your Day (Blanche)", "Mana Homes", "Le Swann (mariage)", "HILO Collection",
+  "HK République", "Hôtel des Mines", "Jost Hotel Montpellier Gare",
+  "Shd Invest Srl - Shams Demaret", "Hôtel le Portillo", "Hôtel Bourgogne & Montana",
+  "Hôtel Provençal Bandol", "Hôtel Le Lyret", "Hôtel Le Faucigny",
+  "Appart'Hôtel Le Génépy", "Hôtel des 2 Gares", "Plan B Chamonix",
+  "Plan B Saint Gervais", "CAMPUS ENGIE", "Les Pins Blancs", "Chalet APY",
+  "La Trêve", "Chamkeys Prestige", "DS_Reims", "Maison Montgrand", "Juliana Brussel",
+  "Les Airelles", "L'Hermitage", "Osmo Studio",
+  "Pisco and co sas Le Manoir de la Campagne",
+  "Hôtel Best Western Saint Antoine - Ksenia LISSINE",
+];
+const normPartner = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+const stmtInsertPartner = db.prepare('INSERT OR IGNORE INTO vf_partners (nom, nom_normalise) VALUES (?, ?)');
+let partnersInserted = 0;
+for (const name of CANONICAL_PARTNERS) {
+  const r = stmtInsertPartner.run(name, normPartner(name));
+  if (r.changes > 0) partnersInserted++;
+}
+if (partnersInserted > 0) console.log(`🏨 ${partnersInserted} partenaire(s) ajouté(s)`);
+
 // ─── Seed produits manquants ──────────────────────────────────────────────────
 const MISSING_PRODUCTS = [
   { ref: 'P036', nom: 'Lotion Mains & Corps Élégance 500ml', prix_ht: 10, moq: 6 },

@@ -47,7 +47,15 @@ function getAuth(db) {
 function resolveCanonicalClientName(db, vfName) {
   if (!vfName) return vfName;
   const mapping = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
-  return (mapping && mapping.file_name) || vfName;
+  if (mapping && mapping.file_name) return mapping.file_name;
+  // Essayer sans le nom de contact (ex: "Loire Valley Lodges - Anne Caroline FREY" → "Loire Valley Lodges")
+  const dashIdx = vfName.indexOf(' - ');
+  if (dashIdx > 0) {
+    const stripped = vfName.substring(0, dashIdx).trim();
+    const m2 = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(stripped);
+    if (m2 && m2.file_name) return m2.file_name;
+  }
+  return vfName;
 }
 
 /**
@@ -72,6 +80,24 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
     .replace(/\s+/g, ' ')
     .trim();
 
+  // Nettoyer le nom VF : retirer le nom de contact après " - " (ex: "Loire Valley Lodges - Anne Caroline FREY")
+  // Sauf si le tiret fait partie du nom canonique connu (ex: "Hello CSE - 17,5€", "Shd Invest Srl - Shams Demaret")
+  const stripContact = (name) => {
+    const dashIdx = name.indexOf(' - ');
+    if (dashIdx < 0) return name;
+    const before = name.substring(0, dashIdx).trim();
+    const after = name.substring(dashIdx + 3).trim();
+    // Si la partie après le tiret ressemble à un nom de personne (mots courts, pas de mots-clés hôtel)
+    // Heuristique : si après le tiret il y a 1-4 mots et pas de chiffres/mots-clés
+    const hotelKeywords = /hotel|spa|resort|lodge|chateau|maison|chalet|domaine|auberge|villa|gîte|campagne/i;
+    if (!hotelKeywords.test(after) && /^[A-Za-zÀ-ÿ\s'-]+$/.test(after) && after.split(/\s+/).length <= 4) {
+      return before;
+    }
+    return name;
+  };
+
+  const cleanedVfName = stripContact(vfName);
+
   // Normaliser la liste canon et filtrer les doublons (préférer noms courts)
   let cleanCanonList = (Array.isArray(canonList) ? canonList : [])
     .map(n => String(n || '').trim())
@@ -87,7 +113,8 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
   }
   cleanCanonList = Array.from(dedupeMap.values());
 
-  const vfNorm = norm(vfName);
+  const vfNorm = norm(cleanedVfName);
+  const vfNormFull = norm(vfName);
 
   // Aliases manuels (priorité la plus haute)
   const manualAliases = {
@@ -103,9 +130,17 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
     logger.debug(`🎯 Alias manuel: "${vfName}" → "${manualAliases[vfNorm]}"`);
     return manualAliases[vfNorm];
   }
+  if (vfNormFull !== vfNorm && manualAliases[vfNormFull]) {
+    logger.debug(`🎯 Alias manuel (full): "${vfName}" → "${manualAliases[vfNormFull]}"`);
+    return manualAliases[vfNormFull];
+  }
 
   // Debug: afficher le nom normalisé pour faciliter le débogage
-  logger.debug(`🔍 Mapping "${vfName}" → normalisé: "${vfNorm}"`);
+  if (vfNorm !== vfNormFull) {
+    logger.debug(`🔍 Mapping "${vfName}" → nettoyé: "${cleanedVfName}" → normalisé: "${vfNorm}"`);
+  } else {
+    logger.debug(`🔍 Mapping "${vfName}" → normalisé: "${vfNorm}"`);
+  }
 
   // Règle spéciale: hôtels Korner -> noms "HK ..." (nouveau format de suivi)
   if (vfNorm.includes('korner')) {

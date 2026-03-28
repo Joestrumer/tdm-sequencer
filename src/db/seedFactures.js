@@ -142,6 +142,7 @@ const CANONICAL_PARTNER_NAMES = [
   "La Trêve", "Chamkeys Prestige", "DS_Reims", "Maison Montgrand", "Juliana Brussel",
   "Les Airelles", "L'Hermitage", "Osmo Studio",
   "Pisco and co sas Le Manoir de la Campagne",
+  "Hôtel Best Western Saint Antoine - Ksenia LISSINE",
 ];
 
 // ─── Remises par client ───────────────────────────────────────────────────────
