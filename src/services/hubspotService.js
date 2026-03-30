@@ -298,6 +298,41 @@ async function creerTaskFinSequence(db, lead, nomSequence) {
   }
 }
 
+// ─── Créer une task de relance à +N mois ────────────────────────────────────
+async function creerTaskRelance(db, lead, nomSequence, delaiMois) {
+  if (!getApiKey() || !delaiMois) return;
+  try {
+    const dateEcheance = Date.now() + delaiMois * 30 * 24 * 3600 * 1000;
+    const dateLancement = new Date().toLocaleDateString('fr-FR');
+
+    await hubspotFetch('/engagements/v1/engagements', {
+      method: 'POST',
+      body: JSON.stringify({
+        engagement: {
+          active: true,
+          type: 'TASK',
+          timestamp: Date.now(),
+          ownerId: parseInt(HUGO_OWNER_ID),
+        },
+        associations: {
+          contactIds: lead.hubspot_id ? [parseInt(lead.hubspot_id)] : [],
+        },
+        metadata: {
+          subject: `Relance — ${lead.prenom} ${lead.nom} · ${lead.hotel} (dans ${delaiMois} mois)`,
+          body: `Séquence "${nomSequence}" lancée le ${dateLancement}. Relancer avec une nouvelle séquence.`,
+          status: 'NOT_STARTED',
+          taskType: 'TODO',
+          reminders: [dateEcheance],
+          completionDate: dateEcheance,
+        }
+      }),
+    });
+    logger.info('✅ HubSpot task relance créée', { email: lead.email, sequence: nomSequence, delaiMois });
+  } catch (err) {
+    logger.error('❌ HubSpot creerTaskRelance', { error: err.message, email: lead.email });
+  }
+}
+
 // ─── Lifecycle stage ─────────────────────────────────────────────────────────
 async function mettreAJourLifecycle(db, lead, stage) {
   if (!getApiKey() || !lead.hubspot_id) return;
@@ -367,6 +402,7 @@ module.exports = {
   mettreAJourLifecycle,
   creerDeal,
   creerTaskFinSequence,
+  creerTaskRelance,
   verifierConnexion,
   rechercherCompanies,
   contactsDeCompany,

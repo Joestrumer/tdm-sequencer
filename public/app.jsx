@@ -442,6 +442,7 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
 const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
   useEscapeClose(onClose);
   const [selected, setSelected] = useState(sequences[0]?.id);
+  const [taskRelance, setTaskRelance] = useState(0);
   const [status, setStatus] = useState(null); // null | "loading" | "done" | "error"
   const [errMsg, setErrMsg] = useState("");
 
@@ -450,7 +451,7 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
     setStatus("loading");
     try {
       // 1. Inscrire le lead à la séquence
-      await onLaunch(lead.id, selected);
+      await onLaunch(lead.id, selected, taskRelance);
       // 2. Si "envoyer maintenant" → forcer le scheduler sur ce lead uniquement (en arrière-plan)
       if (sendNow) {
         const r = await api.post('/sequences/trigger-now', { lead_ids: [lead.id], async: true });
@@ -484,6 +485,16 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
                 </div>
               </label>
             ))}
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Task de relance HubSpot</label>
+            <select value={taskRelance} onChange={e => setTaskRelance(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 bg-white">
+              <option value={0}>Pas de relance</option>
+              <option value={3}>Dans 3 mois</option>
+              <option value={6}>Dans 6 mois</option>
+              <option value={9}>Dans 9 mois</option>
+              <option value={12}>Dans 12 mois</option>
+            </select>
           </div>
           {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée ! Email en cours d'envoi...</p>}
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
@@ -1523,13 +1534,14 @@ const ModalEditLead = ({ lead, onClose, onSave, campaigns = [], sequences = [] }
 const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
   useEscapeClose(onClose);
   const [selected, setSelected] = useState(sequences[0]?.id);
+  const [taskRelance, setTaskRelance] = useState(0);
   const [status, setStatus] = useState(null);
   const [errMsg, setErrMsg] = useState("");
   const handleLaunch = async (sendNow) => {
     if (!selected) return;
     setStatus("loading");
     try {
-      await onLaunch(selected, sendNow);
+      await onLaunch(selected, sendNow, taskRelance);
       setStatus("done");
       setTimeout(() => onClose(), 1200);
     } catch(e) { setStatus("error"); setErrMsg(e.message || "Erreur"); }
@@ -1554,6 +1566,16 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
                 </div>
               </label>
             ))}
+          </div>
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Task de relance HubSpot</label>
+            <select value={taskRelance} onChange={e => setTaskRelance(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 bg-white">
+              <option value={0}>Pas de relance</option>
+              <option value={3}>Dans 3 mois</option>
+              <option value={6}>Dans 6 mois</option>
+              <option value={9}>Dans 9 mois</option>
+              <option value={12}>Dans 12 mois</option>
+            </select>
           </div>
           {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée pour {count} leads !</p>}
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
@@ -1877,9 +1899,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     <div className="space-y-4">
       {showAdd && <ModalAddLead onClose={() => setShowAdd(false)} onAdd={(l) => { onAdd(l); if(onRefresh) onRefresh(); }} campaigns={campaigns.filter(c => c !== "Tous")} sequences={sequences} />}
       {showLaunch && <ModalLaunchSequence lead={showLaunch} sequences={sequences} onClose={() => setShowLaunch(null)} onLaunch={onLaunch} />}
-      {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow) => {
+      {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow, taskRelance) => {
         const ids = Array.from(selectedIds);
-        await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids });
+        await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids, task_relance_mois: taskRelance || 0 });
         if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(e => console.error(e));
         showToast(`${ids.length} lead(s) inscrits à la séquence`, 'success');
         setSelectedIds(new Set());
@@ -10160,8 +10182,8 @@ function App() {
     setLeads(l => [lead, ...l]);
   };
 
-  const launchSequence = async (leadId, seqId) => {
-    const r = await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId });
+  const launchSequence = async (leadId, seqId, taskRelanceMois) => {
+    const r = await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId, task_relance_mois: taskRelanceMois || 0 });
     if (r?.erreur) throw new Error(r.erreur);
     charger();
   };

@@ -7,6 +7,7 @@ const router   = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const logger   = require('../config/logger');
 const { inscrireLead, traiterInscriptionDirect } = require('../jobs/sequenceScheduler');
+const { creerTaskRelance } = require('../services/hubspotService');
 
 module.exports = (db) => {
 
@@ -240,7 +241,7 @@ module.exports = (db) => {
   // POST /api/sequences/:id/inscrire
   router.post('/:id/inscrire', (req, res) => {
     try {
-      const { lead_id } = req.body;
+      const { lead_id, task_relance_mois } = req.body;
       if (!lead_id) return res.status(400).json({ erreur: 'lead_id requis' });
 
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(lead_id);
@@ -255,6 +256,13 @@ module.exports = (db) => {
       // Mettre à jour la campaign du lead avec le nom de la séquence
       db.prepare("UPDATE leads SET campaign = ?, updated_at = datetime('now') WHERE id = ?").run(seq.nom, lead_id);
 
+      // Task de relance HubSpot (fire & forget)
+      if (task_relance_mois && task_relance_mois > 0) {
+        creerTaskRelance(db, lead, seq.nom, task_relance_mois).catch(e =>
+          logger.warn('Task relance échouée', { error: e.message, lead: lead.email })
+        );
+      }
+
       logger.info('🚀 Lead inscrit', { lead: lead.email, sequence: seq.nom });
       res.json({ message: `${lead.prenom} ${lead.nom} inscrit(e) à "${seq.nom}"`, inscription });
     } catch (err) {
@@ -265,7 +273,7 @@ module.exports = (db) => {
   // POST /api/sequences/:id/inscrire-batch
   router.post('/:id/inscrire-batch', (req, res) => {
     try {
-      const { lead_ids } = req.body;
+      const { lead_ids, task_relance_mois } = req.body;
       if (!Array.isArray(lead_ids)) return res.status(400).json({ erreur: 'lead_ids doit être un tableau' });
 
       const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
@@ -274,11 +282,19 @@ module.exports = (db) => {
       const updateCampaign = db.prepare("UPDATE leads SET campaign = ?, updated_at = datetime('now') WHERE id = ?");
       const resultats = lead_ids.map(leadId => {
         try {
-          const lead = db.prepare('SELECT unsubscribed FROM leads WHERE id = ?').get(leadId);
+          const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
           if (!lead) return { lead_id: leadId, statut: 'erreur', erreur: 'Lead introuvable' };
           if (lead.unsubscribed) return { lead_id: leadId, statut: 'erreur', erreur: 'Lead désabonné' };
           const inscription = inscrireLead(leadId, req.params.id);
           updateCampaign.run(seq.nom, leadId);
+
+          // Task de relance HubSpot (fire & forget)
+          if (task_relance_mois && task_relance_mois > 0) {
+            creerTaskRelance(db, lead, seq.nom, task_relance_mois).catch(e =>
+              logger.warn('Task relance échouée', { error: e.message, lead: lead.email })
+            );
+          }
+
           return { lead_id: leadId, statut: 'inscrit', inscription };
         } catch (e) {
           return { lead_id: leadId, statut: 'erreur', erreur: e.message };
