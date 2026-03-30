@@ -7,7 +7,7 @@ const router   = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const logger   = require('../config/logger');
 const { inscrireLead, traiterInscriptionDirect } = require('../jobs/sequenceScheduler');
-const { creerTaskRelance } = require('../services/hubspotService');
+const { creerTaskRelance, syncContact } = require('../services/hubspotService');
 
 module.exports = (db) => {
 
@@ -258,9 +258,16 @@ module.exports = (db) => {
 
       // Task de relance HubSpot (fire & forget)
       if (task_relance_mois && task_relance_mois > 0) {
-        creerTaskRelance(db, lead, seq.nom, task_relance_mois).catch(e =>
-          logger.warn('Task relance échouée', { error: e.message, lead: lead.email })
-        );
+        (async () => {
+          try {
+            if (!lead.hubspot_id) {
+              lead.hubspot_id = await syncContact(db, lead);
+            }
+            await creerTaskRelance(db, lead, seq.nom, task_relance_mois);
+          } catch (e) {
+            logger.warn('Task relance échouée', { error: e.message, lead: lead.email });
+          }
+        })();
       }
 
       logger.info('🚀 Lead inscrit', { lead: lead.email, sequence: seq.nom });
@@ -290,9 +297,16 @@ module.exports = (db) => {
 
           // Task de relance HubSpot (fire & forget)
           if (task_relance_mois && task_relance_mois > 0) {
-            creerTaskRelance(db, lead, seq.nom, task_relance_mois).catch(e =>
-              logger.warn('Task relance échouée', { error: e.message, lead: lead.email })
-            );
+            (async () => {
+              try {
+                if (!lead.hubspot_id) {
+                  lead.hubspot_id = await syncContact(db, lead);
+                }
+                await creerTaskRelance(db, lead, seq.nom, task_relance_mois);
+              } catch (e) {
+                logger.warn('Task relance échouée', { error: e.message, lead: lead.email });
+              }
+            })();
           }
 
           return { lead_id: leadId, statut: 'inscrit', inscription };
