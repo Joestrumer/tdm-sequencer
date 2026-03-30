@@ -251,6 +251,10 @@ module.exports = (db) => {
       if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
 
       const inscription = inscrireLead(lead_id, req.params.id);
+
+      // Mettre à jour la campaign du lead avec le nom de la séquence
+      db.prepare("UPDATE leads SET campaign = ?, updated_at = datetime('now') WHERE id = ?").run(seq.nom, lead_id);
+
       logger.info('🚀 Lead inscrit', { lead: lead.email, sequence: seq.nom });
       res.json({ message: `${lead.prenom} ${lead.nom} inscrit(e) à "${seq.nom}"`, inscription });
     } catch (err) {
@@ -267,12 +271,15 @@ module.exports = (db) => {
       const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
       if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
 
+      const updateCampaign = db.prepare("UPDATE leads SET campaign = ?, updated_at = datetime('now') WHERE id = ?");
       const resultats = lead_ids.map(leadId => {
         try {
           const lead = db.prepare('SELECT unsubscribed FROM leads WHERE id = ?').get(leadId);
           if (!lead) return { lead_id: leadId, statut: 'erreur', erreur: 'Lead introuvable' };
           if (lead.unsubscribed) return { lead_id: leadId, statut: 'erreur', erreur: 'Lead désabonné' };
-          return { lead_id: leadId, statut: 'inscrit', inscription: inscrireLead(leadId, req.params.id) };
+          const inscription = inscrireLead(leadId, req.params.id);
+          updateCampaign.run(seq.nom, leadId);
+          return { lead_id: leadId, statut: 'inscrit', inscription };
         } catch (e) {
           return { lead_id: leadId, statut: 'erreur', erreur: e.message };
         }
