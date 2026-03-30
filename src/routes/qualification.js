@@ -184,6 +184,8 @@ module.exports = (db) => {
             results.errors.push('Séquence introuvable');
           } else {
             const inscription = inscrireLead(leadId, sequence_id);
+            // Mettre à jour la campaign du lead avec le nom de la séquence
+            db.prepare("UPDATE leads SET campaign = ?, updated_at = datetime('now') WHERE id = ?").run(seq.nom, leadId);
             results.sequence = {
               id: sequence_id,
               nom: seq.nom,
