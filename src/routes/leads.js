@@ -205,6 +205,69 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/leads/batch — Ajout batch depuis HubSpot (multi-contacts)
+  router.post('/batch', async (req, res) => {
+    try {
+      const { leads, company_hubspot_id } = req.body;
+      if (!Array.isArray(leads) || leads.length === 0) {
+        return res.status(400).json({ erreur: 'Fournir un tableau de leads non vide' });
+      }
+
+      const resultats = { crees: [], doublons: [], erreurs: [] };
+
+      const inserer = db.prepare(`
+        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, comment)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `);
+
+      const insertBatch = db.transaction((leads) => {
+        for (const l of leads) {
+          if (!l.email || !l.hotel || !l.prenom) {
+            resultats.erreurs.push({ email: l.email || '?', erreur: 'prenom, email et hotel sont requis' });
+            continue;
+          }
+          try {
+            const id = uuidv4();
+            const tagsStr = JSON.stringify([l.segment || '5*']);
+            inserer.run(id, l.prenom, l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', tagsStr, l.poste || null, l.langue || 'fr', l.campaign || null, l.comment || null);
+            const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
+            resultats.crees.push(lead);
+          } catch (e) {
+            if (e.message.includes('UNIQUE')) {
+              resultats.doublons.push({ email: l.email, erreur: 'Email déjà existant' });
+            } else {
+              resultats.erreurs.push({ email: l.email, erreur: e.message });
+            }
+          }
+        }
+      });
+
+      insertBatch(leads);
+
+      // Sync HubSpot pour chaque lead créé (en arrière-plan)
+      if (process.env.HUBSPOT_API_KEY && resultats.crees.length > 0) {
+        const cfgSync = db.prepare("SELECT valeur FROM config WHERE cle = 'hs_sync_contact'").get();
+        const syncEnabled = cfgSync ? cfgSync.valeur !== '0' && cfgSync.valeur !== 'false' : true;
+        if (syncEnabled) {
+          for (const lead of resultats.crees) {
+            const leadAvecCompany = { ...lead, company_hubspot_id: company_hubspot_id || null };
+            hubspot.syncContact(db, leadAvecCompany)
+              .then(hubspotId => {
+                if (hubspotId) logger.info('HubSpot sync batch lead', { email: lead.email, hubspotId });
+              })
+              .catch(err => logger.error('HubSpot sync batch échoué', { email: lead.email, error: err.message }));
+          }
+        }
+      }
+
+      logger.info(`Batch leads : ${resultats.crees.length} créés, ${resultats.doublons.length} doublons, ${resultats.erreurs.length} erreurs`);
+      res.status(201).json(resultats);
+    } catch (err) {
+      logger.error('POST /leads/batch erreur', { error: err.message });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // POST /api/leads/import — Import CSV (array de leads)
   router.post('/import', async (req, res) => {
     try {

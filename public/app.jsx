@@ -190,6 +190,8 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
   const [contactsCompany, setContactsCompany] = useState([]);
   const [searchingHS, setSearchingHS] = useState(false);
   const searchTimer = useRef(null);
+  const [selectedContacts, setSelectedContacts] = useState([]);
+  const [batchResult, setBatchResult] = useState(null);
 
   const rechercherCompany = (q) => {
     setQueryCompany(q);
@@ -209,6 +211,8 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
     setSelectedCompany(company);
     setCompanies([]);
     setQueryCompany(company.nom);
+    setSelectedContacts([]);
+    setBatchResult(null);
     setForm(f => ({ ...f, hotel: company.nom, ville: company.ville || f.ville }));
     // Charger les contacts liés
     try {
@@ -217,25 +221,63 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
     } catch(e) { setContactsCompany([]); }
   };
 
-  const selectionnerContact = (contact) => {
-    setForm(f => ({ ...f, prenom: contact.prenom, nom: contact.nom, email: contact.email, poste: contact.poste || "" }));
-    setContactsCompany([]);
+  const toggleContact = (contact) => {
+    setSelectedContacts(prev => {
+      const exists = prev.find(c => c.email === contact.email);
+      if (exists) return prev.filter(c => c.email !== contact.email);
+      return [...prev, contact];
+    });
+  };
+
+  const toggleAllContacts = () => {
+    if (selectedContacts.length === contactsCompany.length) {
+      setSelectedContacts([]);
+    } else {
+      setSelectedContacts([...contactsCompany]);
+    }
   };
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
   const submit = async () => {
-    if (!form.email || !form.hotel) return;
     setSaving(true);
+    setBatchResult(null);
     try {
-      const payload = {
-        ...form,
-        tags: JSON.stringify([form.segment]),
-        company_hubspot_id: selectedCompany?.id || null,
-      };
-      const lead = await api.post('/leads', payload);
-      onAdd(lead);
-      onClose();
+      if (selectedContacts.length > 0) {
+        // Mode batch : ajouter tous les contacts sélectionnés
+        const leads = selectedContacts.map(c => ({
+          prenom: c.prenom,
+          nom: c.nom || '',
+          email: c.email,
+          hotel: form.hotel || selectedCompany?.nom || '',
+          ville: form.ville || '',
+          segment: form.segment,
+          poste: c.poste || '',
+          langue: form.langue,
+          campaign: form.campaign,
+          comment: form.comment,
+        }));
+        const result = await api.post('/leads/batch', { leads, company_hubspot_id: selectedCompany?.id || null });
+        setBatchResult(result);
+        if (result.crees && result.crees.length > 0) {
+          result.crees.forEach(l => onAdd(l));
+        }
+        // Si tout a été créé sans erreur, fermer après un délai
+        if ((!result.doublons || result.doublons.length === 0) && (!result.erreurs || result.erreurs.length === 0)) {
+          setTimeout(() => onClose(), 1200);
+        }
+      } else {
+        // Mode unitaire classique
+        if (!form.email || !form.hotel) { setSaving(false); return; }
+        const payload = {
+          ...form,
+          tags: JSON.stringify([form.segment]),
+          company_hubspot_id: selectedCompany?.id || null,
+        };
+        const lead = await api.post('/leads', payload);
+        onAdd(lead);
+        onClose();
+      }
     } catch(e) { setErr(e.message || "Erreur lors de l'ajout"); }
     setSaving(false);
   };
@@ -273,17 +315,43 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
           {/* Contacts liés à la company */}
           {contactsCompany.length > 0 && (
             <div className="bg-orange-50 border border-orange-200 rounded-xl p-3">
-              <p className="text-xs font-medium text-orange-700 mb-2">Contacts existants — cliquer pour pré-remplir</p>
-              <div className="space-y-1">
-                {contactsCompany.map(c => (
-                  <button key={c.hubspot_id} onClick={() => selectionnerContact(c)}
-                    className="w-full text-left px-3 py-2 bg-white rounded-lg hover:bg-orange-50 transition-colors border border-orange-100">
-                    <span className="text-sm font-medium text-slate-800">{c.prenom} {c.nom}</span>
-                    <span className="text-xs text-slate-400 ml-2">{c.email}</span>
-                    {c.poste && <span className="text-xs text-slate-400 ml-1">· {c.poste}</span>}
-                  </button>
-                ))}
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-medium text-orange-700">
+                  {contactsCompany.length} contact{contactsCompany.length > 1 ? 's' : ''} trouvé{contactsCompany.length > 1 ? 's' : ''}
+                  {selectedContacts.length > 0 && <span className="ml-1 px-1.5 py-0.5 bg-orange-200 text-orange-800 rounded-full text-[10px] font-semibold">{selectedContacts.length} sélectionné{selectedContacts.length > 1 ? 's' : ''}</span>}
+                </p>
+                <button type="button" onClick={toggleAllContacts}
+                  className="text-[11px] font-medium text-orange-600 hover:text-orange-800 transition-colors">
+                  {selectedContacts.length === contactsCompany.length ? 'Tout désélectionner' : 'Tout sélectionner'}
+                </button>
               </div>
+              <div className="space-y-1">
+                {contactsCompany.map(c => {
+                  const isSelected = selectedContacts.some(sc => sc.email === c.email);
+                  return (
+                    <button key={c.hubspot_id} onClick={() => toggleContact(c)}
+                      className={`w-full text-left px-3 py-2 rounded-lg transition-colors border flex items-center gap-2 ${isSelected ? 'bg-orange-100 border-orange-300' : 'bg-white border-orange-100 hover:bg-orange-50'}`}>
+                      <span className={`flex-shrink-0 w-4 h-4 rounded border-2 flex items-center justify-center transition-colors ${isSelected ? 'bg-orange-500 border-orange-500 text-white' : 'border-slate-300 bg-white'}`}>
+                        {isSelected && <svg className="w-2.5 h-2.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={3}><path strokeLinecap="round" strokeLinejoin="round" d="M5 13l4 4L19 7" /></svg>}
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        <span className="text-sm font-medium text-slate-800">{c.prenom} {c.nom}</span>
+                        <span className="text-xs text-slate-400 ml-2">{c.email}</span>
+                        {c.poste && <span className="text-xs text-slate-400 ml-1">· {c.poste}</span>}
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Résultat batch */}
+          {batchResult && (
+            <div className="rounded-xl p-3 border text-sm space-y-1">
+              {batchResult.crees?.length > 0 && <p className="text-emerald-700">{batchResult.crees.length} lead{batchResult.crees.length > 1 ? 's' : ''} créé{batchResult.crees.length > 1 ? 's' : ''}</p>}
+              {batchResult.doublons?.length > 0 && <p className="text-amber-600">{batchResult.doublons.length} doublon{batchResult.doublons.length > 1 ? 's' : ''} ignoré{batchResult.doublons.length > 1 ? 's' : ''} : {batchResult.doublons.map(d => d.email).join(', ')}</p>}
+              {batchResult.erreurs?.length > 0 && <p className="text-red-600">{batchResult.erreurs.length} erreur{batchResult.erreurs.length > 1 ? 's' : ''} : {batchResult.erreurs.map(e => e.email).join(', ')}</p>}
             </div>
           )}
 
@@ -362,7 +430,9 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
         <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 flex-shrink-0 border-t border-slate-100">
           {err && <span className="text-xs text-red-500 mr-auto">{err}</span>}
           <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
-          <button onClick={submit} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">{saving ? "Ajout..." : "Ajouter"}</button>
+          <button onClick={submit} disabled={saving} className="px-5 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
+            {saving ? "Ajout..." : selectedContacts.length > 0 ? `Ajouter ${selectedContacts.length} contact${selectedContacts.length > 1 ? 's' : ''}` : "Ajouter"}
+          </button>
         </div>
       </div>
     </div>
