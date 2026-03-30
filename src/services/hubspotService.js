@@ -311,7 +311,7 @@ async function creerTaskRelance(db, lead, nomSequence, delaiMois) {
         engagement: {
           active: true,
           type: 'TASK',
-          timestamp: Date.now(),
+          timestamp: dateEcheance,
           ownerId: parseInt(HUGO_OWNER_ID),
         },
         associations: {
@@ -322,8 +322,6 @@ async function creerTaskRelance(db, lead, nomSequence, delaiMois) {
           body: `Séquence "${nomSequence}" lancée le ${dateLancement}. Relancer avec une nouvelle séquence.`,
           status: 'NOT_STARTED',
           taskType: 'TODO',
-          reminders: [dateEcheance],
-          completionDate: dateEcheance,
         }
       }),
     });
