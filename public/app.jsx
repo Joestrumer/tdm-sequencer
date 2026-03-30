@@ -3323,7 +3323,9 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
   const [singleEmail, setSingleEmail] = useState("");
   const [singleResult, setSingleResult] = useState(null);
   const [singleLoading, setSingleLoading] = useState(false);
-  const [validationHistory, setValidationHistory] = useState([]);
+  const [validationHistory, setValidationHistory] = useState(() => {
+    try { return JSON.parse(localStorage.getItem('validationHistory') || '[]'); } catch { return []; }
+  });
 
   // Modal qualification
   const [showQualificationModal, setShowQualificationModal] = useState(false);
@@ -3349,6 +3351,11 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
       if (r.Credits !== undefined) setCredits(r.Credits);
     } catch(e) { showToast?.("Erreur chargement crédits ZeroBounce", "error"); }
   };
+
+  // Persister l'historique de validation dans localStorage
+  useEffect(() => {
+    try { localStorage.setItem('validationHistory', JSON.stringify(validationHistory)); } catch {}
+  }, [validationHistory]);
 
   // Charger config ZeroBounce au montage — via /health (variable Railway)
   useEffect(() => {
