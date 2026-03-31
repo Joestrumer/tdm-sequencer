@@ -9,7 +9,7 @@
 const cron    = require('node-cron');
 const { v4: uuidv4 } = require('uuid');
 const logger  = require('../config/logger');
-const { envoyerEmail, estDansLaFenetreEnvoi } = require('../services/brevoService');
+const { envoyerEmail, estDansLaFenetreEnvoi, substituerVariables } = require('../services/brevoService');
 const hubspot = require('../services/hubspotService');
 
 let db; // Injecté par initialiser()
@@ -155,7 +155,10 @@ async function _traiter(inscription) {
       const seq = db.prepare('SELECT options FROM sequences WHERE id = ?').get(inscription.sequence_id);
       const seqOptions = seq?.options ? JSON.parse(seq.options) : {};
       if (isHsEnabled(seqOptions, 'hs_log_email')) {
-        await hubspot.logEmailTimeline(db, lead, { sujet: etape.sujet }).catch(e => logger.warn('HubSpot logEmailTimeline échoué', { error: e.message, leadId: lead.id }));
+        await hubspot.logEmailTimeline(db, lead, {
+          sujet: substituerVariables(etape.sujet, lead),
+          corps: substituerVariables(etape.corps_html || etape.corps, lead),
+        }).catch(e => logger.warn('HubSpot logEmailTimeline échoué', { error: e.message, leadId: lead.id }));
       }
       if (index === 0 && isHsEnabled(seqOptions, 'hs_lifecycle')) {
         await hubspot.mettreAJourLifecycle(db, lead, 'lead').catch(e => logger.warn('HubSpot lifecycle update échoué', { error: e.message, leadId: lead.id }));
