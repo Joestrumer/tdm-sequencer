@@ -5736,6 +5736,26 @@ const FacturesSingle = ({ showToast }) => {
       if (sendEmail && res.email_error) {
         showToast('Attention : email non envoyé — ' + res.email_error, 'error');
       }
+      // Ajouter automatiquement à la table shipments
+      try {
+        await api.post('/shipments', {
+          type: 'commande',
+          order_ref: orderNumber || res.number || `CMD-${Date.now()}`,
+          invoice_id: res.id,
+          invoice_number: res.number,
+          client_name: selectedClient?.name || '',
+          client_email: selectedClient?.email || '',
+          client_address: selectedClient?.street || '',
+          client_city: selectedClient?.city || '',
+          client_country: selectedClient?.country || 'FR',
+          shipping_id: shippingId,
+          montant_ht: res.price_net || 0,
+          montant_ttc: res.price_gross || 0,
+          notes: `Commande ${orderNumber || ''}`.trim(),
+        });
+      } catch (shipErr) {
+        console.warn('Erreur ajout shipment:', shipErr);
+      }
       // Enchaîner CSV + email logisticien automatiquement
       setProcessing(false);
       try { await downloadCSVAndEmail(false, res); } catch (csvErr) {
@@ -6575,6 +6595,26 @@ const FacturesBatch = ({ showToast }) => {
         });
         if (inv.erreur) throw new Error(inv.erreur);
         allResults.push({ ok: true, orderId: order.id, ...inv });
+        // Ajouter automatiquement à la table shipments
+        try {
+          await api.post('/shipments', {
+            type: 'commande',
+            order_ref: order.orderNumber || inv.number || `CMD-${Date.now()}`,
+            invoice_id: inv.id,
+            invoice_number: inv.number,
+            client_name: order.client?.name || '',
+            client_email: order.client?.email || '',
+            client_address: order.client?.street || '',
+            client_city: order.client?.city || '',
+            client_country: order.client?.country || 'FR',
+            shipping_id: order.shippingId || '1302',
+            montant_ht: inv.price_net || 0,
+            montant_ttc: inv.price_gross || 0,
+            notes: `Commande batch ${order.orderNumber || ''}`.trim(),
+          });
+        } catch (shipErr) {
+          console.warn('Erreur ajout shipment:', shipErr);
+        }
       } catch (err) {
         allResults.push({ ok: false, orderId: order.id, erreur: err.message });
       }
