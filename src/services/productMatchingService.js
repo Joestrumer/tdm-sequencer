@@ -543,12 +543,12 @@ function parseOrderText(text) {
     /(P5L)\s*x\s*(\d+)/gi,
     /(\d+)\s+(P5L)\b/gi,
     /(P5L)\s+(\d+)\b/gi,
-    // Pxxx standard
-    /(\d+)\s*x\s*([Pp]\d{3}(?:-\d+)?)/g,
-    /([Pp]\d{3}(?:-\d+)?)\s*x\s*(\d+)/g,
-    /(\d+)\s+([Pp]\d{3}(?:-\d+)?)/g,
-    /([Pp]\d{3}(?:-\d+)?)\s*:\s*(\d+)/g,
-    /([Pp]\d{3}(?:-\d+)?)\s+(\d+)/g,
+    // Pxxx standard (word boundary pour ne pas matcher P500 dans P500ml)
+    /(\d+)\s*x\s*([Pp]\d{3}(?:-\d+)?)\b/g,
+    /([Pp]\d{3}(?:-\d+)?)\b\s*x\s*(\d+)/g,
+    /(\d+)\s+([Pp]\d{3}(?:-\d+)?)\b/g,
+    /([Pp]\d{3}(?:-\d+)?)\b\s*:\s*(\d+)/g,
+    /([Pp]\d{3}(?:-\d+)?)\b\s+(\d+)/g,
     // H/N refs
     /(\d+)\s*x\s*([HhNn]\s*-?\s*\d{3})/g,
     /([HhNn]\s*-?\s*\d{3})\s*x\s*(\d+)/g,
