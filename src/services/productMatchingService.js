@@ -14,8 +14,9 @@ function stripDiacritics(s) {
 function normalizeRef(raw) {
   if (!raw) return '';
   let r = String(raw).trim().toUpperCase().replace(/\s+/g, '');
-  const specials = new Set(['FP', 'FE', 'P5L', 'SPFS', 'PFS', 'PFD', 'PFT', 'COFFRETS']);
+  const specials = new Set(['FP', 'FE', 'P5L', 'SPFS', 'PFS', 'PFD', 'PFT', 'PFDS', 'PFSS', 'PFTS', 'COFFRETS', 'BAV', 'SPRAY-VIDE']);
   if (specials.has(r)) return r;
+  if (r === 'P500ML') return 'P500ml';
   if (r.startsWith('NP')) r = 'P' + r.slice(2);
   if (r.startsWith('H-') || r.startsWith('N-')) r = r.slice(2);
   if (/^[HN]\d{3}/.test(r)) r = r.slice(1);
@@ -592,7 +593,7 @@ function parseOrderText(text) {
       let match;
       while ((match = pattern.exec(line)) !== null) {
         let ref, quantity;
-        if (String(match[1]).match(/^[PpHhNn]/)) {
+        if (isNaN(parseInt(match[1], 10))) {
           ref = match[1];
           quantity = parseInt(match[2], 10);
         } else {
