@@ -306,6 +306,22 @@ for (const sql of migrations) {
   }
 }
 
+// ─── Data fixes : prix et vf_product_id manquants ───────────────────────────
+const catalogFixes = [
+  { ref: 'P500ml', prix_ht: 0.5, vf_product_id: '8719078876858' },
+  { ref: 'SPFS', vf_product_id: '1115238245' },
+];
+for (const fix of catalogFixes) {
+  try {
+    if (fix.prix_ht !== undefined) {
+      db.prepare('UPDATE vf_catalog SET prix_ht = ? WHERE ref = ? AND prix_ht = 0').run(fix.prix_ht, fix.ref);
+    }
+    if (fix.vf_product_id) {
+      db.prepare('UPDATE vf_catalog SET vf_product_id = ? WHERE ref = ? AND (vf_product_id IS NULL OR vf_product_id = \'\')').run(fix.vf_product_id, fix.ref);
+    }
+  } catch (e) { /* ignore */ }
+}
+
 // ─── Data fixes : mappings clients manquants ────────────────────────────────
 const missingClientMappings = [
   { vf_name: 'Hotel Le Rodrigue (Boronali)', file_name: 'Hôtel Boronali (Le Rodrigue)' },
@@ -398,7 +414,7 @@ const MISSING_PRODUCTS = [
   { ref: 'PFD', nom: 'Porte flacon double (305 Stainless Steel black)', prix_ht: 0, moq: 1 },
   { ref: 'PFT', nom: 'Porte flacon triple (305 Stainless Steel black)', prix_ht: 0, moq: 1 },
   { ref: 'P5L', nom: 'POMPE 5L', prix_ht: 0, moq: 1 },
-  { ref: 'P500ml', nom: 'Pompe 500ML', prix_ht: 0, moq: 1 },
+  { ref: 'P500ml', nom: 'Pompe 500ML', prix_ht: 0.5, moq: 1 },
 ];
 
 const stmtInsertProduct = db.prepare('INSERT OR IGNORE INTO vf_catalog (ref, nom, prix_ht, moq) VALUES (?, ?, ?, ?)');
