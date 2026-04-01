@@ -439,7 +439,9 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
                 </select>
               </div>
             </div>
-            <div className="mt-3">
+          </div>
+          <div className="border-t border-slate-100 pt-3">
+            <div>
               <label className="text-xs font-medium text-slate-500 mb-1 block">Lancer dans une séquence</label>
               <select value={sequenceId} onChange={e => setSequenceId(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
                 <option value="">Aucune</option>
