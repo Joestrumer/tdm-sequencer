@@ -182,6 +182,8 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
   const [err, setErr] = useState("");
   const [showCampaignDropdown, setShowCampaignDropdown] = useState(false);
   const campaignRef = useRef(null);
+  const [sequenceId, setSequenceId] = useState('');
+  const [taskRelance, setTaskRelance] = useState(0);
 
   // Recherche HubSpot
   const [queryCompany, setQueryCompany] = useState("");
@@ -261,6 +263,12 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
         setBatchResult(result);
         if (result.crees && result.crees.length > 0) {
           result.crees.forEach(l => onAdd(l));
+          if (sequenceId) {
+            api.post(`/sequences/${sequenceId}/inscrire-batch`, {
+              lead_ids: result.crees.map(l => l.id),
+              task_relance_mois: taskRelance
+            }).catch(e => console.warn('Erreur inscription batch séquence:', e));
+          }
         }
         // Si tout a été créé sans erreur, fermer après un délai
         if ((!result.doublons || result.doublons.length === 0) && (!result.erreurs || result.erreurs.length === 0)) {
@@ -276,6 +284,12 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
         };
         const lead = await api.post('/leads', payload);
         onAdd(lead);
+        if (sequenceId) {
+          api.post(`/sequences/${sequenceId}/inscrire`, {
+            lead_id: lead.id,
+            task_relance_mois: taskRelance
+          }).catch(e => console.warn('Erreur inscription séquence:', e));
+        }
         onClose();
       }
     } catch(e) { setErr(e.message || "Erreur lors de l'ajout"); }
@@ -425,6 +439,25 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
                 </select>
               </div>
             </div>
+            <div className="mt-3">
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Lancer dans une séquence</label>
+              <select value={sequenceId} onChange={e => setSequenceId(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                <option value="">Aucune</option>
+                {sequences.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+              </select>
+            </div>
+            {sequenceId && (
+              <div className="mt-3">
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Task de relance HubSpot</label>
+                <select value={taskRelance} onChange={e => setTaskRelance(Number(e.target.value))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                  <option value={0}>Aucune</option>
+                  <option value={3}>3 mois</option>
+                  <option value={6}>6 mois</option>
+                  <option value={9}>9 mois</option>
+                  <option value={12}>12 mois</option>
+                </select>
+              </div>
+            )}
           </div>
         </div>
         <div className="px-6 py-4 bg-slate-50 flex justify-end gap-3 flex-shrink-0 border-t border-slate-100">
