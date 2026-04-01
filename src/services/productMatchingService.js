@@ -532,12 +532,12 @@ function parseOrderText(text) {
   const accPat = new RegExp(`(${accRefs})`, 'gi');
 
   const refPatterns = [
-    // Accessoires: 2 x PFS, PFD x 3, 10 PFT, PFS 5, etc.
-    new RegExp(`(\\d+)\\s*x\\s*(${accRefs})`, 'gi'),
-    new RegExp(`(${accRefs})\\s*x\\s*(\\d+)`, 'gi'),
+    // Accessoires: 2 x PFS, PFD x 3, 10 PFT, PFS 5, etc. (word boundary pour ne pas matcher PFS dans PFSS, etc.)
+    new RegExp(`(\\d+)\\s*x\\s*(${accRefs})\\b`, 'gi'),
+    new RegExp(`\\b(${accRefs})\\b\\s*x\\s*(\\d+)`, 'gi'),
     new RegExp(`(\\d+)\\s+(${accRefs})\\b`, 'gi'),
-    new RegExp(`(${accRefs})\\s+(\\d+)\\b`, 'gi'),
-    new RegExp(`(${accRefs})\\s*:\\s*(\\d+)`, 'gi'),
+    new RegExp(`\\b(${accRefs})\\b\\s+(\\d+)(?!\\s*x)\\b`, 'gi'),
+    new RegExp(`\\b(${accRefs})\\b\\s*:\\s*(\\d+)`, 'gi'),
     // P5L
     /(\d+)\s*x\s*(P5L)/gi,
     /(P5L)\s*x\s*(\d+)/gi,
@@ -548,7 +548,7 @@ function parseOrderText(text) {
     /([Pp]\d{3}(?:-\d+)?)\b\s*x\s*(\d+)/g,
     /(\d+)\s+([Pp]\d{3}(?:-\d+)?)\b/g,
     /([Pp]\d{3}(?:-\d+)?)\b\s*:\s*(\d+)/g,
-    /([Pp]\d{3}(?:-\d+)?)\b\s+(\d+)/g,
+    /([Pp]\d{3}(?:-\d+)?)\b\s+(\d+)(?!\s*[Ll])\b/g,
     // H/N refs
     /(\d+)\s*x\s*([HhNn]\s*-?\s*\d{3})/g,
     /([HhNn]\s*-?\s*\d{3})\s*x\s*(\d+)/g,
