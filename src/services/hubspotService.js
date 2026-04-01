@@ -121,20 +121,31 @@ async function creerCompany(nom, domaine, ville) {
   }
 }
 
-// ─── Contacts d'une company ───────────────────────────────────────────────────
+// ─── Contacts d'une company (v4 — tous les contacts, pas seulement primary) ─
 async function contactsDeCompany(companyId) {
   if (!getApiKey() || !companyId) return [];
   try {
-    const res = await hubspotFetch(
-      `/crm/v3/objects/companies/${companyId}/associations/contacts`
-    );
-    const ids = (res?.results || []).map(r => r.id);
-    if (!ids.length) return [];
+    // Utiliser l'API v4 pour récupérer TOUS les contacts associés (primary + non-primary)
+    const allIds = [];
+    let after = undefined;
+    do {
+      const url = `/crm/v4/objects/companies/${companyId}/associations/contacts` +
+        (after ? `?after=${after}` : '');
+      const res = await hubspotFetch(url);
+      const ids = (res?.results || []).map(r => String(r.toObjectId));
+      allIds.push(...ids);
+      after = res?.paging?.next?.after || null;
+    } while (after);
+
+    if (!allIds.length) return [];
+
+    // Dédupliquer (un même contact peut apparaître avec plusieurs types d'association)
+    const uniqueIds = [...new Set(allIds)];
 
     const details = await hubspotFetch('/crm/v3/objects/contacts/batch/read', {
       method: 'POST',
       body: JSON.stringify({
-        inputs: ids.map(id => ({ id })),
+        inputs: uniqueIds.map(id => ({ id })),
         properties: ['firstname', 'lastname', 'email', 'jobtitle'],
       }),
     });
