@@ -116,9 +116,18 @@ function nettoyerHtml(html) {
       return `<${tag}${style}>`;
     })
     // Convertir <div><br></div> (Chrome line breaks) en simple <br>
-    .replace(/<div><br\s*\/?><\/div>/gi, '<br>')
-    // Convertir <p><br></p> en <br>
-    .replace(/<p><br\s*\/?><\/p>/gi, '<br>');
+    .replace(/<div><br\s*\/?><\/div>/gi, '<br>');
+
+  // Inliner les styles sur les <p> pour compatibilité clients email (Gmail, Outlook ignorent <style>)
+  // <p><br></p> = ligne vide → paragraphe vide avec espacement
+  result = result.replace(/<p><br\s*\/?><\/p>/gi, '<p style="margin:0 0 12px 0;">&#160;</p>');
+  // <p> sans style inline → ajouter margin
+  result = result.replace(/<p(?=\s|>)(?![^>]*style=)([^>]*)>/gi, '<p style="margin:0 0 12px 0;"$1>');
+  // <p> avec style inline existant → ajouter margin si absent
+  result = result.replace(/<p([^>]*?)style="([^"]*)"([^>]*)>/gi, (match, before, style, after) => {
+    if (/margin/i.test(style)) return match;
+    return `<p${before}style="margin:0 0 12px 0;${style}"${after}>`;
+  });
 
   return result;
 }

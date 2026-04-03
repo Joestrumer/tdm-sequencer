@@ -815,7 +815,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     tinymce.init({
       selector: '#' + containerId,
       plugins: 'lists link image table code fullscreen',
-      toolbar: 'bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+      toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+      font_family_formats: 'Arial=Arial,Helvetica,sans-serif; Verdana=Verdana,Geneva,sans-serif; Georgia=Georgia,serif; Times New Roman=Times New Roman,Times,serif; Courier New=Courier New,monospace; Trebuchet MS=Trebuchet MS,sans-serif; Tahoma=Tahoma,Geneva,sans-serif',
+      font_size_formats: '10px 12px 14px 16px 18px 20px 24px 28px 32px',
       menubar: false,
       height: 350,
       content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
@@ -8660,7 +8662,9 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
     tinymce.init({
       selector: '#' + containerId,
       plugins: 'lists link image table code fullscreen',
-      toolbar: 'bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+      toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+      font_family_formats: 'Arial=Arial,Helvetica,sans-serif; Verdana=Verdana,Geneva,sans-serif; Georgia=Georgia,serif; Times New Roman=Times New Roman,Times,serif; Courier New=Courier New,monospace; Trebuchet MS=Trebuchet MS,sans-serif; Tahoma=Tahoma,Geneva,sans-serif',
+      font_size_formats: '10px 12px 14px 16px 18px 20px 24px 28px 32px',
       menubar: false,
       height: 350,
       content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
