@@ -834,10 +834,13 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
             editor.setContent(etape.corps_html);
           }
         });
-        editor.on('input change keyup', () => {
+        const syncContent = () => {
           const html = editor.getContent();
           updateEtapeRef.current(activeEtapeRef.current, 'corps_html', html);
-        });
+        };
+        editor.on('input change keyup', syncContent);
+        editor.on('ExecCommand', syncContent);
+        editor.on('NodeChange', syncContent);
       }
     });
 
@@ -8679,10 +8682,13 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
             editor.setContent(form.corps_html);
           }
         });
-        editor.on('input change keyup', () => {
+        const syncContent = () => {
           const html = editor.getContent();
           set('corps_html', html);
-        });
+        };
+        editor.on('input change keyup', syncContent);
+        editor.on('ExecCommand', syncContent);
+        editor.on('NodeChange', syncContent);
       }
     });
 
