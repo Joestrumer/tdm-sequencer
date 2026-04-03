@@ -631,9 +631,9 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const pjRef = useRef(null);
   const [pieceJointe, setPieceJointe] = useState(etapes[0]?.piece_jointe || null);
 
-  // Quill editor setup
+  // TinyMCE editor setup
   const editorRef = useRef(null);
-  const quillRef = useRef(null);
+  const tinymceRef = useRef(null);
   const activeEtapeRef = useRef(activeEtape);
 
   // Sync pj dans l'étape courante
@@ -656,22 +656,10 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const applyTemplate = (template) => {
     updateEtape(activeEtape, 'sujet', template.sujet);
     updateEtape(activeEtape, 'corps_html', template.corps_html || '');
-    updateEtape(activeEtape, 'content_json', template.content_json || '');
 
-    // Recharger le contenu dans Quill
-    if (quillRef.current) {
-      if (template.content_json) {
-        try {
-          const delta = JSON.parse(template.content_json);
-          quillRef.current.setContents(delta);
-        } catch (e) {
-          quillRef.current.root.innerHTML = template.corps_html || '';
-        }
-      } else if (template.corps_html) {
-        quillRef.current.root.innerHTML = template.corps_html;
-      } else {
-        quillRef.current.setText('');
-      }
+    // Recharger le contenu dans TinyMCE
+    if (tinymceRef.current) {
+      tinymceRef.current.setContent(template.corps_html || '');
     }
 
     setShowTemplateSelector(false);
@@ -801,17 +789,14 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     return { ...et, [k]: v, ...extra };
   }));
 
-  // Ref stable pour updateEtape (évite closure stale dans le listener Quill)
+  // Ref stable pour updateEtape (évite closure stale dans le listener TinyMCE)
   const updateEtapeRef = useRef(updateEtape);
   updateEtapeRef.current = updateEtape;
 
-  // Insérer une variable à la position du curseur dans Quill
+  // Insérer une variable à la position du curseur dans TinyMCE
   const insererVar = (v) => {
-    if (quillRef.current) {
-      const quill = quillRef.current;
-      const range = quill.getSelection(true);
-      quill.insertText(range.index, v);
-      quill.setSelection(range.index + v.length);
+    if (tinymceRef.current) {
+      tinymceRef.current.insertContent(v);
     }
   };
 
@@ -820,56 +805,58 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     activeEtapeRef.current = activeEtape;
   }, [activeEtape]);
 
-  // Initialiser Quill editor
+  // Initialiser TinyMCE editor
   useEffect(() => {
-    if (!editorRef.current || quillRef.current) return;
+    if (!editorRef.current || tinymceRef.current) return;
 
-    const quill = new Quill(editorRef.current, {
-      theme: 'snow',
+    const containerId = 'tinymce-email-editor-' + Date.now();
+    editorRef.current.id = containerId;
+
+    tinymce.init({
+      selector: '#' + containerId,
+      plugins: 'lists link image table code fullscreen',
+      toolbar: 'bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+      menubar: false,
+      height: 350,
+      content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
+      branding: false,
+      promotion: false,
       placeholder: 'Écrivez votre email ici...',
-      modules: {
-        toolbar: [
-          ['bold', 'italic', 'underline'],
-          [{ 'header': [1, 2, 3, false] }],
-          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-          [{ 'align': [] }],
-          ['link'],
-          [{ 'color': [] }],
-          ['clean']
-        ]
+      license_key: 'gpl',
+      setup: (editor) => {
+        editor.on('init', () => {
+          tinymceRef.current = editor;
+          // Charger le contenu initial
+          const etape = etapes[activeEtapeRef.current];
+          if (etape?.corps_html) {
+            editor.setContent(etape.corps_html);
+          }
+        });
+        editor.on('input change keyup', () => {
+          const html = editor.getContent();
+          updateEtapeRef.current(activeEtapeRef.current, 'corps_html', html);
+        });
       }
     });
 
-    // Sauvegarder les changements (utilise refs pour avoir toujours la bonne étape et le bon setter)
-    quill.on('text-change', () => {
-      const delta = quill.getContents();
-      const html = quill.root.innerHTML;
-      updateEtapeRef.current(activeEtapeRef.current, 'content_json', JSON.stringify(delta));
-      updateEtapeRef.current(activeEtapeRef.current, 'corps_html', html);
-    });
-
-    quillRef.current = quill;
+    return () => {
+      if (tinymceRef.current) {
+        tinymceRef.current.remove();
+        tinymceRef.current = null;
+      }
+    };
   }, []);
 
   // Charger le contenu quand on change d'étape
   useEffect(() => {
-    if (!quillRef.current || mode !== "edit") return;
+    if (!tinymceRef.current || mode !== "edit") return;
 
     const etape = etapes[activeEtape];
-    const quill = quillRef.current;
 
-    // Charger depuis content_json (Delta) si disponible, sinon depuis corps_html
-    if (etape?.content_json) {
-      try {
-        const delta = JSON.parse(etape.content_json);
-        quill.setContents(delta, 'silent');
-      } catch {
-        quill.root.innerHTML = etape.corps_html || '';
-      }
-    } else if (etape?.corps_html) {
-      quill.root.innerHTML = etape.corps_html;
+    if (etape?.corps_html) {
+      tinymceRef.current.setContent(etape.corps_html);
     } else {
-      quill.setText('');
+      tinymceRef.current.setContent('');
     }
 
     setPieceJointe(etape?.piece_jointe || null);
@@ -1061,19 +1048,15 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                   </div>
                 </div>
 
-                {/* Quill Editor */}
+                {/* TinyMCE Editor */}
                 <div className="border border-slate-200 rounded-xl overflow-hidden shadow-sm">
-                  <div ref={editorRef} className="bg-white" style={{ minHeight: '300px' }}></div>
+                  <div ref={editorRef} className="bg-white"></div>
                   <div className="px-3 py-1.5 border-t border-slate-100 bg-slate-50/30 flex items-center gap-1">
                     <span className="text-xs text-slate-400 mr-1">Variables :</span>
                     {VARS.map(v => (
                       <button key={v} type="button" onClick={() => {
-                        const q = quillRef.current;
-                        if (!q) return;
-                        const range = q.getSelection(true);
-                        if (range) {
-                          q.insertText(range.index, v);
-                          q.setSelection(range.index + v.length);
+                        if (tinymceRef.current) {
+                          tinymceRef.current.insertContent(v);
                         }
                       }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
                     ))}
@@ -8663,48 +8646,48 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
   });
   const [saving, setSaving] = useState(false);
   const editorRef = useRef(null);
-  const quillRef = useRef(null);
+  const tinymceRef = useRef(null);
 
   const set = (k, v) => setForm(f => ({ ...f, [k]: v }));
 
-  // Initialize Quill
+  // Initialize TinyMCE
   useEffect(() => {
-    if (!editorRef.current || quillRef.current) return;
+    if (!editorRef.current || tinymceRef.current) return;
 
-    const quill = new Quill(editorRef.current, {
-      theme: 'snow',
-      modules: {
-        toolbar: [
-          ['bold', 'italic', 'underline'],
-          [{ 'header': [1, 2, 3, false] }],
-          [{ 'list': 'ordered'}, { 'list': 'bullet' }],
-          [{ 'align': [] }],
-          ['link'],
-          [{ 'color': [] }],
-          ['clean']
-        ]
-      },
-      placeholder: 'Contenu de l\'email...'
-    });
+    const containerId = 'tinymce-template-editor-' + Date.now();
+    editorRef.current.id = containerId;
 
-    // Load initial content
-    if (form.content_json) {
-      try {
-        const delta = JSON.parse(form.content_json);
-        quill.setContents(delta);
-      } catch (e) {
-        console.error('Erreur chargement content_json:', e);
+    tinymce.init({
+      selector: '#' + containerId,
+      plugins: 'lists link image table code fullscreen',
+      toolbar: 'bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+      menubar: false,
+      height: 350,
+      content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
+      branding: false,
+      promotion: false,
+      placeholder: 'Contenu de l\'email...',
+      license_key: 'gpl',
+      setup: (editor) => {
+        editor.on('init', () => {
+          tinymceRef.current = editor;
+          if (form.corps_html) {
+            editor.setContent(form.corps_html);
+          }
+        });
+        editor.on('input change keyup', () => {
+          const html = editor.getContent();
+          set('corps_html', html);
+        });
       }
-    }
-
-    quill.on('text-change', () => {
-      const delta = quill.getContents();
-      const html = quill.root.innerHTML;
-      set('content_json', JSON.stringify(delta));
-      set('corps_html', html);
     });
 
-    quillRef.current = quill;
+    return () => {
+      if (tinymceRef.current) {
+        tinymceRef.current.remove();
+        tinymceRef.current = null;
+      }
+    };
   }, []);
 
   const handleSave = async () => {
@@ -8785,12 +8768,8 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
                 <span className="text-xs text-slate-400 mr-1">Variables :</span>
                 {["{{prenom}}", "{{nom}}", "{{etablissement}}", "{{ville}}", "{{segment}}"].map(v => (
                   <button key={v} type="button" onClick={() => {
-                    const q = quillRef.current;
-                    if (!q) return;
-                    const range = q.getSelection(true);
-                    if (range) {
-                      q.insertText(range.index, v);
-                      q.setSelection(range.index + v.length);
+                    if (tinymceRef.current) {
+                      tinymceRef.current.insertContent(v);
                     }
                   }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
                 ))}

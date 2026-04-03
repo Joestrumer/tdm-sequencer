@@ -16,9 +16,8 @@
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
 
-  <!-- Quill.js Editor (WYSIWYG for emails) -->
-  <link href="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.snow.css" rel="stylesheet">
-  <script src="https://cdn.jsdelivr.net/npm/quill@2.0.2/dist/quill.js"></script>
+  <!-- TinyMCE Editor (WYSIWYG for emails) -->
+  <script src="https://cdn.jsdelivr.net/npm/tinymce@7/tinymce.min.js" referrerpolicy="origin"></script>
 
   <!-- Babel pour transpiler le JSX dans le navigateur -->
   <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
@@ -42,28 +41,6 @@
     .font-mono { font-family: 'DM Mono', monospace !important; }
     .line-clamp-1 { overflow: hidden; display: -webkit-box; -webkit-line-clamp: 1; -webkit-box-orient: vertical; }
     body { margin: 0; background: #f8fafc; }
-
-    /* Tiptap Editor Styles */
-    .ProseMirror {
-      padding: 1rem;
-      min-height: 16rem;
-      outline: none;
-    }
-    .ProseMirror p { margin: 0.5em 0; }
-    .ProseMirror h1 { font-size: 2em; font-weight: bold; margin: 0.67em 0; }
-    .ProseMirror h2 { font-size: 1.5em; font-weight: bold; margin: 0.75em 0; }
-    .ProseMirror h3 { font-size: 1.17em; font-weight: bold; margin: 0.83em 0; }
-    .ProseMirror ul { list-style-type: disc; padding-left: 20px; margin: 8px 0; }
-    .ProseMirror ol { list-style-type: decimal; padding-left: 20px; margin: 8px 0; }
-    .ProseMirror li { margin: 2px 0; }
-    .ProseMirror a { color: #1a56db; text-decoration: underline; }
-    .ProseMirror p.is-editor-empty:first-child::before {
-      content: attr(data-placeholder);
-      float: left;
-      color: #94a3b8;
-      pointer-events: none;
-      height: 0;
-    }
 
     /* Écran de chargement */
     #loading {
