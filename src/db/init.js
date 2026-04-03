@@ -266,6 +266,46 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_partner_orders_partner ON partner_orders(partner_id);
   CREATE INDEX IF NOT EXISTS idx_partner_orders_statut ON partner_orders(statut);
+
+  -- ─── Tables Campagnes Email Marketing ──────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS campaigns (
+    id               TEXT PRIMARY KEY,
+    nom              TEXT NOT NULL,
+    sujet            TEXT NOT NULL,
+    corps_html       TEXT,
+    template_id      TEXT,
+    statut           TEXT DEFAULT 'brouillon',
+    scheduled_at     TEXT,
+    started_at       TEXT,
+    completed_at     TEXT,
+    total_recipients INTEGER DEFAULT 0,
+    sent_count       INTEGER DEFAULT 0,
+    error_count      INTEGER DEFAULT 0,
+    options          TEXT,
+    created_at       TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS campaign_recipients (
+    id            TEXT PRIMARY KEY,
+    campaign_id   TEXT NOT NULL REFERENCES campaigns(id) ON DELETE CASCADE,
+    lead_id       TEXT,
+    email         TEXT NOT NULL,
+    prenom        TEXT,
+    nom           TEXT,
+    hotel         TEXT,
+    ville         TEXT,
+    segment       TEXT,
+    statut        TEXT DEFAULT 'en_attente',
+    tracking_id   TEXT UNIQUE,
+    sent_at       TEXT,
+    error         TEXT
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_campaigns_statut ON campaigns(statut);
+  CREATE INDEX IF NOT EXISTS idx_cr_campaign ON campaign_recipients(campaign_id, statut);
+  CREATE INDEX IF NOT EXISTS idx_cr_tracking ON campaign_recipients(tracking_id);
+  CREATE INDEX IF NOT EXISTS idx_cr_email ON campaign_recipients(email);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
@@ -296,6 +336,8 @@ const migrations = [
   'ALTER TABLE vf_catalog ADD COLUMN categorie TEXT',
   'ALTER TABLE partner_orders ADD COLUMN validated_by TEXT',
   'ALTER TABLE users ADD COLUMN gsheets_spreadsheet_id TEXT',
+  'ALTER TABLE emails ADD COLUMN campaign_id TEXT',
+  'ALTER TABLE emails ADD COLUMN campaign_recipient_id TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
@@ -304,6 +346,53 @@ for (const sql of migrations) {
       console.error('⚠️  Erreur migration:', sql, '-', e.message);
     }
   }
+}
+
+// ─── Migration emails : rendre inscription_id/etape_id nullable (campagnes) ──
+try {
+  // Vérifier si la migration est nécessaire (colonnes NOT NULL ?)
+  const emailsInfo = db.pragma('table_info(emails)');
+  const inscCol = emailsInfo.find(c => c.name === 'inscription_id');
+  if (inscCol && inscCol.notnull === 1) {
+    console.log('🔄 Migration emails : rendre inscription_id/etape_id nullable...');
+    db.pragma('foreign_keys = OFF');
+    db.exec(`
+      CREATE TABLE emails_new (
+        id               TEXT PRIMARY KEY,
+        inscription_id   TEXT REFERENCES inscriptions(id) ON DELETE CASCADE,
+        lead_id          TEXT REFERENCES leads(id),
+        etape_id         TEXT REFERENCES etapes(id),
+        sujet            TEXT NOT NULL,
+        brevo_message_id TEXT,
+        tracking_id      TEXT UNIQUE,
+        statut           TEXT DEFAULT 'envoyé',
+        ouvertures       INTEGER DEFAULT 0,
+        clics            INTEGER DEFAULT 0,
+        erreur           TEXT,
+        envoye_at        TEXT DEFAULT (datetime('now')),
+        premier_ouvert   TEXT,
+        dernier_ouvert   TEXT,
+        campaign_id      TEXT,
+        campaign_recipient_id TEXT
+      );
+      INSERT INTO emails_new SELECT id, inscription_id, lead_id, etape_id, sujet, brevo_message_id, tracking_id, statut, ouvertures, clics, erreur, envoye_at, premier_ouvert, dernier_ouvert,
+        CASE WHEN 1=0 THEN NULL END as campaign_id,
+        CASE WHEN 1=0 THEN NULL END as campaign_recipient_id
+      FROM emails;
+      DROP TABLE emails;
+      ALTER TABLE emails_new RENAME TO emails;
+      CREATE INDEX IF NOT EXISTS idx_emails_tracking ON emails(tracking_id);
+      CREATE INDEX IF NOT EXISTS idx_emails_lead_id ON emails(lead_id);
+      CREATE INDEX IF NOT EXISTS idx_emails_inscription_id ON emails(inscription_id);
+      CREATE INDEX IF NOT EXISTS idx_emails_brevo_msgid ON emails(brevo_message_id);
+      CREATE INDEX IF NOT EXISTS idx_emails_campaign_id ON emails(campaign_id);
+    `);
+    db.pragma('foreign_keys = ON');
+    console.log('✅ Migration emails terminée');
+  }
+} catch (e) {
+  console.error('⚠️  Erreur migration emails:', e.message);
+  try { db.pragma('foreign_keys = ON'); } catch(_) {}
 }
 
 // ─── Data fixes : prix et vf_product_id manquants ───────────────────────────

@@ -138,6 +138,34 @@ module.exports = (db) => {
   function handleUnsubscribe(req, res) {
     try {
       const { leadId } = req.params;
+
+      // Désabonnement pour recipients CSV (sans lead_id) — format csv:trackingId
+      if (leadId.startsWith('csv:')) {
+        const trackingId = leadId.slice(4);
+        const email_row = db.prepare('SELECT * FROM emails WHERE tracking_id = ?').get(trackingId);
+        if (!email_row) return res.status(404).send('<html><body style="font-family:sans-serif;text-align:center;padding:40px"><h2>Lien invalide</h2></body></html>');
+        // Trouver l'email du recipient
+        const recipient = email_row.campaign_recipient_id
+          ? db.prepare('SELECT email FROM campaign_recipients WHERE id = ?').get(email_row.campaign_recipient_id)
+          : null;
+        const emailAddr = recipient?.email || '';
+        if (emailAddr) {
+          // Ajouter à la blocklist
+          try {
+            db.prepare('INSERT INTO email_blocklist (id, type, value, raison) VALUES (?, ?, ?, ?)').run(
+              uuidv4(), 'email', emailAddr.toLowerCase(), 'Désabonnement campagne marketing'
+            );
+          } catch (_) { /* déjà en blocklist */ }
+          // Si le lead existe, le marquer aussi
+          const existingLead = db.prepare('SELECT id FROM leads WHERE email = ?').get(emailAddr);
+          if (existingLead) {
+            db.prepare('UPDATE leads SET unsubscribed = 1, statut = \'Désabonné\', updated_at = datetime(\'now\') WHERE id = ?').run(existingLead.id);
+          }
+          logger.info(`🚫 Désabonnement campagne CSV : ${emailAddr}`);
+        }
+        return sendUnsubPage(res, { email: emailAddr || 'votre adresse' });
+      }
+
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
 
       if (!lead) {

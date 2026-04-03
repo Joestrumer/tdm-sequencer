@@ -40,6 +40,9 @@ scheduler.initialiser(db);
 const backup = require('./jobs/backup');
 backup.initialiser(db);
 
+const campaignSender = require('./jobs/campaignSender');
+campaignSender.initialiser(db);
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -94,6 +97,7 @@ app.use('/api/leads',         requireAccessAuto('leads'), require('./routes/lead
 app.use('/api/hubspot',       requireAccessAuto('leads'), require('./routes/hubspot')(db));
 app.use('/api/sequences',     requireAccessAuto('campagnes'), require('./routes/sequences')(db));
 app.use('/api/email-templates', requireAccessAuto('campagnes'), require('./routes/emailTemplates')(db));
+app.use('/api/campaigns', requireAccessAuto('campagnes'), require('./routes/campaigns')(db));
 app.use('/api/factures',      requireAccessAuto('factures'), require('./routes/factures')(db));
 app.use('/api/gsheets',       requireAccessAuto('factures'), require('./routes/googlesheets')(db));
 app.use('/api/partner-orders', requireAccessAuto('portail'), require('./routes/partnerOrders')(db));

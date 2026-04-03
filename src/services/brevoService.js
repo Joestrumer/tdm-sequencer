@@ -419,10 +419,82 @@ function getQuotaRestant(db) {
   return { envoyes: row?.count || 0, max: maxParJour, restant: maxParJour - (row?.count || 0) };
 }
 
+// ─── Envoi email campagne (marketing one-shot) ─────────────────────────────
+async function envoyerEmailCampagne(db, { lead, sujet, corpsHtml, campaignId, recipientId, options = {} }) {
+  // 1. Vérifier que le lead n'est pas désabonné
+  if (lead.unsubscribed) {
+    throw new Error(`Lead désabonné : ${lead.email}`);
+  }
+
+  // 2. Vérifier la blocklist
+  verifierBlocklist(db, lead.email);
+
+  // 3. Substituer les variables
+  const sujetFinal = substituerVariables(sujet, lead);
+  const corpsFinal = substituerVariables(corpsHtml, lead);
+
+  // 4. Générer un ID de tracking unique
+  const trackingId = uuidv4();
+
+  // 5. Construire le HTML avec tracking
+  // Pour les recipients CSV (sans lead_id), l'URL de désabonnement utilise le tracking_id
+  const unsubId = lead.id || `csv:${trackingId}`;
+  const htmlFinal = texteVersHtml(corpsFinal, trackingId, { ...lead, id: unsubId }, true, options);
+
+  // 6. Préparer le payload
+  const payload = {
+    sender: SENDER,
+    to: [{ email: lead.email, name: `${lead.prenom || ''} ${lead.nom || ''}`.trim() || lead.email }],
+    subject: sujetFinal,
+    htmlContent: htmlFinal,
+    textContent: sujetFinal,
+    replyTo: { email: SENDER.email, name: SENDER.name },
+    headers: {
+      'X-Mailer': 'Terre-de-Mars-Campaign/1.0',
+      'List-Unsubscribe': `<${PUBLIC_URL}/api/tracking/unsubscribe/${unsubId}?t=${trackingId}>`,
+      'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
+    },
+  };
+
+  // 7. Envoyer via Brevo avec retry (2 tentatives, 500ms)
+  let brevoMessageId = null;
+  if (process.env.BREVO_API_KEY) {
+    const result = await avecRetry(() => brevoSendEmail(payload), 2, 500);
+    brevoMessageId = result?.messageId || null;
+    logger.info(`✉️  Email campagne envoyé`, { to: lead.email, campaignId, messageId: brevoMessageId });
+  } else {
+    logger.info(`📧 [MODE DÉMO] Email campagne simulé pour ${lead.email}`);
+    brevoMessageId = `demo-${Date.now()}`;
+  }
+
+  // 8. Enregistrer l'email en base (inscription_id = NULL, etape_id = NULL)
+  const emailId = uuidv4();
+  db.prepare(`
+    INSERT INTO emails (id, inscription_id, lead_id, etape_id, sujet, brevo_message_id, tracking_id, statut, campaign_id, campaign_recipient_id)
+    VALUES (?, NULL, ?, NULL, ?, ?, ?, 'envoyé', ?, ?)
+  `).run(emailId, lead.id || null, sujetFinal, brevoMessageId, trackingId, campaignId, recipientId);
+
+  // 9. Mettre à jour le recipient
+  db.prepare(`UPDATE campaign_recipients SET statut = 'envoyé', tracking_id = ?, sent_at = datetime('now') WHERE id = ?`).run(trackingId, recipientId);
+
+  // 10. Logger event
+  db.prepare(`INSERT INTO events (id, email_id, lead_id, type, meta) VALUES (?, ?, ?, 'envoi', ?)`).run(
+    uuidv4(), emailId, lead.id || null, JSON.stringify({ campaign_id: campaignId })
+  );
+
+  return { emailId, trackingId, brevoMessageId };
+}
+
 module.exports = {
   envoyerEmail,
+  envoyerEmailCampagne,
   estDansLaFenetreEnvoi,
   getQuotaRestant,
   substituerVariables,
   brevoSendEmail,
+  texteVersHtml,
+  verifierBlocklist,
+  nettoyerHtml,
+  PUBLIC_URL,
+  SENDER,
 };

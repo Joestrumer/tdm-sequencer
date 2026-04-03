@@ -8809,6 +8809,687 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
   );
 };
 
+// ─── VUE CAMPAGNES EMAIL MARKETING ──────────────────────────────────────────
+const VueCampagnes = ({ showToast, readOnly }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [filtreStatut, setFiltreStatut] = useState('tous');
+  const [showEditor, setShowEditor] = useState(false);
+  const [editCampaign, setEditCampaign] = useState(null);
+  const [expandedId, setExpandedId] = useState(null);
+  const [expandedStats, setExpandedStats] = useState(null);
+  const [expandedRecipients, setExpandedRecipients] = useState(null);
+
+  const charger = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/campaigns' + (filtreStatut !== 'tous' ? `?statut=${filtreStatut}` : ''));
+      setCampaigns(Array.isArray(data) ? data : []);
+    } catch (e) { showToast('Erreur chargement campagnes', 'error'); }
+    setLoading(false);
+  };
+
+  useEffect(() => { charger(); }, [filtreStatut]);
+
+  // Auto-refresh si campagne en cours
+  useEffect(() => {
+    const hasEnCours = campaigns.some(c => c.statut === 'en_cours');
+    if (!hasEnCours) return;
+    const iv = setInterval(charger, 5000);
+    return () => clearInterval(iv);
+  }, [campaigns]);
+
+  const supprimer = async (c) => {
+    if (!await confirmDialog(`Supprimer la campagne "${c.nom}" ?`)) return;
+    await api.delete(`/campaigns/${c.id}`);
+    showToast('Campagne supprimée');
+    charger();
+  };
+
+  const annuler = async (c) => {
+    if (!await confirmDialog(`Annuler la campagne "${c.nom}" ?`)) return;
+    await api.post(`/campaigns/${c.id}/cancel`);
+    showToast('Campagne annulée');
+    charger();
+  };
+
+  const dupliquer = async (c) => {
+    await api.post(`/campaigns/${c.id}/duplicate`);
+    showToast('Campagne dupliquée');
+    charger();
+  };
+
+  const toggleExpand = async (id) => {
+    if (expandedId === id) { setExpandedId(null); return; }
+    setExpandedId(id);
+    try {
+      const [stats, rData] = await Promise.all([
+        api.get(`/campaigns/${id}/stats`),
+        api.get(`/campaigns/${id}/recipients?limit=20`),
+      ]);
+      setExpandedStats(stats);
+      setExpandedRecipients(rData);
+    } catch (e) { /* ignore */ }
+  };
+
+  const BADGES = {
+    brouillon: 'bg-slate-100 text-slate-600',
+    'programmée': 'bg-blue-50 text-blue-700',
+    en_cours: 'bg-amber-50 text-amber-700',
+    'terminée': 'bg-emerald-50 text-emerald-700',
+    'annulée': 'bg-red-50 text-red-600',
+  };
+
+  return (
+    <div>
+      {confirmDialogEl}
+
+      <div className="flex items-center justify-between mb-6">
+        <div className="flex gap-2">
+          {['tous', 'brouillon', 'en_cours', 'terminée'].map(s => (
+            <button key={s} onClick={() => setFiltreStatut(s)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${filtreStatut === s ? 'bg-slate-800 text-white' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}>
+              {s === 'tous' ? 'Toutes' : s === 'brouillon' ? 'Brouillons' : s === 'en_cours' ? 'En cours' : 'Terminées'}
+            </button>
+          ))}
+        </div>
+        {!readOnly && (
+          <button onClick={() => { setEditCampaign(null); setShowEditor(true); }} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700">
+            + Nouvelle campagne
+          </button>
+        )}
+      </div>
+
+      {loading && <div className="text-sm text-slate-400">Chargement...</div>}
+
+      <div className="space-y-3">
+        {campaigns.map(c => (
+          <div key={c.id} className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="p-4 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => toggleExpand(c.id)}>
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <h3 className="font-semibold text-slate-900">{c.nom}</h3>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${BADGES[c.statut] || 'bg-slate-100 text-slate-600'}`}>{c.statut}</span>
+                </div>
+                <div className="flex items-center gap-4 text-sm text-slate-500">
+                  {c.statut === 'en_cours' && (
+                    <div className="flex items-center gap-2">
+                      <div className="w-32 bg-slate-100 rounded-full h-2">
+                        <div className="bg-amber-500 h-2 rounded-full transition-all" style={{ width: `${c.total_recipients > 0 ? Math.round(c.sent_count / c.total_recipients * 100) : 0}%` }} />
+                      </div>
+                      <span className="text-xs">{c.sent_count}/{c.total_recipients}</span>
+                    </div>
+                  )}
+                  {c.statut === 'terminée' && (
+                    <div className="flex items-center gap-3 text-xs">
+                      <span>{c.sent_count} envoyés</span>
+                      <span className="text-emerald-600">{c.stats?.open_rate || 0}% ouverts</span>
+                      <span className="text-blue-600">{c.stats?.click_rate || 0}% cliqués</span>
+                    </div>
+                  )}
+                  {c.statut === 'brouillon' && <span className="text-xs">{c.total_recipients} destinataires</span>}
+                  <span className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-FR')}</span>
+                  <svg className={`w-4 h-4 transition-transform ${expandedId === c.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+                </div>
+              </div>
+              <p className="text-xs text-slate-400 mt-1">Objet : {c.sujet}</p>
+            </div>
+
+            {expandedId === c.id && (
+              <div className="border-t border-slate-100 p-4 bg-slate-50">
+                {/* Stats KPIs */}
+                {expandedStats && (
+                  <div className="grid grid-cols-4 gap-4 mb-4">
+                    <div className="bg-white rounded-lg p-3 text-center">
+                      <div className="text-2xl font-bold text-slate-800">{expandedStats.sent || 0}</div>
+                      <div className="text-xs text-slate-500">Envoyés</div>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 text-center">
+                      <div className="text-2xl font-bold text-emerald-600">{expandedStats.open_rate || 0}%</div>
+                      <div className="text-xs text-slate-500">Ouverts ({expandedStats.opened || 0})</div>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 text-center">
+                      <div className="text-2xl font-bold text-blue-600">{expandedStats.click_rate || 0}%</div>
+                      <div className="text-xs text-slate-500">Cliqués ({expandedStats.clicked || 0})</div>
+                    </div>
+                    <div className="bg-white rounded-lg p-3 text-center">
+                      <div className="text-2xl font-bold text-red-500">{expandedStats.errors || 0}</div>
+                      <div className="text-xs text-slate-500">Erreurs</div>
+                    </div>
+                  </div>
+                )}
+
+                {/* Table recipients */}
+                {expandedRecipients?.recipients?.length > 0 && (
+                  <div className="bg-white rounded-lg overflow-hidden mb-4">
+                    <table className="w-full text-xs">
+                      <thead><tr className="bg-slate-50 text-slate-500">
+                        <th className="text-left p-2">Email</th><th className="text-left p-2">Prénom</th><th className="text-left p-2">Statut</th><th className="text-left p-2">Envoyé</th><th className="text-right p-2">Ouvertures</th><th className="text-right p-2">Clics</th>
+                      </tr></thead>
+                      <tbody>{expandedRecipients.recipients.map(r => (
+                        <tr key={r.id} className="border-t border-slate-50">
+                          <td className="p-2 font-mono">{r.email}</td>
+                          <td className="p-2">{r.prenom}</td>
+                          <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.statut === 'envoyé' ? 'bg-emerald-50 text-emerald-700' : r.statut === 'erreur' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{r.statut}</span></td>
+                          <td className="p-2 text-slate-400">{r.sent_at ? new Date(r.sent_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td>
+                          <td className="p-2 text-right">{r.ouvertures || 0}</td>
+                          <td className="p-2 text-right">{r.clics || 0}</td>
+                        </tr>
+                      ))}</tbody>
+                    </table>
+                    {expandedRecipients.total > 20 && <div className="p-2 text-center text-xs text-slate-400">{expandedRecipients.total} destinataires au total</div>}
+                  </div>
+                )}
+
+                {/* Actions */}
+                <div className="flex gap-2">
+                  {c.statut === 'brouillon' && !readOnly && (
+                    <button onClick={(e) => { e.stopPropagation(); setEditCampaign(c); setShowEditor(true); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-white hover:bg-slate-700">Modifier</button>
+                  )}
+                  {!readOnly && (
+                    <button onClick={(e) => { e.stopPropagation(); dupliquer(c); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200">Dupliquer</button>
+                  )}
+                  {(c.statut === 'en_cours' || c.statut === 'programmée') && !readOnly && (
+                    <button onClick={(e) => { e.stopPropagation(); annuler(c); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100">Annuler</button>
+                  )}
+                  {(c.statut === 'brouillon' || c.statut === 'terminée' || c.statut === 'annulée') && !readOnly && (
+                    <button onClick={(e) => { e.stopPropagation(); supprimer(c); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100">Supprimer</button>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        ))}
+
+        {!loading && campaigns.length === 0 && (
+          <div className="text-center py-16 text-slate-400">
+            <div className="text-4xl mb-3">📬</div>
+            <p>Aucune campagne{filtreStatut !== 'tous' ? ` avec le statut "${filtreStatut}"` : ''}</p>
+          </div>
+        )}
+      </div>
+
+      {showEditor && <ModalCampaignEditor campaign={editCampaign} onClose={() => { setShowEditor(false); charger(); }} showToast={showToast} />}
+    </div>
+  );
+};
+
+// ─── MODAL CAMPAIGN EDITOR (Wizard 3 étapes) ───────────────────────────────
+const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
+  const [step, setStep] = useState(1);
+  const [saving, setSaving] = useState(false);
+  const [campaignId, setCampaignId] = useState(campaign?.id || null);
+
+  // Étape 1: Contenu
+  const [nom, setNom] = useState(campaign?.nom || '');
+  const [sujet, setSujet] = useState(campaign?.sujet || '');
+  const [corpsHtml, setCorpsHtml] = useState(campaign?.corps_html || '');
+  const [templates, setTemplates] = useState([]);
+  const [selectedTemplate, setSelectedTemplate] = useState(campaign?.template_id || '');
+  const editorRef = useRef(null);
+  const tinymceRef = useRef(null);
+
+  // Étape 2: Destinataires
+  const [recipientMode, setRecipientMode] = useState('filter');
+  const [filterSegment, setFilterSegment] = useState('');
+  const [filterLangue, setFilterLangue] = useState('');
+  const [filterStatut, setFilterStatut] = useState([]);
+  const [filterCampaign, setFilterCampaign] = useState('');
+  const [filterSearch, setFilterSearch] = useState('');
+  const [recipientCount, setRecipientCount] = useState(campaign?.total_recipients || 0);
+  const [csvData, setCsvData] = useState([]);
+  const [csvPreview, setCsvPreview] = useState([]);
+  const [csvMapping, setCsvMapping] = useState({ email: '', prenom: '', nom: '', hotel: '', ville: '' });
+  const [csvHeaders, setCsvHeaders] = useState([]);
+  const [addingRecipients, setAddingRecipients] = useState(false);
+
+  // Étape 3: Envoi
+  const [testEmail, setTestEmail] = useState('');
+  const [sendingTest, setSendingTest] = useState(false);
+  const [scheduleDate, setScheduleDate] = useState('');
+  const [scheduleTime, setScheduleTime] = useState('09:00');
+
+  // Charger les templates
+  useEffect(() => {
+    api.get('/email-templates').then(data => {
+      if (Array.isArray(data)) setTemplates(data);
+    }).catch(() => {});
+  }, []);
+
+  // Initialiser TinyMCE
+  useEffect(() => {
+    if (!editorRef.current) return;
+    const containerId = 'tinymce-campaign-editor-' + Date.now();
+    editorRef.current.id = containerId;
+
+    tinymce.init({
+      selector: '#' + containerId,
+      plugins: 'lists link image table code fullscreen',
+      toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+      font_family_formats: 'Arial=Arial,Helvetica,sans-serif; Helvetica=Helvetica,Arial,sans-serif; Verdana=Verdana,Geneva,sans-serif; Georgia=Georgia,serif; Times New Roman=Times New Roman,Times,serif',
+      font_size_formats: '10px 12px 14px 16px 18px 20px 24px 28px 32px',
+      menubar: false,
+      height: 350,
+      content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
+      branding: false,
+      promotion: false,
+      placeholder: 'Contenu de votre campagne...',
+      license_key: 'gpl',
+      setup: (editor) => {
+        editor.on('init', () => {
+          tinymceRef.current = editor;
+          if (corpsHtml) editor.setContent(corpsHtml);
+        });
+        editor.on('input change keyup ExecCommand NodeChange', () => {
+          setCorpsHtml(editor.getContent());
+        });
+      }
+    });
+
+    return () => {
+      if (tinymceRef.current) { tinymceRef.current.remove(); tinymceRef.current = null; }
+    };
+  }, []);
+
+  const insertVariable = (v) => {
+    if (tinymceRef.current) tinymceRef.current.insertContent(v);
+  };
+
+  const applyTemplate = (tplId) => {
+    setSelectedTemplate(tplId);
+    const tpl = templates.find(t => t.id === tplId);
+    if (tpl) {
+      if (tpl.sujet && !sujet) setSujet(tpl.sujet);
+      if (tpl.corps_html && tinymceRef.current) {
+        tinymceRef.current.setContent(tpl.corps_html);
+        setCorpsHtml(tpl.corps_html);
+      }
+    }
+  };
+
+  // Sauvegarder/créer la campagne (brouillon)
+  const saveDraft = async () => {
+    if (!nom.trim() || !sujet.trim()) { showToast('Nom et objet requis', 'error'); return null; }
+    setSaving(true);
+    try {
+      // Sync TinyMCE content
+      const html = tinymceRef.current ? tinymceRef.current.getContent() : corpsHtml;
+      const body = { nom, sujet, corps_html: html, template_id: selectedTemplate || null };
+      let result;
+      if (campaignId) {
+        result = await api.put(`/campaigns/${campaignId}`, body);
+      } else {
+        result = await api.post('/campaigns', body);
+      }
+      if (result?.id) {
+        setCampaignId(result.id);
+        return result.id;
+      }
+      if (result?.erreur) { showToast(result.erreur, 'error'); return null; }
+      return campaignId;
+    } catch (e) {
+      showToast('Erreur sauvegarde', 'error');
+      return null;
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleNextStep = async () => {
+    if (step === 1) {
+      const id = await saveDraft();
+      if (id) setStep(2);
+    } else if (step === 2) {
+      setStep(3);
+    }
+  };
+
+  // CSV parsing
+  const handleCsvFile = (e) => {
+    const file = e.target.files[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      try {
+        const wb = XLSX.read(ev.target.result, { type: 'binary' });
+        const ws = wb.Sheets[wb.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(ws, { header: 1 });
+        if (json.length < 2) { showToast('Fichier vide', 'error'); return; }
+        const headers = json[0].map(h => String(h || '').trim());
+        setCsvHeaders(headers);
+        const rows = json.slice(1).filter(r => r.some(c => c));
+        setCsvData(rows);
+        setCsvPreview(rows.slice(0, 5));
+        // Auto-map
+        const mapping = { email: '', prenom: '', nom: '', hotel: '', ville: '' };
+        headers.forEach((h, i) => {
+          const hl = h.toLowerCase();
+          if (hl.includes('email') || hl.includes('mail')) mapping.email = String(i);
+          else if (hl.includes('prenom') || hl.includes('prénom') || hl.includes('first')) mapping.prenom = String(i);
+          else if (hl.includes('nom') || hl.includes('last') || hl.includes('name')) mapping.nom = String(i);
+          else if (hl.includes('hotel') || hl.includes('hôtel') || hl.includes('établissement')) mapping.hotel = String(i);
+          else if (hl.includes('ville') || hl.includes('city')) mapping.ville = String(i);
+        });
+        setCsvMapping(mapping);
+      } catch (err) {
+        showToast('Erreur lecture fichier : ' + err.message, 'error');
+      }
+    };
+    reader.readAsBinaryString(file);
+  };
+
+  // Ajouter recipients
+  const addRecipients = async () => {
+    if (!campaignId) return;
+    setAddingRecipients(true);
+    try {
+      let body;
+      if (recipientMode === 'filter') {
+        const filters = {};
+        if (filterSegment) filters.segment = filterSegment;
+        if (filterLangue) filters.langue = filterLangue;
+        if (filterStatut.length > 0) filters.statut = filterStatut;
+        if (filterCampaign) filters.campaign = filterCampaign;
+        if (filterSearch) filters.search = filterSearch;
+        body = { mode: 'filter', filters };
+      } else {
+        if (!csvMapping.email) { showToast('Mappez la colonne email', 'error'); setAddingRecipients(false); return; }
+        const recipients = csvData.map(row => ({
+          email: row[parseInt(csvMapping.email)] || '',
+          prenom: csvMapping.prenom ? (row[parseInt(csvMapping.prenom)] || '') : '',
+          nom: csvMapping.nom ? (row[parseInt(csvMapping.nom)] || '') : '',
+          hotel: csvMapping.hotel ? (row[parseInt(csvMapping.hotel)] || '') : '',
+          ville: csvMapping.ville ? (row[parseInt(csvMapping.ville)] || '') : '',
+        })).filter(r => r.email);
+        body = { mode: 'csv', recipients };
+      }
+      const result = await api.post(`/campaigns/${campaignId}/recipients`, body);
+      if (result?.erreur) { showToast(result.erreur, 'error'); }
+      else {
+        showToast(`${result.added} destinataire(s) ajouté(s)${result.skipped ? `, ${result.skipped} doublon(s)` : ''}`);
+        setRecipientCount(result.total);
+      }
+    } catch (e) {
+      showToast('Erreur ajout destinataires', 'error');
+    }
+    setAddingRecipients(false);
+  };
+
+  const clearRecipients = async () => {
+    if (!campaignId) return;
+    await api.delete(`/campaigns/${campaignId}/recipients`);
+    setRecipientCount(0);
+    showToast('Destinataires supprimés');
+  };
+
+  // Test email
+  const sendTest = async () => {
+    if (!testEmail || !campaignId) return;
+    setSendingTest(true);
+    try {
+      const result = await api.post(`/campaigns/${campaignId}/test`, { email: testEmail });
+      if (result?.ok) showToast('Email test envoyé');
+      else showToast(result?.erreur || 'Erreur', 'error');
+    } catch (e) { showToast('Erreur envoi test', 'error'); }
+    setSendingTest(false);
+  };
+
+  // Lancer / programmer
+  const sendNow = async () => {
+    if (!campaignId || recipientCount === 0) { showToast('Ajoutez des destinataires', 'error'); return; }
+    const result = await api.post(`/campaigns/${campaignId}/send-now`);
+    if (result?.ok) { showToast('Campagne lancée !'); onClose(); }
+    else showToast(result?.erreur || 'Erreur', 'error');
+  };
+
+  const schedule = async () => {
+    if (!scheduleDate) { showToast('Choisissez une date', 'error'); return; }
+    const scheduled_at = `${scheduleDate}T${scheduleTime || '09:00'}:00`;
+    const result = await api.post(`/campaigns/${campaignId}/schedule`, { scheduled_at });
+    if (result?.ok) { showToast('Campagne programmée'); onClose(); }
+    else showToast(result?.erreur || 'Erreur', 'error');
+  };
+
+  const STATUTS_DISPONIBLES = ['Nouveau', 'En séquence', 'Répondu', 'Converti', 'Fin de séquence', 'Closed Lost'];
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex-shrink-0 p-5 border-b border-slate-200">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-bold text-slate-900">{campaign ? 'Modifier la campagne' : 'Nouvelle campagne'}</h2>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+          </div>
+          {/* Steps indicator */}
+          <div className="flex gap-2 mt-3">
+            {['Contenu', 'Destinataires', 'Envoi'].map((label, i) => (
+              <div key={i} className={`flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-medium ${step === i + 1 ? 'bg-slate-800 text-white' : step > i + 1 ? 'bg-emerald-100 text-emerald-700' : 'bg-slate-100 text-slate-400'}`}>
+                <span className="w-4 h-4 rounded-full flex items-center justify-center text-[10px] font-bold border" style={{ borderColor: 'currentColor' }}>{step > i + 1 ? '✓' : i + 1}</span>
+                {label}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Content */}
+        <div className="overflow-y-auto flex-1 p-5">
+          {/* ÉTAPE 1: Contenu */}
+          {step === 1 && (
+            <div className="space-y-4">
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Nom de la campagne</label>
+                <input value={nom} onChange={e => setNom(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Ex: Newsletter Avril 2026" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Objet de l'email</label>
+                <div className="flex gap-2">
+                  <input value={sujet} onChange={e => setSujet(e.target.value)} className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Ex: Découvrez nos nouvelles collections" />
+                </div>
+                <div className="flex gap-1 mt-1">
+                  {['{{prenom}}', '{{hotel}}', '{{ville}}'].map(v => (
+                    <button key={v} onClick={() => setSujet(s => s + ' ' + v)} className="text-[10px] px-2 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200">{v}</button>
+                  ))}
+                </div>
+              </div>
+              {templates.length > 0 && (
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Template (optionnel)</label>
+                  <select value={selectedTemplate} onChange={e => applyTemplate(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                    <option value="">— Aucun template —</option>
+                    {templates.map(t => <option key={t.id} value={t.id}>{t.nom} ({t.categorie})</option>)}
+                  </select>
+                </div>
+              )}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Contenu</label>
+                <div className="flex gap-1 mb-2">
+                  {['{{prenom}}', '{{nom}}', '{{hotel}}', '{{ville}}', '{{segment}}'].map(v => (
+                    <button key={v} onClick={() => insertVariable(v)} className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100">{v}</button>
+                  ))}
+                </div>
+                <div ref={editorRef} />
+              </div>
+            </div>
+          )}
+
+          {/* ÉTAPE 2: Destinataires */}
+          {step === 2 && (
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className="flex bg-slate-100 rounded-lg p-0.5">
+                  <button onClick={() => setRecipientMode('filter')} className={`px-3 py-1.5 rounded-md text-xs font-medium ${recipientMode === 'filter' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>Leads existants</button>
+                  <button onClick={() => setRecipientMode('csv')} className={`px-3 py-1.5 rounded-md text-xs font-medium ${recipientMode === 'csv' ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500'}`}>Import CSV</button>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-sm font-medium text-slate-700">{recipientCount} destinataire(s)</span>
+                  {recipientCount > 0 && <button onClick={clearRecipients} className="text-xs text-red-500 hover:text-red-700">Vider</button>}
+                </div>
+              </div>
+
+              {recipientMode === 'filter' && (
+                <div className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Segment</label>
+                      <select value={filterSegment} onChange={e => setFilterSegment(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                        <option value="">Tous</option>
+                        <option value="5*">5*</option>
+                        <option value="4*">4*</option>
+                        <option value="3*">3*</option>
+                        <option value="Boutique">Boutique</option>
+                        <option value="SPA">SPA</option>
+                      </select>
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Langue</label>
+                      <select value={filterLangue} onChange={e => setFilterLangue(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                        <option value="">Toutes</option>
+                        <option value="fr">Français</option>
+                        <option value="en">Anglais</option>
+                        <option value="es">Espagnol</option>
+                      </select>
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Statut</label>
+                    <div className="flex flex-wrap gap-1.5">
+                      {STATUTS_DISPONIBLES.map(s => (
+                        <button key={s} onClick={() => setFilterStatut(prev => prev.includes(s) ? prev.filter(x => x !== s) : [...prev, s])}
+                          className={`px-2 py-1 rounded-md text-xs font-medium border transition-colors ${filterStatut.includes(s) ? 'bg-slate-800 text-white border-slate-800' : 'bg-white text-slate-600 border-slate-200 hover:border-slate-400'}`}>{s}</button>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Recherche</label>
+                    <input value={filterSearch} onChange={e => setFilterSearch(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Nom, hôtel, email..." />
+                  </div>
+                  <button onClick={addRecipients} disabled={addingRecipients} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50">
+                    {addingRecipients ? 'Ajout en cours...' : 'Ajouter les leads correspondants'}
+                  </button>
+                </div>
+              )}
+
+              {recipientMode === 'csv' && (
+                <div className="space-y-3">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Fichier CSV ou Excel</label>
+                    <input type="file" accept=".csv,.xlsx,.xls" onChange={handleCsvFile} className="w-full text-sm" />
+                  </div>
+
+                  {csvHeaders.length > 0 && (
+                    <>
+                      <div className="grid grid-cols-2 gap-3">
+                        {Object.entries({ email: 'Email *', prenom: 'Prénom', nom: 'Nom', hotel: 'Hôtel', ville: 'Ville' }).map(([key, label]) => (
+                          <div key={key}>
+                            <label className="block text-xs text-slate-500 mb-1">{label}</label>
+                            <select value={csvMapping[key]} onChange={e => setCsvMapping(m => ({ ...m, [key]: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                              <option value="">— Non mappé —</option>
+                              {csvHeaders.map((h, i) => <option key={i} value={String(i)}>{h}</option>)}
+                            </select>
+                          </div>
+                        ))}
+                      </div>
+
+                      {csvPreview.length > 0 && (
+                        <div className="bg-slate-50 rounded-lg p-3">
+                          <div className="text-xs font-medium text-slate-500 mb-2">Aperçu ({csvData.length} lignes)</div>
+                          <table className="w-full text-xs">
+                            <thead><tr className="text-slate-400">{csvHeaders.map((h, i) => <th key={i} className="text-left p-1">{h}</th>)}</tr></thead>
+                            <tbody>{csvPreview.map((row, ri) => (
+                              <tr key={ri} className="border-t border-slate-100">{csvHeaders.map((_, ci) => <td key={ci} className="p-1 truncate max-w-[120px]">{row[ci]}</td>)}</tr>
+                            ))}</tbody>
+                          </table>
+                        </div>
+                      )}
+
+                      <button onClick={addRecipients} disabled={addingRecipients || !csvMapping.email} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50">
+                        {addingRecipients ? 'Import en cours...' : `Importer ${csvData.length} destinataires`}
+                      </button>
+                    </>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ÉTAPE 3: Envoi */}
+          {step === 3 && (
+            <div className="space-y-6">
+              {/* Résumé */}
+              <div className="bg-slate-50 rounded-xl p-4">
+                <h3 className="font-semibold text-slate-800 mb-2">Résumé</h3>
+                <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div><span className="text-slate-500">Campagne :</span> <span className="font-medium">{nom}</span></div>
+                  <div><span className="text-slate-500">Objet :</span> <span className="font-medium">{sujet}</span></div>
+                  <div><span className="text-slate-500">Destinataires :</span> <span className="font-medium">{recipientCount}</span></div>
+                  {recipientCount > 1000 && <div><span className="text-slate-500">Durée estimée :</span> <span className="font-medium">~{Math.ceil(recipientCount / 15 / 60)} min</span></div>}
+                </div>
+              </div>
+
+              {/* Test */}
+              <div>
+                <h3 className="font-semibold text-slate-800 mb-2">Envoyer un email test</h3>
+                <div className="flex gap-2">
+                  <input value={testEmail} onChange={e => setTestEmail(e.target.value)} className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="votre@email.com" />
+                  <button onClick={sendTest} disabled={sendingTest || !testEmail} className="bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-500 disabled:opacity-50">
+                    {sendingTest ? '...' : 'Envoyer test'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Programmer */}
+              <div>
+                <h3 className="font-semibold text-slate-800 mb-2">Programmer l'envoi</h3>
+                <div className="flex gap-2 items-end">
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Date</label>
+                    <input type="date" value={scheduleDate} onChange={e => setScheduleDate(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <div>
+                    <label className="block text-xs text-slate-500 mb-1">Heure</label>
+                    <input type="time" value={scheduleTime} onChange={e => setScheduleTime(e.target.value)} className="border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+                  </div>
+                  <button onClick={schedule} disabled={!scheduleDate || recipientCount === 0} className="bg-blue-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-blue-500 disabled:opacity-50">
+                    Programmer
+                  </button>
+                </div>
+              </div>
+
+              {/* Envoyer maintenant */}
+              <div className="border-t border-slate-200 pt-4">
+                <button onClick={sendNow} disabled={recipientCount === 0} className="w-full bg-emerald-600 text-white px-6 py-3 rounded-xl text-sm font-bold hover:bg-emerald-500 disabled:opacity-50 transition-colors">
+                  Envoyer maintenant ({recipientCount} destinataires)
+                </button>
+                {recipientCount === 0 && <p className="text-xs text-red-500 mt-1 text-center">Ajoutez des destinataires avant d'envoyer</p>}
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex-shrink-0 p-4 border-t border-slate-200 flex items-center justify-between">
+          <div>
+            {step > 1 && (
+              <button onClick={() => setStep(step - 1)} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">
+                Retour
+              </button>
+            )}
+          </div>
+          <div className="flex gap-2">
+            <button onClick={onClose} className="px-4 py-2 rounded-lg text-sm font-medium text-slate-600 hover:bg-slate-100">Fermer</button>
+            {step < 3 && (
+              <button onClick={handleNextStep} disabled={saving || (step === 1 && (!nom.trim() || !sujet.trim()))} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50">
+                {saving ? 'Sauvegarde...' : 'Suivant'}
+              </button>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── VUE COMMANDES PARTENAIRES ────────────────────────────────────────────────
 const VueCommandes = ({ showToast }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
@@ -10273,6 +10954,7 @@ function App() {
     { id: "leads", icon: "👥", label: "Leads" },
     { id: "campagnes", icon: "📨", label: "Campagnes", children: [
       { id: "sequences", label: "Séquences" },
+      { id: "email-campaigns", label: "Email Marketing" },
       { id: "templates", label: "Templates" },
     ]},
     { id: "factures", icon: "📄", label: "Factures" },
@@ -10286,13 +10968,13 @@ function App() {
 
   // Filtrer la NAV selon les permissions de l'utilisateur
   const NAV = NAV_ALL.filter(item => {
-    if (item.children) return item.children.some(c => hasAccess(c.id === 'equipe' ? 'config' : (c.id === 'commandes' || c.id === 'partenaires') ? 'portail' : (c.id === 'sequences' || c.id === 'templates') ? 'campagnes' : (c.id === 'parametres' || c.id === 'blocklist') ? 'config' : c.id));
+    if (item.children) return item.children.some(c => hasAccess(c.id === 'equipe' ? 'config' : (c.id === 'commandes' || c.id === 'partenaires') ? 'portail' : (c.id === 'sequences' || c.id === 'templates' || c.id === 'email-campaigns') ? 'campagnes' : (c.id === 'parametres' || c.id === 'blocklist') ? 'config' : c.id));
     return hasAccess(item.id);
   }).map(item => {
     if (!item.children) return item;
     const filtered = item.children.filter(c => {
       if (c.id === 'equipe') return isAdmin;
-      const tabId = (c.id === 'commandes' || c.id === 'partenaires') ? 'portail' : (c.id === 'sequences' || c.id === 'templates') ? 'campagnes' : (c.id === 'parametres' || c.id === 'blocklist') ? 'config' : c.id;
+      const tabId = (c.id === 'commandes' || c.id === 'partenaires') ? 'portail' : (c.id === 'sequences' || c.id === 'templates' || c.id === 'email-campaigns') ? 'campagnes' : (c.id === 'parametres' || c.id === 'blocklist') ? 'config' : c.id;
       return hasAccess(tabId);
     });
     return { ...item, children: filtered };
@@ -10426,6 +11108,7 @@ function App() {
               {vue === "leads" && `${leads.length} leads au total`}
               {vue === "sequences" && `${sequences.length} séquences actives`}
               {vue === "templates" && "Bibliothèque de templates d'emails"}
+              {vue === "email-campaigns" && "Campagnes email marketing one-shot"}
               {vue === "blocklist" && "Gestion des emails et domaines bloqués"}
               {vue === "emails" && "Vérification & nettoyage des adresses email"}
               {vue === "factures" && "Commandes, factures & relances VosFactures"}
@@ -10462,6 +11145,7 @@ function App() {
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "templates" && <VueTemplates showToast={showToast} readOnly={!canWrite('campagnes')} />}
+          {vue === "email-campaigns" && <VueCampagnes showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "factures" && <VueFactures showToast={showToast} readOnly={!canWrite('factures')} />}
           {vue === "blocklist" && <VueBlocklist onRefresh={charger} showToast={showToast} readOnly={!canWrite('config')} />}
           {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} showToast={showToast} readOnly={!canWrite('emails')} />}
