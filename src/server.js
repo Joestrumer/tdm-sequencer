@@ -104,6 +104,7 @@ app.use('/api/partner-orders', requireAccessAuto('portail'), require('./routes/p
 app.use('/api/reference',     requireAccessAuto('portail'), require('./routes/referenceData')(db));
 app.use('/api/shipments',     requireAccessAuto('portail'), require('./routes/shipments')(db));
 app.use('/api/email-validation', requireAccessAuto('emails'), require('./routes/emailValidation')(db));
+app.use('/api/segments',      requireAccessAuto('config'), require('./routes/segments')(db));
 app.use('/api/config',        requireAccessAuto('config'), require('./routes/config')(db));
 app.use('/api/blocklist',     requireAccessAuto('config'), require('./routes/blocklist')(db));
 app.use('/api/qualification', requireAccessAuto('leads'), require('./routes/qualification')(db));

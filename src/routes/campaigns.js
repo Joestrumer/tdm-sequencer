@@ -242,17 +242,27 @@ module.exports = (db) => {
       const page = parseInt(req.query.page) || 1;
       const limit = Math.min(parseInt(req.query.limit) || 50, 200);
       const offset = (page - 1) * limit;
+      const search = req.query.search ? req.query.search.trim() : '';
 
-      const total = db.prepare('SELECT COUNT(*) as n FROM campaign_recipients WHERE campaign_id = ?').get(req.params.id).n;
+      let whereClause = 'cr.campaign_id = ?';
+      const params = [req.params.id];
+
+      if (search) {
+        whereClause += ' AND (cr.email LIKE ? OR cr.prenom LIKE ? OR cr.nom LIKE ? OR cr.hotel LIKE ?)';
+        const s = `%${search}%`;
+        params.push(s, s, s, s);
+      }
+
+      const total = db.prepare(`SELECT COUNT(*) as n FROM campaign_recipients cr WHERE ${whereClause}`).get(...params).n;
 
       const recipients = db.prepare(`
         SELECT cr.*, e.ouvertures, e.clics
         FROM campaign_recipients cr
         LEFT JOIN emails e ON e.campaign_recipient_id = cr.id
-        WHERE cr.campaign_id = ?
+        WHERE ${whereClause}
         ORDER BY cr.rowid
         LIMIT ? OFFSET ?
-      `).all(req.params.id, limit, offset);
+      `).all(...params, limit, offset);
 
       res.json({ recipients, total, page, pages: Math.ceil(total / limit) });
     } catch (err) {

@@ -4,7 +4,11 @@ const { useState, useEffect, useRef, useMemo, useCallback } = React;
 const api = window.tdmApi;
 
 // ─── CONSTANTES PARTAGÉES ─────────────────────────────────────────────────────
-const SEGMENTS = ["5*","4*","Boutique","Retail","SPA","Concept Store"];
+const SEGMENTS_DEFAULT = ["5*","4*","Boutique","Retail","SPA","Concept Store"];
+
+// Cache global des segments dynamiques (chargé par App, utilisé partout)
+let _segmentsCache = SEGMENTS_DEFAULT;
+function getSegments() { return _segmentsCache; }
 const LANGUES_MAP = { fr: "🇫🇷", en: "🇬🇧", de: "🇩🇪", es: "🇪🇸", it: "🇮🇹" };
 const langueToFlag = (l) => LANGUES_MAP[l] || l;
 
@@ -132,6 +136,7 @@ const STATUT_CONFIG = {
   "Converti": { bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
   "Fin de séquence": { bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-500" },
   "Closed Lost": { bg: "bg-orange-50", text: "text-orange-700", dot: "bg-orange-500" },
+  "Email Marketing Sent": { bg: "bg-indigo-50", text: "text-indigo-700", dot: "bg-indigo-500" },
   "Désabonné": { bg: "bg-red-50", text: "text-red-600", dot: "bg-red-400" },
 };
 
@@ -425,7 +430,7 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">Segment</label>
                 <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
-                  {SEGMENTS.map(s => <option key={s}>{s}</option>)}
+                  {getSegments().map(s => <option key={s}>{s}</option>)}
                 </select>
               </div>
               <div>
@@ -923,7 +928,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
         <div className="px-6 py-4 border-b border-slate-100 flex items-center gap-4 flex-shrink-0">
           <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom de la séquence..." className="flex-1 text-base font-semibold text-slate-900 focus:outline-none bg-transparent placeholder-slate-300" />
           <select value={segment} onChange={e => setSegment(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none">
-            {SEGMENTS.map(s => <option key={s}>{s}</option>)}
+            {getSegments().map(s => <option key={s}>{s}</option>)}
           </select>
           <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
             <input type="checkbox" checked={desabonnement} onChange={e => setDesabonnement(e.target.checked)} className="rounded" />
@@ -1453,6 +1458,146 @@ const VueDashboard = ({ showToast }) => {
   );
 };
 
+// ─── DASHBOARD MARKETING ──────────────────────────────────────────────────────
+const VueDashboardMarketing = ({ showToast }) => {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const loadData = async () => {
+    setLoading(true);
+    try {
+      const res = await api.get('/dashboard/marketing');
+      setData(res);
+    } catch (err) {
+      showToast?.('Erreur chargement dashboard marketing: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(() => { if (!document.hidden) loadData(); }, 30000);
+    return () => clearInterval(interval);
+  }, []);
+
+  if (loading || !data) {
+    return (
+      <div className="flex items-center justify-center py-20">
+        <div className="text-center">
+          <div className="w-8 h-8 border-3 border-slate-200 border-t-slate-600 rounded-full animate-spin mx-auto mb-3" />
+          <p className="text-sm text-slate-500">Chargement du dashboard marketing...</p>
+        </div>
+      </div>
+    );
+  }
+
+  const { stats, topCampagnes, campagnesEnCours } = data;
+
+  return (
+    <div className="space-y-5">
+      {/* KPIs */}
+      <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+        <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl border border-indigo-200 p-4">
+          <div className="text-xs font-medium text-indigo-600 mb-1 uppercase tracking-wide">Campagnes Terminées</div>
+          <div className="text-2xl font-bold text-indigo-900">{stats.campaignesTerminees}</div>
+          <div className="text-sm text-indigo-700 mt-1">Total</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-4">
+          <div className="text-xs font-medium text-blue-600 mb-1 uppercase tracking-wide">En Cours</div>
+          <div className="text-2xl font-bold text-blue-900">{stats.campaignesEnCours}</div>
+          <div className="text-sm text-blue-700 mt-1">Actives</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-4">
+          <div className="text-xs font-medium text-emerald-600 mb-1 uppercase tracking-wide">Emails 30j</div>
+          <div className="text-2xl font-bold text-emerald-900">{stats.emailsMarketing30j}</div>
+          <div className="text-sm text-emerald-700 mt-1">Marketing envoyés</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-4">
+          <div className="text-xs font-medium text-amber-600 mb-1 uppercase tracking-wide">Taux Ouverture</div>
+          <div className={`text-2xl font-bold ${stats.tauxOuverture >= 40 ? 'text-emerald-600' : stats.tauxOuverture >= 20 ? 'text-amber-600' : 'text-red-600'}`}>
+            {stats.tauxOuverture}%
+          </div>
+          <div className="text-sm text-amber-700 mt-1">30 derniers jours</div>
+        </div>
+
+        <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-4">
+          <div className="text-xs font-medium text-purple-600 mb-1 uppercase tracking-wide">Taux Clic</div>
+          <div className={`text-2xl font-bold ${stats.tauxClic >= 10 ? 'text-emerald-600' : stats.tauxClic >= 3 ? 'text-amber-600' : 'text-red-600'}`}>
+            {stats.tauxClic}%
+          </div>
+          <div className="text-sm text-purple-700 mt-1">30 derniers jours</div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {/* Campagnes en cours */}
+        {campagnesEnCours.length > 0 && (
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-slate-800">Campagnes en cours</h3>
+              <button onClick={loadData} className="text-xs text-blue-600 hover:text-blue-700">Actualiser</button>
+            </div>
+            <div className="space-y-3">
+              {campagnesEnCours.map(c => (
+                <div key={c.id} className="bg-slate-50 rounded-lg p-3">
+                  <div className="flex justify-between items-center mb-1.5">
+                    <span className="text-xs font-medium text-slate-800">{c.nom}</span>
+                    <span className="text-[10px] text-slate-400">{c.sent_count}/{c.total_recipients}</span>
+                  </div>
+                  <div className="w-full bg-slate-200 rounded-full h-2 overflow-hidden">
+                    <div className="h-full bg-blue-500 transition-all duration-300 rounded-full" style={{ width: `${c.progression}%` }} />
+                  </div>
+                  <div className="text-[10px] text-slate-400 mt-1">{c.progression}% terminé</div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+
+        {/* Top campagnes */}
+        <div className={`bg-white rounded-xl border border-slate-100 p-5 ${campagnesEnCours.length === 0 ? 'lg:col-span-2' : ''}`}>
+          <h3 className="text-sm font-semibold text-slate-800 mb-3">Dernières campagnes terminées</h3>
+          {topCampagnes.length === 0 ? (
+            <p className="text-sm text-slate-400 py-4 text-center">Aucune campagne terminée</p>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-slate-400 border-b border-slate-100">
+                    <th className="text-left py-2 px-2 font-medium">Campagne</th>
+                    <th className="text-left py-2 px-2 font-medium">Date</th>
+                    <th className="text-right py-2 px-2 font-medium">Envoyés</th>
+                    <th className="text-right py-2 px-2 font-medium">Ouvertures</th>
+                    <th className="text-right py-2 px-2 font-medium">Clics</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {topCampagnes.map(c => (
+                    <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50/50">
+                      <td className="py-2 px-2 font-medium text-slate-800 truncate max-w-[200px]">{c.nom}</td>
+                      <td className="py-2 px-2 text-slate-500">{c.completed_at ? new Date(c.completed_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—'}</td>
+                      <td className="py-2 px-2 text-right text-slate-700">{c.sent_count}</td>
+                      <td className="py-2 px-2 text-right">
+                        <span className={`font-medium ${c.open_rate >= 40 ? 'text-emerald-600' : c.open_rate >= 20 ? 'text-amber-600' : 'text-slate-500'}`}>{c.open_rate}%</span>
+                      </td>
+                      <td className="py-2 px-2 text-right">
+                        <span className={`font-medium ${c.click_rate >= 10 ? 'text-emerald-600' : c.click_rate >= 3 ? 'text-amber-600' : 'text-slate-500'}`}>{c.click_rate}%</span>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Modal édition lead ────────────────────────────────────────────────────
 const ModalEditLead = ({ lead, onClose, onSave, campaigns = [], sequences = [] }) => {
   useEscapeClose(onClose);
@@ -1527,7 +1672,7 @@ const ModalEditLead = ({ lead, onClose, onSave, campaigns = [], sequences = [] }
           <div className="grid grid-cols-3 gap-3">
             <div><label className="text-xs text-slate-500 mb-1 block">Segment</label>
             <select value={form.segment} onChange={e => set("segment", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
-              {SEGMENTS.map(s => <option key={s}>{s}</option>)}
+              {getSegments().map(s => <option key={s}>{s}</option>)}
             </select></div>
             <div><label className="text-xs text-slate-500 mb-1 block">Statut</label>
             <select value={form.statut} onChange={e => set("statut", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none">
@@ -1621,6 +1766,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [filterVille, setFilterVille] = useState("Tous");
   const [filterLangue, setFilterLangue] = useState("Tous");
   const [filterCampaign, setFilterCampaign] = useState("Tous");
+  const [filterTag, setFilterTag] = useState("Tous");
   const [sortBy, setSortBy] = useState("recent"); // "recent"|"score"|"nom"
   const [sortColumn, setSortColumn] = useState(null); // colonne active pour tri
   const [sortDirection, setSortDirection] = useState("asc"); // "asc"|"desc"
@@ -1756,6 +1902,15 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const langues = useMemo(() => ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.langue).filter(Boolean))).sort()], [leadsNorm]);
   const campaigns = useMemo(() => ["Tous", ...Array.from(new Set(leadsNorm.map(l => l.campaign).filter(Boolean))).sort()], [leadsNorm]);
   const statuts = ["Tous", ...Object.keys(STATUT_CONFIG)];
+  const allTags = useMemo(() => {
+    const tagSet = new Set();
+    leadsNorm.forEach(l => (l.tags || []).forEach(t => {
+      // Extraire le préfixe (ex: "Séquence: xxx (date)" -> "Séquence")
+      const prefix = t.split(':')[0]?.trim();
+      if (prefix) tagSet.add(prefix);
+    }));
+    return ["Tous", ...Array.from(tagSet).sort()];
+  }, [leadsNorm]);
 
   const handleColumnSort = (column) => {
     if (sortColumn === column) {
@@ -1774,7 +1929,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     const matchVille = filterVille === "Tous" || l.ville === filterVille;
     const matchLangue = filterLangue === "Tous" || l.langue === filterLangue;
     const matchCampaign = filterCampaign === "Tous" || l.campaign === filterCampaign;
-    return matchSearch && matchStatut && matchSegment && matchVille && matchLangue && matchCampaign;
+    const matchTag = filterTag === "Tous" || (l.tags || []).some(t => t.startsWith(filterTag + ':'));
+    return matchSearch && matchStatut && matchSegment && matchVille && matchLangue && matchCampaign && matchTag;
   }).sort((a, b) => {
     // Tri par colonne (prioritaire)
     if (sortColumn) {
@@ -1812,7 +1968,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     if (sortBy === "score") return (b.score||0) - (a.score||0);
     if (sortBy === "nom") return `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`);
     return 0; // recent = ordre API
-  }), [leadsNorm, search, filterStatut, filterSegment, filterVille, filterLangue, filterCampaign, sortColumn, sortDirection, sortBy]);
+  }), [leadsNorm, search, filterStatut, filterSegment, filterVille, filterLangue, filterCampaign, filterTag, sortColumn, sortDirection, sortBy]);
 
   const KANBAN_COLS = useMemo(() => ["Nouveau", "En séquence", "Répondu", "Converti", "Fin de séquence", "Closed Lost", "Désabonné"], []);
 
@@ -1954,6 +2110,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             <option value="Tous">Toutes campaigns</option>
             {campaigns.filter(c => c !== "Tous").map(c => <option key={c} value={c}>{c}</option>)}
           </select>
+          {allTags.length > 1 && (
+            <select value={filterTag} onChange={e => setFilterTag(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
+              {allTags.map(t => <option key={t} value={t}>{t === "Tous" ? "Tous tags" : t}</option>)}
+            </select>
+          )}
           <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
             <option value="recent">Plus récents</option>
             <option value="score">Score ↓</option>
@@ -2153,6 +2314,14 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                   </td>
                   <td className="px-2 py-1.5 overflow-hidden" style={{ width: columnWidths.hotel + 'px' }}>
                     <div className="text-xs text-slate-700 font-medium leading-tight truncate">{lead.hotel} · {[lead.ville, lead.segment].filter(Boolean).join(" · ")}</div>
+                    {lead.tags && lead.tags.length > 0 && (
+                      <div className="flex gap-0.5 mt-0.5 flex-wrap">
+                        {lead.tags.slice(0, 2).map((tag, ti) => (
+                          <span key={ti} className={`inline-block px-1 py-0 rounded text-[9px] font-medium truncate max-w-[100px] ${tag.startsWith('Séquence') ? 'bg-blue-50 text-blue-500' : tag.startsWith('Email Marketing') ? 'bg-indigo-50 text-indigo-500' : 'bg-slate-50 text-slate-400'}`} title={tag}>{tag}</span>
+                        ))}
+                        {lead.tags.length > 2 && <span className="text-[9px] text-slate-400">+{lead.tags.length - 2}</span>}
+                      </div>
+                    )}
                   </td>
                   <td className="px-2 py-1.5 text-center overflow-hidden" style={{ width: columnWidths.langue + 'px' }}>
                     <span className="text-xs">{langueToFlag(lead.langue) || '—'}</span>
@@ -3271,7 +3440,7 @@ const ModalQualification = ({ email, onClose, onSuccess, sequences, showToast })
             <div className="mt-3">
               <label className="text-xs text-slate-500 mb-1 block">Segment</label>
               <select value={form.segment} onChange={e => set('segment', e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                {SEGMENTS.map(s => <option key={s}>{s}</option>)}
+                {getSegments().map(s => <option key={s}>{s}</option>)}
               </select>
             </div>
           </div>
@@ -8095,6 +8264,127 @@ const VueParametres = () => {
       <VueApiExterne />
       <VueHubspot />
       <VueVosFacturesConfig />
+      <VueSegmentsConfig />
+    </div>
+  );
+};
+
+// ─── Config Segments dynamiques ──────────────────────────────────────────────
+const VueSegmentsConfig = () => {
+  const [segments, setSegments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editId, setEditId] = useState(null);
+  const [editForm, setEditForm] = useState({ nom: '', couleur: '#64748b', ordre: 0 });
+  const [newForm, setNewForm] = useState({ nom: '', couleur: '#64748b', ordre: 0 });
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  const charger = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/segments');
+      setSegments(Array.isArray(data) ? data : []);
+    } catch (_) {}
+    setLoading(false);
+  };
+
+  useEffect(() => { charger(); }, []);
+
+  const creer = async () => {
+    if (!newForm.nom.trim()) return;
+    setSaving(true); setMsg('');
+    try {
+      const res = await api.post('/segments', newForm);
+      if (res?.erreur) { setMsg(res.erreur); } else {
+        setNewForm({ nom: '', couleur: '#64748b', ordre: 0 });
+        charger();
+        _segmentsCache = [..._segmentsCache, newForm.nom.trim()];
+        setMsg('Segment créé');
+      }
+    } catch (e) { setMsg('Erreur'); }
+    setSaving(false);
+  };
+
+  const modifier = async (id) => {
+    setSaving(true); setMsg('');
+    try {
+      const res = await api.put('/segments/' + id, editForm);
+      if (res?.erreur) { setMsg(res.erreur); } else {
+        setEditId(null);
+        charger();
+        api.get('/segments').then(data => { if (Array.isArray(data)) _segmentsCache = data.map(s => s.nom); });
+        setMsg('Segment modifié');
+      }
+    } catch (e) { setMsg('Erreur'); }
+    setSaving(false);
+  };
+
+  const supprimer = async (id) => {
+    if (!window.confirm('Supprimer ce segment ?')) return;
+    try {
+      const res = await api.delete('/segments/' + id);
+      if (res?.erreur) { setMsg(res.erreur); } else {
+        charger();
+        api.get('/segments').then(data => { if (Array.isArray(data)) _segmentsCache = data.map(s => s.nom); });
+        setMsg('Segment supprimé');
+      }
+    } catch (e) { setMsg(e.message || 'Erreur'); }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-slate-800">Segments</h3>
+      <p className="text-xs text-slate-400">Gérez les segments de leads (5*, Boutique, SPA, etc.)</p>
+
+      {loading ? <div className="text-xs text-slate-400">Chargement...</div> : (
+        <table className="w-full text-xs">
+          <thead>
+            <tr className="text-slate-400 border-b border-slate-100">
+              <th className="text-left py-2 px-1 font-medium">Nom</th>
+              <th className="text-left py-2 px-1 font-medium">Couleur</th>
+              <th className="text-right py-2 px-1 font-medium">Ordre</th>
+              <th className="text-right py-2 px-1 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {segments.map(s => (
+              <tr key={s.id} className="border-b border-slate-50">
+                {editId === s.id ? (
+                  <>
+                    <td className="py-1.5 px-1"><input value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} className="w-full border border-slate-200 rounded px-2 py-1 text-xs" /></td>
+                    <td className="py-1.5 px-1"><input type="color" value={editForm.couleur} onChange={e => setEditForm(f => ({ ...f, couleur: e.target.value }))} className="w-8 h-6 border border-slate-200 rounded cursor-pointer" /></td>
+                    <td className="py-1.5 px-1"><input type="number" value={editForm.ordre} onChange={e => setEditForm(f => ({ ...f, ordre: +e.target.value }))} className="w-16 border border-slate-200 rounded px-2 py-1 text-xs text-right" /></td>
+                    <td className="py-1.5 px-1 text-right space-x-1">
+                      <button onClick={() => modifier(s.id)} disabled={saving} className="px-2 py-1 bg-emerald-600 text-white rounded text-[10px]">OK</button>
+                      <button onClick={() => setEditId(null)} className="px-2 py-1 bg-slate-100 text-slate-600 rounded text-[10px]">Annuler</button>
+                    </td>
+                  </>
+                ) : (
+                  <>
+                    <td className="py-1.5 px-1 font-medium text-slate-800">{s.nom}</td>
+                    <td className="py-1.5 px-1"><span className="inline-block w-4 h-4 rounded" style={{ backgroundColor: s.couleur }} /></td>
+                    <td className="py-1.5 px-1 text-right text-slate-500">{s.ordre}</td>
+                    <td className="py-1.5 px-1 text-right space-x-1">
+                      <button onClick={() => { setEditId(s.id); setEditForm({ nom: s.nom, couleur: s.couleur, ordre: s.ordre }); }} className="px-2 py-1 border border-slate-200 text-slate-500 rounded text-[10px] hover:bg-slate-50">Modifier</button>
+                      <button onClick={() => supprimer(s.id)} className="px-2 py-1 border border-red-100 text-red-400 rounded text-[10px] hover:bg-red-50">Suppr</button>
+                    </td>
+                  </>
+                )}
+              </tr>
+            ))}
+            {/* Nouvelle ligne */}
+            <tr className="border-t border-slate-200">
+              <td className="py-1.5 px-1"><input value={newForm.nom} onChange={e => setNewForm(f => ({ ...f, nom: e.target.value }))} placeholder="Nouveau segment..." className="w-full border border-slate-200 rounded px-2 py-1 text-xs" /></td>
+              <td className="py-1.5 px-1"><input type="color" value={newForm.couleur} onChange={e => setNewForm(f => ({ ...f, couleur: e.target.value }))} className="w-8 h-6 border border-slate-200 rounded cursor-pointer" /></td>
+              <td className="py-1.5 px-1"><input type="number" value={newForm.ordre} onChange={e => setNewForm(f => ({ ...f, ordre: +e.target.value }))} className="w-16 border border-slate-200 rounded px-2 py-1 text-xs text-right" /></td>
+              <td className="py-1.5 px-1 text-right">
+                <button onClick={creer} disabled={saving || !newForm.nom.trim()} className="px-2 py-1 bg-slate-800 text-white rounded text-[10px] disabled:opacity-50">Ajouter</button>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      )}
+      {msg && <p className="text-xs text-emerald-600">{msg}</p>}
     </div>
   );
 };
@@ -9042,6 +9332,13 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
   const [csvMapping, setCsvMapping] = useState({ email: '', prenom: '', nom: '', hotel: '', ville: '' });
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [addingRecipients, setAddingRecipients] = useState(false);
+  const [recipientPreview, setRecipientPreview] = useState([]);
+  const [recipientSearch, setRecipientSearch] = useState('');
+  const [showAllRecipients, setShowAllRecipients] = useState(false);
+  const [allRecipients, setAllRecipients] = useState([]);
+  const [recipientPage, setRecipientPage] = useState(1);
+  const [recipientPages, setRecipientPages] = useState(1);
+  const [recipientBreakdown, setRecipientBreakdown] = useState({ leads: 0, csv: 0 });
 
   // Étape 3: Envoi
   const [testEmail, setTestEmail] = useState('');
@@ -9095,15 +9392,28 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
     if (tinymceRef.current) tinymceRef.current.insertContent(v);
   };
 
+  const [templatePreview, setTemplatePreview] = useState(null);
+
   const applyTemplate = (tplId) => {
     setSelectedTemplate(tplId);
     const tpl = templates.find(t => t.id === tplId);
-    if (tpl) {
-      if (tpl.sujet && !sujet) setSujet(tpl.sujet);
-      if (tpl.corps_html && tinymceRef.current) {
-        tinymceRef.current.setContent(tpl.corps_html);
-        setCorpsHtml(tpl.corps_html);
+    if (!tpl) return;
+
+    // Si le sujet existe déjà, demander confirmation
+    if (sujet && tpl.sujet && sujet !== tpl.sujet) {
+      if (!window.confirm(`Remplacer l'objet actuel "${sujet}" par "${tpl.sujet}" ?`)) {
+        // Appliquer seulement le corps
+        if (tpl.corps_html && tinymceRef.current) {
+          tinymceRef.current.setContent(tpl.corps_html);
+          setCorpsHtml(tpl.corps_html);
+        }
+        return;
       }
+    }
+    if (tpl.sujet) setSujet(tpl.sujet);
+    if (tpl.corps_html && tinymceRef.current) {
+      tinymceRef.current.setContent(tpl.corps_html);
+      setCorpsHtml(tpl.corps_html);
     }
   };
 
@@ -9208,6 +9518,8 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
       else {
         showToast(`${result.added} destinataire(s) ajouté(s)${result.skipped ? `, ${result.skipped} doublon(s)` : ''}`);
         setRecipientCount(result.total);
+        // Charger preview
+        loadRecipientPreview();
       }
     } catch (e) {
       showToast('Erreur ajout destinataires', 'error');
@@ -9215,10 +9527,42 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
     setAddingRecipients(false);
   };
 
+  const loadRecipientPreview = async (search = '') => {
+    if (!campaignId) return;
+    try {
+      const params = search ? `?limit=10&search=${encodeURIComponent(search)}` : '?limit=10';
+      const res = await api.get(`/campaigns/${campaignId}/recipients${params}`);
+      setRecipientPreview(res.recipients || []);
+      // Breakdown
+      const allRes = await api.get(`/campaigns/${campaignId}/recipients?limit=1`);
+      const total = allRes.total || 0;
+      const leadsCount = (res.recipients || []).filter(r => r.lead_id).length;
+      setRecipientBreakdown({ leads: leadsCount, csv: (res.recipients || []).length - leadsCount });
+    } catch (_) {}
+  };
+
+  const loadAllRecipients = async (page = 1, search = '') => {
+    if (!campaignId) return;
+    try {
+      const params = `?page=${page}&limit=50${search ? `&search=${encodeURIComponent(search)}` : ''}`;
+      const res = await api.get(`/campaigns/${campaignId}/recipients${params}`);
+      setAllRecipients(res.recipients || []);
+      setRecipientPage(res.page || 1);
+      setRecipientPages(res.pages || 1);
+    } catch (_) {}
+  };
+
+  // Charger preview quand on arrive à l'étape 2
+  useEffect(() => {
+    if (step === 2 && campaignId && recipientCount > 0) loadRecipientPreview();
+  }, [step, campaignId]);
+
   const clearRecipients = async () => {
     if (!campaignId) return;
     await api.delete(`/campaigns/${campaignId}/recipients`);
     setRecipientCount(0);
+    setRecipientPreview([]);
+    setShowAllRecipients(false);
     showToast('Destinataires supprimés');
   };
 
@@ -9250,7 +9594,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
     else showToast(result?.erreur || 'Erreur', 'error');
   };
 
-  const STATUTS_DISPONIBLES = ['Nouveau', 'En séquence', 'Répondu', 'Converti', 'Fin de séquence', 'Closed Lost'];
+  const STATUTS_DISPONIBLES = ['Nouveau', 'En séquence', 'Répondu', 'Converti', 'Fin de séquence', 'Closed Lost', 'Email Marketing Sent'];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
@@ -9295,10 +9639,23 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
               {templates.length > 0 && (
                 <div>
                   <label className="block text-xs font-medium text-slate-600 mb-1">Template (optionnel)</label>
-                  <select value={selectedTemplate} onChange={e => applyTemplate(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                    <option value="">— Aucun template —</option>
-                    {templates.map(t => <option key={t.id} value={t.id}>{t.nom} ({t.categorie})</option>)}
-                  </select>
+                  <div className="flex gap-2">
+                    <select value={selectedTemplate} onChange={e => { setTemplatePreview(null); applyTemplate(e.target.value); }} className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                      <option value="">— Aucun template —</option>
+                      {templates.map(t => <option key={t.id} value={t.id}>{t.nom} ({t.categorie})</option>)}
+                    </select>
+                    {selectedTemplate && (
+                      <button type="button" onClick={() => setTemplatePreview(templatePreview ? null : templates.find(t => t.id === selectedTemplate))} className="px-3 py-2 text-xs border border-slate-200 rounded-lg hover:bg-slate-50">
+                        {templatePreview ? 'Fermer' : 'Aperçu'}
+                      </button>
+                    )}
+                  </div>
+                  {templatePreview && (
+                    <div className="mt-2 border border-slate-200 rounded-lg overflow-hidden max-h-48 overflow-y-auto">
+                      <div className="bg-slate-50 px-3 py-1.5 text-xs text-slate-500 border-b border-slate-200">Objet : {templatePreview.sujet || '—'}</div>
+                      <div className="p-3 text-sm" dangerouslySetInnerHTML={{ __html: templatePreview.corps_html || '<em>Pas de contenu</em>' }} />
+                    </div>
+                  )}
                 </div>
               )}
               <div>
@@ -9334,11 +9691,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                       <label className="block text-xs text-slate-500 mb-1">Segment</label>
                       <select value={filterSegment} onChange={e => setFilterSegment(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
                         <option value="">Tous</option>
-                        <option value="5*">5*</option>
-                        <option value="4*">4*</option>
-                        <option value="3*">3*</option>
-                        <option value="Boutique">Boutique</option>
-                        <option value="SPA">SPA</option>
+                        {getSegments().map(s => <option key={s} value={s}>{s}</option>)}
                       </select>
                     </div>
                     <div>
@@ -9407,6 +9760,70 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                         {addingRecipients ? 'Import en cours...' : `Importer ${csvData.length} destinataires`}
                       </button>
                     </>
+                  )}
+                </div>
+              )}
+
+              {/* Prévisualisation des destinataires ajoutés */}
+              {recipientCount > 0 && (
+                <div className="border-t border-slate-200 pt-4 space-y-3">
+                  <div className="flex items-center justify-between">
+                    <h4 className="text-sm font-semibold text-slate-700">Destinataires ajoutés</h4>
+                    <div className="flex items-center gap-2">
+                      <input
+                        value={recipientSearch}
+                        onChange={e => { setRecipientSearch(e.target.value); loadRecipientPreview(e.target.value); }}
+                        placeholder="Rechercher..."
+                        className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-40"
+                      />
+                    </div>
+                  </div>
+                  {recipientPreview.length > 0 && (
+                    <div className="bg-slate-50 rounded-lg overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead><tr className="bg-slate-100 text-slate-500"><th className="text-left p-2">Email</th><th className="text-left p-2">Prénom</th><th className="text-left p-2">Hôtel</th><th className="text-left p-2">Source</th></tr></thead>
+                        <tbody>
+                          {recipientPreview.map(r => (
+                            <tr key={r.id} className="border-t border-slate-100">
+                              <td className="p-2 truncate max-w-[150px]">{r.email}</td>
+                              <td className="p-2">{r.prenom || '—'}</td>
+                              <td className="p-2 truncate max-w-[120px]">{r.hotel || '—'}</td>
+                              <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.lead_id ? 'bg-blue-50 text-blue-600' : 'bg-amber-50 text-amber-600'}`}>{r.lead_id ? 'Lead' : 'CSV'}</span></td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
+                  {recipientCount > 10 && !showAllRecipients && (
+                    <button onClick={() => { setShowAllRecipients(true); loadAllRecipients(1, recipientSearch); }} className="text-xs text-blue-600 hover:text-blue-800">
+                      Voir tous les {recipientCount} destinataires
+                    </button>
+                  )}
+                  {showAllRecipients && (
+                    <div className="bg-white border border-slate-200 rounded-lg overflow-hidden">
+                      <table className="w-full text-xs">
+                        <thead><tr className="bg-slate-50 text-slate-500"><th className="text-left p-2">Email</th><th className="text-left p-2">Prénom</th><th className="text-left p-2">Nom</th><th className="text-left p-2">Hôtel</th><th className="text-left p-2">Statut</th></tr></thead>
+                        <tbody>
+                          {allRecipients.map(r => (
+                            <tr key={r.id} className="border-t border-slate-100">
+                              <td className="p-2 truncate max-w-[150px]">{r.email}</td>
+                              <td className="p-2">{r.prenom || '—'}</td>
+                              <td className="p-2">{r.nom || '—'}</td>
+                              <td className="p-2 truncate max-w-[120px]">{r.hotel || '—'}</td>
+                              <td className="p-2">{r.statut}</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                      {recipientPages > 1 && (
+                        <div className="flex items-center justify-center gap-2 p-2 border-t border-slate-100">
+                          <button onClick={() => loadAllRecipients(recipientPage - 1, recipientSearch)} disabled={recipientPage <= 1} className="px-2 py-1 text-xs border border-slate-200 rounded disabled:opacity-30">&laquo;</button>
+                          <span className="text-xs text-slate-500">{recipientPage} / {recipientPages}</span>
+                          <button onClick={() => loadAllRecipients(recipientPage + 1, recipientSearch)} disabled={recipientPage >= recipientPages} className="px-2 py-1 text-xs border border-slate-200 rounded disabled:opacity-30">&raquo;</button>
+                        </div>
+                      )}
+                    </div>
                   )}
                 </div>
               )}
@@ -10421,7 +10838,7 @@ const ModalProfile = ({ onClose, showToast }) => {
 
   // Permissions lisibles
   const PERM_LABELS = {
-    dashboard: 'Dash Séquences', ventes: 'Dash Ventes', portail: 'Portail', leads: 'Leads',
+    dashboard: 'Dashboard', portail: 'Portail', leads: 'Leads',
     campagnes: 'Campagnes', factures: 'Factures', emails: 'Validation Email', config: 'Configuration'
   };
 
@@ -10493,8 +10910,7 @@ const ModalProfile = ({ onClose, showToast }) => {
 // ─── VUE EQUIPE (admin only) ──────────────────────────────────────────────────
 
 const PERM_TABS = [
-  { id: 'dashboard', label: 'Dash Séquences' },
-  { id: 'ventes', label: 'Dash Ventes' },
+  { id: 'dashboard', label: 'Dashboard' },
   { id: 'portail', label: 'Portail' },
   { id: 'leads', label: 'Leads' },
   { id: 'campagnes', label: 'Campagnes' },
@@ -10813,7 +11229,7 @@ function getDefaultVue(user) {
   // Ordre de préférence pour la vue par défaut
   const vueMap = [
     ['dashboard', 'dashboard'], ['leads', 'leads'], ['campagnes', 'sequences'],
-    ['factures', 'factures'], ['ventes', 'ventes'], ['portail', 'commandes'],
+    ['factures', 'factures'], ['portail', 'commandes'],
     ['emails', 'emails'], ['config', 'parametres'],
   ];
   for (const [tabId, vueId] of vueMap) {
@@ -10868,6 +11284,15 @@ function App() {
   // Exposer showToast globalement pour les composants sans prop
   useEffect(() => { window.showToast = showToast; }, [showToast]);
 
+  // Charger les segments dynamiques
+  useEffect(() => {
+    api.get('/segments').then(data => {
+      if (Array.isArray(data) && data.length > 0) {
+        _segmentsCache = data.map(s => s.nom);
+      }
+    }).catch(() => {});
+  }, []);
+
   // Charger les données au démarrage (résilient aux permissions)
   const chargerRetries = useRef(0);
   const charger = async () => {
@@ -10891,8 +11316,8 @@ function App() {
       // Ne charger que les données accessibles
       promises.push(hasAccess('leads') ? safeFetch('/leads') : Promise.resolve(null));
       promises.push(hasAccess('campagnes') ? safeFetch('/sequences') : Promise.resolve(null));
-      promises.push(hasAccess('ventes') || hasAccess('dashboard') ? safeFetch('/stats/dashboard') : Promise.resolve(null));
-      promises.push(hasAccess('ventes') ? safeFetch('/stats/sequences') : Promise.resolve(null));
+      promises.push(hasAccess('dashboard') ? safeFetch('/stats/dashboard') : Promise.resolve(null));
+      promises.push(hasAccess('dashboard') ? safeFetch('/stats/sequences') : Promise.resolve(null));
 
       const [leadsData, seqData, statsData, seqStatsData] = await Promise.all(promises);
 
@@ -10945,8 +11370,11 @@ function App() {
   };
 
   const NAV_ALL = [
-    { id: "dashboard", icon: "📧", label: "Dash Séquences" },
-    { id: "ventes", icon: "📈", label: "Dash Ventes" },
+    { id: "dashboard-group", icon: "📊", label: "Dashboard", children: [
+      { id: "dashboard", label: "Séquences" },
+      { id: "dashboard-marketing", label: "Marketing" },
+      { id: "dashboard-ventes", label: "Ventes" },
+    ]},
     { id: "portail", icon: "📦", label: "Portail", children: [
       { id: "commandes", label: "Commandes" },
       { id: "partenaires", label: "Partenaires" },
@@ -10968,14 +11396,21 @@ function App() {
 
   // Filtrer la NAV selon les permissions de l'utilisateur
   const NAV = NAV_ALL.filter(item => {
-    if (item.children) return item.children.some(c => hasAccess(c.id === 'equipe' ? 'config' : (c.id === 'commandes' || c.id === 'partenaires') ? 'portail' : (c.id === 'sequences' || c.id === 'templates' || c.id === 'email-campaigns') ? 'campagnes' : (c.id === 'parametres' || c.id === 'blocklist') ? 'config' : c.id));
+    const getPermId = (id) => {
+      if (id === 'equipe') return 'config';
+      if (id === 'commandes' || id === 'partenaires') return 'portail';
+      if (id === 'sequences' || id === 'templates' || id === 'email-campaigns') return 'campagnes';
+      if (id === 'parametres' || id === 'blocklist') return 'config';
+      if (id === 'dashboard' || id === 'dashboard-marketing' || id === 'dashboard-ventes') return 'dashboard';
+      return id;
+    };
+    if (item.children) return item.children.some(c => hasAccess(getPermId(c.id)));
     return hasAccess(item.id);
   }).map(item => {
     if (!item.children) return item;
     const filtered = item.children.filter(c => {
       if (c.id === 'equipe') return isAdmin;
-      const tabId = (c.id === 'commandes' || c.id === 'partenaires') ? 'portail' : (c.id === 'sequences' || c.id === 'templates' || c.id === 'email-campaigns') ? 'campagnes' : (c.id === 'parametres' || c.id === 'blocklist') ? 'config' : c.id;
-      return hasAccess(tabId);
+      return hasAccess(getPermId(c.id));
     });
     return { ...item, children: filtered };
   });
@@ -11102,7 +11537,8 @@ function App() {
             </div>
             <p className="text-xs text-slate-400">
               {vue === "dashboard" && `${leads.filter(l => l.statut === "En séquence").length} leads en séquence`}
-              {vue === "ventes" && "Analytics CA, clients & commandes"}
+              {vue === "dashboard-marketing" && "KPIs et performances des campagnes email marketing"}
+              {vue === "dashboard-ventes" && "Analytics CA, clients & commandes"}
               {vue === "commandes" && "Commandes partenaires en attente de validation"}
               {vue === "partenaires" && "Gestion des accès au portail partenaire"}
               {vue === "leads" && `${leads.length} leads au total`}
@@ -11139,7 +11575,8 @@ function App() {
         <main className="p-4 pb-24 md:p-8 md:pb-8">
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
           {vue === "dashboard" && <VueDashboard showToast={showToast} />}
-          {vue === "ventes" && <AnalyticsSpreadsheet showToast={showToast} />}
+          {vue === "dashboard-marketing" && <VueDashboardMarketing showToast={showToast} />}
+          {vue === "dashboard-ventes" && <AnalyticsSpreadsheet showToast={showToast} />}
           {vue === "commandes" && <VueCommandes showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "partenaires" && <VuePartenaires showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}

@@ -306,6 +306,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_cr_campaign ON campaign_recipients(campaign_id, statut);
   CREATE INDEX IF NOT EXISTS idx_cr_tracking ON campaign_recipients(tracking_id);
   CREATE INDEX IF NOT EXISTS idx_cr_email ON campaign_recipients(email);
+
+  -- ─── Table Segments dynamiques ──────────────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS segments (
+    id TEXT PRIMARY KEY,
+    nom TEXT NOT NULL UNIQUE,
+    couleur TEXT DEFAULT '#64748b',
+    ordre INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
@@ -643,6 +653,23 @@ if (process.env.ADMIN_EMAIL) {
     }
   }
 }
+
+// ─── Seed segments par défaut ────────────────────────────────────────────────
+const DEFAULT_SEGMENTS = [
+  { id: 'seg-5star', nom: '5*', couleur: '#eab308', ordre: 1 },
+  { id: 'seg-4star', nom: '4*', couleur: '#3b82f6', ordre: 2 },
+  { id: 'seg-boutique', nom: 'Boutique', couleur: '#8b5cf6', ordre: 3 },
+  { id: 'seg-retail', nom: 'Retail', couleur: '#10b981', ordre: 4 },
+  { id: 'seg-spa', nom: 'SPA', couleur: '#ec4899', ordre: 5 },
+  { id: 'seg-conceptstore', nom: 'Concept Store', couleur: '#f97316', ordre: 6 },
+];
+const stmtInsertSegment = db.prepare('INSERT OR IGNORE INTO segments (id, nom, couleur, ordre) VALUES (?, ?, ?, ?)');
+let segmentsInserted = 0;
+for (const s of DEFAULT_SEGMENTS) {
+  const r = stmtInsertSegment.run(s.id, s.nom, s.couleur, s.ordre);
+  if (r.changes > 0) segmentsInserted++;
+}
+if (segmentsInserted > 0) console.log(`🏷️  ${segmentsInserted} segment(s) par défaut ajouté(s)`);
 
 console.log('✅ Base de données initialisée :', DB_PATH);
 module.exports = db;

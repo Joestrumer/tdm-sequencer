@@ -137,5 +137,88 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/dashboard/marketing — Métriques email marketing
+  router.get('/marketing', (req, res) => {
+    try {
+      const campaignesTerminees = db.prepare(`
+        SELECT COUNT(*) as count FROM campaigns WHERE statut = 'terminée'
+      `).get().count;
+
+      const campaignesEnCours = db.prepare(`
+        SELECT COUNT(*) as count FROM campaigns WHERE statut = 'en_cours'
+      `).get().count;
+
+      const emailsMarketing30j = db.prepare(`
+        SELECT COUNT(*) as count FROM emails
+        WHERE campaign_id IS NOT NULL AND envoye_at >= datetime('now', '-30 days')
+      `).get().count;
+
+      const tauxOuvertureData = db.prepare(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as opened
+        FROM emails
+        WHERE campaign_id IS NOT NULL AND envoye_at >= datetime('now', '-30 days')
+      `).get();
+      const tauxOuverture = tauxOuvertureData.total > 0
+        ? Math.round((tauxOuvertureData.opened || 0) / tauxOuvertureData.total * 100)
+        : 0;
+
+      const tauxClicData = db.prepare(`
+        SELECT
+          COUNT(*) as total,
+          SUM(CASE WHEN clics > 0 THEN 1 ELSE 0 END) as clicked
+        FROM emails
+        WHERE campaign_id IS NOT NULL AND envoye_at >= datetime('now', '-30 days')
+      `).get();
+      const tauxClic = tauxClicData.total > 0
+        ? Math.round((tauxClicData.clicked || 0) / tauxClicData.total * 100)
+        : 0;
+
+      // Top 10 dernières campagnes terminées avec stats
+      const topCampagnes = db.prepare(`
+        SELECT
+          c.id, c.nom, c.completed_at, c.sent_count, c.error_count, c.total_recipients,
+          (SELECT SUM(CASE WHEN e.ouvertures > 0 THEN 1 ELSE 0 END) FROM emails e WHERE e.campaign_id = c.id) as opened,
+          (SELECT SUM(CASE WHEN e.clics > 0 THEN 1 ELSE 0 END) FROM emails e WHERE e.campaign_id = c.id) as clicked
+        FROM campaigns c
+        WHERE c.statut = 'terminée'
+        ORDER BY c.completed_at DESC
+        LIMIT 10
+      `).all().map(c => ({
+        ...c,
+        open_rate: c.sent_count > 0 ? Math.round((c.opened || 0) / c.sent_count * 100) : 0,
+        click_rate: c.sent_count > 0 ? Math.round((c.clicked || 0) / c.sent_count * 100) : 0,
+      }));
+
+      // Campagnes en cours avec progression
+      const campagnesEnCoursDetail = db.prepare(`
+        SELECT c.id, c.nom, c.started_at, c.total_recipients, c.sent_count, c.error_count
+        FROM campaigns c
+        WHERE c.statut = 'en_cours'
+        ORDER BY c.started_at DESC
+      `).all().map(c => ({
+        ...c,
+        progression: c.total_recipients > 0 ? Math.round((c.sent_count + c.error_count) / c.total_recipients * 100) : 0,
+      }));
+
+      res.json({
+        stats: {
+          campaignesTerminees,
+          campaignesEnCours,
+          emailsMarketing30j,
+          tauxOuverture,
+          tauxClic,
+        },
+        topCampagnes,
+        campagnesEnCours: campagnesEnCoursDetail,
+      });
+
+    } catch (err) {
+      logger.error('GET /dashboard/marketing erreur', { error: err.message });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   return router;
 };

@@ -10,6 +10,7 @@
 const cron = require('node-cron');
 const logger = require('../config/logger');
 const { envoyerEmailCampagne } = require('../services/brevoService');
+const { addOrUpdateTag } = require('../utils/leadTags');
 
 let db;
 let sending = false;
@@ -102,6 +103,19 @@ async function traiterBatch(campaign) {
       sentCount++;
       // Mettre à jour les compteurs de la campagne
       db.prepare(`UPDATE campaigns SET sent_count = sent_count + 1 WHERE id = ?`).run(campaign.id);
+
+      // Si le recipient a un lead_id, mettre à jour statut + tag
+      if (recipient.lead_id) {
+        try {
+          const currentLead = db.prepare('SELECT statut FROM leads WHERE id = ?').get(recipient.lead_id);
+          if (currentLead && (currentLead.statut === 'Nouveau' || currentLead.statut === 'Fin de séquence')) {
+            db.prepare(`UPDATE leads SET statut = 'Email Marketing Sent', updated_at = datetime('now') WHERE id = ?`).run(recipient.lead_id);
+          }
+          addOrUpdateTag(db, recipient.lead_id, 'Email Marketing', campaign.nom);
+        } catch (tagErr) {
+          logger.warn('Erreur mise à jour tag/statut lead', { leadId: recipient.lead_id, error: tagErr.message });
+        }
+      }
     } catch (err) {
       errorCount++;
       db.prepare(`UPDATE campaign_recipients SET statut = 'erreur', error = ? WHERE id = ?`).run(

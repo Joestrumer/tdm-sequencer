@@ -11,6 +11,7 @@ const { v4: uuidv4 } = require('uuid');
 const logger  = require('../config/logger');
 const { envoyerEmail, estDansLaFenetreEnvoi, substituerVariables } = require('../services/brevoService');
 const hubspot = require('../services/hubspotService');
+const { addOrUpdateTag } = require('../utils/leadTags');
 
 let db; // Injecté par initialiser()
 
@@ -264,6 +265,13 @@ function inscrireLead(leadId, sequenceId) {
   }
 
   db.prepare(`UPDATE leads SET statut='En séquence', updated_at=datetime('now') WHERE id=?`).run(leadId);
+
+  // Tag automatique avec le nom de la séquence
+  try {
+    const seq = db.prepare('SELECT nom FROM sequences WHERE id = ?').get(sequenceId);
+    if (seq) addOrUpdateTag(db, leadId, 'Séquence', seq.nom);
+  } catch (e) { logger.warn('Erreur ajout tag séquence', { error: e.message }); }
+
   logger.info('🚀 Lead inscrit à la séquence', { leadId, sequenceId, prochainEnvoi, delai: premiereEtape.jour_delai });
   return { id, prochainEnvoi };
 }
