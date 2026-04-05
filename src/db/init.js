@@ -348,6 +348,7 @@ const migrations = [
   'ALTER TABLE users ADD COLUMN gsheets_spreadsheet_id TEXT',
   'ALTER TABLE emails ADD COLUMN campaign_id TEXT',
   'ALTER TABLE emails ADD COLUMN campaign_recipient_id TEXT',
+  'ALTER TABLE leads ADD COLUMN source TEXT DEFAULT \'\'',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

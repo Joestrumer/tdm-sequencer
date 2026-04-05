@@ -97,7 +97,7 @@ module.exports = (db) => {
   // POST /api/leads — Créer un lead
   router.post('/', async (req, res) => {
     try {
-      const { prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, comment, company_hubspot_id } = req.body;
+      const { prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, comment, source, company_hubspot_id } = req.body;
       if (!email || !hotel || !prenom) return res.status(400).json({ erreur: 'prenom, email et hotel sont requis' });
 
       // Normaliser tags : accepte string JSON ou tableau
@@ -105,9 +105,9 @@ module.exports = (db) => {
 
       const id = uuidv4();
       db.prepare(`
-        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, comment)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', tagsStr, poste || null, langue || 'fr', campaign || null, comment || null);
+        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, comment, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(id, prenom, nom || '', email, hotel, ville || '', segment || '5*', tagsStr, poste || null, langue || 'fr', campaign || null, comment || null, source || '');
 
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
 
@@ -139,7 +139,7 @@ module.exports = (db) => {
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
       if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
 
-      const { prenom, nom, email, hotel, ville, segment, tags, statut, score, poste, langue, campaign, comment } = req.body;
+      const { prenom, nom, email, hotel, ville, segment, tags, statut, score, poste, langue, campaign, comment, source } = req.body;
 
       // Si le statut change et n'est plus "En séquence", stopper les inscriptions actives
       if (statut && statut !== 'En séquence') {
@@ -167,9 +167,10 @@ module.exports = (db) => {
           langue = COALESCE(?, langue),
           campaign = COALESCE(?, campaign),
           comment = COALESCE(?, comment),
+          source = COALESCE(?, source),
           updated_at = datetime('now')
         WHERE id = ?
-      `).run(prenom, nom, email, hotel, ville, segment, tags ? JSON.stringify(tags) : null, statut, score, poste, langue, campaign, comment, req.params.id);
+      `).run(prenom, nom, email, hotel, ville, segment, tags ? JSON.stringify(tags) : null, statut, score, poste, langue, campaign, comment, source !== undefined ? source : null, req.params.id);
 
       res.json(db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id));
     } catch (err) {
@@ -216,8 +217,8 @@ module.exports = (db) => {
       const resultats = { crees: [], doublons: [], erreurs: [] };
 
       const inserer = db.prepare(`
-        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, comment)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue, campaign, comment, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const insertBatch = db.transaction((leads) => {
@@ -229,7 +230,7 @@ module.exports = (db) => {
           try {
             const id = uuidv4();
             const tagsStr = JSON.stringify([l.segment || '5*']);
-            inserer.run(id, l.prenom, l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', tagsStr, l.poste || null, l.langue || 'fr', l.campaign || null, l.comment || null);
+            inserer.run(id, l.prenom, l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', tagsStr, l.poste || null, l.langue || 'fr', l.campaign || null, l.comment || null, l.source || '');
             const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(id);
             resultats.crees.push(lead);
           } catch (e) {
@@ -277,15 +278,15 @@ module.exports = (db) => {
       let crees = 0, ignores = 0, erreurs = [];
 
       const inserer = db.prepare(`
-        INSERT OR IGNORE INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT OR IGNORE INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue, source)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
       const importerTous = db.transaction((leads) => {
         for (const l of leads) {
           if (!l.email || !l.hotel) { ignores++; continue; }
           try {
-            const result = inserer.run(uuidv4(), l.prenom || '', l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', JSON.stringify(l.tags || []), l.poste || null, l.langue || 'fr');
+            const result = inserer.run(uuidv4(), l.prenom || '', l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', JSON.stringify(l.tags || []), l.poste || null, l.langue || 'fr', l.source || 'Import CSV');
             if (result.changes) crees++;
             else ignores++;
           } catch (e) {

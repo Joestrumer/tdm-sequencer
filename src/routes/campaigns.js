@@ -270,6 +270,53 @@ module.exports = (db) => {
     }
   });
 
+  // ─── DELETE /:id/recipients/:recipientId — Supprimer un recipient individuel
+  router.delete('/:id/recipients/:recipientId', (req, res) => {
+    try {
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(req.params.id);
+      if (!campaign) return res.status(404).json({ erreur: 'Campagne introuvable' });
+      if (campaign.statut !== 'brouillon') return res.status(400).json({ erreur: 'Campagne non modifiable' });
+
+      const result = db.prepare('DELETE FROM campaign_recipients WHERE id = ? AND campaign_id = ?').run(req.params.recipientId, req.params.id);
+      if (!result.changes) return res.status(404).json({ erreur: 'Destinataire introuvable' });
+
+      const total = db.prepare('SELECT COUNT(*) as n FROM campaign_recipients WHERE campaign_id = ?').get(req.params.id).n;
+      db.prepare('UPDATE campaigns SET total_recipients = ? WHERE id = ?').run(total, req.params.id);
+
+      res.json({ ok: true, total });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── POST /:id/recipients/delete-batch — Supprimer plusieurs recipients ───
+  router.post('/:id/recipients/delete-batch', (req, res) => {
+    try {
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(req.params.id);
+      if (!campaign) return res.status(404).json({ erreur: 'Campagne introuvable' });
+      if (campaign.statut !== 'brouillon') return res.status(400).json({ erreur: 'Campagne non modifiable' });
+
+      const { ids } = req.body;
+      if (!Array.isArray(ids) || ids.length === 0) return res.status(400).json({ erreur: 'Fournir un tableau d\'ids' });
+
+      const stmtDel = db.prepare('DELETE FROM campaign_recipients WHERE id = ? AND campaign_id = ?');
+      let deleted = 0;
+      db.transaction(() => {
+        for (const rid of ids) {
+          const r = stmtDel.run(rid, req.params.id);
+          deleted += r.changes;
+        }
+      })();
+
+      const total = db.prepare('SELECT COUNT(*) as n FROM campaign_recipients WHERE campaign_id = ?').get(req.params.id).n;
+      db.prepare('UPDATE campaigns SET total_recipients = ? WHERE id = ?').run(total, req.params.id);
+
+      res.json({ ok: true, deleted, total });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // ─── DELETE /:id/recipients — Vider recipients ────────────────────────────
   router.delete('/:id/recipients', (req, res) => {
     try {
