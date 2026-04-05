@@ -11394,16 +11394,18 @@ function App() {
     ]},
   ];
 
+  // Helper permission mapping
+  const getPermId = (id) => {
+    if (id === 'equipe') return 'config';
+    if (id === 'commandes' || id === 'partenaires') return 'portail';
+    if (id === 'sequences' || id === 'templates' || id === 'email-campaigns') return 'campagnes';
+    if (id === 'parametres' || id === 'blocklist') return 'config';
+    if (id === 'dashboard' || id === 'dashboard-marketing' || id === 'dashboard-ventes') return 'dashboard';
+    return id;
+  };
+
   // Filtrer la NAV selon les permissions de l'utilisateur
   const NAV = NAV_ALL.filter(item => {
-    const getPermId = (id) => {
-      if (id === 'equipe') return 'config';
-      if (id === 'commandes' || id === 'partenaires') return 'portail';
-      if (id === 'sequences' || id === 'templates' || id === 'email-campaigns') return 'campagnes';
-      if (id === 'parametres' || id === 'blocklist') return 'config';
-      if (id === 'dashboard' || id === 'dashboard-marketing' || id === 'dashboard-ventes') return 'dashboard';
-      return id;
-    };
     if (item.children) return item.children.some(c => hasAccess(getPermId(c.id)));
     return hasAccess(item.id);
   }).map(item => {
