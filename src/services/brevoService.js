@@ -182,6 +182,17 @@ const SIGNATURE_HUGO = `
 </table>
 `;
 
+// ─── Charger la signature depuis la DB (fallback SIGNATURE_HUGO) ─────────────
+function getSignature(db) {
+  try {
+    const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('email_signature_html');
+    if (row?.valeur) return row.valeur;
+  } catch (e) {
+    logger.warn('Erreur chargement signature depuis DB', { error: e.message });
+  }
+  return SIGNATURE_HUGO;
+}
+
 // ─── Conversion texte brut → HTML propre ─────────────────────────────────────
 function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
   const unsubUrl = `${PUBLIC_URL}/api/tracking/unsubscribe/${lead.id}?t=${trackingId}`;
@@ -226,7 +237,7 @@ function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
 <div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:1.45;color:#1a1a1a;text-align:left;padding:16px 20px;max-width:680px;">
   <div style="text-align:left;">${html}</div>
   <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:16px;">
-    ${SIGNATURE_HUGO}
+    ${options.signature || SIGNATURE_HUGO}
   </div>
   ${unsubBlock}
 </div>
@@ -331,6 +342,9 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
     const insc = db.prepare('SELECT s.options FROM inscriptions i JOIN sequences s ON i.sequence_id = s.id WHERE i.id = ?').get(inscriptionId);
     if (insc?.options) seqOptions = JSON.parse(insc.options);
   } catch(e) { logger.warn('Erreur lecture options séquence', { inscriptionId, error: e.message }); }
+
+  // Charger la signature depuis la DB
+  seqOptions.signature = getSignature(db);
 
   const corpsHtml = etape.corps_html
     ? texteVersHtml(substituerVariables(etape.corps_html, lead), trackingId, lead, true, seqOptions)
@@ -441,6 +455,8 @@ async function envoyerEmailCampagne(db, { lead, sujet, corpsHtml, campaignId, re
   // 5. Construire le HTML avec tracking
   // Pour les recipients CSV (sans lead_id), l'URL de désabonnement utilise le tracking_id
   const unsubId = lead.id || `csv:${trackingId}`;
+  // Charger la signature depuis la DB
+  if (!options.signature) options.signature = getSignature(db);
   const htmlFinal = texteVersHtml(corpsFinal, trackingId, { ...lead, id: unsubId }, true, options);
 
   // 6. Préparer le payload
@@ -497,6 +513,8 @@ module.exports = {
   texteVersHtml,
   verifierBlocklist,
   nettoyerHtml,
+  getSignature,
   PUBLIC_URL,
   SENDER,
+  SIGNATURE_HUGO,
 };

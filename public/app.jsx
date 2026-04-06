@@ -8208,24 +8208,224 @@ const FacturesTracking = ({ showToast }) => {
 };
 
 // ─── VUE PARAMETRES ───────────────────────────────────────────────────────────
-const VueParametres = () => {
+// ─── Composant Compte Email (SMTP, IMAP, Signature) ─────────────────────────
+const VueCompteEmail = () => {
   const [brevoKey, setBrevoKey] = useState("");
-  const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"], fuseau: "Europe/Paris", delaiEntreEmails: 2 });
   const [brevoConfigured, setBrevoConfigured] = useState(false);
+  const [smtp, setSmtp] = useState({ host: 'smtp-relay.brevo.com', port: '587', user: '', password: '', secure: false });
+  const [imap, setImap] = useState({ host: '', port: '993', user: '', password: '', secure: true });
+  const [smtpConfigured, setSmtpConfigured] = useState(false);
+  const [imapConfigured, setImapConfigured] = useState(false);
+  const [signatureHtml, setSignatureHtml] = useState('');
+  const [signatureMode, setSignatureMode] = useState('html');
+  const [signatureDefault, setSignatureDefault] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/health').then(h => {
+      if (h.brevo === 'configuré') setBrevoConfigured(true);
+    }).catch(() => {});
+    api.get('/config').then(cfg => {
+      if (cfg.brevo_api_key_configured) setBrevoConfigured(true);
+      if (cfg.smtp_host) setSmtp(s => ({ ...s, host: cfg.smtp_host }));
+      if (cfg.smtp_port) setSmtp(s => ({ ...s, port: cfg.smtp_port }));
+      if (cfg.smtp_user) setSmtp(s => ({ ...s, user: cfg.smtp_user }));
+      if (cfg.smtp_secure) setSmtp(s => ({ ...s, secure: cfg.smtp_secure === 'true' }));
+      if (cfg.smtp_password_configured) setSmtpConfigured(true);
+      if (cfg.imap_host) setImap(s => ({ ...s, host: cfg.imap_host }));
+      if (cfg.imap_port) setImap(s => ({ ...s, port: cfg.imap_port }));
+      if (cfg.imap_user) setImap(s => ({ ...s, user: cfg.imap_user }));
+      if (cfg.imap_secure) setImap(s => ({ ...s, secure: cfg.imap_secure === 'true' }));
+      if (cfg.imap_password_configured) setImapConfigured(true);
+    }).catch(() => {});
+    api.get('/config/signature').then(data => {
+      setSignatureHtml(data.signature || '');
+      setSignatureDefault(data.signature || '');
+      if (data.is_default) setSignatureDefault(data.signature);
+    }).catch(() => {});
+  }, []);
+
+  const sauvegarder = async () => {
+    setSaving(true); setMsg('');
+    try {
+      const payload = {};
+      if (brevoKey) { payload.brevo_api_key = brevoKey; setBrevoConfigured(true); setBrevoKey(''); }
+      if (smtp.host) payload.smtp_host = smtp.host;
+      if (smtp.port) payload.smtp_port = smtp.port;
+      if (smtp.user) payload.smtp_user = smtp.user;
+      if (smtp.password) { payload.smtp_password = smtp.password; setSmtpConfigured(true); setSmtp(s => ({ ...s, password: '' })); }
+      payload.smtp_secure = String(smtp.secure);
+      if (imap.host) payload.imap_host = imap.host;
+      if (imap.port) payload.imap_port = imap.port;
+      if (imap.user) payload.imap_user = imap.user;
+      if (imap.password) { payload.imap_password = imap.password; setImapConfigured(true); setImap(s => ({ ...s, password: '' })); }
+      payload.imap_secure = String(imap.secure);
+      // En mode texte, convertir en HTML basique
+      payload.email_signature_html = signatureMode === 'texte'
+        ? signatureHtml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')
+        : signatureHtml;
+      await api.post('/config', payload);
+      setMsg('Paramètres email sauvegardés');
+    } catch (e) {
+      setMsg('Erreur: ' + (e.message || 'Erreur inconnue'));
+    }
+    setSaving(false);
+  };
+
+  const resetSignature = async () => {
+    try {
+      await api.post('/config', { email_signature_html: '' });
+      const data = await api.get('/config/signature');
+      setSignatureHtml(data.signature || '');
+      setMsg('Signature réinitialisée par défaut');
+    } catch (e) { setMsg('Erreur: ' + e.message); }
+  };
+
+  const inputCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400";
+
+  return (
+    <div className="space-y-4 max-w-2xl">
+      {/* Clé API Brevo */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-800">Clé API Brevo</h3>
+        <div className={`flex items-center gap-2 text-xs mb-2 ${brevoConfigured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${brevoConfigured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {brevoConfigured ? "Clé Brevo configurée et sauvegardée" : "Aucune clé configurée"}
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">{brevoConfigured ? "Nouvelle clé API (laisser vide pour conserver l'actuelle)" : "Clé API Brevo"}</label>
+          <input type="password" value={brevoKey} onChange={e => setBrevoKey(e.target.value)} placeholder="xkeysib-xxxxxxxx..." className={inputCls + " font-mono"} />
+          <p className="text-xs text-slate-400 mt-1">Trouvez votre clé dans Brevo &rarr; Mon compte &rarr; SMTP & API &rarr; Clés API</p>
+        </div>
+      </div>
+
+      {/* SMTP sortant */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-800">SMTP sortant</h3>
+          <div className={`flex items-center gap-1.5 text-xs ${smtpConfigured ? "text-emerald-600" : "text-slate-400"}`}>
+            <span className={`w-2 h-2 rounded-full ${smtpConfigured ? "bg-emerald-500" : "bg-slate-300"}`} />
+            {smtpConfigured ? "Configuré" : "Non configuré"}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Hôte SMTP</label>
+            <input value={smtp.host} onChange={e => setSmtp(s => ({ ...s, host: e.target.value }))} placeholder="smtp-relay.brevo.com" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Port</label>
+            <input value={smtp.port} onChange={e => setSmtp(s => ({ ...s, port: e.target.value }))} placeholder="587" className={inputCls} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Utilisateur</label>
+            <input value={smtp.user} onChange={e => setSmtp(s => ({ ...s, user: e.target.value }))} placeholder="hugo@terredemars.com" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Mot de passe</label>
+            <input type="password" value={smtp.password} onChange={e => setSmtp(s => ({ ...s, password: e.target.value }))} placeholder={smtpConfigured ? "Laisser vide pour conserver" : "Mot de passe SMTP"} className={inputCls} />
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+          <input type="checkbox" checked={smtp.secure} onChange={e => setSmtp(s => ({ ...s, secure: e.target.checked }))} className="rounded border-slate-300" />
+          Connexion SSL/TLS
+        </label>
+      </div>
+
+      {/* IMAP lecture */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-800">IMAP (lecture des réponses)</h3>
+          <div className={`flex items-center gap-1.5 text-xs ${imapConfigured ? "text-emerald-600" : "text-slate-400"}`}>
+            <span className={`w-2 h-2 rounded-full ${imapConfigured ? "bg-emerald-500" : "bg-slate-300"}`} />
+            {imapConfigured ? "Configuré" : "Non configuré"}
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Hôte IMAP</label>
+            <input value={imap.host} onChange={e => setImap(s => ({ ...s, host: e.target.value }))} placeholder="imap.gmail.com" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Port</label>
+            <input value={imap.port} onChange={e => setImap(s => ({ ...s, port: e.target.value }))} placeholder="993" className={inputCls} />
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Utilisateur</label>
+            <input value={imap.user} onChange={e => setImap(s => ({ ...s, user: e.target.value }))} placeholder="hugo@terredemars.com" className={inputCls} />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Mot de passe</label>
+            <input type="password" value={imap.password} onChange={e => setImap(s => ({ ...s, password: e.target.value }))} placeholder={imapConfigured ? "Laisser vide pour conserver" : "Mot de passe IMAP"} className={inputCls} />
+          </div>
+        </div>
+        <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+          <input type="checkbox" checked={imap.secure} onChange={e => setImap(s => ({ ...s, secure: e.target.checked }))} className="rounded border-slate-300" />
+          Connexion SSL/TLS
+        </label>
+      </div>
+
+      {/* Signature email */}
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-slate-800">Signature email</h3>
+          <div className="flex items-center gap-2">
+            <button onClick={() => setSignatureMode('html')} className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${signatureMode === 'html' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>HTML</button>
+            <button onClick={() => setSignatureMode('texte')} className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${signatureMode === 'texte' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>Texte</button>
+          </div>
+        </div>
+        <textarea
+          value={signatureHtml}
+          onChange={e => setSignatureHtml(e.target.value)}
+          rows={signatureMode === 'html' ? 12 : 6}
+          placeholder={signatureMode === 'html' ? '<table cellpadding="0">...</table>' : 'Hugo Montiel\nSales Director\nTerre de Mars'}
+          className={inputCls + " font-mono text-xs resize-y"}
+        />
+        <div className="flex items-center gap-2">
+          <button onClick={resetSignature} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">
+            Réinitialiser par défaut
+          </button>
+        </div>
+        {signatureHtml && (
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-2 block">Aperçu</label>
+            <div className="border border-slate-200 rounded-lg p-4 bg-white" dangerouslySetInnerHTML={{
+              __html: signatureMode === 'texte' ? signatureHtml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') : signatureHtml
+            }} />
+          </div>
+        )}
+      </div>
+
+      {msg && <p className={`text-sm font-medium ${msg.startsWith('Erreur') ? 'text-red-600' : 'text-emerald-600'}`}>{msg}</p>}
+      <button onClick={sauvegarder} disabled={saving} className="px-5 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
+        {saving ? "Sauvegarde..." : "Enregistrer les paramètres email"}
+      </button>
+    </div>
+  );
+};
+
+const VueParametres = () => {
+  const [sousOnglet, setSousOnglet] = useState('envoi');
+  const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"], fuseau: "Europe/Paris", delaiEntreEmails: 2 });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
   const jours = [["lun","Lun"],["mar","Mar"],["mer","Mer"],["jeu","Jeu"],["ven","Ven"],["sam","Sam"],["dim","Dim"]];
   const toggleJour = j => setLimites(l => ({ ...l, joursActifs: l.joursActifs.includes(j) ? l.joursActifs.filter(x => x !== j) : [...l.joursActifs, j] }));
 
-  // Charger la config existante
+  const onglets = [
+    { id: 'envoi', label: 'Envoi' },
+    { id: 'compte', label: 'Compte Email' },
+    { id: 'integrations', label: 'Intégrations' },
+    { id: 'segments', label: 'Segments' },
+  ];
+
   useEffect(() => {
-    // Vérifier via /health si Brevo est configuré (variable Railway)
-    api.get('/health').then(h => {
-      if (h.brevo === 'configuré') setBrevoConfigured(true);
-    }).catch(e => console.error(e));
-    // Charger les autres paramètres depuis la DB
     api.get('/config').then(cfg => {
-      if (cfg.brevo_api_key_configured) setBrevoConfigured(true);
       if (cfg.max_emails_par_jour) setLimites(l => ({ ...l, maxParJour: +cfg.max_emails_par_jour }));
       if (cfg.heure_debut) setLimites(l => ({ ...l, heureDebut: cfg.heure_debut }));
       if (cfg.heure_fin) setLimites(l => ({ ...l, heureFin: cfg.heure_fin }));
@@ -8235,96 +8435,97 @@ const VueParametres = () => {
     }).catch(e => console.error(e));
   }, []);
 
-  const sauvegarder = async () => {
-    setSaving(true);
-    setMsg("");
+  const sauvegarderEnvoi = async () => {
+    setSaving(true); setMsg("");
     try {
-      const payload = {
+      await api.post('/config', {
         max_emails_par_jour: String(limites.maxParJour),
         heure_debut: limites.heureDebut,
         heure_fin: limites.heureFin,
         jours_actifs: limites.joursActifs.join(','),
         fuseau: limites.fuseau,
         delai_entre_emails: String(limites.delaiEntreEmails),
-      };
-      if (brevoKey) {
-        payload.brevo_api_key = brevoKey;
-        setBrevoConfigured(true);
-        setBrevoKey("");
-      }
-      await api.post('/config', payload);
-      setMsg("✅ Paramètres sauvegardés");
-    } catch(e) {
-      setMsg("❌ Erreur lors de la sauvegarde");
-    }
+      });
+      setMsg("Paramètres d'envoi sauvegardés");
+    } catch(e) { setMsg("Erreur lors de la sauvegarde"); }
     setSaving(false);
   };
 
   return (
-    <div className="space-y-4 max-w-2xl">
-      <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-800">Clé API Brevo</h3>
-        <div className={`flex items-center gap-2 text-xs mb-2 ${brevoConfigured ? "text-emerald-600" : "text-slate-400"}`}>
-          <span className={`w-2 h-2 rounded-full ${brevoConfigured ? "bg-emerald-500" : "bg-slate-300"}`} />
-          {brevoConfigured ? "Clé Brevo configurée et sauvegardée" : "Aucune clé configurée"}
-        </div>
-        <div>
-          <label className="text-xs font-medium text-slate-500 mb-1 block">{brevoConfigured ? "Nouvelle clé API (laisser vide pour conserver l'actuelle)" : "Clé API Brevo"}</label>
-          <input type="password" value={brevoKey} onChange={e => setBrevoKey(e.target.value)} placeholder="xkeysib-xxxxxxxx..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-          <p className="text-xs text-slate-400 mt-1">Trouvez votre clé dans Brevo → Mon compte → SMTP & API → Clés API</p>
-        </div>
+    <div className="space-y-4">
+      {/* Navigation sous-onglets */}
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-1 max-w-2xl">
+        {onglets.map(o => (
+          <button key={o.id} onClick={() => setSousOnglet(o.id)} className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${sousOnglet === o.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            {o.label}
+          </button>
+        ))}
       </div>
 
-      <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-800">Limites d'envoi</h3>
-        <div className="grid grid-cols-2 gap-3">
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Maximum d'emails par jour</label>
-            <input type="number" value={limites.maxParJour} onChange={e => setLimites(l => ({ ...l, maxParJour: +e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-1 block">Délai entre chaque email (secondes)</label>
-            <input type="number" min="1" max="300" value={limites.delaiEntreEmails} onChange={e => setLimites(l => ({ ...l, delaiEntreEmails: +e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-            <p className="text-xs text-slate-400 mt-1">Temps d'attente entre chaque envoi (1-300s, défaut: 2s)</p>
-          </div>
-        </div>
-        <div className="grid grid-cols-2 gap-3">
-          {[["heureDebut","Heure de début"],["heureFin","Heure de fin"]].map(([k,l]) => (
-            <div key={k}>
-              <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
-              <input type="time" value={limites[k]} onChange={e => setLimites(lim => ({ ...lim, [k]: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+      {/* Sous-onglet Envoi */}
+      {sousOnglet === 'envoi' && (
+        <div className="space-y-4 max-w-2xl">
+          <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+            <h3 className="text-sm font-semibold text-slate-800">Limites d'envoi</h3>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Maximum d'emails par jour</label>
+                <input type="number" value={limites.maxParJour} onChange={e => setLimites(l => ({ ...l, maxParJour: +e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Délai entre chaque email (secondes)</label>
+                <input type="number" min="1" max="300" value={limites.delaiEntreEmails} onChange={e => setLimites(l => ({ ...l, delaiEntreEmails: +e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                <p className="text-xs text-slate-400 mt-1">Temps d'attente entre chaque envoi (1-300s, défaut: 2s)</p>
+              </div>
             </div>
-          ))}
-        </div>
-        <div>
-          <label className="text-xs font-medium text-slate-500 mb-2 block">Jours d'envoi actifs</label>
-          <div className="flex gap-2">
-            {jours.map(([k, l]) => (
-              <button key={k} onClick={() => toggleJour(k)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${limites.joursActifs.includes(k) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{l}</button>
-            ))}
+            <div className="grid grid-cols-2 gap-3">
+              {[["heureDebut","Heure de début"],["heureFin","Heure de fin"]].map(([k,l]) => (
+                <div key={k}>
+                  <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
+                  <input type="time" value={limites[k]} onChange={e => setLimites(lim => ({ ...lim, [k]: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                </div>
+              ))}
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-2 block">Jours d'envoi actifs</label>
+              <div className="flex gap-2">
+                {jours.map(([k, l]) => (
+                  <button key={k} onClick={() => toggleJour(k)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors ${limites.joursActifs.includes(k) ? "bg-slate-900 text-white" : "bg-slate-100 text-slate-500 hover:bg-slate-200"}`}>{l}</button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Fuseau horaire</label>
+              <select value={limites.fuseau} onChange={e => setLimites(l => ({ ...l, fuseau: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                {["Europe/Paris","Europe/London","Europe/Berlin","Europe/Madrid","Europe/Rome","Europe/Zurich","Europe/Brussels","America/New_York","America/Chicago","America/Los_Angeles","Asia/Dubai","Asia/Tokyo","Asia/Shanghai","Pacific/Auckland"].map(tz => <option key={tz} value={tz}>{tz}</option>)}
+              </select>
+            </div>
           </div>
+          {msg && <p className="text-sm text-emerald-600 font-medium">{msg}</p>}
+          <button onClick={sauvegarderEnvoi} disabled={saving} className="px-5 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
+            {saving ? "Sauvegarde..." : "Enregistrer les paramètres"}
+          </button>
         </div>
-        <div>
-          <label className="text-xs font-medium text-slate-500 mb-1 block">Fuseau horaire</label>
-          <select value={limites.fuseau} onChange={e => setLimites(l => ({ ...l, fuseau: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
-            {["Europe/Paris","Europe/London","Europe/Berlin","Europe/Madrid","Europe/Rome","Europe/Zurich","Europe/Brussels","America/New_York","America/Chicago","America/Los_Angeles","Asia/Dubai","Asia/Tokyo","Asia/Shanghai","Pacific/Auckland"].map(tz => <option key={tz} value={tz}>{tz}</option>)}
-          </select>
+      )}
+
+      {/* Sous-onglet Compte Email */}
+      {sousOnglet === 'compte' && <VueCompteEmail />}
+
+      {/* Sous-onglet Intégrations */}
+      {sousOnglet === 'integrations' && (
+        <div className="space-y-4 max-w-2xl">
+          <VueApiExterne />
+          <VueHubspot />
+          <VueVosFacturesConfig />
         </div>
-      </div>
+      )}
 
-      {msg && <p className="text-sm text-emerald-600 font-medium">{msg}</p>}
-      <button onClick={sauvegarder} disabled={saving} className="px-5 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
-        {saving ? "Sauvegarde..." : "Enregistrer les paramètres"}
-      </button>
-
-      <VueApiExterne />
-      <VueHubspot />
-      <VueVosFacturesConfig />
-
-      <div className="mt-6 pt-6 border-t-2 border-slate-200">
-        <h2 className="text-base font-bold text-slate-900 mb-4">Gestion des segments</h2>
-        <VueSegmentsConfig />
-      </div>
+      {/* Sous-onglet Segments */}
+      {sousOnglet === 'segments' && (
+        <div className="max-w-2xl">
+          <VueSegmentsConfig />
+        </div>
+      )}
     </div>
   );
 };

@@ -6,7 +6,7 @@
 const express = require('express');
 
 // Clés sensibles à ne jamais renvoyer en clair (masquées)
-const CLES_SENSIBLES = ['brevo_api_key', 'hubspot_api_key', 'auth_secret', 'zerobounce_api_key', 'vf_api_token', 'gsheets_credentials', 'external_api_key'];
+const CLES_SENSIBLES = ['brevo_api_key', 'hubspot_api_key', 'auth_secret', 'zerobounce_api_key', 'vf_api_token', 'gsheets_credentials', 'external_api_key', 'smtp_password', 'imap_password'];
 
 module.exports = (db) => {
   const router = express.Router();
@@ -36,7 +36,10 @@ module.exports = (db) => {
     'brevo_smtp_key', 'brevo_smtp_user', 'brevo_smtp_port', 'max_emails_per_day',
     'send_hour_start', 'send_hour_end', 'active_days', 'public_url',
     'hs_sync_contact', 'hs_log_email', 'hs_lifecycle', 'hs_task_fin_sequence', 'hs_deal_conversion',
-    'external_api_key', 'gsheets_credentials', 'wms_user', 'wms_password'];
+    'external_api_key', 'gsheets_credentials', 'wms_user', 'wms_password',
+    'smtp_host', 'smtp_port', 'smtp_user', 'smtp_secure', 'smtp_password',
+    'imap_host', 'imap_port', 'imap_user', 'imap_secure', 'imap_password',
+    'email_signature_html'];
 
   // Sauvegarder une ou plusieurs clés
   router.post('/', (req, res) => {
@@ -62,6 +65,17 @@ module.exports = (db) => {
 
       saveMany(Object.entries(req.body));
       res.json({ ok: true, saved: Object.keys(req.body).length });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Lire la signature email (complète, non masquée)
+  router.get('/signature', (req, res) => {
+    try {
+      const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('email_signature_html');
+      const { SIGNATURE_HUGO } = require('../services/brevoService');
+      res.json({ signature: row?.valeur || SIGNATURE_HUGO, is_default: !row?.valeur });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
