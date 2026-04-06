@@ -9401,6 +9401,12 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
   const [recipientBreakdown, setRecipientBreakdown] = useState({ leads: 0, csv: 0 });
   const [selectedRecipientIds, setSelectedRecipientIds] = useState(new Set());
   const [deletingRecipients, setDeletingRecipients] = useState(false);
+  const [filterSource, setFilterSource] = useState('');
+  const [previewLeads, setPreviewLeads] = useState([]);
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [selectedLeadIds, setSelectedLeadIds] = useState(new Set());
+  const [previewNewCount, setPreviewNewCount] = useState(0);
+  const [availableSources, setAvailableSources] = useState([]);
 
   // Étape 3: Envoi
   const [testEmail, setTestEmail] = useState('');
@@ -9550,19 +9556,55 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
     reader.readAsBinaryString(file);
   };
 
-  // Ajouter recipients
+  // Construire les filtres courants
+  const buildFilters = () => {
+    const filters = {};
+    if (filterSegment) filters.segment = filterSegment;
+    if (filterLangue) filters.langue = filterLangue;
+    if (filterStatut.length > 0) filters.statut = filterStatut;
+    if (filterCampaign) filters.campaign = filterCampaign;
+    if (filterSource) filters.source = filterSource;
+    if (filterSearch) filters.search = filterSearch;
+    return filters;
+  };
+
+  // Charger les sources disponibles
+  useEffect(() => {
+    api.get('/leads?limit=0').then(data => {
+      const srcs = [...new Set((data.leads || []).map(l => l.source).filter(Boolean))].sort();
+      setAvailableSources(srcs);
+    }).catch(() => {});
+  }, []);
+
+  // Prévisualiser les leads correspondants
+  const previewMatchingLeads = async () => {
+    if (!campaignId) return;
+    setPreviewLoading(true);
+    setPreviewLeads([]);
+    setSelectedLeadIds(new Set());
+    try {
+      const result = await api.post(`/campaigns/${campaignId}/recipients/preview`, { filters: buildFilters() });
+      const leads = result.leads || [];
+      setPreviewLeads(leads);
+      setPreviewNewCount(result.new_count || 0);
+      // Auto-sélectionner les nouveaux (pas déjà ajoutés)
+      setSelectedLeadIds(new Set(leads.filter(l => !l.already_added).map(l => l.id)));
+    } catch (e) { showToast('Erreur recherche', 'error'); }
+    setPreviewLoading(false);
+  };
+
+  // Ajouter recipients (sélectionnés ou tous)
   const addRecipients = async () => {
     if (!campaignId) return;
     setAddingRecipients(true);
     try {
       let body;
       if (recipientMode === 'filter') {
-        const filters = {};
-        if (filterSegment) filters.segment = filterSegment;
-        if (filterLangue) filters.langue = filterLangue;
-        if (filterStatut.length > 0) filters.statut = filterStatut;
-        if (filterCampaign) filters.campaign = filterCampaign;
-        if (filterSearch) filters.search = filterSearch;
+        const filters = buildFilters();
+        // Si des leads sont sélectionnés dans le preview, envoyer leurs IDs
+        if (selectedLeadIds.size > 0) {
+          filters.lead_ids = Array.from(selectedLeadIds);
+        }
         body = { mode: 'filter', filters };
       } else {
         if (!csvMapping.email) { showToast('Mappez la colonne email', 'error'); setAddingRecipients(false); return; }
@@ -9580,6 +9622,8 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
       else {
         showToast(`${result.added} destinataire(s) ajouté(s)${result.skipped ? `, ${result.skipped} doublon(s)` : ''}`);
         setRecipientCount(result.total);
+        setPreviewLeads([]);
+        setSelectedLeadIds(new Set());
         // Charger preview
         loadRecipientPreview();
       }
@@ -9778,7 +9822,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
 
               {recipientMode === 'filter' && (
                 <div className="space-y-3">
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-3 gap-3">
                     <div>
                       <label className="block text-xs text-slate-500 mb-1">Segment</label>
                       <select value={filterSegment} onChange={e => setFilterSegment(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
@@ -9795,6 +9839,13 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                         <option value="es">Espagnol</option>
                       </select>
                     </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Source</label>
+                      <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                        <option value="">Toutes</option>
+                        {availableSources.map(s => <option key={s} value={s}>{s}</option>)}
+                      </select>
+                    </div>
                   </div>
                   <div>
                     <label className="block text-xs text-slate-500 mb-1">Statut</label>
@@ -9809,9 +9860,73 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                     <label className="block text-xs text-slate-500 mb-1">Recherche</label>
                     <input value={filterSearch} onChange={e => setFilterSearch(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Nom, hôtel, email..." />
                   </div>
-                  <button onClick={addRecipients} disabled={addingRecipients} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-700 disabled:opacity-50">
-                    {addingRecipients ? 'Ajout en cours...' : 'Ajouter les leads correspondants'}
+                  <button onClick={previewMatchingLeads} disabled={previewLoading} className="bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-500 disabled:opacity-50">
+                    {previewLoading ? 'Recherche...' : 'Rechercher les leads'}
                   </button>
+
+                  {/* Preview des leads trouvés */}
+                  {previewLeads.length > 0 && (
+                    <div className="border border-slate-200 rounded-lg overflow-hidden">
+                      <div className="bg-slate-50 px-3 py-2 flex items-center justify-between border-b border-slate-200">
+                        <div className="text-xs text-slate-600">
+                          <span className="font-semibold">{previewLeads.length}</span> lead(s) trouvé(s)
+                          {previewNewCount < previewLeads.length && <span className="text-slate-400 ml-1">({previewLeads.length - previewNewCount} déjà ajouté(s))</span>}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <button onClick={() => {
+                            const newIds = previewLeads.filter(l => !l.already_added).map(l => l.id);
+                            setSelectedLeadIds(new Set(newIds));
+                          }} className="text-[11px] text-blue-600 hover:text-blue-800 font-medium">Tout sélectionner ({previewNewCount})</button>
+                          {selectedLeadIds.size > 0 && (
+                            <button onClick={() => setSelectedLeadIds(new Set())} className="text-[11px] text-slate-400 hover:text-slate-600">Tout désélectionner</button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="max-h-60 overflow-y-auto">
+                        <table className="w-full text-xs">
+                          <thead className="sticky top-0 bg-white"><tr className="text-slate-400 border-b border-slate-100">
+                            <th className="p-2 w-8"></th>
+                            <th className="text-left p-2">Contact</th>
+                            <th className="text-left p-2">Hôtel</th>
+                            <th className="text-left p-2">Source</th>
+                            <th className="text-left p-2">Statut</th>
+                          </tr></thead>
+                          <tbody>
+                            {previewLeads.map(l => (
+                              <tr key={l.id} className={`border-t border-slate-50 ${l.already_added ? 'opacity-40' : 'hover:bg-slate-50'}`}>
+                                <td className="p-2">
+                                  {l.already_added
+                                    ? <span className="text-[10px] text-slate-400" title="Déjà ajouté">✓</span>
+                                    : <input type="checkbox" className="rounded accent-blue-600" checked={selectedLeadIds.has(l.id)} onChange={e => {
+                                        const s = new Set(selectedLeadIds);
+                                        e.target.checked ? s.add(l.id) : s.delete(l.id);
+                                        setSelectedLeadIds(s);
+                                      }} />
+                                  }
+                                </td>
+                                <td className="p-2">
+                                  <div className="font-medium text-slate-700">{l.prenom} {l.nom}</div>
+                                  <div className="text-[10px] text-slate-400">{l.email}</div>
+                                </td>
+                                <td className="p-2 truncate max-w-[120px]">{l.hotel || '—'}</td>
+                                <td className="p-2">{l.source ? <span className="px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 text-[10px]">{l.source}</span> : <span className="text-slate-300">—</span>}</td>
+                                <td className="p-2"><span className="text-[10px]">{l.statut}</span></td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                      <div className="bg-slate-50 px-3 py-2 border-t border-slate-200 flex items-center justify-between">
+                        <span className="text-xs text-slate-500">{selectedLeadIds.size} sélectionné(s)</span>
+                        <button onClick={addRecipients} disabled={addingRecipients || selectedLeadIds.size === 0} className="bg-slate-800 text-white px-4 py-2 rounded-lg text-xs font-medium hover:bg-slate-700 disabled:opacity-50">
+                          {addingRecipients ? 'Ajout...' : `Ajouter ${selectedLeadIds.size} destinataire(s)`}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                  {previewLeads.length === 0 && !previewLoading && filterSearch && (
+                    <p className="text-xs text-slate-400 text-center py-2">Cliquez sur "Rechercher les leads" pour voir les résultats</p>
+                  )}
                 </div>
               )}
 

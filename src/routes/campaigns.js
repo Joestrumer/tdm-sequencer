@@ -188,6 +188,10 @@ module.exports = (db) => {
           sql += ' AND campaign = ?';
           params.push(filters.campaign);
         }
+        if (filters?.source) {
+          sql += ' AND source = ?';
+          params.push(filters.source);
+        }
         if (filters?.search) {
           sql += ' AND (prenom LIKE ? OR nom LIKE ? OR hotel LIKE ? OR email LIKE ?)';
           const s = `%${filters.search}%`;
@@ -196,8 +200,14 @@ module.exports = (db) => {
 
         const leads = db.prepare(sql).all(...params);
 
+        // Si lead_ids fourni, ne prendre que ceux sélectionnés
+        const selectedIds = filters?.lead_ids;
+        const leadsToAdd = selectedIds && selectedIds.length > 0
+          ? leads.filter(l => selectedIds.includes(l.id))
+          : leads;
+
         const insertMany = db.transaction(() => {
-          for (const lead of leads) {
+          for (const lead of leadsToAdd) {
             if (existingEmails.has(lead.email.toLowerCase())) { skipped++; continue; }
             stmtInsert.run(uuidv4(), req.params.id, lead.id, lead.email, lead.prenom, lead.nom, lead.hotel, lead.ville, lead.segment);
             existingEmails.add(lead.email.toLowerCase());
@@ -232,6 +242,46 @@ module.exports = (db) => {
       res.json({ added, skipped, total });
     } catch (err) {
       logger.error('Erreur POST recipients', { error: err.message });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── POST /:id/recipients/preview — Prévisualiser les leads correspondants ─
+  router.post('/:id/recipients/preview', (req, res) => {
+    try {
+      const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(req.params.id);
+      if (!campaign) return res.status(404).json({ erreur: 'Campagne introuvable' });
+
+      const { filters } = req.body;
+      let sql = 'SELECT id, prenom, nom, email, hotel, ville, segment, source, statut FROM leads WHERE unsubscribed = 0';
+      const params = [];
+
+      if (filters?.segment) { sql += ' AND segment = ?'; params.push(filters.segment); }
+      if (filters?.langue) { sql += ' AND langue = ?'; params.push(filters.langue); }
+      if (filters?.statut && filters.statut.length > 0) {
+        sql += ` AND statut IN (${filters.statut.map(() => '?').join(',')})`;
+        params.push(...filters.statut);
+      }
+      if (filters?.campaign) { sql += ' AND campaign = ?'; params.push(filters.campaign); }
+      if (filters?.source) { sql += ' AND source = ?'; params.push(filters.source); }
+      if (filters?.search) {
+        sql += ' AND (prenom LIKE ? OR nom LIKE ? OR hotel LIKE ? OR email LIKE ?)';
+        const s = `%${filters.search}%`;
+        params.push(s, s, s, s);
+      }
+
+      sql += ' ORDER BY created_at DESC';
+      const leads = db.prepare(sql).all(...params);
+
+      // Exclure ceux déjà ajoutés
+      const existingEmails = new Set(
+        db.prepare('SELECT email FROM campaign_recipients WHERE campaign_id = ?').all(req.params.id).map(r => r.email.toLowerCase())
+      );
+
+      const available = leads.map(l => ({ ...l, already_added: existingEmails.has(l.email.toLowerCase()) }));
+
+      res.json({ leads: available, total: available.length, new_count: available.filter(l => !l.already_added).length });
+    } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
   });
