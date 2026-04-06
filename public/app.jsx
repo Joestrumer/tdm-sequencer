@@ -9427,40 +9427,50 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
     }).catch(() => {});
   }, []);
 
-  // Initialiser TinyMCE
-  useEffect(() => {
-    if (!editorRef.current) return;
-    const containerId = 'tinymce-campaign-editor-' + Date.now();
-    editorRef.current.id = containerId;
+  // Initialiser TinyMCE (réinitialise quand on revient au step 1)
+  const corpsHtmlRef = useRef(corpsHtml);
+  corpsHtmlRef.current = corpsHtml;
 
-    tinymce.init({
-      selector: '#' + containerId,
-      plugins: 'lists link image table code fullscreen',
-      toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
-      font_family_formats: 'Arial=Arial,Helvetica,sans-serif; Helvetica=Helvetica,Arial,sans-serif; Verdana=Verdana,Geneva,sans-serif; Georgia=Georgia,serif; Times New Roman=Times New Roman,Times,serif',
-      font_size_formats: '10px 12px 14px 16px 18px 20px 24px 28px 32px',
-      menubar: false,
-      height: 350,
-      content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
-      branding: false,
-      promotion: false,
-      placeholder: 'Contenu de votre campagne...',
-      license_key: 'gpl',
-      setup: (editor) => {
-        editor.on('init', () => {
-          tinymceRef.current = editor;
-          if (corpsHtml) editor.setContent(corpsHtml);
-        });
-        editor.on('input change keyup ExecCommand NodeChange', () => {
-          setCorpsHtml(editor.getContent());
-        });
-      }
-    });
+  useEffect(() => {
+    if (step !== 1) return;
+    if (!editorRef.current) return;
+
+    // Petit délai pour laisser le DOM se remonter
+    const timer = setTimeout(() => {
+      if (!editorRef.current) return;
+      const containerId = 'tinymce-campaign-editor-' + Date.now();
+      editorRef.current.id = containerId;
+
+      tinymce.init({
+        selector: '#' + containerId,
+        plugins: 'lists link image table code fullscreen',
+        toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+        font_family_formats: 'Arial=Arial,Helvetica,sans-serif; Helvetica=Helvetica,Arial,sans-serif; Verdana=Verdana,Geneva,sans-serif; Georgia=Georgia,serif; Times New Roman=Times New Roman,Times,serif',
+        font_size_formats: '10px 12px 14px 16px 18px 20px 24px 28px 32px',
+        menubar: false,
+        height: 350,
+        content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
+        branding: false,
+        promotion: false,
+        placeholder: 'Contenu de votre campagne...',
+        license_key: 'gpl',
+        setup: (editor) => {
+          editor.on('init', () => {
+            tinymceRef.current = editor;
+            if (corpsHtmlRef.current) editor.setContent(corpsHtmlRef.current);
+          });
+          editor.on('input change keyup ExecCommand NodeChange', () => {
+            setCorpsHtml(editor.getContent());
+          });
+        }
+      });
+    }, 50);
 
     return () => {
+      clearTimeout(timer);
       if (tinymceRef.current) { tinymceRef.current.remove(); tinymceRef.current = null; }
     };
-  }, []);
+  }, [step]);
 
   const insertVariable = (v) => {
     if (tinymceRef.current) tinymceRef.current.insertContent(v);
@@ -9813,6 +9823,38 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                   ))}
                 </div>
                 <div ref={editorRef} />
+              </div>
+
+              {/* Aperçu signature */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-500 border-b border-slate-200">Signature (ajoutée automatiquement)</div>
+                <div className="p-4" style={{ borderTop: '1px solid #e5e0d5', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '13px', color: '#1a1a1a' }}>
+                  <table cellPadding="0" cellSpacing="0" style={{ fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '13px', color: '#1a1a1a' }}>
+                    <tbody>
+                      <tr>
+                        <td style={{ paddingRight: 16, borderRight: '2px solid #aa8d3e', verticalAlign: 'top' }}>
+                          <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1a1a' }}>Hugo Montiel</div>
+                          <div style={{ color: '#555', fontSize: 12, lineHeight: 1.5 }}>Sales Director</div>
+                          <div style={{ color: '#555', fontSize: 12 }}>Terre de Mars</div>
+                        </td>
+                        <td style={{ paddingLeft: 16, verticalAlign: 'top' }}>
+                          <div style={{ fontSize: 12, color: '#444', lineHeight: 1.8 }}>
+                            <span>+33 6 85 82 03 35</span><br/>
+                            <span style={{ color: '#aa8d3e' }}>hugo@terredemars.com</span><br/>
+                            <span style={{ color: '#aa8d3e' }}>www.terredemars.com</span><br/>
+                            <span style={{ color: '#888' }}>2 Rue de Vienne, 75008 Paris</span>
+                          </div>
+                        </td>
+                      </tr>
+                      <tr><td colSpan="2" style={{ paddingTop: 10 }}>
+                        <span style={{ display: 'inline-block', background: '#aa8d3e', color: '#fff', fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 3 }}>Prendre rendez-vous</span>
+                        <span style={{ color: '#888', fontSize: 11, marginLeft: 8 }}>LinkedIn</span>
+                        <span style={{ color: '#888', fontSize: 11, margin: '0 4px' }}>&middot;</span>
+                        <span style={{ color: '#888', fontSize: 11 }}>Instagram</span>
+                      </td></tr>
+                    </tbody>
+                  </table>
+                </div>
               </div>
 
               {/* Lien de désabonnement */}
