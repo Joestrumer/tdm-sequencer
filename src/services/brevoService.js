@@ -210,10 +210,12 @@ function texteVersHtml(texte, trackingId, lead, estHtml = false, options = {}) {
 
   // Désabonnement optionnel (activé par défaut si pas de paramètre)
   const showUnsub = options && options.desabonnement === false ? false : true;
+  const unsubText = (options && options.unsub_text) || 'Vous recevez cet email en tant que contact professionnel de Terre de Mars.';
+  const unsubLinkText = (options && options.unsub_link_text) || 'Se désabonner';
   const unsubBlock = showUnsub
     ? `<p style="margin:32px 0 0;font-size:11px;color:#999;border-top:1px solid #eee;padding-top:12px;">
-        Vous recevez cet email en tant que contact professionnel de Terre de Mars.
-        &nbsp;<a href="${unsubUrl}" style="color:#999;text-decoration:underline;">Se désabonner</a>
+        ${unsubText}
+        &nbsp;<a href="${unsubUrl}" style="color:#999;text-decoration:underline;">${unsubLinkText}</a>
        </p>`
     : '';
 

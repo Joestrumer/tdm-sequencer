@@ -9379,6 +9379,12 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
   const editorRef = useRef(null);
   const tinymceRef = useRef(null);
 
+  // Options campagne
+  const campaignOptions = campaign?.options ? (typeof campaign.options === 'string' ? JSON.parse(campaign.options) : campaign.options) : {};
+  const [showUnsub, setShowUnsub] = useState(campaignOptions.desabonnement !== false);
+  const [unsubText, setUnsubText] = useState(campaignOptions.unsub_text || 'Vous recevez cet email en tant que contact professionnel de Terre de Mars.');
+  const [unsubLinkText, setUnsubLinkText] = useState(campaignOptions.unsub_link_text || 'Se désabonner');
+
   // Étape 2: Destinataires
   const [recipientMode, setRecipientMode] = useState('filter');
   const [filterSegment, setFilterSegment] = useState('');
@@ -9492,7 +9498,12 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
     try {
       // Sync TinyMCE content
       const html = tinymceRef.current ? tinymceRef.current.getContent() : corpsHtml;
-      const body = { nom, sujet, corps_html: html, template_id: selectedTemplate || null };
+      const options = {
+        desabonnement: showUnsub,
+        unsub_text: unsubText,
+        unsub_link_text: unsubLinkText,
+      };
+      const body = { nom, sujet, corps_html: html, template_id: selectedTemplate || null, options };
       let result;
       if (campaignId) {
         result = await api.put(`/campaigns/${campaignId}`, body);
@@ -9802,6 +9813,51 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                   ))}
                 </div>
                 <div ref={editorRef} />
+              </div>
+
+              {/* Lien de désabonnement */}
+              <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <h4 className="text-sm font-semibold text-slate-700">Lien de désabonnement</h4>
+                    <p className="text-[11px] text-slate-400 mt-0.5">Affiché en bas de l'email (recommandé pour la conformité RGPD)</p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => setShowUnsub(!showUnsub)}
+                    className={`relative w-10 h-5 rounded-full transition-colors ${showUnsub ? 'bg-emerald-500' : 'bg-slate-300'}`}
+                  >
+                    <span className={`absolute top-0.5 left-0.5 w-4 h-4 bg-white rounded-full shadow transition-transform ${showUnsub ? 'translate-x-5' : ''}`} />
+                  </button>
+                </div>
+                {showUnsub && (
+                  <div className="space-y-2 pt-2 border-t border-slate-100">
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Texte avant le lien</label>
+                      <input
+                        value={unsubText}
+                        onChange={e => setUnsubText(e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                        placeholder="Vous recevez cet email en tant que..."
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs text-slate-500 mb-1">Texte du lien</label>
+                      <input
+                        value={unsubLinkText}
+                        onChange={e => setUnsubLinkText(e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                        placeholder="Se désabonner"
+                      />
+                    </div>
+                    <div className="bg-slate-50 rounded-lg p-3">
+                      <p className="text-[11px] text-slate-400 mb-1">Aperçu :</p>
+                      <p className="text-[11px] text-slate-500 border-t border-slate-200 pt-2">
+                        {unsubText} <a className="text-slate-500 underline cursor-default">{unsubLinkText}</a>
+                      </p>
+                    </div>
+                  </div>
+                )}
               </div>
             </div>
           )}
