@@ -574,9 +574,9 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
   );
 };
 
-// ─── Signature Hugo ─────────────────────────────────────────────────────────
-// Texte pur : aucune image CDN (bloquées par Gmail/Outlook par défaut)
-const SIGNATURE_HTML = `<br>
+// ─── Signature email (chargée dynamiquement depuis la config) ────────────────
+// Fallback hardcodé utilisé avant le chargement de l'API
+const SIGNATURE_HTML_DEFAULT = `<br>
 <table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;">
 <tr>
   <td style="padding-right:14px;border-right:2px solid #aa8d3e;vertical-align:top;line-height:1.6;">
@@ -593,11 +593,28 @@ const SIGNATURE_HTML = `<br>
 <tr><td colspan="2" style="padding-top:10px;">
   <a href="https://calendly.com/hugo-montiel/meeting-terre-de-mars"
      style="display:inline-block;background:#aa8d3e;color:#fff;font-size:11px;font-weight:700;text-decoration:none;padding:6px 14px;border-radius:3px;">
-    📅 Prendre rendez-vous
+    Prendre rendez-vous
   </a>
 </td></tr>
 </table>
 `;
+// Variable mutable : mise à jour au chargement depuis /config/signature
+let _signatureHtmlCache = SIGNATURE_HTML_DEFAULT;
+// Charger la signature depuis la DB au démarrage
+(function loadSignature() {
+  api.get('/config/signature').then(data => {
+    if (data?.signature) _signatureHtmlCache = data.signature;
+  }).catch(() => {});
+})();
+// Getter pour accéder à la signature courante
+function getSignatureHtml() { return _signatureHtmlCache; }
+// Forcer un rechargement (appelé après sauvegarde dans VueCompteEmail)
+function reloadSignature() {
+  return api.get('/config/signature').then(data => {
+    if (data?.signature) _signatureHtmlCache = data.signature;
+    return _signatureHtmlCache;
+  }).catch(() => _signatureHtmlCache);
+}
 // Données de démo pour la prévisualisation
 const DEMO_LEAD_PREVIEW = { prenom: "Sophie", nom: "Lefebvre", hotel: "Hôtel Le Bristol", ville: "Paris", segment: "5*" };
 
@@ -1113,7 +1130,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       Signature automatique
                       <span className="w-4 h-px bg-slate-200 inline-block" />
                     </div>
-                    <div dangerouslySetInnerHTML={{ __html: SIGNATURE_HTML }} style={{ pointerEvents: "none", opacity: 0.7 }} />
+                    <div dangerouslySetInnerHTML={{ __html: getSignatureHtml() }} style={{ pointerEvents: "none", opacity: 0.7 }} />
                   </div>
                 </div>
               </div>
@@ -1136,7 +1153,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       style={{ fontFamily: "Arial, sans-serif" }}
                       dangerouslySetInnerHTML={{ __html: substituerVarsPreview(corpsPreview) }}
                     />
-                    <div className="mt-4 pt-4 border-t border-slate-100" dangerouslySetInnerHTML={{ __html: SIGNATURE_HTML }} />
+                    <div className="mt-4 pt-4 border-t border-slate-100" dangerouslySetInnerHTML={{ __html: getSignatureHtml() }} />
                   </div>
                 </div>
                 <p className="text-xs text-slate-400 mt-3 text-center">Les variables surlignées en jaune seront remplacées par les vraies données du lead</p>
@@ -1147,7 +1164,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 
         {/* Footer */}
         <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex items-center justify-between flex-shrink-0">
-          <div className="text-xs text-slate-400">{etapes.length} email{etapes.length > 1 ? "s" : ""} · Signature Hugo incluse automatiquement</div>
+          <div className="text-xs text-slate-400">{etapes.length} email{etapes.length > 1 ? "s" : ""} · Signature incluse automatiquement</div>
           <div className="flex items-center gap-3">
             {errMsg && <span className="text-xs text-red-500">{errMsg}</span>}
             <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
@@ -8266,6 +8283,7 @@ const VueCompteEmail = () => {
         ? signatureHtml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')
         : signatureHtml;
       await api.post('/config', payload);
+      await reloadSignature();
       setMsg('Paramètres email sauvegardés');
     } catch (e) {
       setMsg('Erreur: ' + (e.message || 'Erreur inconnue'));
@@ -8276,8 +8294,8 @@ const VueCompteEmail = () => {
   const resetSignature = async () => {
     try {
       await api.post('/config', { email_signature_html: '' });
-      const data = await api.get('/config/signature');
-      setSignatureHtml(data.signature || '');
+      const sig = await reloadSignature();
+      setSignatureHtml(sig);
       setMsg('Signature réinitialisée par défaut');
     } catch (e) { setMsg('Erreur: ' + e.message); }
   };
@@ -10029,33 +10047,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
               {/* Aperçu signature */}
               <div className="border border-slate-200 rounded-xl overflow-hidden">
                 <div className="bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-500 border-b border-slate-200">Signature (ajoutée automatiquement)</div>
-                <div className="p-4" style={{ borderTop: '1px solid #e5e0d5', fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '13px', color: '#1a1a1a' }}>
-                  <table cellPadding="0" cellSpacing="0" style={{ fontFamily: 'Arial, Helvetica, sans-serif', fontSize: '13px', color: '#1a1a1a' }}>
-                    <tbody>
-                      <tr>
-                        <td style={{ paddingRight: 16, borderRight: '2px solid #aa8d3e', verticalAlign: 'top' }}>
-                          <div style={{ fontWeight: 700, fontSize: 14, color: '#1a1a1a' }}>Hugo Montiel</div>
-                          <div style={{ color: '#555', fontSize: 12, lineHeight: 1.5 }}>Sales Director</div>
-                          <div style={{ color: '#555', fontSize: 12 }}>Terre de Mars</div>
-                        </td>
-                        <td style={{ paddingLeft: 16, verticalAlign: 'top' }}>
-                          <div style={{ fontSize: 12, color: '#444', lineHeight: 1.8 }}>
-                            <span>+33 6 85 82 03 35</span><br/>
-                            <span style={{ color: '#aa8d3e' }}>hugo@terredemars.com</span><br/>
-                            <span style={{ color: '#aa8d3e' }}>www.terredemars.com</span><br/>
-                            <span style={{ color: '#888' }}>2 Rue de Vienne, 75008 Paris</span>
-                          </div>
-                        </td>
-                      </tr>
-                      <tr><td colSpan="2" style={{ paddingTop: 10 }}>
-                        <span style={{ display: 'inline-block', background: '#aa8d3e', color: '#fff', fontSize: 11, fontWeight: 700, padding: '6px 14px', borderRadius: 3 }}>Prendre rendez-vous</span>
-                        <span style={{ color: '#888', fontSize: 11, marginLeft: 8 }}>LinkedIn</span>
-                        <span style={{ color: '#888', fontSize: 11, margin: '0 4px' }}>&middot;</span>
-                        <span style={{ color: '#888', fontSize: 11 }}>Instagram</span>
-                      </td></tr>
-                    </tbody>
-                  </table>
-                </div>
+                <div className="p-4" dangerouslySetInnerHTML={{ __html: getSignatureHtml() }} />
               </div>
 
               {/* Lien de désabonnement */}
