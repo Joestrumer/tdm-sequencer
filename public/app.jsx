@@ -2434,68 +2434,6 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     </div>
                   </td>
                 </tr>
-                {/* Panneau de détails inline */}
-                {selectedLead?.id === lead.id && (
-                  <tr>
-                    <td colSpan="11" className="p-0 bg-gradient-to-b from-blue-50/50 to-transparent">
-                      <div className="p-4 border-t-2 border-blue-400">
-                        <div className="flex justify-end mb-2">
-                          <button onClick={() => { setSelectedLead(null); setDetailData(null); }} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
-                        </div>
-
-                        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-3">
-                          <div className="bg-white rounded-lg p-2.5 border border-slate-100">
-                            <div className="text-xs text-slate-400">Score</div>
-                            <div className="text-lg font-bold text-slate-800">{lead.score || 50}</div>
-                          </div>
-                          <div className="bg-white rounded-lg p-2.5 border border-slate-100">
-                            <div className="text-xs text-slate-400">Ouvertures</div>
-                            <div className="text-lg font-bold text-slate-800">{lead.total_ouvertures || 0}</div>
-                          </div>
-                          <div className="bg-white rounded-lg p-2.5 border border-slate-100">
-                            <div className="text-xs text-slate-400">Emails</div>
-                            <div className="text-lg font-bold text-slate-800">{lead.emails_envoyes || 0}</div>
-                          </div>
-                          <div className="bg-white rounded-lg p-2.5 border border-slate-100">
-                            <div className="text-xs text-slate-400">Langue</div>
-                            <div className="text-lg font-bold text-slate-800">{langueToFlag(lead.langue) || '—'}</div>
-                          </div>
-                        </div>
-
-                        {lead.sequence_active && (
-                          <div className="bg-blue-50 border border-blue-100 rounded-lg p-3 mb-3">
-                            <div className="flex items-center justify-between">
-                              <div>
-                                <div className="text-xs font-semibold text-blue-800 mb-0.5">Séquence en cours</div>
-                                <div className="text-sm text-blue-600">{lead.sequence_active}</div>
-                                <div className="text-xs text-slate-500 mt-1">Étape {(lead.etape_courante || 0) + 1}</div>
-                              </div>
-                              {lead.prochain_envoi && (
-                                <div className="text-xs text-right">
-                                  <div className="text-slate-500">Prochain envoi</div>
-                                  <div className="font-medium text-blue-700">{new Date(lead.prochain_envoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</div>
-                                </div>
-                              )}
-                            </div>
-                          </div>
-                        )}
-
-                        <div className="flex gap-2 flex-wrap">
-                          <button onClick={() => setEditLead(lead)} className="px-3 py-1.5 text-xs bg-white border border-slate-200 rounded-lg hover:bg-slate-50">✏️ Éditer</button>
-                          {!lead.sequence_active && lead.statut !== "Désabonné" && (
-                            <button onClick={() => setShowLaunch(lead)} className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">▶ Lancer séquence</button>
-                          )}
-                          {lead.sequence_active && (
-                            <button onClick={() => arreterSequence(lead)} className="px-3 py-1.5 text-xs bg-amber-50 border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-100">⏹️ Arrêter</button>
-                          )}
-                          {lead.hubspot_id && (
-                            <a href={`https://app.hubspot.com/contacts/26199813/contact/${lead.hubspot_id}`} target="_blank" className="px-3 py-1.5 text-xs bg-orange-50 border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-100">HubSpot ↗</a>
-                          )}
-                        </div>
-                      </div>
-                    </td>
-                  </tr>
-                )}
                 </React.Fragment>
                 );
               })}
@@ -2543,8 +2481,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         </div>
       )}
 
-      {/* ── DETAIL LEAD (uniquement en vue kanban) ── */}
-      {selectedLead && vueMode === "kanban" && (
+      {/* ── DETAIL LEAD (kanban + liste) ── */}
+      {selectedLead && (vueMode === "kanban" || vueMode === "liste") && (
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
 
           {/* ── Header ── */}
