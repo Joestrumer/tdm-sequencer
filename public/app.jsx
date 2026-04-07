@@ -182,7 +182,7 @@ function relTime(iso) {
 
 const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
   useEscapeClose(onClose);
-  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "", langue: "fr", campaign: "", comment: "", source: "" });
+  const [form, setForm] = useState({ prenom: "", nom: "", hotel: "", ville: "", email: "", segment: "5*", poste: "", langue: "fr", campaign: "", comment: "", source: "", civilite: "" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [showCampaignDropdown, setShowCampaignDropdown] = useState(false);
@@ -376,7 +376,14 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
 
           <div className="border-t border-slate-100 pt-3">
             <p className="text-xs text-slate-400 mb-3">Ou remplir manuellement</p>
-            <div className="grid grid-cols-2 gap-3">
+            <div className="grid grid-cols-3 gap-3">
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Civilité</label>
+                <select value={form.civilite} onChange={e => set("civilite", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                  <option value="">—</option>
+                  {["M.", "Mme", "Dr", "Pr", "Maître"].map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+              </div>
               {[["prenom","Prénom"],["nom","Nom"]].map(([k,l]) => (
                 <div key={k}>
                   <label className="text-xs font-medium text-slate-500 mb-1 block">{l}</label>
@@ -1631,7 +1638,7 @@ const VueDashboardMarketing = ({ showToast }) => {
 // ─── Modal édition lead ────────────────────────────────────────────────────
 const ModalEditLead = ({ lead, onClose, onSave, campaigns = [], sequences = [] }) => {
   useEscapeClose(onClose);
-  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"", langue: lead.langue||"fr", campaign: lead.campaign||"", comment: lead.comment||"", source: lead.source||"" });
+  const [form, setForm] = useState({ prenom: lead.prenom||"", nom: lead.nom||"", email: lead.email||"", hotel: lead.hotel||"", ville: lead.ville||"", segment: lead.segment||"5*", statut: lead.statut||"Nouveau", poste: lead.poste||"", langue: lead.langue||"fr", campaign: lead.campaign||"", comment: lead.comment||"", source: lead.source||"", civilite: lead.civilite||"" });
   const [saving, setSaving] = useState(false);
   const [err, setErr] = useState("");
   const [showCampaignDropdown, setShowCampaignDropdown] = useState(false);
@@ -1654,7 +1661,12 @@ const ModalEditLead = ({ lead, onClose, onSave, campaigns = [], sequences = [] }
           <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
         </div>
         <div className="p-6 space-y-3 overflow-y-auto flex-1">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-3 gap-3">
+            <div><label className="text-xs text-slate-500 mb-1 block">Civilité</label>
+            <select value={form.civilite} onChange={e => set("civilite", e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+              <option value="">—</option>
+              {["M.", "Mme", "Dr", "Pr", "Maître"].map(c => <option key={c} value={c}>{c}</option>)}
+            </select></div>
             {[["Prénom","prenom"],["Nom","nom"]].map(([l,k]) => (
               <div key={k}><label className="text-xs text-slate-500 mb-1 block">{l}</label>
               <input value={form[k]} onChange={e => set(k, e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" /></div>
@@ -2044,6 +2056,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         segment: obj.segment || "5*",
         poste: obj.poste || obj.position || obj.title || obj.job || "",
         langue: obj.langue || obj.language || obj.lang || "fr",
+        civilite: obj.civilite || obj.salutation || "",
+        source: obj.source || "Import CSV",
       };
     }).filter(l => l.email && l.hotel);
     try {
@@ -3349,7 +3363,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           className="bg-slate-800 text-white text-xs rounded-lg px-3 py-2.5 shadow-xl max-w-xs animate-in fade-in">
           {showTooltip === 'csv' && (<>
             <p className="font-semibold mb-1">Format CSV :</p>
-            <p className="text-slate-300">prenom, nom, email, hotel, ville, segment, poste, langue</p>
+            <p className="text-slate-300">civilite, prenom, nom, email, hotel, ville, segment, poste, langue, source</p>
             <p className="text-slate-300 mt-1.5">Requis : <span className="text-white font-semibold">email, hotel, prenom</span></p>
           </>)}
           {showTooltip === 'sync' && (

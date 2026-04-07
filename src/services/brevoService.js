@@ -151,7 +151,8 @@ function substituerVariables(texte, lead) {
     .replace(/\{\{hotel\}\}/gi, lead.hotel || '')
     .replace(/\{\{etablissement\}\}/gi, lead.hotel || '')
     .replace(/\{\{ville\}\}/gi, lead.ville || '')
-    .replace(/\{\{segment\}\}/gi, lead.segment || '');
+    .replace(/\{\{segment\}\}/gi, lead.segment || '')
+    .replace(/\{\{civilite\}\}/gi, lead.civilite || '');
 }
 
 // ─── Signature HTML Hugo Montiel ─────────────────────────────────────────────
