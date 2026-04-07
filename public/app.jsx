@@ -1073,7 +1073,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                       placeholder="Ex: Découvrez Terre de Mars — {{etablissement}}"
                       className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                     />
-                    <div className="flex gap-1 mt-1.5">
+                    <div className="flex items-center gap-0.5 mt-1">
                       {VARS.map(v => (
                         <button key={v} type="button" onClick={() => {
                           const input = objetRef.current;
@@ -1082,14 +1082,14 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                           const val = etapeCourante.sujet || "";
                           updateEtape(activeEtape, "sujet", val.slice(0, pos) + v + val.slice(pos));
                           setTimeout(() => input.setSelectionRange(pos + v.length, pos + v.length), 0);
-                        }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
+                        }} className="px-1 py-px bg-amber-50 hover:bg-amber-100 text-amber-700 text-[10px] rounded font-mono transition-colors border border-amber-200 leading-tight">{v.replace(/\{\{|\}\}/g, '')}</button>
                       ))}
                       <button
                         type="button"
                         onClick={() => setShowTemplateSelector(true)}
-                        className="ml-auto px-3 py-0.5 bg-blue-50 hover:bg-blue-100 text-blue-700 text-xs rounded font-medium transition-colors border border-blue-200"
+                        className="ml-auto px-2 py-px bg-blue-50 hover:bg-blue-100 text-blue-700 text-[10px] rounded font-medium transition-colors border border-blue-200 leading-tight"
                       >
-                        📝 Utiliser un template
+                        📝 Template
                       </button>
                     </div>
                   </div>
