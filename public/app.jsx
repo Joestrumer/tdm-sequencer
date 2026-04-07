@@ -6151,6 +6151,7 @@ const FacturesSingle = ({ showToast }) => {
   const [orderNumber, setOrderNumber] = useState('');
   const [manualText, setManualText] = useState('');
   const [shippingId, setShippingId] = useState('1302');
+  const [deliveryAddress, setDeliveryAddress] = useState('');
   const includeShipping = true; // Toujours inclure les frais de port
   const [sendEmail, setSendEmail] = useState(true);
   const [logGSheets, setLogGSheets] = useState(true);
@@ -6195,6 +6196,7 @@ const FacturesSingle = ({ showToast }) => {
       if (data.client) {
         setSelectedClient(data.client);
         setOrderNumber(data.invoiceNumber || '');
+        setDeliveryAddress(data.delivery_address || '');
         // Calculer directement et aller au step 4
         const calcRes = await api.post('/factures/calculate', { products: data.products, clientName: data.client.name, includeShipping });
         setCalculation(calcRes);
@@ -6452,7 +6454,7 @@ const FacturesSingle = ({ showToast }) => {
       const res = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceData, client: selectedClient, shippingId }),
+        body: JSON.stringify({ invoiceData, client: selectedClient, shippingId, deliveryAddress }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -6892,7 +6894,7 @@ const FacturesSingle = ({ showToast }) => {
                 Voir sur VosFactures ↗
               </a>
             )}
-            <button onClick={() => { setStep(1); setResult(null); setMatchedProducts([]); setSelectedClient(null); setCalculation(null); setError(null); setManualText(''); setOrderNumber(''); }}
+            <button onClick={() => { setStep(1); setResult(null); setMatchedProducts([]); setSelectedClient(null); setCalculation(null); setError(null); setManualText(''); setOrderNumber(''); setDeliveryAddress(''); }}
               className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200">
               Nouvelle commande
             </button>
@@ -7026,9 +7028,9 @@ const FacturesBatch = ({ showToast }) => {
   const [sendEmail, setSendEmail] = useState(true);
   const [logGSheets, setLogGSheets] = useState(true);
 
-  const addOrder = (products, client = null, orderNumber = '') => {
+  const addOrder = (products, client = null, orderNumber = '', deliveryAddr = '') => {
     const shippingId = client ? getShippingIdForClient(client) : '1302';
-    setOrders(prev => [...prev, { id: nextId, products, client, calculation: null, shippingId, orderNumber, expanded: false }]);
+    setOrders(prev => [...prev, { id: nextId, products, client, calculation: null, shippingId, orderNumber, deliveryAddress: deliveryAddr, expanded: false }]);
     setNextId(n => n + 1);
     // Auto-calculate if client is already set
     if (client) {
@@ -7121,7 +7123,7 @@ const FacturesBatch = ({ showToast }) => {
       const data = await api.get('/factures/invoices/' + invoiceId + '/products');
       if (data.erreur) { showToast(data.erreur, 'error'); setImportLoading(false); return; }
       if (!data.products || data.products.length === 0) { showToast('Aucun produit trouvé dans cette facture', 'error'); setImportLoading(false); return; }
-      addOrder(data.products, data.client || null, data.invoiceNumber || '');
+      addOrder(data.products, data.client || null, data.invoiceNumber || '', data.delivery_address || '');
       setImportInvoiceId('');
       showToast('Facture importée — ' + data.products.length + ' produit(s)', 'success');
     } catch (err) {
@@ -7288,10 +7290,11 @@ const FacturesBatch = ({ showToast }) => {
       const invoiceData = { ...r, products: order?.calculation?.products || order?.products || [], orderNumber: order?.orderNumber || '' };
       const client = order?.client || {};
       const orderShippingId = order?.shippingId || '1302';
+      const orderDeliveryAddress = order?.deliveryAddress || '';
       const res2 = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceData, client, shippingId: orderShippingId }),
+        body: JSON.stringify({ invoiceData, client, shippingId: orderShippingId, deliveryAddress: orderDeliveryAddress }),
       });
       if (!res2.ok) {
         const errData = await res2.json().catch(() => ({}));

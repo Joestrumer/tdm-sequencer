@@ -578,7 +578,11 @@ module.exports = (db) => {
         phone: data.buyer_phone || '',
       } : null;
 
-      res.json({ products, client, invoiceNumber: data.number || data.id });
+      // Adresse de livraison (si différente de facturation)
+      const delivery_address = data.delivery_address || '';
+      const use_delivery_address = data.use_delivery_address;
+
+      res.json({ products, client, invoiceNumber: data.number || data.id, delivery_address, use_delivery_address });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
@@ -690,9 +694,9 @@ module.exports = (db) => {
 
   router.post('/csv-logisticien', (req, res) => {
     try {
-      const { invoiceData, client, shippingId } = req.body;
+      const { invoiceData, client, shippingId, deliveryAddress } = req.body;
       const shippingNamesMap = getShippingNames();
-      const csv = genererCSVLogisticien(invoiceData, client, shippingNamesMap, { shippingId });
+      const csv = genererCSVLogisticien(invoiceData, client, shippingNamesMap, { shippingId, deliveryAddress });
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="logisticien-${invoiceData.number || 'facture'}.csv"`);
       res.send(csv);

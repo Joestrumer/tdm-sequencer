@@ -233,6 +233,41 @@ function genererCSVLogisticien(invoiceData, client, shippingNames, options = {})
     ? (shippingNames[shippingId] || '')
     : '';
 
+  // Parser l'adresse de livraison si différente de la facturation
+  // Format VosFactures delivery_address : texte libre, souvent "Nom\nRue\nCP Ville\nPays"
+  let deliveryStreet = client.street || client.address || '';
+  let deliveryCity = client.city || '';
+  let deliveryZip = client.zip || client.post_code || '';
+  let deliveryCountry = client.country || '';
+  let deliveryName = client.recipient_name || client.name || '';
+
+  const rawDelivery = (options.deliveryAddress || '').trim();
+  if (rawDelivery) {
+    const dLines = rawDelivery.split(/\n/).map(l => l.trim()).filter(Boolean);
+    if (dLines.length >= 2) {
+      // Première ligne = nom, dernière(s) = adresse
+      deliveryName = dLines[0];
+      deliveryStreet = dLines.length >= 3 ? dLines[1] : '';
+      // Chercher la ligne CP + Ville (format "75008 Paris" ou "FR-75008 Paris")
+      const cpVilleLine = dLines.find(l => /\d{4,5}\s/.test(l)) || dLines[dLines.length - 1];
+      const cpMatch = cpVilleLine.match(/(\d{4,5})\s+(.+)/);
+      if (cpMatch) {
+        deliveryZip = cpMatch[1];
+        deliveryCity = cpMatch[2];
+      } else if (dLines.length >= 3) {
+        deliveryCity = dLines[dLines.length - 1];
+      }
+      // Pays si dernière ligne est un code pays ou nom de pays
+      const lastLine = dLines[dLines.length - 1];
+      if (/^[A-Z]{2}$/.test(lastLine) || /^(France|Belgique|Suisse|Luxembourg|Allemagne|Italie|Espagne)$/i.test(lastLine)) {
+        deliveryCountry = lastLine;
+      }
+    } else if (dLines.length === 1) {
+      // Adresse sur une seule ligne — mettre en rue
+      deliveryStreet = dLines[0];
+    }
+  }
+
   const products = invoiceData.products || [];
   for (const p of products) {
     if (p.ref === 'FP' || p.ref === 'FE') continue;
@@ -243,12 +278,12 @@ function genererCSVLogisticien(invoiceData, client, shippingNames, options = {})
       clean(invoiceData.orderNumber),                                    // Réf. Commande
       clean(csvRef),                                                     // référence de l article
       p.quantite || p.quantity || 0,                                     // quantité de l article
-      clean(client.recipient_name || client.name),                       // Nom livraison
+      clean(deliveryName),                                               // Nom livraison
       clean(client.name),                                                // Nom du client
-      clean(client.street || client.address),                            // Adresse (rue)
-      clean(client.city),                                                // Ville
-      clean(client.zip || client.post_code),                             // Code postal
-      clean(client.country) || 'FR',                                     // Pays
+      clean(deliveryStreet),                                             // Adresse (rue)
+      clean(deliveryCity),                                               // Ville
+      clean(deliveryZip),                                                // Code postal
+      clean(deliveryCountry) || 'FR',                                    // Pays
       clean(shippingId),                                                 // id du transporteur
       clean(transporterName),                                            // Nom du transporteur
       clean(invoiceData.notes),                                          // Commentaire de livraison
