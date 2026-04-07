@@ -2434,6 +2434,417 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                     </div>
                   </td>
                 </tr>
+                {/* Panneau de détails inline (même contenu que kanban) */}
+                {selectedLead?.id === lead.id && (
+                  <tr>
+                    <td colSpan="11" className="p-0">
+                      <div className="bg-white border-t-2 border-blue-400 overflow-hidden">
+
+                        {/* Header */}
+                        <div className="flex items-center justify-end p-4 border-b border-slate-100 gap-2 flex-wrap">
+                          <button onClick={() => setEditLead(selectedLead)} className="px-3 py-1.5 text-xs border border-slate-200 rounded-lg hover:bg-slate-50">✏️ Éditer</button>
+                          {selectedLead.sequence_active && (
+                            <button onClick={() => arreterSequence(selectedLead)} className="px-3 py-1.5 text-xs border border-amber-200 text-amber-700 rounded-lg hover:bg-amber-50">⏹️ Arrêter séquence</button>
+                          )}
+                          <button onClick={async () => {
+                            if (!await confirmDialog(`Bloquer ${selectedLead.email} et l'ajouter à la blocklist ?`, { danger: true, confirmLabel: 'Bloquer' })) return;
+                            try {
+                              await api.post(`/blocklist/from-lead/${selectedLead.id}`, { raison: `Lead ${selectedLead.prenom} ${selectedLead.nom}` });
+                              showToast('Lead ajouté à la blocklist', 'success');
+                              setSelectedLead(null);
+                              if (onRefresh) onRefresh();
+                            } catch (err) {
+                              showToast(err.message || 'Erreur lors du blocage', 'error');
+                            }
+                          }} className="px-3 py-1.5 text-xs border border-orange-200 text-orange-600 rounded-lg hover:bg-orange-50">🚫 Bloquer</button>
+                          <button onClick={(e) => supprimerLead(selectedLead, e)} className="px-3 py-1.5 text-xs border border-red-100 text-red-400 rounded-lg hover:bg-red-50">Supprimer</button>
+                          <button onClick={() => { setSelectedLead(null); setDetailData(null); }} className="text-slate-400 hover:text-slate-600 text-xl ml-1">×</button>
+                        </div>
+
+                        {/* KPIs */}
+                        <div className="grid grid-cols-2 md:grid-cols-4 divide-x divide-slate-100 border-b border-slate-100 bg-slate-50/50">
+                          {[
+                            ["Score engagement", selectedLead.score || 50],
+                            ["Ouvertures", selectedLead.total_ouvertures || 0],
+                            ["Emails envoyés", selectedLead.emails_envoyes || 0],
+                            ["Clics", detailData?.emails?.reduce((s, e) => s + (e.clics || 0), 0) ?? "—"],
+                          ].map(([k, v]) => (
+                            <div key={k} className="px-4 py-3 text-center">
+                              <div className="text-xl font-bold text-slate-800">{v}</div>
+                              <div className="text-xs text-slate-400 mt-0.5">{k}</div>
+                            </div>
+                          ))}
+                        </div>
+
+                        {/* Onglets */}
+                        <div className="flex border-b border-slate-100 px-5 pt-3">
+                          {[
+                            { id: 'timeline', label: '📅 Séquence' },
+                            { id: 'emails',   label: `📧 Emails${detailData?.emails?.length ? ' (' + detailData.emails.length + ')' : ''}` },
+                            { id: 'hubspot',  label: '🔗 HubSpot' },
+                          ].map(tab => (
+                            <button key={tab.id} onClick={() => setDetailTab(tab.id)}
+                              className={`px-4 py-2 text-xs font-medium border-b-2 -mb-px transition-colors mr-1
+                                ${detailTab === tab.id
+                                  ? 'border-slate-900 text-slate-900'
+                                  : 'border-transparent text-slate-400 hover:text-slate-600'}`}>
+                              {tab.label}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="p-5">
+                          {/* Onglet Séquence */}
+                          {detailTab === 'timeline' && (
+                            <div className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+                              <div className="space-y-4">
+                                {selectedLead.sequence_active || selectedLead.sequence ? (
+                                  <div className="border border-blue-100 rounded-xl p-4 bg-blue-50/30">
+                                    <div className="flex items-center justify-between mb-3">
+                                      <span className="text-xs font-semibold text-blue-800 uppercase tracking-wide">Séquence en cours</span>
+                                      <span className="text-xs font-medium text-blue-600 truncate ml-2 max-w-[140px]">
+                                        {selectedLead.sequence_active || selectedLead.sequence}
+                                      </span>
+                                    </div>
+                                    {(() => {
+                                      const seq = sequences.find(s => s.id === (selectedLead.sequence_id_active || selectedLead.sequence_id));
+                                      const etapeCourante = selectedLead.etape_courante ?? selectedLead.etape ?? 0;
+                                      const prochainEnvoi = selectedLead.prochain_envoi;
+                                      const nbEtapes = seq?.etapes?.length || selectedLead.nb_etapes_sequence || 0;
+                                      const formatCountdown = (iso) => {
+                                        if (!iso) return '—';
+                                        const diff = new Date(iso) - Date.now();
+                                        if (diff < 0) return 'Imminent';
+                                        const d = Math.floor(diff / 86400000);
+                                        const h = Math.floor((diff % 86400000) / 3600000);
+                                        return d > 0 ? `dans ${d}j ${h}h` : h > 0 ? `dans ${h}h` : 'Très bientôt';
+                                      };
+                                      return (
+                                        <div className="space-y-2">
+                                          {seq ? (
+                                            <div className="flex items-center gap-1 flex-wrap">
+                                              {seq.etapes.map((e, i) => (
+                                                <div key={i} className="flex items-center gap-1">
+                                                  <div
+                                                    title={`J+${e.jour || e.jour_delai || 0} — ${e.sujet}`}
+                                                    className={`w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold border-2 transition-colors
+                                                      ${i < etapeCourante
+                                                        ? 'bg-emerald-500 border-emerald-500 text-white'
+                                                        : i === etapeCourante
+                                                        ? 'bg-blue-600 border-blue-600 text-white ring-2 ring-blue-200'
+                                                        : 'bg-white border-slate-200 text-slate-400'}`}>
+                                                    {i < etapeCourante ? '✓' : i + 1}
+                                                  </div>
+                                                  {i < seq.etapes.length - 1 && (
+                                                    <div className={`w-5 h-0.5 ${i < etapeCourante ? 'bg-emerald-400' : 'bg-slate-200'}`} />
+                                                  )}
+                                                </div>
+                                              ))}
+                                            </div>
+                                          ) : (
+                                            <div className="text-xs text-blue-600">Étape {etapeCourante + 1} / {nbEtapes || '?'}</div>
+                                          )}
+                                          <div className="flex items-center justify-between bg-white rounded-lg p-2.5 border border-blue-100 mt-2">
+                                            <span className="text-xs text-slate-500">Prochain email</span>
+                                            <span className={`text-xs font-semibold ${prochainEnvoi && new Date(prochainEnvoi) < Date.now() ? 'text-orange-600' : 'text-blue-700'}`}>
+                                              {prochainEnvoi
+                                                ? `📅 ${new Date(prochainEnvoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (${formatCountdown(prochainEnvoi)})`
+                                                : '—'}
+                                            </span>
+                                          </div>
+                                          {seq && etapeCourante < seq.etapes.length && (
+                                            <div className="bg-white rounded-lg p-2.5 border border-blue-100">
+                                              <div className="text-xs text-slate-400 mb-0.5">Prochain objet</div>
+                                              <div className="text-xs font-medium text-slate-700 truncate">
+                                                {seq.etapes[etapeCourante]?.sujet || '—'}
+                                              </div>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })()}
+                                  </div>
+                                ) : (
+                                  <div className="border-2 border-dashed border-slate-200 rounded-xl p-5 text-center">
+                                    <p className="text-xs text-slate-400 mb-3">Aucune séquence en cours</p>
+                                    {selectedLead.statut !== 'Désabonné' && (
+                                      <button onClick={() => setShowLaunch(selectedLead)}
+                                        className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-700">
+                                        {selectedLead.sequence_active ? '↻ Changer de séquence' : '▶ Lancer une séquence'}
+                                      </button>
+                                    )}
+                                  </div>
+                                )}
+                                {selectedLead.tags?.length > 0 && (
+                                  <div className="flex flex-wrap gap-1.5">
+                                    {selectedLead.tags.map(t => (
+                                      <span key={t} className="text-xs bg-slate-100 text-slate-600 px-2.5 py-1 rounded-full">{t}</span>
+                                    ))}
+                                  </div>
+                                )}
+                              </div>
+                              <div>
+                                <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-3">Activité récente</div>
+                                {loadingDetail ? (
+                                  <div className="flex items-center gap-2 text-xs text-slate-400">
+                                    <span className="w-3 h-3 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin" />
+                                    Chargement...
+                                  </div>
+                                ) : detailData?.events?.length ? (
+                                  <div className="space-y-1">
+                                    {detailData.events.slice(0, 10).map((ev, i) => {
+                                      const ICONS = { ouverture: '👁', clic: '🔗', envoi: '📧', réponse: '💬', désabonnement: '🚫', bounce: '⚠️' };
+                                      let meta = null;
+                                      try { meta = ev.meta ? JSON.parse(ev.meta) : null; } catch (_) {}
+                                      const desc = {
+                                        ouverture: 'a ouvert',
+                                        clic: 'a cliqué',
+                                        envoi: 'email envoyé',
+                                        réponse: 'a répondu',
+                                        désabonnement: 's\'est désabonné',
+                                        bounce: 'bounce détecté',
+                                      };
+                                      return (
+                                        <div key={i} className="flex items-start gap-2.5 py-2 border-b border-slate-50 last:border-0">
+                                          <span className="text-sm flex-shrink-0 mt-0.5">{ICONS[ev.type] || '📌'}</span>
+                                          <div className="min-w-0 flex-1">
+                                            <div className="text-xs text-slate-700">
+                                              <span className="font-medium">{selectedLead.prenom} {selectedLead.nom}</span>
+                                              <span className="text-slate-500"> {desc[ev.type] || ev.type}</span>
+                                            </div>
+                                            {meta?.sujet && <div className="text-xs text-slate-400 truncate mt-0.5">{meta.sujet}</div>}
+                                            {meta?.url && <div className="text-xs text-slate-400 truncate mt-0.5">{meta.url}</div>}
+                                          </div>
+                                          <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">
+                                            {new Date(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                          </span>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                ) : (
+                                  <p className="text-xs text-slate-300 italic">Aucune activité enregistrée</p>
+                                )}
+                              </div>
+                            </div>
+                          )}
+
+                          {/* Onglet Emails */}
+                          {detailTab === 'emails' && (
+                            <div>
+                              {loadingDetail ? (
+                                <div className="flex items-center gap-2 text-sm text-slate-400 py-6">
+                                  <span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin" />
+                                  Chargement de l'historique...
+                                </div>
+                              ) : !detailData?.emails?.length ? (
+                                <div className="text-center py-12 text-slate-400">
+                                  <div className="text-4xl mb-3">📭</div>
+                                  <p className="text-sm font-medium">Aucun email envoyé pour ce lead</p>
+                                  <p className="text-xs mt-1 text-slate-300">Lancez une séquence pour commencer</p>
+                                </div>
+                              ) : (
+                                <div className="space-y-3">
+                                  {detailData.emails.map((email, i) => {
+                                    const STATUT_EMAIL = {
+                                      'envoyé':  { bg: 'bg-slate-100',  text: 'text-slate-600',  label: 'Envoyé' },
+                                      'ouvert':  { bg: 'bg-blue-50',   text: 'text-blue-700',   label: 'Ouvert' },
+                                      'cliqué':  { bg: 'bg-purple-50', text: 'text-purple-700', label: 'Cliqué' },
+                                      'bounced': { bg: 'bg-red-50',    text: 'text-red-600',    label: 'Bounced' },
+                                      'erreur':  { bg: 'bg-red-50',    text: 'text-red-500',    label: 'Erreur' },
+                                    };
+                                    const cfg = STATUT_EMAIL[email.statut] || STATUT_EMAIL['envoyé'];
+                                    return (
+                                      <div key={email.id || i} className="bg-slate-50 rounded-xl p-4 border border-slate-100">
+                                        <div className="flex items-start gap-3">
+                                          <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 ${cfg.bg} ${cfg.text}`}>
+                                            {email.ordre || i + 1}
+                                          </div>
+                                          <div className="flex-1 min-w-0">
+                                            <div className="flex items-center gap-2 flex-wrap mb-1">
+                                              <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                                              {email.sequence_nom && <span className="text-xs text-slate-400">— {email.sequence_nom}</span>}
+                                            </div>
+                                            <p className="text-sm font-medium text-slate-800 truncate">{email.sujet}</p>
+                                            <p className="text-xs text-slate-400 mt-0.5">
+                                              {email.envoye_at ? new Date(email.envoye_at).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                            </p>
+                                          </div>
+                                          <div className="flex gap-3 flex-shrink-0">
+                                            <div className="text-center">
+                                              <div className={`text-sm font-bold ${email.ouvertures > 0 ? 'text-blue-600' : 'text-slate-300'}`}>{email.ouvertures || 0}</div>
+                                              <div className="text-xs text-slate-400">ouv.</div>
+                                            </div>
+                                            <div className="text-center">
+                                              <div className={`text-sm font-bold ${email.clics > 0 ? 'text-purple-600' : 'text-slate-300'}`}>{email.clics || 0}</div>
+                                              <div className="text-xs text-slate-400">clics</div>
+                                            </div>
+                                          </div>
+                                        </div>
+                                        {email.premier_ouvert && (
+                                          <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-0.5">
+                                            <span className="text-xs text-slate-400">
+                                              1ère ouverture : <span className="text-slate-600">{new Date(email.premier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                            </span>
+                                            {email.dernier_ouvert && email.dernier_ouvert !== email.premier_ouvert && (
+                                              <span className="text-xs text-slate-400">
+                                                Dernière : <span className="text-slate-600">{new Date(email.dernier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                              </span>
+                                            )}
+                                          </div>
+                                        )}
+                                        {email.erreur && <p className="mt-2 text-xs text-red-500 bg-red-50 rounded px-2 py-1 italic">{email.erreur}</p>}
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {/* Onglet HubSpot */}
+                          {detailTab === 'hubspot' && (
+                            <div>
+                              {selectedLead.hubspot_id ? (
+                                <div>
+                                  <div className="flex items-center justify-between mb-4">
+                                    <div>
+                                      <span className="text-xs text-slate-400">Contact #{selectedLead.hubspot_id}</span>
+                                      {hsLeadLogs.length > 0 && (
+                                        <span className="text-xs text-slate-400 ml-3">
+                                          Dernier sync : {(() => {
+                                            const diff = Date.now() - new Date(hsLeadLogs[0].created_at).getTime();
+                                            const mins = Math.floor(diff / 60000);
+                                            if (mins < 1) return 'à l\'instant';
+                                            if (mins < 60) return `il y a ${mins}min`;
+                                            const h = Math.floor(mins / 60);
+                                            if (h < 24) return `il y a ${h}h`;
+                                            return `il y a ${Math.floor(h / 24)}j`;
+                                          })()}
+                                        </span>
+                                      )}
+                                    </div>
+                                    <button onClick={() => chargerHubspot(selectedLead)} className="text-xs text-orange-600 hover:underline">↻ Actualiser</button>
+                                  </div>
+                                  {hsLeadLogs.length > 0 && (
+                                    <div className="mb-4">
+                                      <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Historique synchronisation</div>
+                                      <div className="space-y-1 max-h-40 overflow-y-auto">
+                                        {hsLeadLogs.slice(0, 10).map((log, i) => (
+                                          <div key={log.id || i} className="flex items-center gap-2 py-1.5 border-b border-slate-50 last:border-0">
+                                            <span className="text-xs flex-shrink-0">{({contact:'👤',email:'✉️',deal:'💰',task:'📋',lifecycle:'🔄'})[log.type] || '⚡'}</span>
+                                            <span className="text-xs text-slate-600 flex-1 truncate">{log.action || log.type}</span>
+                                            {log.erreur && <span className="text-xs text-red-500 truncate max-w-[120px]">{log.erreur}</span>}
+                                            <span className="text-xs text-slate-400 flex-shrink-0">{new Date(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                  {loadingHs ? (
+                                    <div className="flex items-center gap-2 text-xs text-slate-400">
+                                      <span className="w-3 h-3 border-2 border-slate-200 border-t-orange-400 rounded-full animate-spin" />
+                                      Chargement HubSpot...
+                                    </div>
+                                  ) : hsDetails ? (
+                                    <div>
+                                      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+                                        <div>
+                                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Deals ({hsDetails.deals?.length || 0})</div>
+                                          {!hsDetails.deals?.length ? (
+                                            <p className="text-xs text-slate-300 italic">Aucun deal</p>
+                                          ) : hsDetails.deals.map((d, i) => (
+                                            <div key={i} className="bg-orange-50 rounded-lg p-3 mb-2 border border-orange-100">
+                                              <div className="text-sm font-medium text-slate-800">{d.properties?.dealname || 'Deal'}</div>
+                                              <div className="flex gap-3 text-xs text-slate-500 mt-1 flex-wrap">
+                                                <span>{d.properties?.dealstage || ''}</span>
+                                                {d.properties?.amount && <span className="text-emerald-600 font-semibold">{d.properties.amount}€</span>}
+                                                {d.properties?.closedate && <span>{new Date(d.properties.closedate).toLocaleDateString('fr-FR')}</span>}
+                                              </div>
+                                            </div>
+                                          ))}
+                                        </div>
+                                        <div>
+                                          <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide mb-2">Notes ({hsDetails.notes?.length || 0})</div>
+                                          {!hsDetails.notes?.length ? (
+                                            <p className="text-xs text-slate-300 italic">Aucune note</p>
+                                          ) : hsDetails.notes.slice(0, 5).map((n, i) => (
+                                            <div key={i} className="bg-orange-50 rounded-lg p-3 mb-2 border border-orange-100">
+                                              <p className="text-xs text-slate-700 line-clamp-3">{n.properties?.hs_note_body || ''}</p>
+                                              <p className="text-xs text-slate-400 mt-1">{n.properties?.hs_lastmodifieddate ? new Date(n.properties.hs_lastmodifieddate).toLocaleDateString('fr-FR') : ''}</p>
+                                            </div>
+                                          ))}
+                                        </div>
+                                      </div>
+                                      <div className="border-t border-slate-100 pt-4 space-y-3">
+                                        <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions manuelles</div>
+                                        <div className="flex flex-wrap gap-2">
+                                          <div className="flex items-center gap-1.5">
+                                            <select id="hs-lifecycle-select-inline" className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600">
+                                              <option value="lead">Lead</option>
+                                              <option value="marketingqualifiedlead">MQL</option>
+                                              <option value="salesqualifiedlead">SQL</option>
+                                              <option value="opportunity">Opportunity</option>
+                                              <option value="customer">Customer</option>
+                                            </select>
+                                            <button onClick={async (e) => {
+                                              const btn = e.currentTarget; btn.disabled = true;
+                                              const stage = document.getElementById('hs-lifecycle-select-inline').value;
+                                              try {
+                                                await api.post(`/hubspot/force-lifecycle/${selectedLead.id}`, { stage });
+                                                showToast(`Lifecycle → ${stage}`, 'success');
+                                                chargerHubspot(selectedLead);
+                                              } catch(err) { showToast('Erreur : ' + err.message, 'error'); }
+                                              btn.disabled = false;
+                                            }} className="px-3 py-1.5 text-xs bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50">
+                                              Forcer lifecycle
+                                            </button>
+                                          </div>
+                                          {!hsDetails.deals?.length && (
+                                            <button onClick={async (e) => {
+                                              const btn = e.currentTarget; btn.disabled = true;
+                                              try {
+                                                await api.post(`/hubspot/creer-deal/${selectedLead.id}`);
+                                                showToast('Deal créé', 'success');
+                                                chargerHubspot(selectedLead);
+                                                if (onRefresh) onRefresh();
+                                              } catch(err) { showToast('Erreur : ' + err.message, 'error'); }
+                                              btn.disabled = false;
+                                            }} className="px-3 py-1.5 text-xs bg-emerald-500 text-white rounded-lg hover:bg-emerald-600 disabled:opacity-50">
+                                              Créer un deal
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    </div>
+                                  ) : (
+                                    <p className="text-xs text-slate-400">Cliquez ↻ pour charger les données HubSpot</p>
+                                  )}
+                                </div>
+                              ) : (
+                                <div className="border-2 border-dashed border-slate-200 rounded-xl p-6 flex flex-col items-center justify-center gap-3 text-center">
+                                  <p className="text-sm text-slate-400">Non synchronisé avec HubSpot</p>
+                                  <button onClick={async (e) => {
+                                    const btn = e.currentTarget; btn.disabled = true; btn.textContent = 'Synchronisation...';
+                                    try {
+                                      await api.post(`/hubspot/sync-lead/${selectedLead.id}`);
+                                      showToast('Lead synchronisé avec HubSpot', 'success');
+                                      if (onRefresh) onRefresh();
+                                    } catch(err) { showToast('Erreur sync HubSpot : ' + err.message, 'error'); }
+                                    btn.disabled = false; btn.textContent = 'Synchroniser maintenant';
+                                  }} className="px-4 py-2 text-sm bg-orange-500 text-white rounded-lg hover:bg-orange-600 disabled:opacity-50">
+                                    Synchroniser maintenant
+                                  </button>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                        </div>
+
+                      </div>
+                    </td>
+                  </tr>
+                )}
                 </React.Fragment>
                 );
               })}
@@ -2481,8 +2892,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         </div>
       )}
 
-      {/* ── DETAIL LEAD (kanban + liste) ── */}
-      {selectedLead && (vueMode === "kanban" || vueMode === "liste") && (
+      {/* ── DETAIL LEAD (uniquement en vue kanban) ── */}
+      {selectedLead && vueMode === "kanban" && (
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
 
           {/* ── Header ── */}
