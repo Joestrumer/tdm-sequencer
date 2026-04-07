@@ -6096,10 +6096,17 @@ const parsePdfOrder = async (file) => {
 };
 
 // ─── Factures Helpers ─────────────────────────────────────────────────────────
-const getShippingIdForClient = (client) => {
+const getShippingIdForClient = (client, deliveryAddr = '') => {
   const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
-  const zip = client?.zip || client?.post_code || '';
-  const city = (client?.city || '').toLowerCase();
+  // Si adresse de livraison disponible, l'utiliser pour déterminer le transporteur
+  let zip = client?.zip || client?.post_code || '';
+  let city = (client?.city || '').toLowerCase();
+  if (deliveryAddr) {
+    const cpMatch = deliveryAddr.match(/(\d{4,5})\s/);
+    if (cpMatch) zip = cpMatch[1];
+    const cityMatch = deliveryAddr.match(/\d{4,5}\s+(.+)/);
+    if (cityMatch) city = cityMatch[1].toLowerCase();
+  }
   const isIDF = idfDepts.some(d => zip.startsWith(d)) || city.includes('paris');
   return isIDF ? '101' : '1302';
 };
@@ -6200,7 +6207,7 @@ const FacturesSingle = ({ showToast }) => {
         // Calculer directement et aller au step 4
         const calcRes = await api.post('/factures/calculate', { products: data.products, clientName: data.client.name, includeShipping });
         setCalculation(calcRes);
-        setShippingId(getShippingIdForClient(data.client));
+        setShippingId(getShippingIdForClient(data.client, data.delivery_address || ''));
         setStep(4);
         showToast('Facture importée — ' + data.products.length + ' produit(s)', 'success');
       } else {
@@ -6271,9 +6278,10 @@ const FacturesSingle = ({ showToast }) => {
             if (importData.client) {
               setSelectedClient(importData.client);
               setOrderNumber(importData.invoiceNumber || '');
+              setDeliveryAddress(importData.delivery_address || '');
               const calcRes = await api.post('/factures/calculate', { products: importData.products, clientName: importData.client.name, includeShipping });
               setCalculation(calcRes);
-              setShippingId(getShippingIdForClient(importData.client));
+              setShippingId(getShippingIdForClient(importData.client, importData.delivery_address || ''));
               setStep(4);
               showToast('Facture VF importée — ' + importData.products.length + ' produit(s)', 'success');
             } else {
@@ -6605,8 +6613,21 @@ const FacturesSingle = ({ showToast }) => {
 
           {selectedClient && (
             <div className="bg-slate-50 rounded-xl p-3">
-              <div className="text-sm font-medium text-slate-800">{selectedClient.name}</div>
-              <div className="text-xs text-slate-500">{selectedClient.street}, {selectedClient.city}</div>
+              <div className="flex items-start gap-4">
+                <div className="flex-1">
+                  <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">Facturation</div>
+                  <div className="text-sm font-medium text-slate-800">{selectedClient.name}</div>
+                  <div className="text-xs text-slate-500">{selectedClient.street}, {selectedClient.zip} {selectedClient.city}</div>
+                </div>
+                {deliveryAddress && (
+                  <div className="flex-1 border-l border-slate-200 pl-4">
+                    <div className="text-[10px] font-medium text-blue-500 uppercase tracking-wide mb-0.5">Livraison</div>
+                    {deliveryAddress.split('\n').map((line, i) => (
+                      <div key={i} className={`text-xs ${i === 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>{line}</div>
+                    ))}
+                  </div>
+                )}
+              </div>
             </div>
           )}
 
@@ -7029,7 +7050,7 @@ const FacturesBatch = ({ showToast }) => {
   const [logGSheets, setLogGSheets] = useState(true);
 
   const addOrder = (products, client = null, orderNumber = '', deliveryAddr = '') => {
-    const shippingId = client ? getShippingIdForClient(client) : '1302';
+    const shippingId = client ? getShippingIdForClient(client, deliveryAddr) : '1302';
     setOrders(prev => [...prev, { id: nextId, products, client, calculation: null, shippingId, orderNumber, deliveryAddress: deliveryAddr, expanded: false }]);
     setNextId(n => n + 1);
     // Auto-calculate if client is already set
@@ -7138,7 +7159,7 @@ const FacturesBatch = ({ showToast }) => {
 
   const setOrderClient = async (orderId, client) => {
     const order = orders.find(o => o.id === orderId);
-    const shippingId = getShippingIdForClient(client);
+    const shippingId = getShippingIdForClient(client, order?.deliveryAddress || '');
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId } : o));
     if (order) {
       calculateOrder(orderId, order.products, client);
