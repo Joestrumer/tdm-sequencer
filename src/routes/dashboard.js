@@ -66,7 +66,8 @@ module.exports = (db) => {
       const today = new Date().toISOString().split('T')[0];
       const quota = db.prepare('SELECT count FROM envoi_quota WHERE date_jour = ?').get(today);
       const quotaUtilise = quota ? quota.count : 0;
-      const quotaMax = parseInt(process.env.MAX_EMAILS_PER_DAY || 50);
+      const configMax = db.prepare("SELECT value FROM config WHERE key = 'max_emails_par_jour'").get();
+      const quotaMax = configMax ? parseInt(configMax.value) : parseInt(process.env.MAX_EMAILS_PER_DAY || 50);
 
       // 4. Activité récente (20 derniers events)
       const activite = db.prepare(`
