@@ -2548,7 +2548,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                             <span className="text-xs text-slate-500">Prochain email</span>
                                             <span className={`text-xs font-semibold ${prochainEnvoi && new Date(prochainEnvoi) < Date.now() ? 'text-orange-600' : 'text-blue-700'}`}>
                                               {prochainEnvoi
-                                                ? `📅 ${new Date(prochainEnvoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (${formatCountdown(prochainEnvoi)})`
+                                                ? `📅 ${new Date(prochainEnvoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} (${formatCountdown(prochainEnvoi)})`
                                                 : '—'}
                                             </span>
                                           </div>
@@ -2616,7 +2616,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                             {meta?.url && <div className="text-xs text-slate-400 truncate mt-0.5">{meta.url}</div>}
                                           </div>
                                           <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">
-                                            {new Date(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                            {new Date(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}
                                           </span>
                                         </div>
                                       );
@@ -2667,7 +2667,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                             </div>
                                             <p className="text-sm font-medium text-slate-800 truncate">{email.sujet}</p>
                                             <p className="text-xs text-slate-400 mt-0.5">
-                                              {email.envoye_at ? new Date(email.envoye_at).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
+                                              {email.envoye_at ? new Date(email.envoye_at).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : '—'}
                                             </p>
                                           </div>
                                           <div className="flex gap-3 flex-shrink-0">
@@ -2684,11 +2684,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                         {email.premier_ouvert && (
                                           <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-0.5">
                                             <span className="text-xs text-slate-400">
-                                              1ère ouverture : <span className="text-slate-600">{new Date(email.premier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                              1ère ouverture : <span className="text-slate-600">{new Date(email.premier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}</span>
                                             </span>
                                             {email.dernier_ouvert && email.dernier_ouvert !== email.premier_ouvert && (
                                               <span className="text-xs text-slate-400">
-                                                Dernière : <span className="text-slate-600">{new Date(email.dernier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                                                Dernière : <span className="text-slate-600">{new Date(email.dernier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}</span>
                                               </span>
                                             )}
                                           </div>
@@ -2735,7 +2735,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                             <span className="text-xs flex-shrink-0">{({contact:'👤',email:'✉️',deal:'💰',task:'📋',lifecycle:'🔄'})[log.type] || '⚡'}</span>
                                             <span className="text-xs text-slate-600 flex-1 truncate">{log.action || log.type}</span>
                                             {log.erreur && <span className="text-xs text-red-500 truncate max-w-[120px]">{log.erreur}</span>}
-                                            <span className="text-xs text-slate-400 flex-shrink-0">{new Date(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>
+                                            <span className="text-xs text-slate-400 flex-shrink-0">{new Date(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Paris' })}</span>
                                           </div>
                                         ))}
                                       </div>
@@ -3007,7 +3007,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                               <span className="text-xs text-slate-500">Prochain email</span>
                               <span className={`text-xs font-semibold ${prochainEnvoi && new Date(prochainEnvoi) < Date.now() ? 'text-orange-600' : 'text-blue-700'}`}>
                                 {prochainEnvoi
-                                  ? `📅 ${new Date(prochainEnvoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (${formatCountdown(prochainEnvoi)})`
+                                  ? `📅 ${new Date(prochainEnvoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} (${formatCountdown(prochainEnvoi)})`
                                   : '—'}
                               </span>
                             </div>
@@ -3080,7 +3080,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                               {meta?.url && <div className="text-xs text-slate-400 truncate mt-0.5">{meta.url}</div>}
                             </div>
                             <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">
-                              {new Date(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                              {new Date(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}
                             </span>
                           </div>
                         );
@@ -3166,13 +3166,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                             <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-0.5">
                               <span className="text-xs text-slate-400">
                                 1ère ouverture : <span className="text-slate-600">
-                                  {new Date(email.premier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                  {new Date(email.premier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}
                                 </span>
                               </span>
                               {email.dernier_ouvert && email.dernier_ouvert !== email.premier_ouvert && (
                                 <span className="text-xs text-slate-400">
                                   Dernière : <span className="text-slate-600">
-                                    {new Date(email.dernier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                                    {new Date(email.dernier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}
                                   </span>
                                 </span>
                               )}
@@ -3224,7 +3224,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                               <span className="text-xs flex-shrink-0">{({contact:'👤',email:'✉️',deal:'💰',task:'📋',lifecycle:'🔄'})[log.type] || '⚡'}</span>
                               <span className="text-xs text-slate-600 flex-1 truncate">{log.action || log.type}</span>
                               {log.erreur && <span className="text-xs text-red-500 truncate max-w-[120px]">{log.erreur}</span>}
-                              <span className="text-xs text-slate-400 flex-shrink-0">{new Date(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>
+                              <span className="text-xs text-slate-400 flex-shrink-0">{new Date(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Paris' })}</span>
                             </div>
                           ))}
                         </div>
@@ -11095,7 +11095,7 @@ const VueCommandes = ({ showToast }) => {
                       {cfg.label}
                     </span>
                   </div>
-                  <div className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                  <div className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-semibold text-slate-900">{c.total_ht?.toFixed(2)} &euro; HT</div>
