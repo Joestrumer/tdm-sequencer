@@ -283,13 +283,22 @@ module.exports = (db) => {
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `);
 
+      const updateCivilite = db.prepare(`
+        UPDATE leads SET civilite = ?, source = CASE WHEN source = '' OR source IS NULL THEN ? ELSE source END, updated_at = datetime('now')
+        WHERE email = ? AND (civilite = '' OR civilite IS NULL)
+      `);
+
       const importerTous = db.transaction((leads) => {
         for (const l of leads) {
           if (!l.email || !l.hotel) { ignores++; continue; }
           try {
             const result = inserer.run(uuidv4(), l.prenom || '', l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', JSON.stringify(l.tags || []), l.poste || null, l.langue || 'fr', l.source || 'Import CSV', l.civilite || '');
             if (result.changes) crees++;
-            else ignores++;
+            else {
+              // Lead existant : mettre à jour civilite/source si vides
+              if (l.civilite) updateCivilite.run(l.civilite, l.source || 'Import CSV', l.email);
+              ignores++;
+            }
           } catch (e) {
             erreurs.push({ email: l.email, erreur: e.message });
           }
