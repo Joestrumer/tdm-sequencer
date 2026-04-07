@@ -623,7 +623,7 @@ function reloadSignature() {
   }).catch(() => _signatureHtmlCache);
 }
 // Données de démo pour la prévisualisation
-const DEMO_LEAD_PREVIEW = { prenom: "Sophie", nom: "Lefebvre", hotel: "Hôtel Le Bristol", ville: "Paris", segment: "5*" };
+const DEMO_LEAD_PREVIEW = { prenom: "Sophie", nom: "Lefebvre", hotel: "Hôtel Le Bristol", ville: "Paris", segment: "5*", civilite: "Mme" };
 
 function escapeHtml(str) {
   return String(str || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -955,7 +955,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
     return html;
   }, [etapeCourante.corps_html, etapeCourante.corps]);
 
-  const VARS = ["{{prenom}}", "{{nom}}", "{{etablissement}}", "{{ville}}", "{{segment}}"];
+  const VARS = ["{{civilite}}", "{{prenom}}", "{{nom}}", "{{etablissement}}", "{{ville}}", "{{segment}}"];
 
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={onClose}>
@@ -9708,7 +9708,7 @@ const ModalTemplateEditor = ({ template, onClose, onSave, showToast }) => {
               <div ref={editorRef} />
               <div className="px-3 py-1.5 border-t border-slate-100 bg-slate-50/30 flex items-center gap-1">
                 <span className="text-xs text-slate-400 mr-1">Variables :</span>
-                {["{{prenom}}", "{{nom}}", "{{etablissement}}", "{{ville}}", "{{segment}}"].map(v => (
+                {["{{civilite}}", "{{prenom}}", "{{nom}}", "{{etablissement}}", "{{ville}}", "{{segment}}"].map(v => (
                   <button key={v} type="button" onClick={() => {
                     if (tinymceRef.current) {
                       tinymceRef.current.insertContent(v);
@@ -10400,7 +10400,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
               <div>
                 <label className="block text-xs font-medium text-slate-600 mb-1">Contenu</label>
                 <div className="flex gap-1 mb-2">
-                  {['{{prenom}}', '{{nom}}', '{{hotel}}', '{{ville}}', '{{segment}}'].map(v => (
+                  {['{{civilite}}', '{{prenom}}', '{{nom}}', '{{hotel}}', '{{ville}}', '{{segment}}'].map(v => (
                     <button key={v} onClick={() => insertVariable(v)} className="text-[10px] px-2 py-0.5 rounded bg-blue-50 text-blue-600 hover:bg-blue-100">{v}</button>
                   ))}
                 </div>

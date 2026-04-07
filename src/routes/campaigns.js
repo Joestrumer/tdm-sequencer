@@ -265,9 +265,9 @@ module.exports = (db) => {
       if (filters?.campaign) { sql += ' AND campaign = ?'; params.push(filters.campaign); }
       if (filters?.source) { sql += ' AND source = ?'; params.push(filters.source); }
       if (filters?.search) {
-        sql += ' AND (prenom LIKE ? OR nom LIKE ? OR hotel LIKE ? OR email LIKE ?)';
+        sql += ' AND (prenom LIKE ? OR nom LIKE ? OR hotel LIKE ? OR email LIKE ? OR source LIKE ? OR statut LIKE ? OR civilite LIKE ? OR poste LIKE ?)';
         const s = `%${filters.search}%`;
-        params.push(s, s, s, s);
+        params.push(s, s, s, s, s, s, s, s);
       }
 
       sql += ' ORDER BY created_at DESC';
