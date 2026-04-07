@@ -9860,7 +9860,7 @@ const VueCampagnes = ({ showToast, readOnly }) => {
                     </div>
                   )}
                   {c.statut === 'brouillon' && <span className="text-xs">{c.total_recipients} destinataires</span>}
-                  <span className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-FR')}</span>
+                  <span className="text-xs text-slate-400">{new Date(c.scheduled_at || c.started_at || c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                   <svg className={`w-4 h-4 transition-transform ${expandedId === c.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </div>
               </div>

@@ -22,9 +22,17 @@ function sleep(ms) {
   return new Promise(r => setTimeout(r, ms));
 }
 
+// ─── Heure locale (Europe/Paris) ────────────────────────────────────────────
+function nowParis() {
+  const fuseau = process.env.FUSEAU || 'Europe/Paris';
+  const d = new Date(new Date().toLocaleString('en-US', { timeZone: fuseau }));
+  const pad = n => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`;
+}
+
 // ─── Activer les campagnes programmées ────────────────────────────────────────
 function activerCampagnesProgrammees() {
-  const now = new Date().toISOString().replace('T', ' ').slice(0, 19);
+  const now = nowParis();
   const campagnes = db.prepare(`
     SELECT id, nom FROM campaigns WHERE statut = 'programmée' AND scheduled_at <= ?
   `).all(now);
