@@ -1982,7 +1982,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   };
 
   const filtered = useMemo(() => leadsNorm.filter(l => {
-    const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email} ${l.campaign||""}`.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email} ${l.campaign||""} ${l.source||""} ${l.statut||""} ${l.civilite||""} ${l.poste||""}`.toLowerCase().includes(search.toLowerCase());
     const matchStatut = filterStatut === "Tous" || l.statut === filterStatut;
     const matchSegment = filterSegment === "Tous" || l.segment === filterSegment;
     const matchVille = filterVille === "Tous" || l.ville === filterVille;

@@ -46,7 +46,7 @@ module.exports = (db) => {
 
       if (statut) { query += ' AND l.statut = ?'; params.push(statut); }
       if (segment) { query += ' AND l.segment = ?'; params.push(segment); }
-      if (search) { query += ' AND (l.prenom LIKE ? OR l.nom LIKE ? OR l.hotel LIKE ? OR l.email LIKE ?)'; const s = `%${search}%`; params.push(s, s, s, s); }
+      if (search) { query += ' AND (l.prenom LIKE ? OR l.nom LIKE ? OR l.hotel LIKE ? OR l.email LIKE ? OR l.source LIKE ? OR l.statut LIKE ? OR l.civilite LIKE ? OR l.poste LIKE ?)'; const s = `%${search}%`; params.push(s, s, s, s, s, s, s, s); }
 
       query += ' ORDER BY l.created_at DESC';
       const leads = db.prepare(query).all(...params);
