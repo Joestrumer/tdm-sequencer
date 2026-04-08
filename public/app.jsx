@@ -7359,7 +7359,7 @@ const FacturesBatch = ({ showToast }) => {
         <div className="flex gap-2">
           <textarea value={manualText} onChange={e => setManualText(e.target.value)}
             placeholder="Saisie manuelle (10x P008-5000...)" rows={2}
-            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono resize-none" />
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono resize-y min-h-[2.5rem]" />
           <button onClick={addManualOrder} disabled={!manualText.trim()}
             className="px-3 py-2 bg-slate-900 text-white text-sm rounded-lg disabled:opacity-40">+</button>
         </div>
