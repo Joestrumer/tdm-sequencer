@@ -10,6 +10,7 @@ const db = require('./db/init.js');
 // Auto-seed des données factures si manquantes ou incomplètes
 try {
   const check = db.prepare("SELECT COUNT(*) as n FROM vf_code_mappings WHERE type = 'product_id' AND code_source = 'P037-5000-41.00'").get();
+  const checkNewProducts = db.prepare("SELECT COUNT(*) as n FROM vf_catalog WHERE ref = 'P300ML'").get();
   const gsheetsCreds = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
   let credsValid = false;
   if (gsheetsCreds?.valeur) {
@@ -20,7 +21,7 @@ try {
       console.warn('⚠️ Credentials GSheets invalides (JSON parse fail), re-seed nécessaire');
     }
   }
-  if (!check || check.n === 0 || !credsValid) {
+  if (!check || check.n === 0 || !credsValid || !checkNewProducts || checkNewProducts.n === 0) {
     console.log('🌱 Données factures manquantes ou incomplètes, lancement du seed...');
     require('child_process').execSync('node src/db/seedFactures.js', {
       cwd: __dirname + '/..',
