@@ -17,6 +17,7 @@ function normalizeRef(raw) {
   const specials = new Set(['FP', 'FE', 'P5L', 'SPFS', 'PFS', 'PFD', 'PFT', 'PFDS', 'PFSS', 'PFTS', 'COFFRETS', 'BAV', 'SPRAY-VIDE']);
   if (specials.has(r)) return r;
   if (r === 'P500ML') return 'P500ml';
+  if (r === 'P300ML') return 'P300ML';
   if (r.startsWith('NP')) r = 'P' + r.slice(2);
   if (r.startsWith('H-') || r.startsWith('N-')) r = r.slice(2);
   if (/^[HN]\d{3}/.test(r)) r = r.slice(1);

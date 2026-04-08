@@ -92,6 +92,7 @@ const masterCatalog = {
   'P010-300V': { nom: 'Flacon vide 300ml Shampoing 010', prix_ht: 5.00, tva: 20 },
   'P011-300V': { nom: 'Flacon vide 300ml Lait Corps 011', prix_ht: 5.00, tva: 20 },
   'P024-300V': { nom: 'Flacon vide 300ml Après Shampoing 024', prix_ht: 5.00, tva: 20 },
+  'P300ML': { nom: 'Pompe 300ml', prix_ht: 1.00, tva: 20 },
 };
 
 // ─── Partenaires canoniques ───────────────────────────────────────────────────
