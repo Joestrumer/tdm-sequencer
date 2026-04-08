@@ -10912,6 +10912,10 @@ const VueCommandes = ({ showToast }) => {
   const [validateModal, setValidateModal] = useState(null);
   const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true });
   const [downloadingCsv, setDownloadingCsv] = useState(null);
+  const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
+  const [batchCsvModal, setBatchCsvModal] = useState(false);
+  const [batchCsvShippingId, setBatchCsvShippingId] = useState('1');
+  const [downloadingBatchCsv, setDownloadingBatchCsv] = useState(false);
 
   useEscapeClose(() => { if (!validating) setValidateModal(null); });
 
@@ -11084,6 +11088,55 @@ const VueCommandes = ({ showToast }) => {
     }
   };
 
+  const toggleOrderSelection = (id, e) => {
+    if (e) e.stopPropagation();
+    setSelectedOrderIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    const validees = commandes.filter(c => c.statut === 'validee' && c.vf_invoice_id);
+    if (selectedOrderIds.size === validees.length && validees.length > 0) {
+      setSelectedOrderIds(new Set());
+    } else {
+      setSelectedOrderIds(new Set(validees.map(c => c.id)));
+    }
+  };
+
+  const downloadBatchCsv = async (shippingId) => {
+    setDownloadingBatchCsv(true);
+    setBatchCsvModal(false);
+    try {
+      const response = await fetch('/api/partner-orders/batch-csv', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || ''}` },
+        body: JSON.stringify({ orderIds: [...selectedOrderIds], shippingId }),
+      });
+      if (response.ok) {
+        const blob = await response.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `logisticien-batch-${selectedOrderIds.size}-commandes.csv`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        showToast(`CSV groupé téléchargé (${selectedOrderIds.size} commandes)`, 'success');
+        setSelectedOrderIds(new Set());
+      } else {
+        const err = await response.json();
+        showToast(err.erreur || 'Erreur CSV groupé', 'error');
+      }
+    } catch (e) {
+      showToast('Erreur réseau', 'error');
+    }
+    setDownloadingBatchCsv(false);
+  };
+
   const statutConfig = {
     en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
     validee: { label: "Validée", bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500" },
@@ -11117,6 +11170,32 @@ const VueCommandes = ({ showToast }) => {
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
               <button onClick={() => setCsvModal(null)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
               <button onClick={() => downloadCsv(csvModal, csvShippingId)} className="px-4 py-2 text-sm bg-slate-900 text-white rounded-xl hover:bg-slate-700">Télécharger</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal CSV groupé */}
+      {batchCsvModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => setBatchCsvModal(false)}>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-sm" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-100">
+              <h3 className="text-sm font-semibold text-slate-900">CSV groupé — {selectedOrderIds.size} commande{selectedOrderIds.size > 1 ? 's' : ''}</h3>
+              <p className="text-xs text-slate-500">Un seul fichier CSV pour toutes les commandes sélectionnées</p>
+            </div>
+            <div className="px-6 py-4">
+              <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
+              <select value={batchCsvShippingId} onChange={e => setBatchCsvShippingId(e.target.value)}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3">
+              <button onClick={() => setBatchCsvModal(false)} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">Annuler</button>
+              <button onClick={() => downloadBatchCsv(batchCsvShippingId)} disabled={downloadingBatchCsv}
+                className="px-4 py-2 text-sm bg-slate-900 text-white rounded-xl hover:bg-slate-700 disabled:opacity-50">
+                {downloadingBatchCsv ? 'Téléchargement...' : 'Télécharger'}
+              </button>
             </div>
           </div>
         </div>
@@ -11193,13 +11272,30 @@ const VueCommandes = ({ showToast }) => {
       )}
 
       {/* Filtres */}
-      <div className="flex gap-2 flex-wrap">
+      <div className="flex items-center gap-2 flex-wrap">
         {filtres.map(f => (
           <button key={f.id} onClick={() => setFiltre(f.id)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${filtre === f.id ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"}`}>
             {f.label}
             {f.count > 0 && <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${filtre === f.id ? "bg-white/20" : "bg-slate-100"}`}>{f.count}</span>}
           </button>
         ))}
+        {commandes.some(c => c.statut === 'validee' && c.vf_invoice_id) && (
+          <div className="flex items-center gap-2 ml-auto">
+            <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
+              <input type="checkbox"
+                checked={(() => { const v = commandes.filter(c => c.statut === 'validee' && c.vf_invoice_id); return v.length > 0 && selectedOrderIds.size === v.length; })()}
+                onChange={toggleSelectAll}
+                className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 w-3.5 h-3.5" />
+              Tout sélectionner
+            </label>
+            {selectedOrderIds.size > 0 && (
+              <button onClick={() => { setBatchCsvShippingId('1'); setBatchCsvModal(true); }} disabled={downloadingBatchCsv}
+                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                CSV groupé ({selectedOrderIds.size})
+              </button>
+            )}
+          </div>
+        )}
       </div>
 
       {loading && <div className="flex items-center gap-2 text-sm text-slate-400"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
@@ -11218,6 +11314,10 @@ const VueCommandes = ({ showToast }) => {
           return (
             <div key={c.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
               <div className="p-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setExpandedId(expanded ? null : c.id)}>
+                {c.statut === 'validee' && c.vf_invoice_id && (
+                  <input type="checkbox" checked={selectedOrderIds.has(c.id)} onChange={(e) => toggleOrderSelection(c.id, e)} onClick={e => e.stopPropagation()}
+                    className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 w-4 h-4 flex-shrink-0 cursor-pointer" />
+                )}
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-medium text-slate-900">{c.partner_nom}</span>
@@ -11276,6 +11376,10 @@ const VueCommandes = ({ showToast }) => {
                       {c.vf_invoice_number && <span className="text-xs text-emerald-600 font-medium">Facture n&deg;{c.vf_invoice_number}</span>}
                       {c.statut === 'validee' && c.vf_invoice_id && (
                         <>
+                          <button onClick={(e) => { e.stopPropagation(); window.open(`https://terredemars.vosfactures.fr/invoices/${c.vf_invoice_id}`, '_blank'); }}
+                            className="px-3 py-1.5 text-xs border border-violet-200 text-violet-600 rounded-lg hover:bg-violet-50 transition-colors">
+                            VF
+                          </button>
                           <button onClick={(e) => { e.stopPropagation(); setCsvShippingId(c.shipping_id || '1'); setCsvModal(c); }} disabled={downloadingCsv === c.id}
                             className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
                             {downloadingCsv === c.id ? 'CSV...' : 'CSV'}

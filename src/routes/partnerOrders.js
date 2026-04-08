@@ -474,6 +474,77 @@ module.exports = (db) => {
     }
   });
 
+  // ─── CSV groupé pour plusieurs commandes validées ───────────────────────────
+  router.post('/batch-csv', (req, res) => {
+    try {
+      const { orderIds, shippingId } = req.body || {};
+      if (!shippingId) return res.status(400).json({ erreur: 'shippingId requis' });
+      if (!Array.isArray(orderIds) || orderIds.length === 0) return res.status(400).json({ erreur: 'orderIds requis (tableau non vide)' });
+
+      const catalog = getCatalogMap();
+      const shippingNamesMap = getShippingNames();
+      const allLines = [];
+      let headerLine = null;
+
+      for (const orderId of orderIds) {
+        const order = db.prepare(`
+          SELECT po.*, vp.nom as partner_nom, vp.email as partner_email,
+                 vp.contact_nom as partner_contact, vp.adresse as partner_adresse,
+                 vp.telephone as partner_telephone
+          FROM partner_orders po
+          JOIN vf_partners vp ON vp.id = po.partner_id
+          WHERE po.id = ? AND po.statut = 'validee'
+        `).get(orderId);
+
+        if (!order) continue;
+
+        const products = JSON.parse(order.products || '[]');
+        const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
+        const client = {
+          name: order.partner_nom,
+          recipient_name: order.partner_contact || order.partner_nom,
+          street: parsedAddr.street,
+          city: parsedAddr.city,
+          zip: parsedAddr.zip,
+          country: parsedAddr.country,
+          email: order.partner_email || '',
+          phone: order.partner_telephone || '',
+        };
+        const csvProducts = products.map(p => ({
+          ref: p.ref,
+          csv_ref: catalog[normalizeRef(p.ref)]?.csv_ref || p.ref,
+          quantite: p.quantite || 1,
+        }));
+
+        const csvContent = genererCSVLogisticien(
+          { number: order.vf_invoice_number || '', products: csvProducts, notes: order.notes || '' },
+          client,
+          shippingNamesMap,
+          { shippingId }
+        );
+
+        // Séparer header et lignes de données (enlever BOM)
+        const raw = csvContent.replace(/^\uFEFF/, '');
+        const lines = raw.split('\n');
+        if (!headerLine && lines.length > 0) headerLine = lines[0];
+        // Ajouter les lignes de données (skip header)
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) allLines.push(lines[i]);
+        }
+      }
+
+      if (allLines.length === 0) return res.status(400).json({ erreur: 'Aucune donnée CSV générée' });
+
+      const finalCsv = '\uFEFF' + headerLine + '\n' + allLines.join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="logisticien-batch-${orderIds.length}-commandes.csv"`);
+      res.send(finalCsv);
+    } catch (e) {
+      logger.error('Erreur batch CSV', { error: e.message, stack: e.stack });
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── PDF pour commande validée (proxy via VF API) ───────────────────────────
   router.get('/:id/pdf', async (req, res) => {
     try {
