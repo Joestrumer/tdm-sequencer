@@ -513,13 +513,17 @@ function parseOrderText(text) {
     .replace(/\s+/g, ' ')
     .trim();
 
-  const knownAccRefs = new Set(['PFS', 'PFD', 'PFT', 'SPFS', 'PFDS', 'PFSS', 'PFTS', 'P500ML', 'BAV', 'COFFRETS', 'SPRAY-VIDE']);
+  const knownAccRefs = new Set(['PFS', 'PFD', 'PFT', 'SPFS', 'PFDS', 'PFSS', 'PFTS', 'P500ML', 'P300ML', 'BAV', 'COFFRETS', 'SPRAY-VIDE']);
 
   const localNormalizeRef = (ref, lineNorm) => {
     if (!ref) return null;
     let r = ref.toUpperCase().replace(/\s+/g, '').replace(/_/g, '-');
     if (r === 'P5L') return 'P5L';
     if (knownAccRefs.has(r)) return r === 'P500ML' ? 'P500ml' : r;
+
+    // Refs avec suffixe alphanumérique (P007-300V, P042V, etc.)
+    const pAlpha = r.match(/^P(\d{3})-?\d+[A-Z]+$/);
+    if (pAlpha) return r;
 
     const hn = r.match(/^[HN]-?(\d{3})$/);
     if (hn) {
@@ -565,7 +569,7 @@ function parseOrderText(text) {
     .filter(l => !/^bonjour\b/i.test(l) && !/^j['']esp[eè]re\b/i.test(l));
 
   // Refs accessoires reconnues (non-numériques)
-  const accRefs = 'PFS|PFD|PFT|SPFS|PFDS|PFSS|PFTS|P500ml|BAV|COFFRETS|SPRAY-VIDE';
+  const accRefs = 'PFS|PFD|PFT|SPFS|PFDS|PFSS|PFTS|P500ml|P300ML|BAV|COFFRETS|SPRAY-VIDE';
   const accPat = new RegExp(`(${accRefs})`, 'gi');
 
   const refPatterns = [
@@ -580,12 +584,12 @@ function parseOrderText(text) {
     /(P5L)\s*x\s*(\d+)/gi,
     /(\d+)\s+(P5L)\b/gi,
     /(P5L)\s+(\d+)\b/gi,
-    // Pxxx standard (word boundary pour ne pas matcher P500 dans P500ml)
-    /(\d+)\s*x\s*([Pp]\d{3}(?:-\d+)?)\b/g,
-    /([Pp]\d{3}(?:-\d+)?)\b\s*x\s*(\d+)/g,
-    /(\d+)\s+([Pp]\d{3}(?:-\d+)?)\b/g,
-    /([Pp]\d{3}(?:-\d+)?)\b\s*:\s*(\d+)/g,
-    /([Pp]\d{3}(?:-\d+)?)\b\s+(\d+)(?!\s*[Ll])\b/g,
+    // Pxxx standard (supporte suffixes numériques et alphanumériques: P007, P007-5000, P007-300V)
+    /(\d+)\s*x\s*([Pp]\d{3}(?:-\d+[A-Za-z]*)?)\b/g,
+    /([Pp]\d{3}(?:-\d+[A-Za-z]*)?)\b\s*x\s*(\d+)/g,
+    /(\d+)\s+([Pp]\d{3}(?:-\d+[A-Za-z]*)?)\b/g,
+    /([Pp]\d{3}(?:-\d+[A-Za-z]*)?)\b\s*:\s*(\d+)/g,
+    /([Pp]\d{3}(?:-\d+[A-Za-z]*)?)\b\s+(\d+)(?!\s*[Ll])\b/g,
     // H/N refs
     /(\d+)\s*x\s*([HhNn]\s*-?\s*\d{3})/g,
     /([HhNn]\s*-?\s*\d{3})\s*x\s*(\d+)/g,
@@ -607,7 +611,7 @@ function parseOrderText(text) {
 
     // Format tabulaire: P039 Description... 12 ( 24,00)
     // Ligne commence par une référence, quantité plus loin
-    const tabularMatch = line.match(new RegExp(`^([Pp]\\d{3}(?:-\\d+)?|P5L|${accRefs}|[HhNn]\\s*-?\\s*\\d{3})\\s+(.+?)(\\d{1,4})\\s+[\\(\\[]?\\s*[\\d,\\.]+\\s*[\\)\\]]?\\s*€`, 'i'));
+    const tabularMatch = line.match(new RegExp(`^([Pp]\\d{3}(?:-\\d+[A-Za-z]*)?|P5L|${accRefs}|[HhNn]\\s*-?\\s*\\d{3})\\s+(.+?)(\\d{1,4})\\s+[\\(\\[]?\\s*[\\d,\\.]+\\s*[\\)\\]]?\\s*€`, 'i'));
     if (tabularMatch) {
       const ref = tabularMatch[1];
       const quantity = parseInt(tabularMatch[3], 10);
