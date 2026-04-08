@@ -293,6 +293,7 @@ module.exports = (db) => {
       const limit = Math.min(parseInt(req.query.limit) || 50, 200);
       const offset = (page - 1) * limit;
       const search = req.query.search ? req.query.search.trim() : '';
+      const filter = req.query.filter || '';
 
       let whereClause = 'cr.campaign_id = ?';
       const params = [req.params.id];
@@ -303,7 +304,22 @@ module.exports = (db) => {
         params.push(s, s, s, s);
       }
 
-      const total = db.prepare(`SELECT COUNT(*) as n FROM campaign_recipients cr WHERE ${whereClause}`).get(...params).n;
+      // Filtres basés sur les stats email
+      if (filter === 'opened') {
+        whereClause += ' AND e.ouvertures > 0';
+      } else if (filter === 'clicked') {
+        whereClause += ' AND e.clics > 0';
+      } else if (filter === 'erreur') {
+        whereClause += " AND cr.statut = 'erreur'";
+      } else if (filter === 'not_opened') {
+        whereClause += " AND (e.ouvertures IS NULL OR e.ouvertures = 0) AND cr.statut = 'envoyé'";
+      }
+
+      const total = db.prepare(`
+        SELECT COUNT(*) as n FROM campaign_recipients cr
+        LEFT JOIN emails e ON e.campaign_recipient_id = cr.id
+        WHERE ${whereClause}
+      `).get(...params).n;
 
       const recipients = db.prepare(`
         SELECT cr.*, e.ouvertures, e.clics

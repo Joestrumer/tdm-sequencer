@@ -9776,6 +9776,9 @@ const VueCampagnes = ({ showToast, readOnly }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [expandedStats, setExpandedStats] = useState(null);
   const [expandedRecipients, setExpandedRecipients] = useState(null);
+  const [recipientPage, setRecipientPage] = useState(1);
+  const [recipientFilter, setRecipientFilter] = useState('tous');
+  const [recipientSearch, setRecipientSearch] = useState('');
 
   const charger = async () => {
     setLoading(true);
@@ -9816,13 +9819,26 @@ const VueCampagnes = ({ showToast, readOnly }) => {
     charger();
   };
 
+  const loadRecipients = async (campaignId, page = 1, filter = 'tous', search = '') => {
+    try {
+      let url = `/campaigns/${campaignId}/recipients?limit=50&page=${page}`;
+      if (search) url += `&search=${encodeURIComponent(search)}`;
+      if (filter && filter !== 'tous') url += `&filter=${filter}`;
+      const rData = await api.get(url);
+      setExpandedRecipients(rData);
+    } catch (e) { /* ignore */ }
+  };
+
   const toggleExpand = async (id) => {
     if (expandedId === id) { setExpandedId(null); return; }
     setExpandedId(id);
+    setRecipientPage(1);
+    setRecipientFilter('tous');
+    setRecipientSearch('');
     try {
       const [stats, rData] = await Promise.all([
         api.get(`/campaigns/${id}/stats`),
-        api.get(`/campaigns/${id}/recipients?limit=20`),
+        api.get(`/campaigns/${id}/recipients?limit=50`),
       ]);
       setExpandedStats(stats);
       setExpandedRecipients(rData);
@@ -9895,46 +9911,82 @@ const VueCampagnes = ({ showToast, readOnly }) => {
               <div className="border-t border-slate-100 p-4 bg-slate-50">
                 {/* Stats KPIs */}
                 {expandedStats && (
-                  <div className="grid grid-cols-4 gap-4 mb-4">
+                  <div className="grid grid-cols-5 gap-3 mb-4">
                     <div className="bg-white rounded-lg p-3 text-center">
                       <div className="text-2xl font-bold text-slate-800">{expandedStats.sent || 0}</div>
                       <div className="text-xs text-slate-500">Envoyés</div>
                     </div>
-                    <div className="bg-white rounded-lg p-3 text-center">
+                    <div className="bg-white rounded-lg p-3 text-center cursor-pointer hover:ring-2 hover:ring-emerald-200" onClick={() => { setRecipientFilter(recipientFilter === 'opened' ? 'tous' : 'opened'); setRecipientPage(1); loadRecipients(c.id, 1, recipientFilter === 'opened' ? 'tous' : 'opened', recipientSearch); }}>
                       <div className="text-2xl font-bold text-emerald-600">{expandedStats.open_rate || 0}%</div>
                       <div className="text-xs text-slate-500">Ouverts ({expandedStats.opened || 0})</div>
+                      <div className="text-[10px] text-slate-400">{expandedStats.total_opens || 0} ouvertures</div>
                     </div>
-                    <div className="bg-white rounded-lg p-3 text-center">
+                    <div className="bg-white rounded-lg p-3 text-center cursor-pointer hover:ring-2 hover:ring-blue-200" onClick={() => { setRecipientFilter(recipientFilter === 'clicked' ? 'tous' : 'clicked'); setRecipientPage(1); loadRecipients(c.id, 1, recipientFilter === 'clicked' ? 'tous' : 'clicked', recipientSearch); }}>
                       <div className="text-2xl font-bold text-blue-600">{expandedStats.click_rate || 0}%</div>
                       <div className="text-xs text-slate-500">Cliqués ({expandedStats.clicked || 0})</div>
+                      <div className="text-[10px] text-slate-400">{expandedStats.total_clicks || 0} clics</div>
                     </div>
-                    <div className="bg-white rounded-lg p-3 text-center">
+                    <div className="bg-white rounded-lg p-3 text-center cursor-pointer hover:ring-2 hover:ring-red-200" onClick={() => { setRecipientFilter(recipientFilter === 'erreur' ? 'tous' : 'erreur'); setRecipientPage(1); loadRecipients(c.id, 1, recipientFilter === 'erreur' ? 'tous' : 'erreur', recipientSearch); }}>
                       <div className="text-2xl font-bold text-red-500">{expandedStats.errors || 0}</div>
                       <div className="text-xs text-slate-500">Erreurs</div>
                     </div>
+                    <div className="bg-white rounded-lg p-3 text-center">
+                      <div className="text-2xl font-bold text-slate-400">{(expandedStats.sent || 0) - (expandedStats.opened || 0)}</div>
+                      <div className="text-xs text-slate-500">Pas ouverts</div>
+                    </div>
                   </div>
                 )}
+
+                {/* Filtres recipients */}
+                <div className="flex items-center gap-2 mb-3">
+                  <input value={recipientSearch} onChange={e => setRecipientSearch(e.target.value)}
+                    onKeyDown={e => { if (e.key === 'Enter') { setRecipientPage(1); loadRecipients(c.id, 1, recipientFilter, recipientSearch); } }}
+                    placeholder="Rechercher email, nom..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs flex-1 max-w-xs" />
+                  <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5">
+                    {[['tous','Tous'], ['opened','Ouverts'], ['clicked','Cliqués'], ['erreur','Erreurs'], ['not_opened','Pas ouverts']].map(([k, l]) => (
+                      <button key={k} onClick={() => { setRecipientFilter(k); setRecipientPage(1); loadRecipients(c.id, 1, k, recipientSearch); }}
+                        className={`px-2 py-1 rounded-md text-[10px] font-medium transition-colors ${recipientFilter === k ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>{l}</button>
+                    ))}
+                  </div>
+                </div>
 
                 {/* Table recipients */}
                 {expandedRecipients?.recipients?.length > 0 && (
                   <div className="bg-white rounded-lg overflow-hidden mb-4">
                     <table className="w-full text-xs">
                       <thead><tr className="bg-slate-50 text-slate-500">
-                        <th className="text-left p-2">Email</th><th className="text-left p-2">Prénom</th><th className="text-left p-2">Statut</th><th className="text-left p-2">Envoyé</th><th className="text-right p-2">Ouvertures</th><th className="text-right p-2">Clics</th>
+                        <th className="text-left p-2">Contact</th><th className="text-left p-2">Hôtel</th><th className="text-left p-2">Statut</th><th className="text-left p-2">Envoyé</th><th className="text-right p-2">Ouvertures</th><th className="text-right p-2">Clics</th>
                       </tr></thead>
                       <tbody>{expandedRecipients.recipients.map(r => (
-                        <tr key={r.id} className="border-t border-slate-50">
-                          <td className="p-2 font-mono">{r.email}</td>
-                          <td className="p-2">{r.prenom}</td>
+                        <tr key={r.id} className={`border-t border-slate-50 ${(r.ouvertures || 0) > 0 ? 'bg-emerald-50/30' : ''} ${(r.clics || 0) > 0 ? 'bg-blue-50/30' : ''} ${r.statut === 'erreur' ? 'bg-red-50/30' : ''}`}>
+                          <td className="p-2">
+                            <div className="font-medium text-slate-800">{r.prenom} {r.nom}</div>
+                            <div className="text-[10px] text-slate-400 font-mono">{r.email}</div>
+                          </td>
+                          <td className="p-2 text-slate-600 truncate max-w-[120px]">{r.hotel || '—'}</td>
                           <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.statut === 'envoyé' ? 'bg-emerald-50 text-emerald-700' : r.statut === 'erreur' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{r.statut}</span></td>
-                          <td className="p-2 text-slate-400">{r.sent_at ? new Date(r.sent_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '-'}</td>
-                          <td className="p-2 text-right">{r.ouvertures || 0}</td>
-                          <td className="p-2 text-right">{r.clics || 0}</td>
+                          <td className="p-2 text-slate-400">{r.sent_at ? new Date(r.sent_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+                          <td className="p-2 text-right">{(r.ouvertures || 0) > 0 ? <span className="text-emerald-600 font-semibold">{r.ouvertures}</span> : <span className="text-slate-300">0</span>}</td>
+                          <td className="p-2 text-right">{(r.clics || 0) > 0 ? <span className="text-blue-600 font-semibold">{r.clics}</span> : <span className="text-slate-300">0</span>}</td>
                         </tr>
                       ))}</tbody>
                     </table>
-                    {expandedRecipients.total > 20 && <div className="p-2 text-center text-xs text-slate-400">{expandedRecipients.total} destinataires au total</div>}
+                    {/* Pagination */}
+                    {expandedRecipients.pages > 1 && (
+                      <div className="flex items-center justify-between p-2 border-t border-slate-100">
+                        <span className="text-[10px] text-slate-400">{expandedRecipients.total} destinataires — page {expandedRecipients.page}/{expandedRecipients.pages}</span>
+                        <div className="flex gap-1">
+                          <button disabled={recipientPage <= 1} onClick={() => { const p = recipientPage - 1; setRecipientPage(p); loadRecipients(c.id, p, recipientFilter, recipientSearch); }}
+                            className="px-2 py-1 text-xs bg-slate-100 rounded hover:bg-slate-200 disabled:opacity-30">Préc.</button>
+                          <button disabled={recipientPage >= expandedRecipients.pages} onClick={() => { const p = recipientPage + 1; setRecipientPage(p); loadRecipients(c.id, p, recipientFilter, recipientSearch); }}
+                            className="px-2 py-1 text-xs bg-slate-100 rounded hover:bg-slate-200 disabled:opacity-30">Suiv.</button>
+                        </div>
+                      </div>
+                    )}
                   </div>
+                )}
+                {expandedRecipients?.recipients?.length === 0 && (
+                  <div className="text-xs text-slate-400 text-center py-3 mb-4">Aucun destinataire {recipientFilter !== 'tous' ? 'pour ce filtre' : ''}</div>
                 )}
 
                 {/* Actions */}
