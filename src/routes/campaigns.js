@@ -89,14 +89,14 @@ module.exports = (db) => {
   // ─── POST / — Créer campagne ────────────────────────────────────────────────
   router.post('/', (req, res) => {
     try {
-      const { nom, sujet, corps_html, template_id, options } = req.body;
+      const { nom, sujet, corps_html, template_id, options, piece_jointe } = req.body;
       if (!nom || !sujet) return res.status(400).json({ erreur: 'Nom et sujet requis' });
 
       const id = uuidv4();
       db.prepare(`
-        INSERT INTO campaigns (id, nom, sujet, corps_html, template_id, options)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(id, nom, sujet, corps_html || '', template_id || null, options ? JSON.stringify(options) : null);
+        INSERT INTO campaigns (id, nom, sujet, corps_html, template_id, options, piece_jointe)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(id, nom, sujet, corps_html || '', template_id || null, options ? JSON.stringify(options) : null, piece_jointe ? JSON.stringify(piece_jointe) : null);
 
       const campaign = db.prepare('SELECT * FROM campaigns WHERE id = ?').get(id);
       res.status(201).json(campaign);
@@ -112,9 +112,9 @@ module.exports = (db) => {
       if (!campaign) return res.status(404).json({ erreur: 'Campagne introuvable' });
       if (campaign.statut !== 'brouillon') return res.status(400).json({ erreur: 'Seules les campagnes brouillon peuvent être modifiées' });
 
-      const { nom, sujet, corps_html, template_id, options } = req.body;
+      const { nom, sujet, corps_html, template_id, options, piece_jointe } = req.body;
       db.prepare(`
-        UPDATE campaigns SET nom = ?, sujet = ?, corps_html = ?, template_id = ?, options = ?
+        UPDATE campaigns SET nom = ?, sujet = ?, corps_html = ?, template_id = ?, options = ?, piece_jointe = ?
         WHERE id = ?
       `).run(
         nom || campaign.nom,
@@ -122,6 +122,7 @@ module.exports = (db) => {
         corps_html !== undefined ? corps_html : campaign.corps_html,
         template_id !== undefined ? template_id : campaign.template_id,
         options ? JSON.stringify(options) : campaign.options,
+        piece_jointe !== undefined ? (piece_jointe ? JSON.stringify(piece_jointe) : null) : campaign.piece_jointe,
         req.params.id
       );
 
@@ -472,14 +473,26 @@ module.exports = (db) => {
       const sujet = `[TEST] ${sv(campaign.sujet, testLead)}`;
       const html = tvh(sv(campaign.corps_html || '', testLead), trackingId, { ...testLead, id: 'test' }, true, {});
 
+      const payload = {
+        sender,
+        to: [{ email, name: 'Test' }],
+        subject: sujet,
+        htmlContent: html,
+        replyTo: { email: sender.email, name: sender.name },
+      };
+
+      // Pièce jointe si présente
+      if (campaign.piece_jointe) {
+        try {
+          const pj = typeof campaign.piece_jointe === 'string' ? JSON.parse(campaign.piece_jointe) : campaign.piece_jointe;
+          if (pj?.data) {
+            payload.attachment = [{ content: pj.data, name: pj.nom }];
+          }
+        } catch (_) {}
+      }
+
       if (process.env.BREVO_API_KEY) {
-        await bse({
-          sender,
-          to: [{ email, name: 'Test' }],
-          subject: sujet,
-          htmlContent: html,
-          replyTo: { email: sender.email, name: sender.name },
-        });
+        await bse(payload);
       }
 
       res.json({ ok: true, message: `Email test envoyé à ${email}` });
@@ -534,9 +547,9 @@ module.exports = (db) => {
 
       const newId = uuidv4();
       db.prepare(`
-        INSERT INTO campaigns (id, nom, sujet, corps_html, template_id, options)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(newId, `${original.nom} (copie)`, original.sujet, original.corps_html, original.template_id, original.options);
+        INSERT INTO campaigns (id, nom, sujet, corps_html, template_id, options, piece_jointe)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(newId, `${original.nom} (copie)`, original.sujet, original.corps_html, original.template_id, original.options, original.piece_jointe);
 
       res.status(201).json(db.prepare('SELECT * FROM campaigns WHERE id = ?').get(newId));
     } catch (err) {

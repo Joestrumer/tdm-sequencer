@@ -10036,6 +10036,21 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
   const [selectedTemplate, setSelectedTemplate] = useState(campaign?.template_id || '');
   const editorRef = useRef(null);
   const tinymceRef = useRef(null);
+  const pjCampagneRef = useRef(null);
+
+  // Pièce jointe
+  const initPj = campaign?.piece_jointe ? (typeof campaign.piece_jointe === 'string' ? JSON.parse(campaign.piece_jointe) : campaign.piece_jointe) : null;
+  const [pieceJointeCampagne, setPieceJointeCampagne] = useState(initPj);
+
+  const chargerPjCampagne = (file) => {
+    if (!file) return;
+    if (file.size > 5000000) { showToast("Fichier trop volumineux (max 5 MB)", "error"); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPieceJointeCampagne({ nom: file.name, taille: file.size, type: file.type, data: e.target.result.split(",")[1] });
+    };
+    reader.readAsDataURL(file);
+  };
 
   // Options campagne
   const campaignOptions = campaign?.options ? (typeof campaign.options === 'string' ? JSON.parse(campaign.options) : campaign.options) : {};
@@ -10171,7 +10186,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
         unsub_text: unsubText,
         unsub_link_text: unsubLinkText,
       };
-      const body = { nom, sujet, corps_html: html, template_id: selectedTemplate || null, options };
+      const body = { nom, sujet, corps_html: html, template_id: selectedTemplate || null, options, piece_jointe: pieceJointeCampagne || null };
       let result;
       if (campaignId) {
         result = await api.put(`/campaigns/${campaignId}`, body);
@@ -10481,6 +10496,32 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                   ))}
                 </div>
                 <div ref={editorRef} />
+              </div>
+
+              {/* Pièce jointe */}
+              <div className="border border-slate-200 rounded-xl overflow-hidden">
+                <div className="bg-slate-50 px-3 py-1.5 text-[11px] font-medium text-slate-500 border-b border-slate-200">Pièce jointe</div>
+                <div className="p-3">
+                  {pieceJointeCampagne ? (
+                    <div className="flex items-center gap-2.5 bg-white border border-slate-200 rounded-lg px-3 py-2">
+                      <span className="text-base">📎</span>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-xs font-medium text-slate-700 truncate">{pieceJointeCampagne.nom || 'Fichier'}</div>
+                        <div className="text-xs text-slate-400">
+                          {pieceJointeCampagne.taille ? `${Math.round(pieceJointeCampagne.taille / 1024)} ko` : 'Taille inconnue'}
+                        </div>
+                      </div>
+                      <button onClick={() => setPieceJointeCampagne(null)} className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded transition-colors">
+                        ✕
+                      </button>
+                    </div>
+                  ) : (
+                    <button onClick={() => pjCampagneRef.current?.click()} className="w-full flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors py-2 rounded-lg border border-dashed border-slate-200">
+                      <span>📎</span> Ajouter une pièce jointe
+                    </button>
+                  )}
+                  <input ref={pjCampagneRef} type="file" className="hidden" onChange={e => { chargerPjCampagne(e.target.files?.[0]); e.target.value = ''; }} />
+                </div>
               </div>
 
               {/* Aperçu signature */}

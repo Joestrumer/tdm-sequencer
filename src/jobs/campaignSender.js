@@ -99,6 +99,9 @@ async function traiterBatch(campaign) {
       let options = {};
       try { if (campaign.options) options = JSON.parse(campaign.options); } catch(_) {}
 
+      let pieceJointe = null;
+      try { if (campaign.piece_jointe) pieceJointe = JSON.parse(campaign.piece_jointe); } catch(_) {}
+
       await envoyerEmailCampagne(db, {
         lead,
         sujet: campaign.sujet,
@@ -106,6 +109,7 @@ async function traiterBatch(campaign) {
         campaignId: campaign.id,
         recipientId: recipient.id,
         options,
+        pieceJointe,
       });
 
       sentCount++;

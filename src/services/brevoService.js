@@ -437,7 +437,7 @@ function getQuotaRestant(db) {
 }
 
 // ─── Envoi email campagne (marketing one-shot) ─────────────────────────────
-async function envoyerEmailCampagne(db, { lead, sujet, corpsHtml, campaignId, recipientId, options = {} }) {
+async function envoyerEmailCampagne(db, { lead, sujet, corpsHtml, campaignId, recipientId, options = {}, pieceJointe = null }) {
   // 1. Vérifier que le lead n'est pas désabonné
   if (lead.unsubscribed) {
     throw new Error(`Lead désabonné : ${lead.email}`);
@@ -474,6 +474,12 @@ async function envoyerEmailCampagne(db, { lead, sujet, corpsHtml, campaignId, re
       'List-Unsubscribe-Post': 'List-Unsubscribe=One-Click',
     },
   };
+
+  // Pièce jointe si présente
+  if (pieceJointe?.data) {
+    logger.info('📎 Pièce jointe campagne détectée', { nom: pieceJointe.nom, taille: pieceJointe.taille });
+    payload.attachment = [{ content: pieceJointe.data, name: pieceJointe.nom }];
+  }
 
   // 7. Envoyer via Brevo avec retry (2 tentatives, 500ms)
   let brevoMessageId = null;
