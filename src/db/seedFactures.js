@@ -87,6 +87,11 @@ const masterCatalog = {
   'P042-5000': { nom: 'Reddition 2 in 1 Recharge 5L', prix_ht: 39.00, tva: 20 },
   'P037': { nom: 'Gel douche Shampoing 2 en 1 Elégance 500ml', prix_ht: 7.50, tva: 20 },
   'P037-5000': { nom: 'Gel douche Shampoing 2 en 1 Elégance Recharge 5 L', prix_ht: 41.00, tva: 20 },
+  'P007-300V': { nom: 'Flacon vide 300ml Savon 007', prix_ht: 5.00, tva: 20 },
+  'P008-300V': { nom: 'Flacon vide 300ml Gel Lavant 008', prix_ht: 5.00, tva: 20 },
+  'P010-300V': { nom: 'Flacon vide 300ml Shampoing 010', prix_ht: 5.00, tva: 20 },
+  'P011-300V': { nom: 'Flacon vide 300ml Lait Corps 011', prix_ht: 5.00, tva: 20 },
+  'P024-300V': { nom: 'Flacon vide 300ml Après Shampoing 024', prix_ht: 5.00, tva: 20 },
 };
 
 // ─── Partenaires canoniques ───────────────────────────────────────────────────
