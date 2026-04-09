@@ -49,19 +49,43 @@ const GROUPES_NORM = GROUPES_HOTELIERS.map(g => ({
 // ─── Villes françaises principales ──────────────────────────────────────────
 
 const VILLES_FRANCE = [
+  // Grandes métropoles
   'Paris', 'Lyon', 'Marseille', 'Bordeaux', 'Nice', 'Toulouse', 'Nantes',
   'Strasbourg', 'Montpellier', 'Lille', 'Rennes', 'Reims', 'Toulon',
   'Grenoble', 'Dijon', 'Angers', 'Nîmes', 'Aix-en-Provence', 'Perpignan',
+  // Villes moyennes importantes (hôtellerie active)
+  'Rouen', 'Clermont-Ferrand', 'Tours', 'Limoges', 'Pau', 'Bayonne',
+  'Saint-Étienne', 'Le Mans', 'Colmar', 'Mulhouse', 'Metz', 'Nancy',
+  'Besançon', 'Orléans', 'Poitiers', 'Amiens', 'Caen', 'Le Havre',
+  'Vichy', 'Mâcon', 'Chambéry', 'Valence', 'Troyes', 'Bourges',
+  'La Roche-sur-Yon', 'Vannes', 'Lorient', 'Saint-Brieuc', 'Quimper',
+  'Chartres', 'Blois', 'Saumur', 'Cognac', 'Angoulême', 'Périgueux',
+  'Agen', 'Montauban', 'Albi', 'Tarbes', 'Lourdes', 'Cahors',
+  'Béziers', 'Sète', 'Narbonne', 'Auch',
+  // Stations balnéaires / tourisme
   'Cannes', 'Saint-Tropez', 'Antibes', 'Monaco', 'Biarritz', 'Deauville',
-  'La Rochelle', 'Avignon', 'Arles', 'Chamonix', 'Megève', 'Courchevel',
-  'Méribel', 'Val d\'Isère', 'Morzine', 'Annecy', 'Aix-les-Bains',
-  'Brest', 'Saint-Malo', 'Dinard', 'Quiberon', 'La Baule', 'Les Sables-d\'Olonne',
-  'Ajaccio', 'Bastia', 'Bonifacio', 'Porto-Vecchio', 'Calvi',
-  'Versailles', 'Fontainebleau', 'Chantilly',
-  'Honfleur', 'Étretat', 'Cabourg', 'Trouville',
+  'La Rochelle', 'Avignon', 'Arles', 'La Baule', 'Les Sables-d\'Olonne',
   'Saint-Jean-de-Luz', 'Hossegor', 'Arcachon', 'Cap Ferret',
+  'Honfleur', 'Étretat', 'Cabourg', 'Trouville', 'Granville',
+  'Saint-Malo', 'Dinard', 'Quiberon', 'Carnac',
+  'Collioure', 'Bandol', 'Cassis', 'Sanary-sur-Mer', 'Hyères',
+  'Sainte-Maxime', 'Fréjus', 'Saint-Raphaël', 'Menton', 'Èze',
+  'La Ciotat', 'Carry-le-Rouet',
+  // Montagne / stations
+  'Chamonix', 'Megève', 'Courchevel', 'Méribel', 'Val d\'Isère',
+  'Morzine', 'Annecy', 'Aix-les-Bains', 'Tignes', 'Les Arcs',
+  'Val Thorens', 'L\'Alpe d\'Huez', 'Serre Chevalier', 'Les Deux Alpes',
+  'Font-Romeu', 'Saint-Lary', 'La Plagne', 'Avoriaz',
+  // Corse
+  'Ajaccio', 'Bastia', 'Bonifacio', 'Porto-Vecchio', 'Calvi', 'Propriano',
+  // Île-de-France / patrimoine
+  'Versailles', 'Fontainebleau', 'Chantilly', 'Saint-Germain-en-Laye',
+  'Enghien-les-Bains',
+  // Provence / Luberon / Alpilles
   'Gordes', 'Luberon', 'Saint-Rémy-de-Provence', 'Les Baux-de-Provence',
-  'Uzès', 'Carcassonne', 'Collioure',
+  'Uzès', 'Carcassonne', 'L\'Isle-sur-la-Sorgue', 'Apt', 'Vaison-la-Romaine',
+  // Brest
+  'Brest',
 ];
 
 const VILLES_NORM = VILLES_FRANCE.map(v => ({
@@ -72,49 +96,97 @@ const VILLES_NORM = VILLES_FRANCE.map(v => ({
 // ─── Régions ────────────────────────────────────────────────────────────────
 
 const VILLE_REGION = {
+  // Île-de-France
   'paris': 'Île-de-France', 'versailles': 'Île-de-France', 'fontainebleau': 'Île-de-France', 'chantilly': 'Île-de-France',
+  'saint-germain-en-laye': 'Île-de-France', 'enghien-les-bains': 'Île-de-France',
+  // Auvergne-Rhône-Alpes
   'lyon': 'Auvergne-Rhône-Alpes', 'grenoble': 'Auvergne-Rhône-Alpes', 'annecy': 'Auvergne-Rhône-Alpes', 'chamonix': 'Auvergne-Rhône-Alpes',
   'megève': 'Auvergne-Rhône-Alpes', 'courchevel': 'Auvergne-Rhône-Alpes', 'méribel': 'Auvergne-Rhône-Alpes', 'val d\'isère': 'Auvergne-Rhône-Alpes',
-  'morzine': 'Auvergne-Rhône-Alpes', 'aix-les-bains': 'Auvergne-Rhône-Alpes',
+  'morzine': 'Auvergne-Rhône-Alpes', 'aix-les-bains': 'Auvergne-Rhône-Alpes', 'chambéry': 'Auvergne-Rhône-Alpes',
+  'valence': 'Auvergne-Rhône-Alpes', 'saint-étienne': 'Auvergne-Rhône-Alpes', 'clermont-ferrand': 'Auvergne-Rhône-Alpes',
+  'vichy': 'Auvergne-Rhône-Alpes', 'tignes': 'Auvergne-Rhône-Alpes', 'les arcs': 'Auvergne-Rhône-Alpes',
+  'val thorens': 'Auvergne-Rhône-Alpes', 'l\'alpe d\'huez': 'Auvergne-Rhône-Alpes', 'la plagne': 'Auvergne-Rhône-Alpes',
+  'avoriaz': 'Auvergne-Rhône-Alpes', 'les deux alpes': 'Auvergne-Rhône-Alpes', 'serre chevalier': 'Auvergne-Rhône-Alpes',
+  // PACA
   'marseille': 'Provence-Alpes-Côte d\'Azur', 'nice': 'Provence-Alpes-Côte d\'Azur', 'cannes': 'Provence-Alpes-Côte d\'Azur',
   'saint-tropez': 'Provence-Alpes-Côte d\'Azur', 'antibes': 'Provence-Alpes-Côte d\'Azur', 'monaco': 'Provence-Alpes-Côte d\'Azur',
   'aix-en-provence': 'Provence-Alpes-Côte d\'Azur', 'avignon': 'Provence-Alpes-Côte d\'Azur', 'arles': 'Provence-Alpes-Côte d\'Azur',
   'toulon': 'Provence-Alpes-Côte d\'Azur', 'gordes': 'Provence-Alpes-Côte d\'Azur',
+  'bandol': 'Provence-Alpes-Côte d\'Azur', 'cassis': 'Provence-Alpes-Côte d\'Azur', 'hyères': 'Provence-Alpes-Côte d\'Azur',
+  'sainte-maxime': 'Provence-Alpes-Côte d\'Azur', 'fréjus': 'Provence-Alpes-Côte d\'Azur', 'saint-raphaël': 'Provence-Alpes-Côte d\'Azur',
+  'menton': 'Provence-Alpes-Côte d\'Azur', 'èze': 'Provence-Alpes-Côte d\'Azur', 'sanary-sur-mer': 'Provence-Alpes-Côte d\'Azur',
+  'l\'isle-sur-la-sorgue': 'Provence-Alpes-Côte d\'Azur', 'apt': 'Provence-Alpes-Côte d\'Azur', 'vaison-la-romaine': 'Provence-Alpes-Côte d\'Azur',
+  'luberon': 'Provence-Alpes-Côte d\'Azur', 'saint-rémy-de-provence': 'Provence-Alpes-Côte d\'Azur', 'les baux-de-provence': 'Provence-Alpes-Côte d\'Azur',
+  'la ciotat': 'Provence-Alpes-Côte d\'Azur',
+  // Nouvelle-Aquitaine
   'bordeaux': 'Nouvelle-Aquitaine', 'biarritz': 'Nouvelle-Aquitaine', 'la rochelle': 'Nouvelle-Aquitaine',
   'arcachon': 'Nouvelle-Aquitaine', 'cap ferret': 'Nouvelle-Aquitaine', 'hossegor': 'Nouvelle-Aquitaine',
-  'saint-jean-de-luz': 'Nouvelle-Aquitaine',
+  'saint-jean-de-luz': 'Nouvelle-Aquitaine', 'pau': 'Nouvelle-Aquitaine', 'bayonne': 'Nouvelle-Aquitaine',
+  'limoges': 'Nouvelle-Aquitaine', 'cognac': 'Nouvelle-Aquitaine', 'angoulême': 'Nouvelle-Aquitaine',
+  'périgueux': 'Nouvelle-Aquitaine', 'poitiers': 'Nouvelle-Aquitaine',
+  // Occitanie
   'toulouse': 'Occitanie', 'montpellier': 'Occitanie', 'nîmes': 'Occitanie', 'perpignan': 'Occitanie',
   'carcassonne': 'Occitanie', 'collioure': 'Occitanie', 'uzès': 'Occitanie',
+  'béziers': 'Occitanie', 'sète': 'Occitanie', 'narbonne': 'Occitanie', 'albi': 'Occitanie',
+  'montauban': 'Occitanie', 'tarbes': 'Occitanie', 'lourdes': 'Occitanie', 'cahors': 'Occitanie',
+  'agen': 'Occitanie', 'auch': 'Occitanie', 'font-romeu': 'Occitanie', 'saint-lary': 'Occitanie',
+  // Pays de la Loire
   'nantes': 'Pays de la Loire', 'angers': 'Pays de la Loire', 'la baule': 'Pays de la Loire',
+  'le mans': 'Pays de la Loire', 'la roche-sur-yon': 'Pays de la Loire', 'les sables-d\'olonne': 'Pays de la Loire',
+  'saumur': 'Pays de la Loire',
+  // Bretagne
   'rennes': 'Bretagne', 'saint-malo': 'Bretagne', 'dinard': 'Bretagne', 'brest': 'Bretagne', 'quiberon': 'Bretagne',
-  'strasbourg': 'Grand Est', 'reims': 'Grand Est', 'dijon': 'Bourgogne-Franche-Comté',
-  'lille': 'Hauts-de-France',
-  'deauville': 'Normandie', 'honfleur': 'Normandie', 'étretat': 'Normandie', 'cabourg': 'Normandie', 'trouville': 'Normandie',
-  'ajaccio': 'Corse', 'bastia': 'Corse', 'bonifacio': 'Corse', 'porto-vecchio': 'Corse', 'calvi': 'Corse',
+  'vannes': 'Bretagne', 'lorient': 'Bretagne', 'saint-brieuc': 'Bretagne', 'quimper': 'Bretagne', 'carnac': 'Bretagne',
+  // Grand Est
+  'strasbourg': 'Grand Est', 'reims': 'Grand Est', 'metz': 'Grand Est', 'nancy': 'Grand Est',
+  'colmar': 'Grand Est', 'mulhouse': 'Grand Est', 'troyes': 'Grand Est',
+  // Bourgogne-Franche-Comté
+  'dijon': 'Bourgogne-Franche-Comté', 'besançon': 'Bourgogne-Franche-Comté', 'mâcon': 'Bourgogne-Franche-Comté',
+  // Hauts-de-France
+  'lille': 'Hauts-de-France', 'amiens': 'Hauts-de-France',
+  // Normandie
+  'rouen': 'Normandie', 'caen': 'Normandie', 'le havre': 'Normandie',
+  'deauville': 'Normandie', 'honfleur': 'Normandie', 'étretat': 'Normandie', 'cabourg': 'Normandie',
+  'trouville': 'Normandie', 'granville': 'Normandie',
+  // Centre-Val de Loire
+  'tours': 'Centre-Val de Loire', 'orléans': 'Centre-Val de Loire', 'chartres': 'Centre-Val de Loire',
+  'blois': 'Centre-Val de Loire', 'bourges': 'Centre-Val de Loire',
+  // Corse
+  'ajaccio': 'Corse', 'bastia': 'Corse', 'bonifacio': 'Corse', 'porto-vecchio': 'Corse', 'calvi': 'Corse', 'propriano': 'Corse',
 };
 
 // ─── Types de signaux ───────────────────────────────────────────────────────
 
 const SIGNAL_PATTERNS = [
-  { type: 'renovation', subtype: 'lourde', patterns: ['rénovation', 'rénové', 'rénove', 'réhabilitation', 'travaux'] },
+  // Signaux très forts
+  { type: 'renovation', subtype: 'lourde', patterns: ['rénovation', 'rénové', 'rénove', 'réhabilitation', 'travaux de rénovation'] },
   { type: 'renovation', subtype: 'repositionnement', patterns: ['repositionnement', 'montée en gamme', 'transformation'] },
+  { type: 'boamp_travaux', subtype: 'marche', patterns: ['marché public', 'maîtrise d\'œuvre', 'maîtrise d\'ouvrage', 'appel d\'offre'] },
+  { type: 'architecte', subtype: 'design', patterns: ['architecte d\'intérieur', 'architecture intérieure', 'interior design', 'designer d\'intérieur', 'cabinet d\'architecture'] },
+  { type: 'vente', subtype: 'cession', patterns: ['à vendre', 'cession', 'fonds de commerce', 'murs et fonds'] },
+  { type: 'acquisition', subtype: 'rachat', patterns: ['rachat', 'acquisition', 'portefeuille hôtelier'] },
+  // Signaux forts
   { type: 'ouverture', subtype: 'reouverture', patterns: ['réouverture', 'rouvre', 'réouvre'] },
-  { type: 'ouverture', subtype: 'pre_ouverture', patterns: ['pré-ouverture'] },
+  { type: 'ouverture', subtype: 'pre_ouverture', patterns: ['pré-ouverture', 'opening soon'] },
   { type: 'ouverture', subtype: 'inauguration', patterns: ['ouverture', 'inauguration', 'inaugure', 'ouvre ses portes'] },
-  { type: 'nomination', subtype: 'direction', patterns: ['nouveau directeur', 'nomination', 'nommé directeur', 'nouveau gm', 'general manager', 'directeur général'] },
-  { type: 'acquisition', subtype: 'cession', patterns: ['cession', 'rachat', 'acquisition'] },
-  { type: 'acquisition', subtype: 'portefeuille', patterns: ['portefeuille hôtelier'] },
   { type: 'conversion', subtype: 'enseigne', patterns: ['conversion', 'rebranding', 'sous enseigne', 'changement d\'enseigne', 'rejoint le groupe'] },
-  { type: 'spa_wellness', subtype: 'spa', patterns: ['nouveau spa', 'spa hôtel', 'wellness', 'bien-être'] },
+  // Signaux moyens
+  { type: 'nomination', subtype: 'direction', patterns: ['directeur général', 'general manager', 'nouveau directeur général', 'nommé directeur général', 'nouveau gm', 'nommée directrice'] },
+  { type: 'recrutement', subtype: 'equipe', patterns: ['recrute', 'nous recrutons', 'recrutement', 'poste à pourvoir', 'rejoignez'] },
+  { type: 'spa_wellness', subtype: 'spa', patterns: ['nouveau spa', 'spa hôtel', 'espace bien-être', 'wellness'] },
+  // Signaux faibles
+  { type: 'fermeture_temp', subtype: 'fermeture', patterns: ['fermé temporairement', 'temporarily closed', 'fermeture temporaire', 'fermé pour travaux'] },
 ];
 
 // ─── Patterns hôtel dans le titre ───────────────────────────────────────────
 
 const HOTEL_PATTERNS = [
-  // "Hôtel Le Grand Paris" / "L'Hôtel de la Paix" / "Le Four Seasons George V"
-  /(?:l[''']?|le |la |les )?(?:hôtel|hotel|palace|château|maison|domaine|villa|lodge|resort|relais|auberge|manoir)\s+(?:de |du |des |d[''']|le |la |l['''])?([A-ZÀ-Ü][a-zà-ü-]+(?:\s+[A-ZÀ-Ü&][a-zà-ü-]*)*)/gi,
-  // "Four Seasons George V" / "Ritz Paris" / "Mandarin Oriental Paris"
-  /(?:Four Seasons|Ritz|Mandarin Oriental|Rosewood|Aman|Belmond|Park Hyatt|Grand Hyatt|Waldorf Astoria|W |St\. Regis|Sofitel|Pullman|Novotel|MGallery)\s+([A-ZÀ-Ü][a-zà-ü-]+(?:\s+[A-ZÀ-Ü][a-zà-ü-]*)*)/g,
+  // "Hôtel Le Grand Paris" / "L'Hôtel de la Paix"
+  /(?:l[''']?|le |la |les )?(?:hôtel|hotel|palace|château|maison|domaine|villa|lodge|resort|relais|auberge|manoir|bastide|mas|chalet)\s+(?:de |du |des |d[''']|le |la |l['''])?([A-ZÀ-Ü][a-zà-ü-]+(?:\s+[A-ZÀ-Ü&][a-zà-ü-]*)*)/gi,
+  // Marques internationales avec lieu : "Four Seasons George V", "The Hoxton Paris"
+  /(?:Four Seasons|Ritz|Mandarin Oriental|Rosewood|Aman|Belmond|Park Hyatt|Grand Hyatt|Waldorf Astoria|St\. Regis|Sofitel|Pullman|Novotel|MGallery|Mama Shelter|The Hoxton|citizenM|25hours|Motel One|Ruby Hotels|NH Collection|Melia|Kempinski|COMO|Banyan Tree|Anantara|W Hotel|W )\s+([A-ZÀ-Ü][a-zà-ü-]+(?:\s+[A-ZÀ-Ü][a-zà-ü-]*)*)/g,
+  // Noms avec "Le/La/Les" + nom propre + "Hotel/Palace" après : "Le Negresco", "La Réserve"
+  /(?:Le |La |Les |L['''])([A-ZÀ-Ü][a-zà-ü-]+(?:\s+[A-ZÀ-Ü][a-zà-ü-]*)*)(?:\s+(?:Hôtel|Hotel|Palace|Resort|Spa))/gi,
 ];
 
 // ─── Utilitaires ────────────────────────────────────────────────────────────

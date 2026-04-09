@@ -492,6 +492,17 @@ const migrations = [
   'ALTER TABLE veille_articles ADD COLUMN city TEXT',
   'ALTER TABLE veille_articles ADD COLUMN group_name TEXT',
   'ALTER TABLE veille_articles ADD COLUMN signal_type TEXT',
+  // Audit Passe 2 — Opportunités enrichies
+  'ALTER TABLE veille_opportunities ADD COLUMN hotel_name_normalized TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN postal_code TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN reopening_date TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN opening_date TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN supporting_signals TEXT DEFAULT \'[]\'',
+  'ALTER TABLE veille_opportunities ADD COLUMN priority TEXT DEFAULT \'C\'',
+  // Audit Passe 2 — Runs enrichis
+  'ALTER TABLE veille_source_runs ADD COLUMN items_merged INTEGER DEFAULT 0',
+  // Audit Passe 2 — Sources : support type recherche large
+  'ALTER TABLE veille_sources ADD COLUMN search_mode TEXT DEFAULT \'site\'',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
@@ -896,28 +907,40 @@ try {
         'palace', 'boutique', 'lifestyle'],
     },
     {
-      nom: 'BOAMP',
-      url: 'https://www.boamp.fr',
+      nom: 'Recherche large — Rénovation',
+      url: 'https://search.brave.com',
       categorie: 'radar',
-      frequence_cron: '0 7 * * 1,3,5',
-      mots_cles: ['rénovation hôtel', 'travaux hôtel', 'maîtrise œuvre hôtel',
-        'aménagement hôtelier', 'équipement hôtelier', 'salle de bain hôtel',
-        'réhabilitation hébergement', 'marché public hôtel'],
+      frequence_cron: '0 7,19 * * *',
+      search_mode: 'wide',
+      mots_cles: ['rénovation hôtel palace boutique 2025 2026',
+        'travaux transformation hôtel étoiles france',
+        'réhabilitation hôtel chantier ouverture'],
     },
     {
-      nom: 'BODACC',
-      url: 'https://www.bodacc.fr',
+      nom: 'Recherche large — Transactions',
+      url: 'https://search.brave.com',
       categorie: 'radar',
-      frequence_cron: '0 7 * * 2,4',
-      mots_cles: ['hôtel cession', 'hôtel création', 'hôtellerie mutation',
-        'SCI hôtel', 'fonds commerce hôtel', 'société hôtelière',
-        'hébergement touristique'],
+      frequence_cron: '0 8 * * 1,3,5',
+      search_mode: 'wide',
+      mots_cles: ['cession hôtel france vente fonds commerce',
+        'acquisition hôtel groupe hôtelier rachat',
+        'investissement hôtelier immobilier tourisme'],
+    },
+    {
+      nom: 'Recherche large — Signaux faibles',
+      url: 'https://search.brave.com',
+      categorie: 'radar',
+      frequence_cron: '0 9 * * 2,4',
+      search_mode: 'wide',
+      mots_cles: ['fermeture temporaire hôtel réouverture france',
+        'architecte intérieur hôtel projet design',
+        'recrutement directeur hôtel palace nomination'],
     },
   ];
 
   const stmtInsertSource = db.prepare(`
-    INSERT INTO veille_sources (id, nom, url, type, selecteurs, mots_cles, frequence, frequence_cron, categorie, actif)
-    VALUES (?, ?, ?, 'brave_search', '{}', ?, '6h', ?, ?, 1)
+    INSERT INTO veille_sources (id, nom, url, type, selecteurs, mots_cles, frequence, frequence_cron, categorie, actif, search_mode)
+    VALUES (?, ?, ?, 'brave_search', '{}', ?, '6h', ?, ?, 1, ?)
   `);
 
   let sourcesAdded = 0;
@@ -929,16 +952,18 @@ try {
         randomUUID(), src.nom, src.url,
         JSON.stringify(src.mots_cles),
         src.frequence_cron || '0 */6 * * *',
-        src.categorie || 'hebdo'
+        src.categorie || 'hebdo',
+        src.search_mode || 'site'
       );
       sourcesAdded++;
     } else {
       // Mettre à jour les mots-clés, fréquence et catégorie des sources existantes
-      db.prepare('UPDATE veille_sources SET mots_cles = ?, frequence_cron = ?, categorie = ?, type = ? WHERE id = ?').run(
+      db.prepare('UPDATE veille_sources SET mots_cles = ?, frequence_cron = ?, categorie = ?, type = ?, search_mode = ? WHERE id = ?').run(
         JSON.stringify(src.mots_cles),
         src.frequence_cron || '0 */6 * * *',
         src.categorie || 'hebdo',
         'brave_search',
+        src.search_mode || 'site',
         exists.id
       );
     }

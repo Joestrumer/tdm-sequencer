@@ -24,9 +24,9 @@ const SIGNAUX_PRIORITE_A = [
   // Rénovation lourde / transformation
   'rénovation', 'rénové', 'rénove', 'réhabilitation', 'transformation',
   'repositionnement', 'montée en gamme', 'réouverture', 'rouvre',
-  // Nomination de direction
-  'nouveau directeur', 'nomination', 'nommé directeur', 'nouveau gm',
-  'general manager', 'directeur général',
+  // Nomination de direction (DG/GM seulement, pas chef cuisinier)
+  'nouveau directeur général', 'nommé directeur général', 'nommée directrice',
+  'nouveau gm', 'general manager', 'nomination directeur',
   // Indépendants / boutique (combinaisons spécifiques, pas de termes seuls)
   'boutique-hôtel', 'boutique hôtel', 'hôtel indépendant',
 ];
@@ -37,12 +37,21 @@ const SIGNAUX_PRIORITE_B = [
   // Conversion / branding
   'conversion', 'rebranding', 'sous enseigne', 'rejoint le groupe',
   'changement d\'enseigne',
-  // Acquisition / cession
+  // Acquisition / cession / vente
   'acquisition', 'cession', 'rachat', 'portefeuille hôtelier',
+  'à vendre', 'fonds de commerce', 'murs et fonds',
+  // Architecte / design
+  'architecte d\'intérieur', 'architecture intérieure', 'interior design',
+  // Recrutement lié à transformation
+  'recrute', 'recrutement', 'nous recrutons',
+  // Fermeture temporaire
+  'fermé temporairement', 'temporarily closed', 'fermé pour travaux',
   // Montée en gamme ciblée
   'nouveau spa', 'spa hôtel', 'wellness', 'resort',
   'montée en gamme', 'aparthotel',
   'lifestyle hotel', 'lifestyle hôtel',
+  // BOAMP / marchés
+  'marché public', 'maîtrise d\'œuvre', 'appel d\'offre',
 ];
 
 const SIGNAUX_PRIORITE_C = [
@@ -187,92 +196,119 @@ function getFreshness(source) {
   return 'pm'; // radar ou défaut
 }
 
+/**
+ * Exécuter une requête Brave Search et parser les résultats.
+ * @returns {Array} articles trouvés
+ */
+async function executeBraveQuery(apiKey, query, freshness, seenUrls) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
+  const articles = [];
+
+  try {
+    const params = new URLSearchParams({
+      q: query,
+      count: '20',
+      search_lang: 'fr',
+      country: 'fr',
+      freshness,
+    });
+
+    const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+      headers: {
+        'Accept': 'application/json',
+        'Accept-Encoding': 'gzip',
+        'X-Subscription-Token': apiKey,
+      },
+      signal: controller.signal,
+    });
+
+    if (!res.ok) {
+      const body = await res.text().catch(() => '');
+      throw new Error(`Brave API ${res.status}: ${body.substring(0, 200)}`);
+    }
+
+    const data = await res.json();
+    const results = data.web?.results || [];
+
+    for (const r of results) {
+      if (seenUrls.has(r.url)) continue;
+      seenUrls.add(r.url);
+
+      let resume = r.description || '';
+      if (resume.includes('<')) {
+        const $desc = cheerio.load(resume);
+        resume = $desc.text().trim();
+      }
+      if (resume.length > 500) resume = resume.substring(0, 497) + '...';
+
+      articles.push({
+        titre: r.title || '',
+        url: r.url,
+        resume,
+        date_article: r.page_age || r.age || '',
+      });
+    }
+  } catch (err) {
+    if (err.name === 'AbortError') {
+      logger.warn(`Veille: Brave Search timeout pour: ${query}`);
+    } else {
+      throw err;
+    }
+  } finally {
+    clearTimeout(timeout);
+  }
+
+  return articles;
+}
+
+/**
+ * Scraper une source Brave Search.
+ * Deux modes :
+ * - search_mode='site' (défaut) : recherche site:domain + mots-clés (1 par requête)
+ * - search_mode='wide' : recherche large sans site:, pour capter des signaux hors sites listés
+ */
 async function scraperSourceBrave(source, db) {
   const apiKey = getBraveApiKey(db);
   if (!apiKey) throw new Error('Clé API Brave Search non configurée (Paramètres > brave_search_api_key)');
 
   const motsCles = typeof source.mots_cles === 'string' ? JSON.parse(source.mots_cles) : (source.mots_cles || []);
-
-  let domain;
-  try {
-    domain = new URL(source.url).hostname.replace(/^www\./, '');
-  } catch (_) {
-    domain = source.url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
-  }
-
+  const searchMode = source.search_mode || 'site';
   const freshness = getFreshness(source);
   const allArticles = [];
   const seenUrls = new Set();
 
-  // Grouper mots-clés en requêtes de 3
-  const groups = [];
-  for (let i = 0; i < motsCles.length; i += 3) {
-    groups.push(motsCles.slice(i, i + 3));
-  }
-  if (groups.length === 0) groups.push([source.nom]);
+  if (searchMode === 'wide') {
+    // Mode recherche large : chaque mot-clé est une requête complète
+    // Les mots-clés sont des requêtes prêtes à l'emploi (ex: '"hôtel" "rénovation" France')
+    const queries = motsCles.length > 0 ? motsCles : [`"hôtel" "${source.nom}"`];
+    // Limiter à 5 requêtes max pour gérer le quota
+    const limitedQueries = queries.slice(0, 5);
 
-  for (const group of groups) {
-    const query = `site:${domain} ${group.join(' OR ')}`;
-
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
-
+    for (const query of limitedQueries) {
+      const results = await executeBraveQuery(apiKey, query, freshness, seenUrls);
+      allArticles.push(...results);
+      await new Promise(r => setTimeout(r, 1200));
+    }
+  } else {
+    // Mode site: — une requête par mot-clé (plus précis que les groupes de 3)
+    let domain;
     try {
-      const params = new URLSearchParams({
-        q: query,
-        count: '20',
-        search_lang: 'fr',
-        country: 'fr',
-        freshness,
-      });
-
-      const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
-        headers: {
-          'Accept': 'application/json',
-          'Accept-Encoding': 'gzip',
-          'X-Subscription-Token': apiKey,
-        },
-        signal: controller.signal,
-      });
-
-      if (!res.ok) {
-        const body = await res.text().catch(() => '');
-        throw new Error(`Brave API ${res.status}: ${body.substring(0, 200)}`);
-      }
-
-      const data = await res.json();
-      const results = data.web?.results || [];
-
-      for (const r of results) {
-        if (seenUrls.has(r.url)) continue;
-        seenUrls.add(r.url);
-
-        let resume = r.description || '';
-        if (resume.includes('<')) {
-          const $desc = cheerio.load(resume);
-          resume = $desc.text().trim();
-        }
-        if (resume.length > 500) resume = resume.substring(0, 497) + '...';
-
-        allArticles.push({
-          titre: r.title || '',
-          url: r.url,
-          resume,
-          date_article: r.page_age || r.age || '',
-        });
-      }
-    } catch (err) {
-      if (err.name === 'AbortError') {
-        logger.warn(`Veille: Brave Search timeout pour: ${query}`);
-      } else {
-        throw err;
-      }
-    } finally {
-      clearTimeout(timeout);
+      domain = new URL(source.url).hostname.replace(/^www\./, '');
+    } catch (_) {
+      domain = source.url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
     }
 
-    // Rate limiting Brave : 1 req/sec sur plan gratuit
-    await new Promise(r => setTimeout(r, 1200));
+    // 1 requête par mot-clé (au lieu de groupes de 3 avec OR)
+    // Mais limiter à 4 requêtes pour le quota
+    const queries = motsCles.slice(0, 4).map(mc => `site:${domain} ${mc}`);
+    if (queries.length === 0) queries.push(`site:${domain} hôtel rénovation`);
+
+    for (const query of queries) {
+      const results = await executeBraveQuery(apiKey, query, freshness, seenUrls);
+      allArticles.push(...results);
+      await new Promise(r => setTimeout(r, 1200));
+    }
   }
 
   return allArticles;
