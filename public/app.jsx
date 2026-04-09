@@ -12824,9 +12824,13 @@ const VueVeille = ({ showToast }) => {
     setScraping(true);
     try {
       const res = await api.post('/veille/run-all');
-      showToast?.(`Scraping terminé : ${res.nouveaux} nouvel(s) article(s)`, 'success');
+      if (res.errors && res.errors > 0) {
+        showToast?.(`Scraping : ${res.errors}/${res.total} source(s) en erreur. ${res.lastError || ''}`, 'error');
+      } else {
+        showToast?.(`Scraping terminé : ${res.nouveaux} nouvel(s) article(s)`, 'success');
+      }
       await charger();
-    } catch (err) { showToast?.('Erreur scraping: ' + err.message, 'error'); }
+    } catch (err) { showToast?.('Erreur scraping: ' + (err.erreur || err.message), 'error'); }
     setScraping(false);
   };
 

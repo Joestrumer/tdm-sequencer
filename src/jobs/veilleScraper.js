@@ -183,18 +183,21 @@ async function scraperToutesSources() {
   logger.info(`Veille: run-all de ${sources.length} source(s)`);
   let totalNouveaux = 0;
   let totalSkipped = 0;
+  let totalErrors = 0;
+  let lastError = null;
 
   for (const source of sources) {
     const result = await scraperUneSource(source, 'run_all');
     totalNouveaux += result.inserted;
     if (result.skipped) totalSkipped++;
+    if (result.error) { totalErrors++; lastError = result.error; }
     if (sources.length > 1) {
       await new Promise(r => setTimeout(r, 2000));
     }
   }
 
-  logger.info(`Veille run-all terminé: ${totalNouveaux} nouveau(x), ${totalSkipped} skippé(s)`);
-  return { total: sources.length, nouveaux: totalNouveaux, skipped: totalSkipped };
+  logger.info(`Veille run-all terminé: ${totalNouveaux} nouveau(x), ${totalSkipped} skippé(s), ${totalErrors} erreur(s)`);
+  return { total: sources.length, nouveaux: totalNouveaux, skipped: totalSkipped, errors: totalErrors, lastError };
 }
 
 // ─── Planification des crons ────────────────────────────────────────────────

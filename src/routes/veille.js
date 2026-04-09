@@ -326,6 +326,10 @@ module.exports = (db) => {
       runEnrichmentPipeline().catch(err => {
         console.error('Veille: erreur enrichissement post-run-all:', err.message);
       });
+      // Si toutes les sources ont échoué, remonter l'erreur
+      if (result.errors === result.total && result.lastError) {
+        return res.status(500).json({ ok: false, erreur: result.lastError, ...result });
+      }
       res.json({ ok: true, ...result });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
