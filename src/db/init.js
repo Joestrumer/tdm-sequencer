@@ -316,6 +316,42 @@ db.exec(`
     ordre INTEGER DEFAULT 0,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  -- ─── Tables Veille Web (Scraping actualités hôtelières) ─────────────────────
+
+  CREATE TABLE IF NOT EXISTS veille_sources (
+    id TEXT PRIMARY KEY,
+    nom TEXT NOT NULL,
+    url TEXT NOT NULL,
+    type TEXT DEFAULT 'html',
+    selecteurs TEXT,
+    mots_cles TEXT DEFAULT '[]',
+    frequence TEXT DEFAULT '6h',
+    actif INTEGER DEFAULT 1,
+    last_run TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS veille_articles (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES veille_sources(id) ON DELETE CASCADE,
+    titre TEXT NOT NULL,
+    url TEXT NOT NULL UNIQUE,
+    resume TEXT,
+    date_article TEXT,
+    mots_cles_trouves TEXT DEFAULT '[]',
+    score_pertinence INTEGER DEFAULT 0,
+    lu INTEGER DEFAULT 0,
+    favori INTEGER DEFAULT 0,
+    archived INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_articles_source ON veille_articles(source_id);
+  CREATE INDEX IF NOT EXISTS idx_veille_articles_score ON veille_articles(score_pertinence DESC);
+  CREATE INDEX IF NOT EXISTS idx_veille_articles_lu ON veille_articles(lu);
+  CREATE INDEX IF NOT EXISTS idx_veille_articles_favori ON veille_articles(favori);
+  CREATE INDEX IF NOT EXISTS idx_veille_articles_url ON veille_articles(url);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
@@ -674,6 +710,40 @@ for (const s of DEFAULT_SEGMENTS) {
   if (r.changes > 0) segmentsInserted++;
 }
 if (segmentsInserted > 0) console.log(`🏷️  ${segmentsInserted} segment(s) par défaut ajouté(s)`);
+
+// ─── Seed source veille hospitality-on.com ──────────────────────────────────
+try {
+  const { randomUUID } = require('crypto');
+  const existingSource = db.prepare('SELECT id FROM veille_sources WHERE url LIKE ?').get('%hospitality-on.com%');
+  if (!existingSource) {
+    db.prepare(`INSERT INTO veille_sources (id, nom, url, type, selecteurs, mots_cles, frequence, actif) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+      randomUUID(),
+      'Hospitality ON',
+      'https://hospitality-on.com/fr/actualites',
+      'html',
+      JSON.stringify({
+        article: 'article, .view-content .views-row, .node--type-article',
+        titre: 'h2 a, h3 a, .node__title a, .field--name-title a',
+        lien: 'h2 a, h3 a, .node__title a, .field--name-title a',
+        resume: '.field--name-body p, .field--name-field-chapo, p',
+        date: 'time, .field--name-created, .date'
+      }),
+      JSON.stringify([
+        'rénovation', 'ouverture', 'nouveau', 'inauguration', 'repositionnement',
+        'transformation', 'chantier', 'travaux', 'réhabilitation', 'palace',
+        'boutique hotel', 'resort', 'spa', '5 étoiles', 'luxe', 'hôtel',
+        'inaugure', 'ouvre', 'rénove', 'projet', 'construction'
+      ]),
+      '6h',
+      1
+    );
+    console.log('🔍 Source veille hospitality-on.com ajoutée');
+  }
+} catch (e) {
+  if (!e.message.includes('UNIQUE constraint')) {
+    console.error('⚠️  Erreur seed veille:', e.message);
+  }
+}
 
 console.log('✅ Base de données initialisée :', DB_PATH);
 module.exports = db;

@@ -25,6 +25,7 @@
     "@tiptap/starter-kit": "^3.20.4",
     "bcryptjs": "^3.0.3",
     "better-sqlite3": "^12.8.0",
+    "cheerio": "^1.2.0",
     "cors": "^2.8.5",
     "dotenv": "^16.4.1",
     "express": "^4.18.2",

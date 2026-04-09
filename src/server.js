@@ -44,6 +44,9 @@ backup.initialiser(db);
 const campaignSender = require('./jobs/campaignSender');
 campaignSender.initialiser(db);
 
+const veilleScraper = require('./jobs/veilleScraper');
+veilleScraper.initialiser(db);
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
@@ -109,6 +112,7 @@ app.use('/api/segments',      requireAccessAuto('config'), require('./routes/seg
 app.use('/api/config',        requireAccessAuto('config'), require('./routes/config')(db));
 app.use('/api/blocklist',     requireAccessAuto('config'), require('./routes/blocklist')(db));
 app.use('/api/qualification', requireAccessAuto('leads'), require('./routes/qualification')(db));
+app.use('/api/veille',        requireAccessAuto('veille'), require('./routes/veille')(db));
 app.use('/api/tracking',  require('./routes/tracking')(db));
 app.use('/api/partenaire', require('./routes/partnerPortal')(db));
 
