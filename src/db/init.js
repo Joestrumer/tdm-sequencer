@@ -376,6 +376,66 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_veille_runs_source ON veille_source_runs(source_id);
   CREATE INDEX IF NOT EXISTS idx_veille_runs_status ON veille_source_runs(status);
   CREATE INDEX IF NOT EXISTS idx_veille_runs_started ON veille_source_runs(started_at DESC);
+
+  -- ─── Tables Entités et Opportunités (Passe 3) ────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS veille_entities (
+    id TEXT PRIMARY KEY,
+    type TEXT NOT NULL,
+    name TEXT NOT NULL,
+    name_normalized TEXT NOT NULL,
+    city TEXT,
+    region TEXT,
+    country TEXT DEFAULT 'FR',
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(type, name_normalized)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_entities_type ON veille_entities(type);
+  CREATE INDEX IF NOT EXISTS idx_veille_entities_norm ON veille_entities(name_normalized);
+
+  CREATE TABLE IF NOT EXISTS veille_opportunities (
+    id TEXT PRIMARY KEY,
+    fingerprint TEXT NOT NULL UNIQUE,
+    hotel_name TEXT,
+    city TEXT,
+    region TEXT,
+    country TEXT DEFAULT 'FR',
+    group_name TEXT,
+    brand_name TEXT,
+    owner_name TEXT,
+    operator_name TEXT,
+    signal_type TEXT NOT NULL,
+    signal_subtype TEXT,
+    signal_strength TEXT DEFAULT 'medium',
+    project_date TEXT,
+    first_seen_at TEXT,
+    last_seen_at TEXT,
+    source_count INTEGER DEFAULT 1,
+    confidence_score INTEGER DEFAULT 0,
+    business_score INTEGER DEFAULT 0,
+    recommended_angle TEXT,
+    status TEXT DEFAULT 'new',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_opp_fingerprint ON veille_opportunities(fingerprint);
+  CREATE INDEX IF NOT EXISTS idx_veille_opp_signal ON veille_opportunities(signal_type);
+  CREATE INDEX IF NOT EXISTS idx_veille_opp_status ON veille_opportunities(status);
+  CREATE INDEX IF NOT EXISTS idx_veille_opp_business ON veille_opportunities(business_score DESC);
+  CREATE INDEX IF NOT EXISTS idx_veille_opp_city ON veille_opportunities(city);
+
+  CREATE TABLE IF NOT EXISTS veille_opportunity_sources (
+    id TEXT PRIMARY KEY,
+    opportunity_id TEXT NOT NULL REFERENCES veille_opportunities(id) ON DELETE CASCADE,
+    article_id TEXT NOT NULL REFERENCES veille_articles(id) ON DELETE CASCADE,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(opportunity_id, article_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_oppsrc_opp ON veille_opportunity_sources(opportunity_id);
+  CREATE INDEX IF NOT EXISTS idx_veille_oppsrc_art ON veille_opportunity_sources(article_id);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
@@ -427,6 +487,11 @@ const migrations = [
   'ALTER TABLE veille_articles ADD COLUMN first_seen_at TEXT',
   'ALTER TABLE veille_articles ADD COLUMN last_seen_at TEXT',
   'ALTER TABLE veille_articles ADD COLUMN published_at TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN opportunity_id TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN hotel_name TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN city TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN group_name TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN signal_type TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

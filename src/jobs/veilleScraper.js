@@ -13,6 +13,8 @@ const cron = require('node-cron');
 const { randomUUID } = require('crypto');
 const logger = require('../config/logger');
 const { scraperSource, filtrerParMotsCles, sauvegarderArticles } = require('../services/veilleService');
+const { enrichBatch } = require('../services/veilleEnrichment');
+const { processEnrichedArticles } = require('../services/veilleOpportunity');
 
 let db;
 const scheduledJobs = new Map();
@@ -243,11 +245,44 @@ function planifierCrons() {
   logger.info(`Veille: ${scheduledJobs.size} cron(s) planifié(s)`);
 }
 
+// ─── Enrichissement + pipeline opportunités (cron séparé) ───────────────────
+
+let enrichmentRunning = false;
+
+async function runEnrichmentPipeline() {
+  if (enrichmentRunning) {
+    logger.warn('Veille enrichment: déjà en cours, skip');
+    return;
+  }
+  enrichmentRunning = true;
+  try {
+    // 1. Enrichir les articles non encore traités
+    const enrichResult = await enrichBatch(db, 15);
+
+    // 2. Transformer les articles enrichis en opportunités
+    const oppResult = processEnrichedArticles(db, 50);
+
+    if (enrichResult.enriched > 0 || oppResult.processed > 0) {
+      logger.info(`Veille pipeline: ${enrichResult.enriched} enrichi(s), ${oppResult.opportunities_created} opp créée(s), ${oppResult.opportunities_merged} fusionnée(s)`);
+    }
+  } catch (err) {
+    logger.error(`Veille pipeline erreur: ${err.message}`);
+  } finally {
+    enrichmentRunning = false;
+  }
+}
+
 // ─── Initialisation ─────────────────────────────────────────────────────────
 
 function initialiser(database) {
   db = database;
   planifierCrons();
+
+  // Cron enrichissement : toutes les 30 minutes
+  cron.schedule('*/30 * * * *', () => {
+    runEnrichmentPipeline();
+  });
+  logger.info('Veille: cron enrichissement planifié (toutes les 30 min)');
 }
 
 // ─── Status (pour debug / API) ──────────────────────────────────────────────
@@ -265,5 +300,6 @@ module.exports = {
   scraperToutesSources,
   scraperUneSource,
   planifierCrons,
+  runEnrichmentPipeline,
   getStatus,
 };

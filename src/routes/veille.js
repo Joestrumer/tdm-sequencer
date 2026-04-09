@@ -1,16 +1,17 @@
 /**
  * veille.js — Routes API pour la veille web hôtelière
  *
- * Passe 2 :
- * - frequence_cron = champ canonique (plus de frequence seul)
- * - Replanification auto après POST/PATCH/DELETE source
- * - Endpoints runs et santé des sources
- * - Trigger type passé à scraperUneSource
+ * Passe 2 + 3 :
+ * - frequence_cron = champ canonique
+ * - Replanification auto après CRUD source
+ * - Observabilité (runs, santé)
+ * - Opportunités : CRUD, filtres métier, alertes
+ * - Enrichissement : trigger manuel
  */
 
 const { Router } = require('express');
 const { randomUUID } = require('crypto');
-const { scraperUneSource, scraperToutesSources, planifierCrons, getStatus } = require('../jobs/veilleScraper');
+const { scraperUneSource, scraperToutesSources, planifierCrons, runEnrichmentPipeline, getStatus } = require('../jobs/veilleScraper');
 
 module.exports = (db) => {
   const router = Router();
@@ -443,6 +444,212 @@ module.exports = (db) => {
       }
     } catch (err) {
       res.status(500).json({ ok: false, erreur: err.message });
+    }
+  });
+
+  // ─── Enrichissement manuel ─────────────────────────────────────────────────
+
+  /**
+   * POST /enrich — Lancer l'enrichissement + pipeline opportunités manuellement
+   */
+  router.post('/enrich', async (req, res) => {
+    try {
+      await runEnrichmentPipeline();
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Opportunités ─────────────────────────────────────────────────────────
+
+  /**
+   * GET /opportunities — Liste paginée avec filtres métier
+   */
+  router.get('/opportunities', (req, res) => {
+    try {
+      const {
+        city, region, group_name, signal_type, signal_strength,
+        status, min_business_score, min_confidence_score,
+        page = 1, limit = 30, search
+      } = req.query;
+
+      let where = ['1=1'];
+      const params = [];
+
+      if (city) { where.push('o.city = ?'); params.push(city); }
+      if (region) { where.push('o.region = ?'); params.push(region); }
+      if (group_name) { where.push('o.group_name LIKE ?'); params.push(`%${group_name}%`); }
+      if (signal_type) { where.push('o.signal_type = ?'); params.push(signal_type); }
+      if (signal_strength) { where.push('o.signal_strength = ?'); params.push(signal_strength); }
+      if (status) { where.push('o.status = ?'); params.push(status); }
+      if (min_business_score) { where.push('o.business_score >= ?'); params.push(parseInt(min_business_score)); }
+      if (min_confidence_score) { where.push('o.confidence_score >= ?'); params.push(parseInt(min_confidence_score)); }
+      if (search) {
+        where.push('(o.hotel_name LIKE ? OR o.city LIKE ? OR o.group_name LIKE ?)');
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      const whereClause = where.join(' AND ');
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+
+      const total = db.prepare(`SELECT COUNT(*) as n FROM veille_opportunities o WHERE ${whereClause}`).get(...params).n;
+
+      const opportunities = db.prepare(`
+        SELECT o.*,
+          (SELECT COUNT(*) FROM veille_opportunity_sources os WHERE os.opportunity_id = o.id) as article_count
+        FROM veille_opportunities o
+        WHERE ${whereClause}
+        ORDER BY o.business_score DESC, o.last_seen_at DESC
+        LIMIT ? OFFSET ?
+      `).all(...params, parseInt(limit), offset);
+
+      res.json({
+        opportunities,
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / parseInt(limit)),
+      });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /opportunities/dashboard — KPIs opportunités
+   */
+  router.get('/opportunities/dashboard', (req, res) => {
+    try {
+      const total = db.prepare('SELECT COUNT(*) as n FROM veille_opportunities').get().n;
+      const prioA = db.prepare("SELECT COUNT(*) as n FROM veille_opportunities WHERE signal_strength = 'A'").get().n;
+      const prioB = db.prepare("SELECT COUNT(*) as n FROM veille_opportunities WHERE signal_strength = 'B'").get().n;
+      const newCount = db.prepare("SELECT COUNT(*) as n FROM veille_opportunities WHERE status = 'new'").get().n;
+
+      const bySignal = db.prepare(`
+        SELECT signal_type, COUNT(*) as count, AVG(business_score) as avg_score
+        FROM veille_opportunities
+        GROUP BY signal_type
+        ORDER BY count DESC
+      `).all();
+
+      const byCity = db.prepare(`
+        SELECT city, COUNT(*) as count
+        FROM veille_opportunities
+        WHERE city IS NOT NULL
+        GROUP BY city
+        ORDER BY count DESC
+        LIMIT 10
+      `).all();
+
+      const multiSource = db.prepare(`
+        SELECT COUNT(*) as n FROM veille_opportunities WHERE source_count >= 2
+      `).get().n;
+
+      const recentA = db.prepare(`
+        SELECT id, hotel_name, city, signal_type, business_score, first_seen_at, source_count
+        FROM veille_opportunities
+        WHERE signal_strength = 'A'
+        ORDER BY first_seen_at DESC
+        LIMIT 5
+      `).all();
+
+      // Stats enrichissement
+      const enriched = db.prepare('SELECT COUNT(*) as n FROM veille_articles WHERE enriched = 1').get().n;
+      const notEnriched = db.prepare('SELECT COUNT(*) as n FROM veille_articles WHERE enriched = 0 AND score_pertinence >= 3').get().n;
+
+      res.json({
+        total, prioA, prioB, newCount, multiSource,
+        bySignal, byCity, recentA,
+        enrichment: { enriched, pending: notEnriched },
+      });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /opportunities/:id — Détail d'une opportunité avec ses articles
+   */
+  router.get('/opportunities/:id', (req, res) => {
+    try {
+      const opp = db.prepare('SELECT * FROM veille_opportunities WHERE id = ?').get(req.params.id);
+      if (!opp) return res.status(404).json({ erreur: 'Opportunité introuvable' });
+
+      const articles = db.prepare(`
+        SELECT a.id, a.titre, a.url, a.resume, a.source_id, a.score_pertinence, a.priorite,
+               a.hotel_name, a.city, a.group_name, a.signal_type, a.created_at,
+               s.nom as source_nom
+        FROM veille_opportunity_sources os
+        JOIN veille_articles a ON a.id = os.article_id
+        LEFT JOIN veille_sources s ON s.id = a.source_id
+        WHERE os.opportunity_id = ?
+        ORDER BY a.created_at DESC
+      `).all(req.params.id);
+
+      res.json({ ...opp, articles });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * PATCH /opportunities/:id — Modifier le statut d'une opportunité
+   */
+  router.patch('/opportunities/:id', (req, res) => {
+    try {
+      const { status } = req.body;
+      const validStatuses = ['new', 'qualified', 'contacted', 'won', 'lost', 'archived'];
+      if (!status || !validStatuses.includes(status)) {
+        return res.status(400).json({ erreur: `Statut invalide. Valeurs: ${validStatuses.join(', ')}` });
+      }
+
+      db.prepare('UPDATE veille_opportunities SET status = ?, updated_at = datetime(\'now\') WHERE id = ?').run(status, req.params.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /alerts — Nouvelles opportunités A/B non encore qualifiées
+   */
+  router.get('/alerts', (req, res) => {
+    try {
+      const { since } = req.query;
+      let where = "o.status = 'new' AND o.signal_strength IN ('A', 'B')";
+      const params = [];
+
+      if (since) {
+        where += ' AND o.first_seen_at >= ?';
+        params.push(since);
+      }
+
+      const alerts = db.prepare(`
+        SELECT o.*,
+          (SELECT COUNT(*) FROM veille_opportunity_sources os WHERE os.opportunity_id = o.id) as article_count
+        FROM veille_opportunities o
+        WHERE ${where}
+        ORDER BY o.business_score DESC, o.first_seen_at DESC
+        LIMIT 50
+      `).all(...params);
+
+      res.json({
+        count: alerts.length,
+        alerts: alerts.map(a => ({
+          ...a,
+          summary: [
+            a.hotel_name || 'Établissement inconnu',
+            a.city ? `à ${a.city}` : '',
+            a.group_name ? `(${a.group_name})` : '',
+            `— ${a.signal_type}`,
+            a.project_date ? `prévu ${a.project_date}` : '',
+            `| score=${a.business_score} confiance=${a.confidence_score}`,
+            `| ${a.source_count} source(s)`,
+          ].filter(Boolean).join(' '),
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
     }
   });
 
