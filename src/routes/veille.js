@@ -260,5 +260,55 @@ module.exports = (db) => {
     }
   });
 
+  /**
+   * GET /test-brave — Tester la connexion API Brave Search
+   */
+  router.get('/test-brave', async (req, res) => {
+    try {
+      const row = db.prepare("SELECT valeur FROM config WHERE cle = 'brave_search_api_key'").get();
+      const apiKey = row?.valeur || process.env.BRAVE_SEARCH_API_KEY || '';
+
+      if (!apiKey) {
+        return res.json({ ok: false, erreur: 'Clé API Brave non configurée. Allez dans Paramètres > Intégrations.' });
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        const params = new URLSearchParams({ q: 'site:hospitality-on.com hôtel rénovation', count: '3', search_lang: 'fr' });
+        const r = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
+          headers: { 'Accept': 'application/json', 'X-Subscription-Token': apiKey },
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!r.ok) {
+          const body = await r.text().catch(() => '');
+          return res.json({ ok: false, status: r.status, erreur: body.substring(0, 300) });
+        }
+
+        const data = await r.json();
+        const results = data.web?.results || [];
+
+        res.json({
+          ok: true,
+          resultats: results.length,
+          exemples: results.slice(0, 3).map(r => ({ titre: r.title, url: r.url })),
+          plan: data.query?.plan || 'inconnu',
+        });
+      } catch (err) {
+        clearTimeout(timeout);
+        if (err.name === 'AbortError') {
+          return res.json({ ok: false, erreur: 'Timeout (10s) — problème réseau ?' });
+        }
+        throw err;
+      }
+    } catch (err) {
+      res.status(500).json({ ok: false, erreur: err.message });
+    }
+  });
+
   return router;
 };

@@ -9331,7 +9331,9 @@ const VueBraveSearchConfig = () => {
   const [configured, setConfigured] = useState(false);
   const [showKey, setShowKey] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState('');
+  const [testResult, setTestResult] = useState(null);
 
   useEffect(() => {
     api.get('/config').then(cfg => {
@@ -9341,7 +9343,7 @@ const VueBraveSearchConfig = () => {
 
   const sauvegarder = async () => {
     if (!braveKey) return;
-    setSaving(true); setMsg('');
+    setSaving(true); setMsg(''); setTestResult(null);
     try {
       await api.post('/config', { brave_search_api_key: braveKey });
       setConfigured(true);
@@ -9349,6 +9351,15 @@ const VueBraveSearchConfig = () => {
       setMsg('Clé API Brave Search sauvegardée');
     } catch(e) { setMsg('Erreur'); }
     setSaving(false);
+  };
+
+  const tester = async () => {
+    setTesting(true); setTestResult(null); setMsg('');
+    try {
+      const res = await api.get('/veille/test-brave');
+      setTestResult(res);
+    } catch(e) { setTestResult({ ok: false, erreur: e.message }); }
+    setTesting(false);
   };
 
   return (
@@ -9373,13 +9384,37 @@ const VueBraveSearchConfig = () => {
         </div>
         <p className="text-xs text-slate-400 mt-1">Obtenez une clé sur <a href="https://brave.com/search/api/" target="_blank" rel="noopener" className="text-blue-500 hover:underline">brave.com/search/api</a></p>
       </div>
-      {braveKey && (
-        <button onClick={sauvegarder} disabled={saving}
-          className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
-          {saving ? "Sauvegarde..." : "Enregistrer"}
-        </button>
-      )}
+      <div className="flex items-center gap-2">
+        {braveKey && (
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+            {saving ? "Sauvegarde..." : "Enregistrer"}
+          </button>
+        )}
+        {configured && (
+          <button onClick={tester} disabled={testing}
+            className="px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+            {testing ? (
+              <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" /> Test en cours...</>
+            ) : 'Tester la connexion'}
+          </button>
+        )}
+      </div>
       {msg && <p className="text-xs text-emerald-600 font-medium">{msg}</p>}
+      {testResult && (
+        <div className={`rounded-lg p-3 text-xs ${testResult.ok ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
+          {testResult.ok ? (
+            <div className="space-y-1">
+              <p className="font-medium text-emerald-700">API Brave fonctionnelle — {testResult.resultats} résultat(s)</p>
+              {testResult.exemples?.map((ex, i) => (
+                <p key={i} className="text-emerald-600 truncate">• <a href={ex.url} target="_blank" rel="noopener" className="hover:underline">{ex.titre}</a></p>
+              ))}
+            </div>
+          ) : (
+            <p className="text-red-700 font-medium">{testResult.erreur || `Erreur HTTP ${testResult.status}`}</p>
+          )}
+        </div>
+      )}
     </div>
   );
 };
