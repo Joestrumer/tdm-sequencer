@@ -52,34 +52,6 @@ module.exports = (db) => {
     return map;
   }
 
-  // Nettoyer le nom VF pour affichage (GSheets, etc.)
-  // 1. Retire le nom de contact après " - " (ex: "CLOS MARCAMPS - Jean-Philippe Illarine" → "CLOS MARCAMPS")
-  // 2. Retire la raison sociale juridique (ex: "Hotel Grand Coeur Latin SAS Hoteliere Excelsior Latin" → "Hotel Grand Coeur Latin")
-  function cleanPartnerDisplayName(name) {
-    if (!name) return name;
-    let cleaned = name;
-
-    // Retirer la partie après " - " si c'est un nom de personne
-    const dashIdx = cleaned.indexOf(' - ');
-    if (dashIdx > 0) {
-      const after = cleaned.substring(dashIdx + 3).trim();
-      const hotelKeywords = /hotel|spa|resort|lodge|chateau|château|maison|chalet|domaine|auberge|villa|gîte|campagne/i;
-      if (!hotelKeywords.test(after) && /^[A-Za-zÀ-ÿ\s''-]+$/.test(after) && after.split(/\s+/).length <= 4) {
-        cleaned = cleaned.substring(0, dashIdx).trim();
-      }
-    }
-
-    // Retirer la raison sociale juridique et tout ce qui suit
-    // Ex: "Hotel Grand Coeur Latin SAS Hoteliere Excelsior Latin" → "Hotel Grand Coeur Latin"
-    const legalForms = /\b(SAS|SARL|SCI|SNC|EURL|SASU|SA|SRL|SELARL|GIE|SCM|SCEA)\b/;
-    const legalMatch = cleaned.match(legalForms);
-    if (legalMatch && legalMatch.index > 3) {
-      cleaned = cleaned.substring(0, legalMatch.index).trim();
-    }
-
-    return cleaned || name;
-  }
-
   function repairGSheetsCredentials() {
     const credsRow = db.prepare("SELECT valeur FROM config WHERE cle = 'gsheets_credentials'").get();
     let credsOk = false;
@@ -420,16 +392,13 @@ module.exports = (db) => {
             });
           }
 
-          const cleanedName = cleanPartnerDisplayName(order.partner_nom);
-          const resolvedPartner = (canonicalClientName && canonicalClientName !== order.partner_nom)
-            ? cleanPartnerDisplayName(canonicalClientName)
-            : (cleanedName !== order.partner_nom ? cleanedName : undefined);
+          // Utiliser le nom canonique du partenaire (vf_partners.nom) directement pour GSheets
           const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
-            clientName: cleanedName,
+            clientName: order.partner_nom,
             invoiceNumber: result.number || '',
             invoiceDate: today,
             products: gsProducts,
-          }, resolvedPartner);
+          });
 
           if (gsResult.ok) {
             db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));

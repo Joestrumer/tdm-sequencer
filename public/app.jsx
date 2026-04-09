@@ -8814,6 +8814,133 @@ const VueCompteEmail = () => {
   );
 };
 
+const VueProduitsCatalog = () => {
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [editingRef, setEditingRef] = useState(null);
+  const [editForm, setEditForm] = useState({});
+  const [search, setSearch] = useState('');
+  const [saving, setSaving] = useState(false);
+
+  const charger = async () => {
+    setLoading(true);
+    try {
+      const data = await api.get('/reference/catalog');
+      if (Array.isArray(data)) setProducts(data);
+    } catch (e) { console.error(e); }
+    setLoading(false);
+  };
+
+  useEffect(() => { charger(); }, []);
+
+  const filtered = useMemo(() => {
+    if (!search) return products;
+    const q = search.toLowerCase();
+    return products.filter(p => p.ref.toLowerCase().includes(q) || (p.nom || '').toLowerCase().includes(q) || (p.categorie || '').toLowerCase().includes(q) || (p.csv_ref || '').toLowerCase().includes(q));
+  }, [products, search]);
+
+  const startEdit = (p) => {
+    setEditingRef(p.ref);
+    setEditForm({ nom: p.nom || '', prix_ht: p.prix_ht ?? '', csv_ref: p.csv_ref || '', vf_ref: p.vf_ref || '', moq: p.moq ?? 1, categorie: p.categorie || '' });
+  };
+
+  const cancelEdit = () => { setEditingRef(null); setEditForm({}); };
+
+  const saveEdit = async () => {
+    if (!editingRef) return;
+    setSaving(true);
+    try {
+      await api.patch(`/reference/catalog/${encodeURIComponent(editingRef)}`, {
+        nom: editForm.nom,
+        prix_ht: parseFloat(editForm.prix_ht) || 0,
+        csv_ref: editForm.csv_ref || null,
+        vf_ref: editForm.vf_ref || null,
+        moq: parseInt(editForm.moq) || 1,
+        categorie: editForm.categorie || null,
+      });
+      setEditingRef(null);
+      charger();
+    } catch (e) { console.error(e); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-4">
+      <div className="flex items-center gap-3">
+        <input
+          type="text"
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Rechercher par ref, nom, catégorie..."
+          className="flex-1 max-w-md border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+        />
+        <span className="text-xs text-slate-400">{filtered.length} produit{filtered.length > 1 ? 's' : ''}</span>
+      </div>
+      {loading ? (
+        <div className="text-xs text-slate-400 py-4">Chargement...</div>
+      ) : (
+        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100">
+                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">Ref</th>
+                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">Nom</th>
+                  <th className="text-right text-xs text-slate-400 font-medium px-4 py-3">Prix HT</th>
+                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">CSV Ref</th>
+                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">VF Ref</th>
+                  <th className="text-right text-xs text-slate-400 font-medium px-4 py-3">MOQ</th>
+                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">Catégorie</th>
+                  <th className="text-right text-xs text-slate-400 font-medium px-4 py-3">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {filtered.map(p => (
+                  <tr key={p.ref} className="border-b border-slate-50 hover:bg-slate-50/50">
+                    {editingRef === p.ref ? (
+                      <>
+                        <td className="px-4 py-2 font-mono text-xs text-slate-600">{p.ref}</td>
+                        <td className="px-4 py-2"><input type="text" value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
+                        <td className="px-4 py-2"><input type="number" step="0.01" value={editForm.prix_ht} onChange={e => setEditForm(f => ({ ...f, prix_ht: e.target.value }))} className="w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
+                        <td className="px-4 py-2"><input type="text" value={editForm.csv_ref} onChange={e => setEditForm(f => ({ ...f, csv_ref: e.target.value }))} className="w-24 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
+                        <td className="px-4 py-2"><input type="text" value={editForm.vf_ref} onChange={e => setEditForm(f => ({ ...f, vf_ref: e.target.value }))} className="w-24 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
+                        <td className="px-4 py-2"><input type="number" value={editForm.moq} onChange={e => setEditForm(f => ({ ...f, moq: e.target.value }))} className="w-16 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
+                        <td className="px-4 py-2"><input type="text" value={editForm.categorie} onChange={e => setEditForm(f => ({ ...f, categorie: e.target.value }))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
+                        <td className="px-4 py-2 text-right">
+                          <div className="flex gap-1 justify-end">
+                            <button onClick={saveEdit} disabled={saving} className="text-[11px] px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50">{saving ? '...' : 'OK'}</button>
+                            <button onClick={cancelEdit} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Annuler</button>
+                          </div>
+                        </td>
+                      </>
+                    ) : (
+                      <>
+                        <td className="px-4 py-2 font-mono text-xs text-slate-600">{p.ref}</td>
+                        <td className="px-4 py-2 text-slate-800">{p.nom}</td>
+                        <td className="px-4 py-2 text-right text-slate-700">{p.prix_ht != null ? Number(p.prix_ht).toFixed(2) + ' \u20AC' : '—'}</td>
+                        <td className="px-4 py-2 text-slate-500 font-mono text-xs">{p.csv_ref || '—'}</td>
+                        <td className="px-4 py-2 text-slate-500 font-mono text-xs">{p.vf_ref || '—'}</td>
+                        <td className="px-4 py-2 text-right text-slate-700">{p.moq ?? 1}</td>
+                        <td className="px-4 py-2 text-slate-500 text-xs">{p.categorie || '—'}</td>
+                        <td className="px-4 py-2 text-right">
+                          <button onClick={() => startEdit(p)} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Modifier</button>
+                        </td>
+                      </>
+                    )}
+                  </tr>
+                ))}
+                {filtered.length === 0 && (
+                  <tr><td colSpan={8} className="px-4 py-6 text-center text-xs text-slate-400">Aucun produit{search ? ' trouvé' : ''}</td></tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const VueParametres = () => {
   const [sousOnglet, setSousOnglet] = useState('envoi');
   const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"], fuseau: "Europe/Paris", delaiEntreEmails: 2 });
@@ -8822,11 +8949,20 @@ const VueParametres = () => {
   const jours = [["lun","Lun"],["mar","Mar"],["mer","Mer"],["jeu","Jeu"],["ven","Ven"],["sam","Sam"],["dim","Dim"]];
   const toggleJour = j => setLimites(l => ({ ...l, joursActifs: l.joursActifs.includes(j) ? l.joursActifs.filter(x => x !== j) : [...l.joursActifs, j] }));
 
+  const [hasProducts, setHasProducts] = useState(false);
+
+  useEffect(() => {
+    api.get('/reference/catalog').then(data => {
+      if (Array.isArray(data) && data.length > 0) setHasProducts(true);
+    }).catch(() => {});
+  }, []);
+
   const onglets = [
     { id: 'envoi', label: 'Envoi' },
     { id: 'compte', label: 'Compte Email' },
     { id: 'integrations', label: 'Intégrations' },
     { id: 'segments', label: 'Segments' },
+    ...(hasProducts ? [{ id: 'produits', label: 'Produits' }] : []),
   ];
 
   useEffect(() => {
@@ -8931,6 +9067,9 @@ const VueParametres = () => {
           <VueSegmentsConfig />
         </div>
       )}
+
+      {/* Sous-onglet Produits */}
+      {sousOnglet === 'produits' && <VueProduitsCatalog />}
     </div>
   );
 };
@@ -11479,7 +11618,7 @@ const VuePartenaires = ({ showToast }) => {
     setSelectedId(p.id);
     setEditing(false);
     setShowPwd(false);
-    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0 });
+    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, vf_display_name: p.vf_display_name || '' });
     // Charger amenities depuis le partenaire
     try {
       const am = p.amenities ? JSON.parse(p.amenities) : {};
@@ -11544,7 +11683,7 @@ const VuePartenaires = ({ showToast }) => {
     if (selectedId && partners.length) {
       const p = partners.find(x => x.id === selectedId);
       if (p) {
-        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0 });
+        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, vf_display_name: p.vf_display_name || '' });
         try { setAmenities(p.amenities ? JSON.parse(p.amenities) : {}); } catch (e) { setAmenities({}); }
       }
     }
@@ -11679,6 +11818,7 @@ const VuePartenaires = ({ showToast }) => {
                     <div><span className="text-[10px] text-slate-400 block">Contact</span><span className="text-sm text-slate-700">{selected.contact_nom || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.telephone || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Adresse</span><span className="text-sm text-slate-700">{selected.adresse || '—'}</span></div>
+                    <div><span className="text-[10px] text-slate-400 block">Nom VosFactures</span><span className="text-sm text-slate-700">{selected.vf_display_name || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Shipping ID</span><span className="text-sm text-slate-700 font-mono">{selected.shipping_id || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Franco (seuil HT)</span><span className="text-sm text-slate-700">{(selected.franco_seuil ?? DEFAULT_FRANCO_SEUIL).toFixed(0)} &euro;</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Frais FP/FE</span><span className="text-sm text-slate-700">{selected.frais_exonere ? 'Exonéré' : 'Standard (FP/FE)'}</span></div>
@@ -11705,6 +11845,10 @@ const VuePartenaires = ({ showToast }) => {
                     <div>
                       <label className="text-[10px] text-slate-400 block mb-0.5">Adresse</label>
                       <input type="text" value={editForm.adresse || ''} onChange={e => setEditForm(f => ({ ...f, adresse: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                    </div>
+                    <div>
+                      <label className="text-[10px] text-slate-400 block mb-0.5">Nom VosFactures</label>
+                      <input type="text" value={editForm.vf_display_name || ''} onChange={e => setEditForm(f => ({ ...f, vf_display_name: e.target.value }))} placeholder="Nom tel qu'affiché dans VosFactures" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
                     </div>
                     <div>
                       <label className="text-[10px] text-slate-400 block mb-0.5">Shipping ID</label>

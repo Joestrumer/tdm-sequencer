@@ -40,10 +40,18 @@ module.exports = (db) => {
 
   router.patch('/catalog/:ref', (req, res) => {
     try {
-      const { moq } = req.body;
-      if (moq !== undefined) {
-        db.prepare('UPDATE vf_catalog SET moq = ? WHERE ref = ?').run(moq, req.params.ref);
+      const updates = [];
+      const params = [];
+      const allowedFields = ['nom', 'prix_ht', 'csv_ref', 'vf_ref', 'moq', 'categorie', 'tva', 'vf_product_id'];
+      for (const field of allowedFields) {
+        if (req.body[field] !== undefined) {
+          updates.push(`${field} = ?`);
+          params.push(req.body[field]);
+        }
       }
+      if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
+      params.push(req.params.ref);
+      db.prepare(`UPDATE vf_catalog SET ${updates.join(', ')} WHERE ref = ?`).run(...params);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -65,8 +73,8 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, amenities, franco_seuil, frais_port FROM vf_partners ORDER BY nom').all()
-        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, amenities, franco_seuil, frais_port FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, amenities, franco_seuil, frais_port, vf_display_name FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, amenities, franco_seuil, frais_port, vf_display_name FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -104,11 +112,26 @@ module.exports = (db) => {
       if (req.body.franco_seuil !== undefined) { updates.push('franco_seuil = ?'); params.push(req.body.franco_seuil); }
       if (req.body.frais_port !== undefined) { updates.push('frais_port = ?'); params.push(req.body.frais_port); }
       if (req.body.frais_exonere !== undefined) { updates.push('frais_exonere = ?'); params.push(req.body.frais_exonere ? 1 : 0); }
+      if (req.body.vf_display_name !== undefined) { updates.push('vf_display_name = ?'); params.push(req.body.vf_display_name || null); }
 
       if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
 
       params.push(req.params.id);
       db.prepare(`UPDATE vf_partners SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+      // Si vf_display_name est mis à jour, synchroniser vf_client_mappings
+      if (req.body.vf_display_name) {
+        const partner = db.prepare('SELECT nom FROM vf_partners WHERE id = ?').get(req.params.id);
+        if (partner) {
+          const existing = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(req.body.vf_display_name);
+          if (existing) {
+            db.prepare('UPDATE vf_client_mappings SET file_name = ? WHERE vf_name = ?').run(partner.nom, req.body.vf_display_name);
+          } else {
+            db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name) VALUES (?, ?)').run(req.body.vf_display_name, partner.nom);
+          }
+        }
+      }
+
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -219,7 +242,8 @@ module.exports = (db) => {
           contact_nom = COALESCE(?, contact_nom),
           telephone = COALESCE(?, telephone),
           adresse = COALESCE(?, adresse),
-          vf_client_id = ?
+          vf_client_id = ?,
+          vf_display_name = COALESCE(?, vf_display_name)
         WHERE id = ?
       `);
 
@@ -278,8 +302,18 @@ module.exports = (db) => {
             phone || null,
             adresse || null,
             vfId,
+            vfName,
             partner.id
           );
+          // Auto-sync vf_client_mappings : vf_name (nom VF brut) → file_name (nom canonique du partenaire)
+          if (vfName && vfName.toLowerCase() !== partner.nom.toLowerCase()) {
+            const existingMapping = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
+            if (existingMapping) {
+              db.prepare('UPDATE vf_client_mappings SET file_name = ? WHERE vf_name = ?').run(partner.nom, vfName);
+            } else {
+              db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name, vf_client_id) VALUES (?, ?, ?)').run(vfName, partner.nom, vfId || null);
+            }
+          }
           updated++;
         } else {
           // Créer un nouveau partenaire

@@ -351,6 +351,7 @@ const migrations = [
   'ALTER TABLE leads ADD COLUMN source TEXT DEFAULT \'\'',
   'ALTER TABLE leads ADD COLUMN civilite TEXT DEFAULT \'\'',
   'ALTER TABLE campaigns ADD COLUMN piece_jointe TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN vf_display_name TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
