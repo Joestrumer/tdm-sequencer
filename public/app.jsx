@@ -4301,7 +4301,7 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
             {finderResults && !finderResults.error && (
               <div className="mt-4">
                 <div className="flex items-center justify-between mb-2">
-                  <span className="text-xs text-slate-500">{finderResults.total} patterns testés pour <span className="font-medium">{finderResults.prenom} {finderResults.nom}</span> @ {finderResults.domaine}</span>
+                  <span className="text-xs text-slate-500">{finderResults.credits_used || finderResults.patterns.length} crédits utilisés pour <span className="font-medium">{finderResults.prenom} {finderResults.nom}</span> @ {finderResults.domaine}</span>
                   {(() => {
                     const valid = finderResults.patterns.filter(p => p.status === 'valid');
                     return valid.length > 0 && <span className="text-xs font-semibold text-emerald-600">{valid.length} email{valid.length > 1 ? 's' : ''} trouvé{valid.length > 1 ? 's' : ''} !</span>;

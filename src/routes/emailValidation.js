@@ -34,51 +34,138 @@ module.exports = (db) => {
     const { prenom, nom, domaine } = req.body;
     if (!prenom || !nom || !domaine) return res.status(400).json({ erreur: 'prenom, nom et domaine requis' });
 
-    const p = prenom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/g, '');
-    const n = nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z]/g, '');
-    const pi = p.charAt(0); // première lettre prénom
-    const ni = n.charAt(0); // première lettre nom
+    const normalize = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z-]/g, '');
+    const p = normalize(prenom).replace(/-/g, ''); // prénom sans tirets : jeanpierre
+    const n = normalize(nom).replace(/-/g, '');     // nom sans tirets : dupont
+    const pRaw = normalize(prenom); // prénom avec tirets : jean-pierre
+    const nRaw = normalize(nom);     // nom avec tirets : le-goff
+
+    const pi = p.charAt(0);  // initiale prénom
+    const ni = n.charAt(0);  // initiale nom
     const d = domaine.trim().replace(/^@/, '');
 
-    // Générer tous les patterns courants
-    const patterns = [
-      ...new Set([
-        `${p}@${d}`,                     // jean@
-        `${n}@${d}`,                     // dupont@
-        `${p}.${n}@${d}`,               // jean.dupont@
-        `${n}.${p}@${d}`,               // dupont.jean@
-        `${p}${n}@${d}`,                // jeandupont@
-        `${n}${p}@${d}`,                // dupontjean@
-        `${pi}${n}@${d}`,               // jdupont@
-        `${pi}.${n}@${d}`,              // j.dupont@
-        `${p}${ni}@${d}`,               // jeand@
-        `${p}.${ni}@${d}`,              // jean.d@
-        `${pi}${ni}@${d}`,              // jd@
-        `${p}-${n}@${d}`,               // jean-dupont@
-        `${n}-${p}@${d}`,               // dupont-jean@
-        `${p}_${n}@${d}`,               // jean_dupont@
-        `${n}_${p}@${d}`,               // dupont_jean@
-        `${pi}${n[0] || ''}@${d}`,      // jd@ (déjà couvert)
-        `${p}${n.substring(0, 2)}@${d}`, // jeandu@
-        `contact@${d}`,
-        `info@${d}`,
-        `reservation@${d}`,
-        `reservations@${d}`,
-        `booking@${d}`,
-        `reception@${d}`,
-        `direction@${d}`,
-        `hotel@${d}`,
-        `accueil@${d}`,
-      ])
+    // Parties du nom composé (ex: "Le Goff" → ["le","goff"], "Schmitz" → ["schmitz"])
+    const nomParts = nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[\s-]+/).filter(Boolean).map(s => s.replace(/[^a-z]/g, ''));
+    const secondNom = nomParts.length > 1 ? nomParts[nomParts.length - 1] : null;
+    const si = secondNom ? secondNom.charAt(0) : null;
+
+    // Troncatures du nom (3, 4, 5 lettres + initiale)
+    const nTrunc = [];
+    if (n.length > 1) nTrunc.push(n.substring(0, 1));
+    if (n.length > 3) nTrunc.push(n.substring(0, 3));
+    if (n.length > 4) nTrunc.push(n.substring(0, 4));
+    if (n.length > 5) nTrunc.push(n.substring(0, 5));
+    if (n.length > 6) nTrunc.push(n.substring(0, 6));
+
+    // Troncatures du prénom (4 lettres)
+    const pTrunc4 = p.length > 4 ? p.substring(0, 4) : null;
+
+    // Générer tous les patterns (priorité décroissante)
+    const raw = [
+      // ── Priorité haute : patterns classiques ──
+      `${p}.${n}@${d}`,               // jean.dupont@
+      `${pi}.${n}@${d}`,              // j.dupont@
+      `${p}@${d}`,                     // jean@
+      `${pi}${n}@${d}`,               // jdupont@
+      `${p}${n}@${d}`,                // jeandupont@
+      `${n}@${d}`,                     // dupont@
+      `${p}-${n}@${d}`,               // jean-dupont@
+      `${p}_${n}@${d}`,               // jean_dupont@
+      `${n}.${p}@${d}`,               // dupont.jean@
+      `${p}.${ni}@${d}`,              // jean.d@
+      `${pi}.${ni}@${d}`,             // j.d@
+
+      // ── Troncatures du nom : prenom.nom[1-6]@ ──
+      ...nTrunc.map(t => `${p}.${t}@${d}`),     // jean.s@, jean.sch@, jean.schm@, jean.schmi@, jean.schmit@
+      ...nTrunc.map(t => `${pi}.${t}@${d}`),     // j.s@, j.sch@, j.schm@, ...
+      ...nTrunc.map(t => `${p}${t}@${d}`),       // jeans@, jeansch@, jeanschm@, ...
+      ...nTrunc.map(t => `${pi}${t}@${d}`),      // js@, jsch@, jschm@, ...
+
+      // ── Variantes inversées et composites ──
+      `${n}${p}@${d}`,                // dupontjean@
+      `${p}${ni}@${d}`,               // jeand@
+      `${n}-${p}@${d}`,               // dupont-jean@
+      `${n}_${p}@${d}`,               // dupont_jean@
+
+      // ── Prenom tronqué + nom ──
+      ...(pTrunc4 ? [
+        `${pTrunc4}.${n}@${d}`,        // jean.dupont@ (si prénom long → gust.schmitz@)
+        `${pTrunc4}${n}@${d}`,         // gustschmitz@
+        `${pTrunc4}.${ni}@${d}`,       // gust.s@
+      ] : []),
+
+      // ── Combinaisons prenom4 + nom4 (startups/tech) ──
+      ...(pTrunc4 && n.length > 4 ? [
+        `${pTrunc4}${n.substring(0, 4)}@${d}`, // gustschm@
+      ] : []),
+
+      // ── Nom composé : prenom.secondnom@, prenom.nom-compose@ ──
+      ...(secondNom ? [
+        `${p}.${secondNom}@${d}`,       // jean.goff@
+        `${pi}.${secondNom}@${d}`,      // j.goff@
+        `${p}.${nomParts.join('')}@${d}`,  // jean.legoff@ (tout collé)
+        `${p}.${nRaw}@${d}`,           // jean.le-goff@ (avec tiret original)
+        `${p}${secondNom}@${d}`,        // jeangoff@
+        `${pi}${secondNom}@${d}`,       // jgoff@
+        ...(secondNom.length > 3 ? [
+          `${p}.${secondNom.substring(0, 3)}@${d}`,  // jean.gof@
+          `${p}.${secondNom.substring(0, 4)}@${d}`,  // jean.goff@ (déjà couvert si 4 lettres)
+        ] : []),
+      ] : []),
+
+      // ── Prénom composé : jeanpierre → jean-pierre, jp ──
+      ...(pRaw.includes('-') ? [
+        `${pRaw}.${n}@${d}`,           // jean-pierre.dupont@
+        `${pRaw}${n}@${d}`,            // jean-pierredupont@
+        // Initiales du prénom composé
+        `${pRaw.split('-').map(s => s[0]).join('')}${n}@${d}`,   // jpdupont@
+        `${pRaw.split('-').map(s => s[0]).join('')}.${n}@${d}`,  // jp.dupont@
+        `${pRaw.split('-')[0]}.${n}@${d}`,  // jean.dupont@ (déjà couvert normalement)
+      ] : []),
+
+      // ── Emails génériques ──
+      `contact@${d}`,
+      `info@${d}`,
+      `reservation@${d}`,
+      `reservations@${d}`,
+      `booking@${d}`,
+      `reception@${d}`,
+      `direction@${d}`,
+      `hotel@${d}`,
+      `accueil@${d}`,
     ];
 
+    // Dédupliquer en gardant l'ordre de priorité, filtrer les patterns invalides
+    const seen = new Set();
+    const patterns = [];
+    for (const email of raw) {
+      if (!email || email.startsWith('.') || email.includes('..') || email.startsWith('@')) continue;
+      const lower = email.toLowerCase();
+      if (!seen.has(lower)) {
+        seen.add(lower);
+        patterns.push(lower);
+      }
+    }
+
     const results = [];
+    let creditsUsed = 0;
+    let foundValid = false;
+
+    // Séparer patterns personnels et génériques
+    const genericEmails = ['contact@', 'info@', 'reservation@', 'reservations@', 'booking@', 'reception@', 'direction@', 'hotel@', 'accueil@'];
+    const isGeneric = (email) => genericEmails.some(g => email.startsWith(g));
+
     for (const email of patterns) {
+      // Si on a trouvé un valid personnel, skip les génériques
+      if (foundValid && isGeneric(email)) continue;
+
       try {
         const r = await fetch(`https://api.zerobounce.net/v2/validate?api_key=${key}&email=${encodeURIComponent(email)}&ip_address=`);
         if (!r.ok) throw new Error(`ZeroBounce HTTP ${r.status}`);
         const data = await r.json();
+        creditsUsed++;
         results.push({ email, status: data.status, sub_status: data.sub_status, quality_score: data.quality_score, free_email: data.free_email, mx_found: data.mx_found });
+        if (data.status === 'valid' && !isGeneric(email)) foundValid = true;
         // Rate limit
         await new Promise(resolve => setTimeout(resolve, 200));
       } catch (e) {
@@ -90,7 +177,7 @@ module.exports = (db) => {
     const statusOrder = { valid: 0, catch_all: 1, unknown: 2, do_not_mail: 3, spamtrap: 4, invalid: 5, error: 6 };
     results.sort((a, b) => (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99));
 
-    res.json({ patterns: results, total: patterns.length, prenom: p, nom: n, domaine: d });
+    res.json({ patterns: results, total: patterns.length, credits_used: creditsUsed, prenom: p, nom: n, domaine: d });
   });
 
   // POST /api/email-validation/single — Body: { email, lead_id? }
