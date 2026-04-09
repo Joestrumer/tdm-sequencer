@@ -1,10 +1,16 @@
 /**
  * veille.js — Routes API pour la veille web hôtelière
+ *
+ * Passe 2 :
+ * - frequence_cron = champ canonique (plus de frequence seul)
+ * - Replanification auto après POST/PATCH/DELETE source
+ * - Endpoints runs et santé des sources
+ * - Trigger type passé à scraperUneSource
  */
 
 const { Router } = require('express');
 const { randomUUID } = require('crypto');
-const { scraperUneSource, scraperToutesSources } = require('../jobs/veilleScraper');
+const { scraperUneSource, scraperToutesSources, planifierCrons, getStatus } = require('../jobs/veilleScraper');
 
 module.exports = (db) => {
   const router = Router();
@@ -13,7 +19,6 @@ module.exports = (db) => {
 
   /**
    * GET /articles — Liste paginée avec filtres
-   * Query: source, lu (0/1), favori (0/1), mot_cle, score_min, archived (0/1), page, limit, search
    */
   router.get('/articles', (req, res) => {
     try {
@@ -25,7 +30,6 @@ module.exports = (db) => {
       let where = ['1=1'];
       const params = [];
 
-      // Par défaut, ne pas montrer les archivés
       if (archived === '1') {
         where.push('a.archived = 1');
       } else {
@@ -108,7 +112,7 @@ module.exports = (db) => {
       const prioC = db.prepare("SELECT COUNT(*) as n FROM veille_articles WHERE priorite = 'C' AND archived = 0").get().n;
 
       const parSource = db.prepare(`
-        SELECT s.id, s.nom, s.categorie, COUNT(a.id) as count,
+        SELECT s.id, s.nom, s.categorie, s.health_status, COUNT(a.id) as count,
           SUM(CASE WHEN a.lu = 0 THEN 1 ELSE 0 END) as unread
         FROM veille_sources s
         LEFT JOIN veille_articles a ON a.source_id = s.id AND a.archived = 0
@@ -149,7 +153,7 @@ module.exports = (db) => {
   // ─── Sources ───────────────────────────────────────────────────────────────
 
   /**
-   * GET /sources — Liste des sources
+   * GET /sources — Liste des sources avec santé
    */
   router.get('/sources', (req, res) => {
     try {
@@ -172,23 +176,54 @@ module.exports = (db) => {
   });
 
   /**
-   * POST /sources — Ajouter une source
+   * GET /sources/health — Santé de toutes les sources
+   */
+  router.get('/sources/health', (req, res) => {
+    try {
+      const sources = db.prepare(`
+        SELECT id, nom, categorie, health_status, last_run, last_success_at, last_error_at, error_count, actif
+        FROM veille_sources
+        ORDER BY
+          CASE health_status WHEN 'failing' THEN 0 WHEN 'degraded' THEN 1 WHEN 'healthy' THEN 2 ELSE 3 END,
+          nom
+      `).all();
+
+      const summary = {
+        healthy: sources.filter(s => s.health_status === 'healthy').length,
+        degraded: sources.filter(s => s.health_status === 'degraded').length,
+        failing: sources.filter(s => s.health_status === 'failing').length,
+        unknown: sources.filter(s => s.health_status === 'unknown' || !s.health_status).length,
+      };
+
+      res.json({ sources, summary });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * POST /sources — Ajouter une source (frequence_cron canonique)
    */
   router.post('/sources', (req, res) => {
     try {
-      const { nom, url, type = 'html', selecteurs, mots_cles, frequence = '6h' } = req.body;
+      const { nom, url, type = 'brave_search', selecteurs, mots_cles, frequence_cron = '0 */6 * * *', categorie = 'hebdo' } = req.body;
       if (!nom || !url) return res.status(400).json({ erreur: 'nom et url requis' });
 
       const id = randomUUID();
       db.prepare(`
-        INSERT INTO veille_sources (id, nom, url, type, selecteurs, mots_cles, frequence, actif)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO veille_sources (id, nom, url, type, selecteurs, mots_cles, frequence, frequence_cron, categorie, actif)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
       `).run(
         id, nom, url, type,
         typeof selecteurs === 'string' ? selecteurs : JSON.stringify(selecteurs || {}),
         typeof mots_cles === 'string' ? mots_cles : JSON.stringify(mots_cles || []),
-        frequence
+        frequence_cron, // frequence = frequence_cron (canonical)
+        frequence_cron,
+        categorie
       );
+
+      // Replanifier les crons
+      planifierCrons();
 
       res.json({ ok: true, id });
     } catch (err) {
@@ -197,13 +232,14 @@ module.exports = (db) => {
   });
 
   /**
-   * PATCH /sources/:id — Modifier une source
+   * PATCH /sources/:id — Modifier une source (replanifie si fréquence/actif changé)
    */
   router.patch('/sources/:id', (req, res) => {
     try {
-      const { nom, url, type, selecteurs, mots_cles, frequence, actif } = req.body;
+      const { nom, url, type, selecteurs, mots_cles, frequence_cron, categorie, actif } = req.body;
       const updates = [];
       const params = [];
+      let needReplan = false;
 
       if (nom !== undefined) { updates.push('nom = ?'); params.push(nom); }
       if (url !== undefined) { updates.push('url = ?'); params.push(url); }
@@ -216,13 +252,29 @@ module.exports = (db) => {
         updates.push('mots_cles = ?');
         params.push(typeof mots_cles === 'string' ? mots_cles : JSON.stringify(mots_cles));
       }
-      if (frequence !== undefined) { updates.push('frequence = ?'); params.push(frequence); }
-      if (actif !== undefined) { updates.push('actif = ?'); params.push(actif ? 1 : 0); }
+      if (frequence_cron !== undefined) {
+        updates.push('frequence_cron = ?');
+        updates.push('frequence = ?'); // garder les 2 en sync
+        params.push(frequence_cron);
+        params.push(frequence_cron);
+        needReplan = true;
+      }
+      if (categorie !== undefined) { updates.push('categorie = ?'); params.push(categorie); }
+      if (actif !== undefined) {
+        updates.push('actif = ?');
+        params.push(actif ? 1 : 0);
+        needReplan = true;
+      }
 
       if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à modifier' });
 
       params.push(req.params.id);
       db.prepare(`UPDATE veille_sources SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+      // Replanifier si fréquence ou activation changée
+      if (needReplan) {
+        planifierCrons();
+      }
 
       res.json({ ok: true });
     } catch (err) {
@@ -231,16 +283,19 @@ module.exports = (db) => {
   });
 
   /**
-   * DELETE /sources/:id — Supprimer une source
+   * DELETE /sources/:id — Supprimer une source (replanifie)
    */
   router.delete('/sources/:id', (req, res) => {
     try {
       db.prepare('DELETE FROM veille_sources WHERE id = ?').run(req.params.id);
+      planifierCrons();
       res.json({ ok: true });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
   });
+
+  // ─── Exécution manuelle ──────────────────────────────────────────────────
 
   /**
    * POST /sources/:id/run — Scraping manuel d'une source
@@ -250,8 +305,11 @@ module.exports = (db) => {
       const source = db.prepare('SELECT * FROM veille_sources WHERE id = ?').get(req.params.id);
       if (!source) return res.status(404).json({ erreur: 'Source introuvable' });
 
-      const inseres = await scraperUneSource(source);
-      res.json({ ok: true, nouveaux: inseres });
+      const result = await scraperUneSource(source, 'manual');
+      if (result.skipped) {
+        return res.status(409).json({ erreur: 'Source déjà en cours de scraping', skipped: true });
+      }
+      res.json({ ok: true, nouveaux: result.inserted, error: result.error || null });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
@@ -268,6 +326,75 @@ module.exports = (db) => {
       res.status(500).json({ erreur: err.message });
     }
   });
+
+  // ─── Observabilité : runs ─────────────────────────────────────────────────
+
+  /**
+   * GET /runs — Derniers runs (toutes sources)
+   */
+  router.get('/runs', (req, res) => {
+    try {
+      const { source_id, status, limit = 50 } = req.query;
+      let where = ['1=1'];
+      const params = [];
+
+      if (source_id) {
+        where.push('r.source_id = ?');
+        params.push(source_id);
+      }
+      if (status) {
+        where.push('r.status = ?');
+        params.push(status);
+      }
+
+      const runs = db.prepare(`
+        SELECT r.*, s.nom as source_nom
+        FROM veille_source_runs r
+        LEFT JOIN veille_sources s ON s.id = r.source_id
+        WHERE ${where.join(' AND ')}
+        ORDER BY r.started_at DESC
+        LIMIT ?
+      `).all(...params, parseInt(limit));
+
+      res.json(runs);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /sources/:id/runs — Runs d'une source spécifique
+   */
+  router.get('/sources/:id/runs', (req, res) => {
+    try {
+      const { limit = 20 } = req.query;
+      const runs = db.prepare(`
+        SELECT * FROM veille_source_runs
+        WHERE source_id = ?
+        ORDER BY started_at DESC
+        LIMIT ?
+      `).all(req.params.id, parseInt(limit));
+
+      res.json(runs);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Status scheduler ────────────────────────────────────────────────────
+
+  /**
+   * GET /status — Statut du scheduler (crons actifs, sources en cours)
+   */
+  router.get('/status', (req, res) => {
+    try {
+      res.json(getStatus());
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Test Brave ──────────────────────────────────────────────────────────
 
   /**
    * GET /test-brave — Tester la connexion API Brave Search

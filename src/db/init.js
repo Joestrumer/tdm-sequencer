@@ -353,6 +353,29 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_veille_articles_lu ON veille_articles(lu);
   CREATE INDEX IF NOT EXISTS idx_veille_articles_favori ON veille_articles(favori);
   CREATE INDEX IF NOT EXISTS idx_veille_articles_url ON veille_articles(url);
+
+  -- ─── Table Runs de veille (observabilité) ────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS veille_source_runs (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES veille_sources(id) ON DELETE CASCADE,
+    started_at TEXT NOT NULL,
+    finished_at TEXT,
+    status TEXT DEFAULT 'running',
+    duration_ms INTEGER,
+    items_found INTEGER DEFAULT 0,
+    items_filtered INTEGER DEFAULT 0,
+    items_inserted INTEGER DEFAULT 0,
+    items_duplicate INTEGER DEFAULT 0,
+    http_status INTEGER,
+    error_message TEXT,
+    trigger_type TEXT DEFAULT 'cron',
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_runs_source ON veille_source_runs(source_id);
+  CREATE INDEX IF NOT EXISTS idx_veille_runs_status ON veille_source_runs(status);
+  CREATE INDEX IF NOT EXISTS idx_veille_runs_started ON veille_source_runs(started_at DESC);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
@@ -392,6 +415,18 @@ const migrations = [
   'ALTER TABLE veille_articles ADD COLUMN priorite TEXT DEFAULT \'C\'',
   'ALTER TABLE veille_sources ADD COLUMN frequence_cron TEXT',
   'ALTER TABLE veille_sources ADD COLUMN categorie TEXT',
+  // Passe 2 — Observabilité et santé des sources
+  'ALTER TABLE veille_sources ADD COLUMN last_success_at TEXT',
+  'ALTER TABLE veille_sources ADD COLUMN last_error_at TEXT',
+  'ALTER TABLE veille_sources ADD COLUMN error_count INTEGER DEFAULT 0',
+  'ALTER TABLE veille_sources ADD COLUMN health_status TEXT DEFAULT \'unknown\'',
+  // Passe 2 — Enrichissement articles
+  'ALTER TABLE veille_articles ADD COLUMN content_full TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN content_hash TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN enriched INTEGER DEFAULT 0',
+  'ALTER TABLE veille_articles ADD COLUMN first_seen_at TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN last_seen_at TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN published_at TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

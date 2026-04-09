@@ -1,15 +1,15 @@
 /**
  * veilleService.js — Veille web hôtelière pour Terre de Mars
  *
+ * Passe 2 — Correctifs :
+ * - freshness Brave adaptée par catégorie source (pd/pw/pm)
+ * - Mots-clés resserrés : suppression des termes trop génériques
+ * - Scoring inchangé dans sa structure mais filtré plus haut (seuil >= 3 dans scheduler)
+ *
  * Types de sources :
  * - brave_search : Recherche via API Brave Search (recommandé)
  * - html : Scraping HTML avec cheerio + sélecteurs CSS
  * - rss : Parse de flux RSS/Atom
- *
- * Scoring par priorité :
- * - A : rénovation lourde, repositionnement, nomination GM, boutique indépendant
- * - B : ouverture neuf, conversion marque, design/spa/montée en gamme
- * - C : actu corporate groupe, signal faible
  */
 
 const cheerio = require('cheerio');
@@ -18,6 +18,7 @@ const logger = require('../config/logger');
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
 // ─── Mots-clés par famille (pour scoring intelligent) ───────────────────────
+// Passe 2 : retirés les termes trop génériques (lifestyle seul, spa seul, design, concept, développement, stratégie, plan)
 
 const SIGNAUX_PRIORITE_A = [
   // Rénovation lourde / transformation
@@ -26,33 +27,33 @@ const SIGNAUX_PRIORITE_A = [
   // Nomination de direction
   'nouveau directeur', 'nomination', 'nommé directeur', 'nouveau gm',
   'general manager', 'directeur général',
-  // Indépendants / boutique
-  'boutique-hôtel', 'boutique hôtel', 'hôtel indépendant', 'lifestyle',
+  // Indépendants / boutique (combinaisons spécifiques, pas de termes seuls)
+  'boutique-hôtel', 'boutique hôtel', 'hôtel indépendant',
 ];
 
 const SIGNAUX_PRIORITE_B = [
   // Ouverture / pré-ouverture
-  'ouverture', 'ouvre', 'inauguration', 'inaugure', 'pré-ouverture',
-  'ouverture 2025', 'ouverture 2026', 'ouverture 2027',
+  'ouverture', 'inauguration', 'inaugure', 'pré-ouverture',
   // Conversion / branding
-  'conversion', 'rebranding', 'sous enseigne', 'collection', 'rejoint',
-  // Design / expérience
-  'design', 'spa', 'bien-être', 'resort', 'aparthotel',
-  'expérience client', 'concept',
-  // Acquisition
+  'conversion', 'rebranding', 'sous enseigne', 'rejoint le groupe',
+  'changement d\'enseigne',
+  // Acquisition / cession
   'acquisition', 'cession', 'rachat', 'portefeuille hôtelier',
+  // Montée en gamme ciblée
+  'nouveau spa', 'spa hôtel', 'wellness', 'resort',
+  'montée en gamme', 'aparthotel',
+  'lifestyle hotel', 'lifestyle hôtel',
 ];
 
 const SIGNAUX_PRIORITE_C = [
-  // Corporate / groupe
-  'groupe hôtelier', 'développement', 'stratégie', 'plan',
-  'chiffre d\'affaires', 'résultats', 'pipeline',
+  // Corporate / groupe — uniquement combinés avec hôtelier
+  'groupe hôtelier', 'pipeline hôtelier', 'résultats annuels',
 ];
 
 // Mots-clés géographiques (bonus de score)
 const GEO_FRANCE = [
   'paris', 'lyon', 'marseille', 'bordeaux', 'nice', 'côte d\'azur',
-  'alpes', 'littoral', 'stations', 'provence', 'bretagne', 'normandie',
+  'alpes', 'provence', 'bretagne', 'normandie',
   'ile-de-france', 'île-de-france', 'toulouse', 'nantes', 'strasbourg',
   'montpellier', 'cannes', 'saint-tropez', 'megève', 'courchevel',
   'val d\'isère', 'chamonix', 'biarritz', 'deauville',
@@ -62,22 +63,6 @@ const GEO_FRANCE = [
 const SEGMENTS_PREMIUM = [
   'palace', '5 étoiles', '5*', 'luxe', 'premium', 'haut de gamme',
   'relais & châteaux', 'leading hotels', 'small luxury',
-];
-
-// Tous les mots-clés combinés (pour Brave Search queries)
-const MOTS_CLES_DEFAUT = [
-  // Signaux forts
-  'rénovation', 'ouverture', 'inauguration', 'repositionnement',
-  'transformation', 'réouverture', 'pré-ouverture',
-  'nomination directeur', 'nouveau directeur général',
-  // Acquisition
-  'acquisition hôtel', 'cession hôtel', 'rachat', 'portefeuille hôtelier',
-  // Branding
-  'rebranding', 'conversion', 'sous enseigne', 'collection',
-  // Segments
-  'spa', 'bien-être', 'resort', 'boutique-hôtel', 'lifestyle', 'aparthotel',
-  // Géographie
-  'Paris', 'Lyon', 'Marseille', 'Bordeaux', 'Côte d\'Azur', 'Alpes',
 ];
 
 // ─── Scoring intelligent (Priorité A / B / C) ──────────────────────────────
@@ -158,10 +143,9 @@ function scorerArticle(article) {
 }
 
 function filtrerParMotsCles(articles, motsClesSource) {
-  // Score chaque article avec le système de priorité
   const scored = articles.map(a => scorerArticle(a));
 
-  // Garder aussi les mots-clés spécifiques de la source
+  // Bonus mots-clés spécifiques de la source
   if (motsClesSource) {
     const mots = Array.isArray(motsClesSource) ? motsClesSource : (typeof motsClesSource === 'string' ? JSON.parse(motsClesSource) : []);
     for (const article of scored) {
@@ -190,6 +174,19 @@ function getBraveApiKey(db) {
   }
 }
 
+/**
+ * Déterminer le paramètre freshness Brave selon la catégorie de la source.
+ * - quotidien → pd (past day) : dernières 24h
+ * - hebdo → pw (past week) : dernière semaine
+ * - radar → pm (past month) : dernier mois
+ */
+function getFreshness(source) {
+  const cat = (source.categorie || '').toLowerCase();
+  if (cat === 'quotidien') return 'pd';
+  if (cat === 'hebdo') return 'pw';
+  return 'pm'; // radar ou défaut
+}
+
 async function scraperSourceBrave(source, db) {
   const apiKey = getBraveApiKey(db);
   if (!apiKey) throw new Error('Clé API Brave Search non configurée (Paramètres > brave_search_api_key)');
@@ -203,10 +200,11 @@ async function scraperSourceBrave(source, db) {
     domain = source.url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
   }
 
+  const freshness = getFreshness(source);
   const allArticles = [];
   const seenUrls = new Set();
 
-  // Grouper mots-clés en requêtes de 3 pour couverture large
+  // Grouper mots-clés en requêtes de 3
   const groups = [];
   for (let i = 0; i < motsCles.length; i += 3) {
     groups.push(motsCles.slice(i, i + 3));
@@ -225,7 +223,7 @@ async function scraperSourceBrave(source, db) {
         count: '20',
         search_lang: 'fr',
         country: 'fr',
-        freshness: 'pm',
+        freshness,
       });
 
       const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
@@ -265,7 +263,7 @@ async function scraperSourceBrave(source, db) {
       }
     } catch (err) {
       if (err.name === 'AbortError') {
-        logger.warn(`🔍 Brave Search timeout pour: ${query}`);
+        logger.warn(`Veille: Brave Search timeout pour: ${query}`);
       } else {
         throw err;
       }
@@ -420,9 +418,15 @@ async function scraperSource(source, db) {
 
 function sauvegarderArticles(db, sourceId, articles) {
   const { randomUUID } = require('crypto');
+  const now = new Date().toISOString();
   const stmt = db.prepare(`
-    INSERT OR IGNORE INTO veille_articles (id, source_id, titre, url, resume, date_article, mots_cles_trouves, score_pertinence, priorite)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO veille_articles (id, source_id, titre, url, resume, date_article, mots_cles_trouves, score_pertinence, priorite, first_seen_at, last_seen_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+
+  // Mettre à jour last_seen_at pour les doublons URL
+  const stmtUpdate = db.prepare(`
+    UPDATE veille_articles SET last_seen_at = ? WHERE url = ?
   `);
 
   let inseres = 0;
@@ -432,9 +436,15 @@ function sauvegarderArticles(db, sourceId, articles) {
       a.resume || '', a.date_article || '',
       JSON.stringify(a.mots_cles_trouves || []),
       a.score_pertinence || 0,
-      a.priorite || 'C'
+      a.priorite || 'C',
+      now, now
     );
-    if (r.changes > 0) inseres++;
+    if (r.changes > 0) {
+      inseres++;
+    } else {
+      // Article déjà connu : mettre à jour last_seen_at
+      stmtUpdate.run(now, a.url);
+    }
   }
   return inseres;
 }
@@ -443,5 +453,4 @@ module.exports = {
   scraperSource,
   filtrerParMotsCles,
   sauvegarderArticles,
-  MOTS_CLES_DEFAUT,
 };
