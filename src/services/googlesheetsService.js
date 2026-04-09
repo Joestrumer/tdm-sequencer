@@ -96,7 +96,17 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
     return name;
   };
 
-  const cleanedVfName = stripContact(vfName);
+  // Retirer la raison sociale juridique et tout ce qui suit
+  const stripLegalForm = (name) => {
+    const legalForms = /\b(SAS|SARL|SCI|SNC|EURL|SASU|SA|SRL|SELARL|GIE|SCM|SCEA)\b/;
+    const match = name.match(legalForms);
+    if (match && match.index > 3) {
+      return name.substring(0, match.index).trim() || name;
+    }
+    return name;
+  };
+
+  const cleanedVfName = stripLegalForm(stripContact(vfName));
 
   // Normaliser la liste canon et filtrer les doublons (préférer noms courts)
   let cleanCanonList = (Array.isArray(canonList) ? canonList : [])
