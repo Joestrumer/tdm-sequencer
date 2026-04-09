@@ -4017,6 +4017,13 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
   const [showQualificationModal, setShowQualificationModal] = useState(false);
   const [qualificationEmail, setQualificationEmail] = useState("");
 
+  // Email Finder
+  const [finderPrenom, setFinderPrenom] = useState('');
+  const [finderNom, setFinderNom] = useState('');
+  const [finderDomaine, setFinderDomaine] = useState('');
+  const [finderResults, setFinderResults] = useState(null);
+  const [finderLoading, setFinderLoading] = useState(false);
+
   // Validation bulk
   const [bulkSource, setBulkSource] = useState("leads"); // "leads" | "brut"
   const [bulkRawText, setBulkRawText] = useState("");
@@ -4082,6 +4089,25 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
   const ouvrirQualification = () => {
     setQualificationEmail(singleEmail.trim());
     setShowQualificationModal(true);
+  };
+
+  // Email Finder
+  const lancerFinder = async () => {
+    if (!finderPrenom.trim() || !finderNom.trim() || !finderDomaine.trim()) return;
+    setFinderLoading(true);
+    setFinderResults(null);
+    try {
+      const r = await api.post('/email-validation/find', {
+        prenom: finderPrenom.trim(),
+        nom: finderNom.trim(),
+        domaine: finderDomaine.trim().replace(/^@/, ''),
+      });
+      setFinderResults(r);
+      chargerCredits();
+    } catch (e) {
+      setFinderResults({ error: e.message });
+    }
+    setFinderLoading(false);
   };
 
   // Validation bulk
@@ -4246,6 +4272,74 @@ const VueValidationEmail = ({ leads, sequences, onRefresh, showToast }) => {
                 </div>
               </div>
             )}
+          </div>
+
+          {/* ── Email Finder ── */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-1">Email Finder</h3>
+            <p className="text-xs text-slate-400 mb-4">Trouvez l'email d'un contact en testant tous les patterns possibles (prénom.nom@, nom.prénom@, initiale+nom@, etc.)</p>
+            <div className="grid grid-cols-3 gap-3 mb-3">
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-0.5">Prénom</label>
+                <input type="text" value={finderPrenom} onChange={e => setFinderPrenom(e.target.value)} placeholder="Jean" className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-0.5">Nom</label>
+                <input type="text" value={finderNom} onChange={e => setFinderNom(e.target.value)} placeholder="Dupont" className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="text-[10px] text-slate-400 block mb-0.5">Domaine</label>
+                <input type="text" value={finderDomaine} onChange={e => setFinderDomaine(e.target.value)} onKeyDown={e => e.key === 'Enter' && lancerFinder()} placeholder="hotel-paris.com" className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              </div>
+            </div>
+            <button onClick={lancerFinder} disabled={finderLoading || !finderPrenom.trim() || !finderNom.trim() || !finderDomaine.trim()} className="px-5 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+              {finderLoading ? (
+                <span className="flex items-center gap-2"><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin" /> Recherche en cours...</span>
+              ) : 'Trouver l\'email'}
+            </button>
+
+            {finderResults && !finderResults.error && (
+              <div className="mt-4">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-xs text-slate-500">{finderResults.total} patterns testés pour <span className="font-medium">{finderResults.prenom} {finderResults.nom}</span> @ {finderResults.domaine}</span>
+                  {(() => {
+                    const valid = finderResults.patterns.filter(p => p.status === 'valid');
+                    return valid.length > 0 && <span className="text-xs font-semibold text-emerald-600">{valid.length} email{valid.length > 1 ? 's' : ''} trouvé{valid.length > 1 ? 's' : ''} !</span>;
+                  })()}
+                </div>
+                <div className="overflow-x-auto rounded-xl border border-slate-100">
+                  <table className="w-full text-sm">
+                    <thead className="bg-slate-50 border-b border-slate-100">
+                      <tr>
+                        <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Email</th>
+                        <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Statut</th>
+                        <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Score</th>
+                        <th className="text-left px-4 py-2 text-xs font-medium text-slate-400">Sous-statut</th>
+                        <th className="text-right px-4 py-2 text-xs font-medium text-slate-400">Action</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {finderResults.patterns.map((p, i) => (
+                        <tr key={i} className={`border-b border-slate-50 ${p.status === 'valid' ? 'bg-emerald-50/50' : p.status === 'catch_all' ? 'bg-amber-50/30' : ''}`}>
+                          <td className="px-4 py-2 font-mono text-xs text-slate-700">{p.email}</td>
+                          <td className="px-4 py-2"><ZbBadge status={p.status} /></td>
+                          <td className="px-4 py-2 text-xs text-slate-500">{p.quality_score ?? '—'}</td>
+                          <td className="px-4 py-2 text-xs text-slate-400">{p.sub_status || '—'}</td>
+                          <td className="px-4 py-2 text-right">
+                            {(p.status === 'valid' || p.status === 'catch_all') && (
+                              <button onClick={() => { setSingleEmail(p.email); setQualificationEmail(p.email); setShowQualificationModal(true); }} className="text-[11px] px-2.5 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 font-medium">
+                                Qualifier
+                              </button>
+                            )}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </div>
+            )}
+            {finderResults?.error && <p className="mt-3 text-xs text-red-500">{finderResults.error}</p>}
           </div>
 
           {/* ── Validation bulk ── */}
