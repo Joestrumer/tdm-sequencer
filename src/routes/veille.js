@@ -18,7 +18,7 @@ module.exports = (db) => {
   router.get('/articles', (req, res) => {
     try {
       const {
-        source, lu, favori, mot_cle, score_min, archived,
+        source, lu, favori, mot_cle, score_min, archived, priorite,
         page = 1, limit = 30, search
       } = req.query;
 
@@ -55,6 +55,11 @@ module.exports = (db) => {
       if (mot_cle) {
         where.push('a.mots_cles_trouves LIKE ?');
         params.push(`%${mot_cle}%`);
+      }
+
+      if (priorite) {
+        where.push('a.priorite = ?');
+        params.push(priorite);
       }
 
       if (search) {
@@ -98,16 +103,20 @@ module.exports = (db) => {
       const total = db.prepare('SELECT COUNT(*) as n FROM veille_articles WHERE archived = 0').get().n;
       const nonLus = db.prepare('SELECT COUNT(*) as n FROM veille_articles WHERE lu = 0 AND archived = 0').get().n;
       const favoris = db.prepare('SELECT COUNT(*) as n FROM veille_articles WHERE favori = 1 AND archived = 0').get().n;
+      const prioA = db.prepare("SELECT COUNT(*) as n FROM veille_articles WHERE priorite = 'A' AND archived = 0").get().n;
+      const prioB = db.prepare("SELECT COUNT(*) as n FROM veille_articles WHERE priorite = 'B' AND archived = 0").get().n;
+      const prioC = db.prepare("SELECT COUNT(*) as n FROM veille_articles WHERE priorite = 'C' AND archived = 0").get().n;
 
       const parSource = db.prepare(`
-        SELECT s.id, s.nom, COUNT(a.id) as count
+        SELECT s.id, s.nom, s.categorie, COUNT(a.id) as count,
+          SUM(CASE WHEN a.lu = 0 THEN 1 ELSE 0 END) as unread
         FROM veille_sources s
         LEFT JOIN veille_articles a ON a.source_id = s.id AND a.archived = 0
         WHERE s.actif = 1
         GROUP BY s.id
       `).all();
 
-      res.json({ total, nonLus, favoris, parSource });
+      res.json({ total, nonLus, favoris, prioA, prioB, prioC, parSource });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }

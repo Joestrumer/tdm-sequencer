@@ -1,10 +1,15 @@
 /**
- * veilleService.js — Scraping et filtrage d'articles hôteliers
+ * veilleService.js — Veille web hôtelière pour Terre de Mars
  *
- * Types de sources supportés :
- * - brave_search : Recherche via API Brave Search (recommandé, contourne Cloudflare)
+ * Types de sources :
+ * - brave_search : Recherche via API Brave Search (recommandé)
  * - html : Scraping HTML avec cheerio + sélecteurs CSS
  * - rss : Parse de flux RSS/Atom
+ *
+ * Scoring par priorité :
+ * - A : rénovation lourde, repositionnement, nomination GM, boutique indépendant
+ * - B : ouverture neuf, conversion marque, design/spa/montée en gamme
+ * - C : actu corporate groupe, signal faible
  */
 
 const cheerio = require('cheerio');
@@ -12,18 +17,170 @@ const logger = require('../config/logger');
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
-const MOTS_CLES_DEFAUT = [
-  'rénovation', 'ouverture', 'nouveau', 'inauguration', 'repositionnement',
-  'transformation', 'chantier', 'travaux', 'réhabilitation', 'palace',
-  'boutique hotel', 'resort', 'spa', '5 étoiles', 'luxe', 'hôtel',
-  'inaugure', 'ouvre', 'rénove', 'projet', 'construction'
+// ─── Mots-clés par famille (pour scoring intelligent) ───────────────────────
+
+const SIGNAUX_PRIORITE_A = [
+  // Rénovation lourde / transformation
+  'rénovation', 'rénové', 'rénove', 'réhabilitation', 'transformation',
+  'repositionnement', 'montée en gamme', 'réouverture', 'rouvre',
+  // Nomination de direction
+  'nouveau directeur', 'nomination', 'nommé directeur', 'nouveau gm',
+  'general manager', 'directeur général',
+  // Indépendants / boutique
+  'boutique-hôtel', 'boutique hôtel', 'hôtel indépendant', 'lifestyle',
 ];
+
+const SIGNAUX_PRIORITE_B = [
+  // Ouverture / pré-ouverture
+  'ouverture', 'ouvre', 'inauguration', 'inaugure', 'pré-ouverture',
+  'ouverture 2025', 'ouverture 2026', 'ouverture 2027',
+  // Conversion / branding
+  'conversion', 'rebranding', 'sous enseigne', 'collection', 'rejoint',
+  // Design / expérience
+  'design', 'spa', 'bien-être', 'resort', 'aparthotel',
+  'expérience client', 'concept',
+  // Acquisition
+  'acquisition', 'cession', 'rachat', 'portefeuille hôtelier',
+];
+
+const SIGNAUX_PRIORITE_C = [
+  // Corporate / groupe
+  'groupe hôtelier', 'développement', 'stratégie', 'plan',
+  'chiffre d\'affaires', 'résultats', 'pipeline',
+];
+
+// Mots-clés géographiques (bonus de score)
+const GEO_FRANCE = [
+  'paris', 'lyon', 'marseille', 'bordeaux', 'nice', 'côte d\'azur',
+  'alpes', 'littoral', 'stations', 'provence', 'bretagne', 'normandie',
+  'ile-de-france', 'île-de-france', 'toulouse', 'nantes', 'strasbourg',
+  'montpellier', 'cannes', 'saint-tropez', 'megève', 'courchevel',
+  'val d\'isère', 'chamonix', 'biarritz', 'deauville',
+];
+
+// Segments haut de gamme (bonus)
+const SEGMENTS_PREMIUM = [
+  'palace', '5 étoiles', '5*', 'luxe', 'premium', 'haut de gamme',
+  'relais & châteaux', 'leading hotels', 'small luxury',
+];
+
+// Tous les mots-clés combinés (pour Brave Search queries)
+const MOTS_CLES_DEFAUT = [
+  // Signaux forts
+  'rénovation', 'ouverture', 'inauguration', 'repositionnement',
+  'transformation', 'réouverture', 'pré-ouverture',
+  'nomination directeur', 'nouveau directeur général',
+  // Acquisition
+  'acquisition hôtel', 'cession hôtel', 'rachat', 'portefeuille hôtelier',
+  // Branding
+  'rebranding', 'conversion', 'sous enseigne', 'collection',
+  // Segments
+  'spa', 'bien-être', 'resort', 'boutique-hôtel', 'lifestyle', 'aparthotel',
+  // Géographie
+  'Paris', 'Lyon', 'Marseille', 'Bordeaux', 'Côte d\'Azur', 'Alpes',
+];
+
+// ─── Scoring intelligent (Priorité A / B / C) ──────────────────────────────
+
+function scorerArticle(article) {
+  const texte = `${article.titre} ${article.resume}`.toLowerCase();
+  const titreLower = article.titre.toLowerCase();
+  const trouves = [];
+  let score = 0;
+  let priorite = 'C';
+
+  // Détection signaux Priorité A (score fort)
+  let signalA = false;
+  for (const mot of SIGNAUX_PRIORITE_A) {
+    const motLower = mot.toLowerCase();
+    if (texte.includes(motLower)) {
+      trouves.push(mot);
+      score += 3;
+      if (titreLower.includes(motLower)) score += 2; // Bonus titre
+      signalA = true;
+    }
+  }
+
+  // Détection signaux Priorité B (score moyen)
+  let signalB = false;
+  for (const mot of SIGNAUX_PRIORITE_B) {
+    const motLower = mot.toLowerCase();
+    if (texte.includes(motLower)) {
+      if (!trouves.includes(mot)) trouves.push(mot);
+      score += 2;
+      if (titreLower.includes(motLower)) score += 1;
+      signalB = true;
+    }
+  }
+
+  // Détection signaux Priorité C
+  for (const mot of SIGNAUX_PRIORITE_C) {
+    const motLower = mot.toLowerCase();
+    if (texte.includes(motLower)) {
+      if (!trouves.includes(mot)) trouves.push(mot);
+      score += 1;
+    }
+  }
+
+  // Bonus géographie France
+  for (const geo of GEO_FRANCE) {
+    if (texte.includes(geo.toLowerCase())) {
+      score += 1;
+      if (!trouves.includes(geo)) trouves.push(geo);
+      break; // Un seul bonus géo
+    }
+  }
+
+  // Bonus segment premium
+  for (const seg of SEGMENTS_PREMIUM) {
+    if (texte.includes(seg.toLowerCase())) {
+      score += 1;
+      if (!trouves.includes(seg)) trouves.push(seg);
+      break;
+    }
+  }
+
+  // Déterminer la priorité
+  if (signalA) {
+    priorite = 'A';
+  } else if (signalB) {
+    priorite = 'B';
+  } else {
+    priorite = 'C';
+  }
+
+  return {
+    ...article,
+    mots_cles_trouves: trouves,
+    score_pertinence: score,
+    priorite,
+  };
+}
+
+function filtrerParMotsCles(articles, motsClesSource) {
+  // Score chaque article avec le système de priorité
+  const scored = articles.map(a => scorerArticle(a));
+
+  // Garder aussi les mots-clés spécifiques de la source
+  if (motsClesSource) {
+    const mots = Array.isArray(motsClesSource) ? motsClesSource : (typeof motsClesSource === 'string' ? JSON.parse(motsClesSource) : []);
+    for (const article of scored) {
+      const texte = `${article.titre} ${article.resume}`.toLowerCase();
+      for (const mot of mots) {
+        const motLower = mot.toLowerCase();
+        if (texte.includes(motLower) && !article.mots_cles_trouves.includes(mot)) {
+          article.mots_cles_trouves.push(mot);
+          article.score_pertinence += 1;
+        }
+      }
+    }
+  }
+
+  return scored;
+}
 
 // ─── Brave Search API ──────────────────────────────────────────────────────
 
-/**
- * Récupérer la clé Brave depuis la config DB
- */
 function getBraveApiKey(db) {
   try {
     const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('brave_search_api_key');
@@ -33,18 +190,12 @@ function getBraveApiKey(db) {
   }
 }
 
-/**
- * Rechercher via Brave Search API
- * La source.url contient le domaine à cibler (ex: hospitality-on.com)
- * Les mots-clés sont utilisés pour construire la requête
- */
 async function scraperSourceBrave(source, db) {
   const apiKey = getBraveApiKey(db);
   if (!apiKey) throw new Error('Clé API Brave Search non configurée (Paramètres > brave_search_api_key)');
 
   const motsCles = typeof source.mots_cles === 'string' ? JSON.parse(source.mots_cles) : (source.mots_cles || []);
 
-  // Extraire le domaine de l'URL source
   let domain;
   try {
     domain = new URL(source.url).hostname.replace(/^www\./, '');
@@ -52,16 +203,14 @@ async function scraperSourceBrave(source, db) {
     domain = source.url.replace(/^https?:\/\//, '').replace(/^www\./, '').split('/')[0];
   }
 
-  // Construire les requêtes : une par groupe de mots-clés pour plus de couverture
   const allArticles = [];
   const seenUrls = new Set();
 
-  // Grouper les mots-clés en requêtes de 3-4 mots max pour des résultats variés
+  // Grouper mots-clés en requêtes de 3 pour couverture large
   const groups = [];
   for (let i = 0; i < motsCles.length; i += 3) {
     groups.push(motsCles.slice(i, i + 3));
   }
-  // Si aucun mot-clé, une seule requête avec le nom de la source
   if (groups.length === 0) groups.push([source.nom]);
 
   for (const group of groups) {
@@ -76,7 +225,7 @@ async function scraperSourceBrave(source, db) {
         count: '20',
         search_lang: 'fr',
         country: 'fr',
-        freshness: 'pm',  // dernier mois
+        freshness: 'pm',
       });
 
       const res = await fetch(`https://api.search.brave.com/res/v1/web/search?${params}`, {
@@ -100,7 +249,6 @@ async function scraperSourceBrave(source, db) {
         if (seenUrls.has(r.url)) continue;
         seenUrls.add(r.url);
 
-        // Nettoyer le HTML des descriptions Brave
         let resume = r.description || '';
         if (resume.includes('<')) {
           const $desc = cheerio.load(resume);
@@ -125,7 +273,7 @@ async function scraperSourceBrave(source, db) {
       clearTimeout(timeout);
     }
 
-    // Pause entre les requêtes (rate limiting Brave : 1 req/sec sur plan gratuit)
+    // Rate limiting Brave : 1 req/sec sur plan gratuit
     await new Promise(r => setTimeout(r, 1200));
   }
 
@@ -162,15 +310,12 @@ async function scraperSourceHtml(source) {
 
   const articleSelectors = selecteurs.article.split(',').map(s => s.trim());
   let $articles = $([]);
-
   for (const sel of articleSelectors) {
     const found = $(sel);
     if (found.length > 0) { $articles = found; break; }
   }
-
   if ($articles.length === 0) {
-    const fallbacks = ['article', '.article', '.post', '.news-item', '.views-row', '[class*="article"]', '[class*="news"]'];
-    for (const fb of fallbacks) {
+    for (const fb of ['article', '.article', '.post', '.news-item', '.views-row']) {
       const found = $(fb);
       if (found.length > 0) { $articles = found; break; }
     }
@@ -178,7 +323,6 @@ async function scraperSourceHtml(source) {
 
   $articles.each((_, el) => {
     const $el = $(el);
-
     let titre = '';
     for (const sel of selecteurs.titre.split(',').map(s => s.trim())) {
       const found = $el.find(sel).first();
@@ -272,39 +416,13 @@ async function scraperSource(source, db) {
   return scraperSourceHtml(source);
 }
 
-// ─── Filtrage et scoring ───────────────────────────────────────────────────
-
-function filtrerParMotsCles(articles, motsCles) {
-  const mots = Array.isArray(motsCles) ? motsCles : (typeof motsCles === 'string' ? JSON.parse(motsCles) : MOTS_CLES_DEFAUT);
-  if (!mots || mots.length === 0) return articles.map(a => ({ ...a, mots_cles_trouves: [], score_pertinence: 1 }));
-
-  return articles.map(article => {
-    const texte = `${article.titre} ${article.resume}`.toLowerCase();
-    const trouves = [];
-
-    for (const mot of mots) {
-      const motLower = mot.toLowerCase();
-      const regex = new RegExp(motLower.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'gi');
-      if (texte.match(regex)) trouves.push(mot);
-    }
-
-    let score = trouves.length;
-    const titreLower = article.titre.toLowerCase();
-    for (const mot of trouves) {
-      if (titreLower.includes(mot.toLowerCase())) score += 1;
-    }
-
-    return { ...article, mots_cles_trouves: trouves, score_pertinence: score };
-  });
-}
-
 // ─── Sauvegarde ────────────────────────────────────────────────────────────
 
 function sauvegarderArticles(db, sourceId, articles) {
   const { randomUUID } = require('crypto');
   const stmt = db.prepare(`
-    INSERT OR IGNORE INTO veille_articles (id, source_id, titre, url, resume, date_article, mots_cles_trouves, score_pertinence)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT OR IGNORE INTO veille_articles (id, source_id, titre, url, resume, date_article, mots_cles_trouves, score_pertinence, priorite)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
 
   let inseres = 0;
@@ -313,7 +431,8 @@ function sauvegarderArticles(db, sourceId, articles) {
       randomUUID(), sourceId, a.titre, a.url,
       a.resume || '', a.date_article || '',
       JSON.stringify(a.mots_cles_trouves || []),
-      a.score_pertinence || 0
+      a.score_pertinence || 0,
+      a.priorite || 'C'
     );
     if (r.changes > 0) inseres++;
   }

@@ -341,6 +341,7 @@ db.exec(`
     date_article TEXT,
     mots_cles_trouves TEXT DEFAULT '[]',
     score_pertinence INTEGER DEFAULT 0,
+    priorite TEXT DEFAULT 'C',
     lu INTEGER DEFAULT 0,
     favori INTEGER DEFAULT 0,
     archived INTEGER DEFAULT 0,
@@ -388,6 +389,9 @@ const migrations = [
   'ALTER TABLE leads ADD COLUMN civilite TEXT DEFAULT \'\'',
   'ALTER TABLE campaigns ADD COLUMN piece_jointe TEXT',
   'ALTER TABLE vf_partners ADD COLUMN vf_display_name TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN priorite TEXT DEFAULT \'C\'',
+  'ALTER TABLE veille_sources ADD COLUMN frequence_cron TEXT',
+  'ALTER TABLE veille_sources ADD COLUMN categorie TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
@@ -711,40 +715,135 @@ for (const s of DEFAULT_SEGMENTS) {
 }
 if (segmentsInserted > 0) console.log(`🏷️  ${segmentsInserted} segment(s) par défaut ajouté(s)`);
 
-// ─── Seed source veille hospitality-on.com ──────────────────────────────────
+// ─── Seed sources de veille hôtelière (10 sources) ──────────────────────────
 try {
   const { randomUUID } = require('crypto');
-  // Seed sources Brave Search (plus fiable que le scraping HTML)
+
   const VEILLE_SOURCES = [
-    {
-      nom: 'Hospitality ON',
-      url: 'https://hospitality-on.com',
-      mots_cles: ['rénovation', 'ouverture', 'inauguration', 'repositionnement', 'transformation',
-        'chantier', 'travaux', 'réhabilitation', 'palace', 'boutique hotel', 'resort', 'spa',
-        '5 étoiles', 'luxe', 'projet', 'construction'],
-    },
+    // ── Quotidien (sources principales) ──
     {
       nom: "L'Hôtellerie Restauration",
       url: 'https://www.lhotellerie-restauration.fr',
+      categorie: 'quotidien',
+      frequence_cron: '0 7,13,19 * * *',  // 3x/jour
+      mots_cles: ['rénovation hôtel', 'ouverture 2026', 'pré-ouverture', 'réouverture',
+        'repositionnement', 'montée en gamme', 'nouveau directeur général',
+        'boutique-hôtel', 'palace', 'spa', 'Paris', 'Lyon', 'Bordeaux'],
+    },
+    {
+      nom: 'Hospitality ON',
+      url: 'https://hospitality-on.com',
+      categorie: 'quotidien',
+      frequence_cron: '0 7,13,19 * * *',
       mots_cles: ['rénovation', 'ouverture', 'inauguration', 'repositionnement',
-        'transformation', 'palace', 'boutique hotel', 'resort', 'spa', '5 étoiles',
-        'luxe', 'projet hôtelier', 'nouveau concept'],
+        'conversion', 'signing', 'pipeline', 'nomination directeur',
+        'boutique hotel', 'resort', 'palace', 'luxe', 'acquisition hôtel'],
+    },
+    {
+      nom: 'Journal des Palaces',
+      url: 'https://www.journaldespalaces.com',
+      categorie: 'quotidien',
+      frequence_cron: '0 8,14,20 * * *',
+      mots_cles: ['rénovation', 'nomination', 'directeur général', 'nommé',
+        'palace', 'luxe', '5 étoiles', 'boutique-hôtel', 'relais châteaux',
+        'spa', 'transformation', 'ouverture'],
+    },
+    // ── 2-3x par semaine ──
+    {
+      nom: 'Business Immo',
+      url: 'https://www.businessimmo.com',
+      categorie: 'hebdo',
+      frequence_cron: '0 8 * * 1,3,5',  // Lun, Mer, Ven
+      mots_cles: ['acquisition hôtel', 'cession hôtel', 'portefeuille hôtelier',
+        'rachat', 'investissement hôtelier', 'repositionnement', 'asset management',
+        'foncière hôtelière', 'reconversion hôtel'],
+    },
+    {
+      nom: 'La Tribune de l\'Hôtellerie',
+      url: 'https://www.latribunedelhotellerie.com',
+      categorie: 'hebdo',
+      frequence_cron: '0 9 * * 1,3,5',
+      mots_cles: ['rénovation', 'ouverture', 'fermeture temporaire', 'travaux',
+        'nouveau concept', 'repositionnement', 'montée en gamme',
+        'boutique-hôtel', 'lifestyle', 'spa', 'Paris', 'province'],
+    },
+    {
+      nom: 'Voyages d\'Affaires',
+      url: 'https://www.voyages-d-affaires.com',
+      categorie: 'hebdo',
+      frequence_cron: '0 9 * * 2,4',  // Mar, Jeu
+      mots_cles: ['ouverture hôtel Paris', 'ouverture 2026', 'nouvel hôtel',
+        'rénovation', 'upscale', 'business hotel', 'Île-de-France',
+        'hub transport', 'concept hôtelier'],
+    },
+    {
+      nom: 'Industrie Hôtelière',
+      url: 'https://www.industrie-hoteliere.com',
+      categorie: 'hebdo',
+      frequence_cron: '0 10 * * 1,4',  // Lun, Jeu
+      mots_cles: ['rénovation', 'transformation', 'ouverture', 'groupe hôtelier',
+        'déploiement', 'conversion', 'rebranding', 'sous enseigne',
+        'IHG', 'Accor', 'Marriott', 'Hilton'],
+    },
+    // ── Radar / opportuniste ──
+    {
+      nom: 'Tendance Hôtellerie',
+      url: 'https://www.tendancehotellerie.fr',
+      categorie: 'radar',
+      frequence_cron: '0 8 * * 1',  // 1x/semaine (lundi)
+      mots_cles: ['rénovation', 'ouverture', 'acquisition', 'réouverture',
+        'transformation', 'rebranding', 'communiqué', 'nouveau concept',
+        'palace', 'boutique', 'lifestyle'],
+    },
+    {
+      nom: 'BOAMP',
+      url: 'https://www.boamp.fr',
+      categorie: 'radar',
+      frequence_cron: '0 7 * * 1,3,5',
+      mots_cles: ['rénovation hôtel', 'travaux hôtel', 'maîtrise œuvre hôtel',
+        'aménagement hôtelier', 'équipement hôtelier', 'salle de bain hôtel',
+        'réhabilitation hébergement', 'marché public hôtel'],
+    },
+    {
+      nom: 'BODACC',
+      url: 'https://www.bodacc.fr',
+      categorie: 'radar',
+      frequence_cron: '0 7 * * 2,4',
+      mots_cles: ['hôtel cession', 'hôtel création', 'hôtellerie mutation',
+        'SCI hôtel', 'fonds commerce hôtel', 'société hôtelière',
+        'hébergement touristique'],
     },
   ];
 
+  const stmtInsertSource = db.prepare(`
+    INSERT INTO veille_sources (id, nom, url, type, selecteurs, mots_cles, frequence, frequence_cron, categorie, actif)
+    VALUES (?, ?, ?, 'brave_search', '{}', ?, '6h', ?, ?, 1)
+  `);
+
+  let sourcesAdded = 0;
   for (const src of VEILLE_SOURCES) {
-    const exists = db.prepare('SELECT id FROM veille_sources WHERE url LIKE ?').get(`%${new URL(src.url).hostname.replace('www.', '')}%`);
+    const domain = new URL(src.url).hostname.replace('www.', '');
+    const exists = db.prepare('SELECT id FROM veille_sources WHERE url LIKE ?').get(`%${domain}%`);
     if (!exists) {
-      db.prepare(`INSERT INTO veille_sources (id, nom, url, type, selecteurs, mots_cles, frequence, actif) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-        randomUUID(), src.nom, src.url, 'brave_search', '{}',
-        JSON.stringify(src.mots_cles), '6h', 1
+      stmtInsertSource.run(
+        randomUUID(), src.nom, src.url,
+        JSON.stringify(src.mots_cles),
+        src.frequence_cron || '0 */6 * * *',
+        src.categorie || 'hebdo'
       );
-      console.log(`🔍 Source veille ajoutée : ${src.nom}`);
+      sourcesAdded++;
+    } else {
+      // Mettre à jour les mots-clés, fréquence et catégorie des sources existantes
+      db.prepare('UPDATE veille_sources SET mots_cles = ?, frequence_cron = ?, categorie = ?, type = ? WHERE id = ?').run(
+        JSON.stringify(src.mots_cles),
+        src.frequence_cron || '0 */6 * * *',
+        src.categorie || 'hebdo',
+        'brave_search',
+        exists.id
+      );
     }
   }
-
-  // Migrer les sources HTML existantes vers brave_search
-  db.prepare("UPDATE veille_sources SET type = 'brave_search' WHERE type = 'html' AND url LIKE '%hospitality-on.com%'").run();
+  if (sourcesAdded > 0) console.log(`🔍 ${sourcesAdded} source(s) de veille ajoutée(s)`);
 } catch (e) {
   if (!e.message.includes('UNIQUE constraint')) {
     console.error('⚠️  Erreur seed veille:', e.message);
