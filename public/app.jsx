@@ -12704,69 +12704,121 @@ function getDefaultVue(user) {
 }
 
 // ─── VueVeille — Veille web hôtelière Terre de Mars ─────────────────────────
-// Priorité A : rénovation, repositionnement, nomination GM (fenêtre commerciale)
-// Priorité B : ouverture, conversion, design/spa (angle crédible)
-// Priorité C : actu corporate (culture marché)
+// Onglets : Opportunités (principal) / Articles / Sources & Santé
+
+const SIGNAL_LABELS = {
+  renovation: { label: 'Rénovation', color: 'bg-red-100 text-red-700' },
+  ouverture: { label: 'Ouverture', color: 'bg-emerald-100 text-emerald-700' },
+  nomination: { label: 'Nomination', color: 'bg-purple-100 text-purple-700' },
+  acquisition: { label: 'Acquisition', color: 'bg-blue-100 text-blue-700' },
+  conversion: { label: 'Conversion', color: 'bg-amber-100 text-amber-700' },
+  spa_wellness: { label: 'Spa/Wellness', color: 'bg-pink-100 text-pink-700' },
+  autre: { label: 'Autre', color: 'bg-slate-100 text-slate-600' },
+};
+
+const OPP_STATUSES = {
+  new: { label: 'Nouvelle', color: 'bg-blue-100 text-blue-700' },
+  qualified: { label: 'Qualifiée', color: 'bg-emerald-100 text-emerald-700' },
+  contacted: { label: 'Contacté', color: 'bg-amber-100 text-amber-700' },
+  won: { label: 'Gagnée', color: 'bg-green-100 text-green-700' },
+  lost: { label: 'Perdue', color: 'bg-slate-100 text-slate-500' },
+  archived: { label: 'Archivée', color: 'bg-slate-50 text-slate-400' },
+};
 
 const VueVeille = ({ showToast }) => {
-  const [articles, setArticles] = useState([]);
-  const [stats, setStats] = useState(null);
-  const [sources, setSources] = useState([]);
+  const [tab, setTab] = useState('opportunities');
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
-  const [page, setPage] = useState(1);
-  const [total, setTotal] = useState(0);
-  const [pages, setPages] = useState(0);
 
+  // Opportunities state
+  const [opportunities, setOpportunities] = useState([]);
+  const [oppDashboard, setOppDashboard] = useState(null);
+  const [oppTotal, setOppTotal] = useState(0);
+  const [oppPages, setOppPages] = useState(0);
+  const [oppPage, setOppPage] = useState(1);
+  const [oppSignalFilter, setOppSignalFilter] = useState('');
+  const [oppStrengthFilter, setOppStrengthFilter] = useState('');
+  const [oppSearch, setOppSearch] = useState('');
+  const [oppSearchDebounced, setOppSearchDebounced] = useState('');
+  const [selectedOpp, setSelectedOpp] = useState(null);
+
+  // Articles state
+  const [articles, setArticles] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [artTotal, setArtTotal] = useState(0);
+  const [artPages, setArtPages] = useState(0);
+  const [artPage, setArtPage] = useState(1);
   const [filtre, setFiltre] = useState('non-lus');
   const [prioFiltre, setPrioFiltre] = useState('');
   const [sourceFiltre, setSourceFiltre] = useState('');
   const [search, setSearch] = useState('');
   const [searchDebounced, setSearchDebounced] = useState('');
-  const [showSources, setShowSources] = useState(false);
 
+  // Sources state
+  const [sources, setSources] = useState([]);
+  const [sourceHealth, setSourceHealth] = useState(null);
+  const [showSources, setShowSources] = useState(false);
   const [editSource, setEditSource] = useState(null);
   const [sourceForm, setSourceForm] = useState({ nom: '', url: '', type: 'brave_search', mots_cles: '' });
+  const [recentRuns, setRecentRuns] = useState([]);
 
-  useEffect(() => {
-    const t = setTimeout(() => setSearchDebounced(search), 400);
-    return () => clearTimeout(t);
-  }, [search]);
+  useEffect(() => { const t = setTimeout(() => setSearchDebounced(search), 400); return () => clearTimeout(t); }, [search]);
+  useEffect(() => { const t = setTimeout(() => setOppSearchDebounced(oppSearch), 400); return () => clearTimeout(t); }, [oppSearch]);
 
-  const buildParams = (p) => {
-    const params = new URLSearchParams({ page: p, limit: 30 });
-    if (filtre === 'non-lus') params.set('lu', '0');
-    else if (filtre === 'favoris') params.set('favori', '1');
-    else if (filtre === 'archived') params.set('archived', '1');
-    if (prioFiltre) params.set('priorite', prioFiltre);
-    if (sourceFiltre) params.set('source', sourceFiltre);
-    if (searchDebounced) params.set('search', searchDebounced);
-    return params;
+  // ─── Loaders ─────────────────────────────────────────────────────────────
+
+  const loadOpportunities = async (p = 1) => {
+    try {
+      const params = new URLSearchParams({ page: p, limit: 20 });
+      if (oppSignalFilter) params.set('signal_type', oppSignalFilter);
+      if (oppStrengthFilter) params.set('signal_strength', oppStrengthFilter);
+      if (oppSearchDebounced) params.set('search', oppSearchDebounced);
+      const res = await api.get(`/veille/opportunities?${params}`);
+      if (p === 1) setOpportunities(res.opportunities || []);
+      else setOpportunities(prev => [...prev, ...(res.opportunities || [])]);
+      setOppTotal(res.total || 0);
+      setOppPages(res.pages || 0);
+      setOppPage(p);
+    } catch (_) {}
   };
 
-  const loadArticles = async (p = page) => {
+  const loadOppDashboard = async () => { try { setOppDashboard(await api.get('/veille/opportunities/dashboard')); } catch (_) {} };
+
+  const loadArticles = async (p = 1) => {
     try {
-      const res = await api.get(`/veille/articles?${buildParams(p)}`);
-      setArticles(res.articles || []);
-      setTotal(res.total || 0);
-      setPages(res.pages || 0);
-    } catch (err) {
-      showToast?.('Erreur chargement: ' + err.message, 'error');
-    }
+      const params = new URLSearchParams({ page: p, limit: 30 });
+      if (filtre === 'non-lus') params.set('lu', '0');
+      else if (filtre === 'favoris') params.set('favori', '1');
+      else if (filtre === 'archived') params.set('archived', '1');
+      if (prioFiltre) params.set('priorite', prioFiltre);
+      if (sourceFiltre) params.set('source', sourceFiltre);
+      if (searchDebounced) params.set('search', searchDebounced);
+      const res = await api.get(`/veille/articles?${params}`);
+      if (p === 1) setArticles(res.articles || []);
+      else setArticles(prev => [...prev, ...(res.articles || [])]);
+      setArtTotal(res.total || 0);
+      setArtPages(res.pages || 0);
+      setArtPage(p);
+    } catch (_) {}
   };
 
   const loadStats = async () => { try { setStats(await api.get('/veille/articles/stats')); } catch (_) {} };
   const loadSources = async () => { try { setSources(await api.get('/veille/sources') || []); } catch (_) {} };
+  const loadSourceHealth = async () => { try { setSourceHealth(await api.get('/veille/sources/health')); } catch (_) {} };
+  const loadRecentRuns = async () => { try { setRecentRuns(await api.get('/veille/runs?limit=20') || []); } catch (_) {} };
 
   const charger = async () => {
     setLoading(true);
-    await Promise.all([loadArticles(1), loadStats(), loadSources()]);
-    setPage(1);
+    await Promise.all([loadOpportunities(1), loadOppDashboard(), loadStats(), loadSources()]);
     setLoading(false);
   };
 
   useEffect(() => { charger(); }, []);
-  useEffect(() => { loadArticles(1); setPage(1); }, [filtre, prioFiltre, sourceFiltre, searchDebounced]);
+  useEffect(() => { if (tab === 'articles') { loadArticles(1); } }, [filtre, prioFiltre, sourceFiltre, searchDebounced]);
+  useEffect(() => { if (tab === 'opportunities') { loadOpportunities(1); } }, [oppSignalFilter, oppStrengthFilter, oppSearchDebounced]);
+  useEffect(() => { if (tab === 'health') { loadSourceHealth(); loadRecentRuns(); } }, [tab]);
+
+  // ─── Actions ─────────────────────────────────────────────────────────────
 
   const handleScrapeAll = async () => {
     setScraping(true);
@@ -12778,14 +12830,28 @@ const VueVeille = ({ showToast }) => {
     setScraping(false);
   };
 
-  const handleScrapeSource = async (sourceId) => {
-    setScraping(true);
+  const handleEnrich = async () => {
     try {
-      const res = await api.post(`/veille/sources/${sourceId}/run`);
-      showToast?.(`${res.nouveaux} nouvel(s) article(s)`, 'success');
-      await charger();
+      await api.post('/veille/enrich');
+      showToast?.('Enrichissement lancé', 'success');
+      setTimeout(() => { loadOpportunities(1); loadOppDashboard(); }, 5000);
     } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
-    setScraping(false);
+  };
+
+  const handleOppStatus = async (oppId, status) => {
+    try {
+      await api.patch(`/veille/opportunities/${oppId}`, { status });
+      setOpportunities(prev => prev.map(o => o.id === oppId ? { ...o, status } : o));
+      if (selectedOpp?.id === oppId) setSelectedOpp(prev => ({ ...prev, status }));
+      showToast?.('Statut mis à jour', 'success');
+    } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
+  };
+
+  const handleViewOpp = async (oppId) => {
+    try {
+      const opp = await api.get(`/veille/opportunities/${oppId}`);
+      setSelectedOpp(opp);
+    } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
   };
 
   const toggleLu = async (a) => {
@@ -12796,14 +12862,6 @@ const VueVeille = ({ showToast }) => {
   };
   const archiver = async (a) => {
     try { await api.patch(`/veille/articles/${a.id}`, { archived: true, lu: true }); setArticles(p => p.filter(x => x.id !== a.id)); loadStats(); } catch (_) {}
-  };
-  const handleClickArticle = async (a) => {
-    if (!a.lu) { try { await api.patch(`/veille/articles/${a.id}`, { lu: true }); setArticles(p => p.map(x => x.id === a.id ? { ...x, lu: 1 } : x)); loadStats(); } catch (_) {} }
-  };
-
-  const handleLoadMore = async () => {
-    const np = page + 1; setPage(np);
-    try { const res = await api.get(`/veille/articles?${buildParams(np)}`); setArticles(p => [...p, ...(res.articles || [])]); } catch (_) {}
   };
 
   const saveSource = async () => {
@@ -12821,16 +12879,13 @@ const VueVeille = ({ showToast }) => {
   };
 
   const PRIO = {
-    A: { label: 'A', color: 'bg-red-100 text-red-700 border-red-200', dot: 'bg-red-500', desc: 'Rénovation / Repositionnement / Nomination' },
-    B: { label: 'B', color: 'bg-amber-100 text-amber-700 border-amber-200', dot: 'bg-amber-500', desc: 'Ouverture / Conversion / Spa' },
-    C: { label: 'C', color: 'bg-slate-100 text-slate-600 border-slate-200', dot: 'bg-slate-400', desc: 'Corporate / Culture marché' },
+    A: { label: 'A', color: 'bg-red-100 text-red-700 border-red-200' },
+    B: { label: 'B', color: 'bg-amber-100 text-amber-700 border-amber-200' },
+    C: { label: 'C', color: 'bg-slate-100 text-slate-600 border-slate-200' },
   };
 
-  const catLabel = (cat) => {
-    if (cat === 'quotidien') return { text: 'Quotidien', cls: 'bg-blue-50 text-blue-600' };
-    if (cat === 'hebdo') return { text: '2-3x/sem', cls: 'bg-amber-50 text-amber-600' };
-    return { text: 'Radar', cls: 'bg-slate-50 text-slate-500' };
-  };
+  const healthColor = (h) => h === 'healthy' ? 'bg-emerald-500' : h === 'degraded' ? 'bg-amber-500' : h === 'failing' ? 'bg-red-500' : 'bg-slate-300';
+  const catLabel = (cat) => cat === 'quotidien' ? { text: 'Quotidien', cls: 'bg-blue-50 text-blue-600' } : cat === 'hebdo' ? { text: '2-3x/sem', cls: 'bg-amber-50 text-amber-600' } : { text: 'Radar', cls: 'bg-slate-50 text-slate-500' };
 
   if (loading) return (
     <div className="flex items-center justify-center py-20">
@@ -12843,83 +12898,60 @@ const VueVeille = ({ showToast }) => {
 
   return (
     <div className="space-y-4">
-      {/* KPIs avec priorités */}
-      {stats && (
+      {/* KPIs opportunités */}
+      {oppDashboard && (
         <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setPrioFiltre(prioFiltre === 'A' ? '' : 'A'); setFiltre('tous'); }}>
+          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setTab('opportunities'); setOppStrengthFilter(oppStrengthFilter === 'A' ? '' : 'A'); }}>
             <div className="text-xs font-bold text-red-600 mb-0.5">PRIO A</div>
-            <div className="text-2xl font-bold text-red-900">{stats.prioA || 0}</div>
-            <div className="text-xs text-red-600 mt-0.5">Fenêtre commerciale</div>
+            <div className="text-2xl font-bold text-red-900">{oppDashboard.prioA || 0}</div>
+            <div className="text-xs text-red-600 mt-0.5">Opportunités fortes</div>
           </div>
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setPrioFiltre(prioFiltre === 'B' ? '' : 'B'); setFiltre('tous'); }}>
+          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setTab('opportunities'); setOppStrengthFilter(oppStrengthFilter === 'B' ? '' : 'B'); }}>
             <div className="text-xs font-bold text-amber-600 mb-0.5">PRIO B</div>
-            <div className="text-2xl font-bold text-amber-900">{stats.prioB || 0}</div>
+            <div className="text-2xl font-bold text-amber-900">{oppDashboard.prioB || 0}</div>
             <div className="text-xs text-amber-600 mt-0.5">Angle crédible</div>
           </div>
-          <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl border border-slate-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setPrioFiltre(prioFiltre === 'C' ? '' : 'C'); setFiltre('tous'); }}>
-            <div className="text-xs font-bold text-slate-500 mb-0.5">PRIO C</div>
-            <div className="text-2xl font-bold text-slate-900">{stats.prioC || 0}</div>
-            <div className="text-xs text-slate-500 mt-0.5">Culture marché</div>
-          </div>
           <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-3">
-            <div className="text-xs font-medium text-blue-600 mb-0.5">NON LUS</div>
-            <div className="text-2xl font-bold text-blue-900">{stats.nonLus}</div>
-            <div className="text-xs text-blue-600 mt-0.5">A consulter</div>
+            <div className="text-xs font-medium text-blue-600 mb-0.5">NOUVELLES</div>
+            <div className="text-2xl font-bold text-blue-900">{oppDashboard.newCount || 0}</div>
+            <div className="text-xs text-blue-600 mt-0.5">A qualifier</div>
           </div>
-          <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-xl border border-rose-200 p-3">
-            <div className="text-xs font-medium text-rose-600 mb-0.5">FAVORIS</div>
-            <div className="text-2xl font-bold text-rose-900">{stats.favoris}</div>
-            <div className="text-xs text-rose-600 mt-0.5">Sauvegardés</div>
+          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-3">
+            <div className="text-xs font-medium text-purple-600 mb-0.5">MULTI-SOURCES</div>
+            <div className="text-2xl font-bold text-purple-900">{oppDashboard.multiSource || 0}</div>
+            <div className="text-xs text-purple-600 mt-0.5">Confirmées</div>
           </div>
           <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-3">
-            <div className="text-xs font-medium text-emerald-600 mb-0.5">SOURCES</div>
-            <div className="text-2xl font-bold text-emerald-900">{sources.filter(s => s.actif).length}</div>
-            <div className="text-xs text-emerald-600 mt-0.5">Actives / {sources.length}</div>
+            <div className="text-xs font-medium text-emerald-600 mb-0.5">ENRICHIS</div>
+            <div className="text-2xl font-bold text-emerald-900">{oppDashboard.enrichment?.enriched || 0}</div>
+            <div className="text-xs text-emerald-600 mt-0.5">{oppDashboard.enrichment?.pending || 0} en attente</div>
+          </div>
+          <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl border border-slate-200 p-3">
+            <div className="text-xs font-medium text-slate-500 mb-0.5">TOTAL OPP</div>
+            <div className="text-2xl font-bold text-slate-900">{oppDashboard.total || 0}</div>
+            <div className="text-xs text-slate-500 mt-0.5">{sources.filter(s => s.actif).length} sources</div>
           </div>
         </div>
       )}
 
-      {/* Barre de filtres */}
+      {/* Onglets + Actions */}
       <div className="bg-white rounded-xl border border-slate-100 p-4">
         <div className="flex flex-wrap items-center gap-3">
           <div className="flex bg-slate-100 rounded-lg p-0.5">
             {[
-              { id: 'non-lus', label: `Non lus${stats ? ` (${stats.nonLus})` : ''}` },
-              { id: 'favoris', label: 'Favoris' },
-              { id: 'tous', label: 'Tous' },
-              { id: 'archived', label: 'Archives' },
-            ].map(f => (
-              <button key={f.id} onClick={() => { setFiltre(f.id); setPrioFiltre(''); }}
-                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${filtre === f.id && !prioFiltre ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
-                {f.label}
+              { id: 'opportunities', label: `Opportunités${oppDashboard ? ` (${oppDashboard.total || 0})` : ''}` },
+              { id: 'articles', label: `Articles${stats ? ` (${stats.nonLus})` : ''}` },
+              { id: 'health', label: 'Sources & Santé' },
+            ].map(t => (
+              <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'articles' && articles.length === 0) loadArticles(1); }}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${tab === t.id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+                {t.label}
               </button>
             ))}
           </div>
-
-          {/* Filtre priorité */}
-          <div className="flex gap-1">
-            {['A', 'B', 'C'].map(p => (
-              <button key={p} onClick={() => { setPrioFiltre(prioFiltre === p ? '' : p); if (filtre !== 'tous' && filtre !== 'non-lus') setFiltre('tous'); }}
-                className={`px-2 py-1 rounded text-xs font-bold transition-colors ${prioFiltre === p ? PRIO[p].color + ' ring-1 ring-offset-1' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
-                {p}
-              </button>
-            ))}
-          </div>
-
-          <select value={sourceFiltre} onChange={e => setSourceFiltre(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white">
-            <option value="">Toutes les sources</option>
-            {sources.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
-          </select>
-
-          <input type="text" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)}
-            className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:ring-1 focus:ring-blue-300" />
-
           <div className="flex-1" />
-
-          <button onClick={() => setShowSources(!showSources)}
-            className={`text-xs px-3 py-1.5 rounded-lg border transition-colors ${showSources ? 'bg-slate-900 text-white border-slate-900' : 'border-slate-200 hover:bg-slate-50'}`}>
-            Sources ({sources.length})
+          <button onClick={handleEnrich} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">
+            Enrichir
           </button>
           <button onClick={handleScrapeAll} disabled={scraping}
             className="text-xs px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
@@ -12928,147 +12960,338 @@ const VueVeille = ({ showToast }) => {
         </div>
       </div>
 
-      {/* Panneau sources */}
-      {showSources && (
-        <div className="bg-white rounded-xl border border-slate-100 p-4">
-          <div className="flex items-center justify-between mb-3">
-            <div>
-              <h3 className="text-sm font-semibold text-slate-800">Sources de veille ({sources.length})</h3>
-              <p className="text-xs text-slate-400 mt-0.5">Quotidien / 2-3x par semaine / Radar opportuniste</p>
+      {/* ─── Onglet Opportunités ─────────────────────────────────────────────── */}
+      {tab === 'opportunities' && (
+        <>
+          {/* Filtres opportunités */}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex gap-1">
+              {['A', 'B', 'C'].map(s => (
+                <button key={s} onClick={() => setOppStrengthFilter(oppStrengthFilter === s ? '' : s)}
+                  className={`px-2 py-1 rounded text-xs font-bold transition-colors ${oppStrengthFilter === s ? PRIO[s].color + ' ring-1 ring-offset-1' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
+                  {s}
+                </button>
+              ))}
             </div>
-            <button onClick={() => { setEditSource({}); setSourceForm({ nom: '', url: '', type: 'brave_search', mots_cles: '' }); }}
-              className="text-xs px-3 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">+ Ajouter</button>
+            <select value={oppSignalFilter} onChange={e => setOppSignalFilter(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white">
+              <option value="">Tous les signaux</option>
+              {Object.entries(SIGNAL_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
+            </select>
+            <input type="text" placeholder="Rechercher hôtel, ville, groupe..." value={oppSearch} onChange={e => setOppSearch(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-blue-300" />
           </div>
 
-          {editSource && (
-            <div className="bg-slate-50 rounded-lg p-3 mb-3 space-y-2">
-              <div className="grid grid-cols-2 gap-2">
-                <input type="text" placeholder="Nom" value={sourceForm.nom} onChange={e => setSourceForm(p => ({ ...p, nom: e.target.value }))} className="text-xs border border-slate-200 rounded px-2 py-1.5" />
-                <input type="text" placeholder="URL du site" value={sourceForm.url} onChange={e => setSourceForm(p => ({ ...p, url: e.target.value }))} className="text-xs border border-slate-200 rounded px-2 py-1.5" />
+          {/* Détail opportunité sélectionnée */}
+          {selectedOpp && (
+            <div className="bg-white rounded-xl border border-blue-200 p-5 shadow-sm">
+              <div className="flex items-start justify-between mb-3">
+                <div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <span className={`text-xs px-2 py-0.5 rounded font-bold ${PRIO[selectedOpp.signal_strength]?.color || 'bg-slate-100'}`}>{selectedOpp.signal_strength}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${SIGNAL_LABELS[selectedOpp.signal_type]?.color || 'bg-slate-100'}`}>{SIGNAL_LABELS[selectedOpp.signal_type]?.label || selectedOpp.signal_type}</span>
+                    <span className={`text-xs px-2 py-0.5 rounded ${OPP_STATUSES[selectedOpp.status]?.color || 'bg-slate-100'}`}>{OPP_STATUSES[selectedOpp.status]?.label || selectedOpp.status}</span>
+                  </div>
+                  <h3 className="text-lg font-bold text-slate-900">{selectedOpp.hotel_name || 'Établissement inconnu'}</h3>
+                  <p className="text-sm text-slate-500">{[selectedOpp.city, selectedOpp.region, selectedOpp.group_name ? `Groupe: ${selectedOpp.group_name}` : ''].filter(Boolean).join(' · ')}</p>
+                </div>
+                <button onClick={() => setSelectedOpp(null)} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
               </div>
-              <div className="grid grid-cols-2 gap-2">
-                <select value={sourceForm.type} onChange={e => setSourceForm(p => ({ ...p, type: e.target.value }))} className="text-xs border border-slate-200 rounded px-2 py-1.5">
-                  <option value="brave_search">Brave Search (recommandé)</option>
-                  <option value="html">HTML (scraping)</option>
-                  <option value="rss">RSS</option>
-                </select>
-                <input type="text" placeholder="Mots-clés (virgules)" value={sourceForm.mots_cles} onChange={e => setSourceForm(p => ({ ...p, mots_cles: e.target.value }))} className="text-xs border border-slate-200 rounded px-2 py-1.5" />
+
+              <div className="grid grid-cols-4 gap-3 mb-3">
+                <div className="bg-slate-50 rounded-lg p-2 text-center">
+                  <div className="text-xl font-bold text-slate-900">{selectedOpp.business_score}</div>
+                  <div className="text-xs text-slate-500">Score /100</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2 text-center">
+                  <div className="text-xl font-bold text-slate-900">{selectedOpp.confidence_score}</div>
+                  <div className="text-xs text-slate-500">Confiance</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2 text-center">
+                  <div className="text-xl font-bold text-slate-900">{selectedOpp.source_count}</div>
+                  <div className="text-xs text-slate-500">Sources</div>
+                </div>
+                <div className="bg-slate-50 rounded-lg p-2 text-center">
+                  <div className="text-xl font-bold text-slate-900">{selectedOpp.project_date || '—'}</div>
+                  <div className="text-xs text-slate-500">Date projet</div>
+                </div>
               </div>
-              <div className="flex gap-2">
-                <button onClick={saveSource} className="text-xs px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700">{editSource.id ? 'Modifier' : 'Ajouter'}</button>
-                <button onClick={() => setEditSource(null)} className="text-xs px-3 py-1 rounded border border-slate-200 hover:bg-slate-100">Annuler</button>
+
+              {selectedOpp.recommended_angle && (
+                <div className="bg-blue-50 rounded-lg p-3 mb-3">
+                  <div className="text-xs font-semibold text-blue-700 mb-1">Angle commercial recommandé</div>
+                  <p className="text-xs text-blue-800">{selectedOpp.recommended_angle}</p>
+                </div>
+              )}
+
+              {/* Pipeline statut */}
+              <div className="flex items-center gap-1 mb-3">
+                <span className="text-xs text-slate-500 mr-2">Statut :</span>
+                {['new', 'qualified', 'contacted', 'won', 'lost'].map(s => (
+                  <button key={s} onClick={() => handleOppStatus(selectedOpp.id, s)}
+                    className={`text-xs px-2 py-1 rounded transition-colors ${selectedOpp.status === s ? OPP_STATUSES[s].color + ' ring-1 ring-offset-1' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
+                    {OPP_STATUSES[s].label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Articles liés */}
+              {selectedOpp.articles?.length > 0 && (
+                <div>
+                  <div className="text-xs font-semibold text-slate-600 mb-2">Articles liés ({selectedOpp.articles.length})</div>
+                  <div className="space-y-1">
+                    {selectedOpp.articles.map(a => (
+                      <div key={a.id} className="flex items-center gap-2 bg-slate-50 rounded px-3 py-1.5">
+                        <span className="text-xs text-slate-400">{a.source_nom}</span>
+                        <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex-1 truncate">{a.titre}</a>
+                        <span className="text-xs text-slate-300">{new Date(a.created_at).toLocaleDateString('fr-FR')}</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Liste opportunités */}
+          {opportunities.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
+              <div className="text-3xl mb-3">🎯</div>
+              <p className="text-sm text-slate-500">Aucune opportunité détectée</p>
+              <p className="text-xs text-slate-400 mt-1">Lancez un scraping puis un enrichissement pour détecter des opportunités</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {opportunities.map(opp => {
+                const signal = SIGNAL_LABELS[opp.signal_type] || SIGNAL_LABELS.autre;
+                const prio = PRIO[opp.signal_strength] || PRIO.C;
+                return (
+                  <div key={opp.id} onClick={() => handleViewOpp(opp.id)}
+                    className={`bg-white rounded-xl border p-4 cursor-pointer hover:shadow-md transition-all ${opp.signal_strength === 'A' ? 'border-l-4 border-l-red-400' : opp.signal_strength === 'B' ? 'border-l-4 border-l-amber-400' : 'border-slate-100'}`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${prio.color}`}>
+                        {opp.business_score}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-0.5">
+                          <span className="text-sm font-semibold text-slate-900">{opp.hotel_name || 'Établissement non identifié'}</span>
+                          {opp.city && <span className="text-xs text-slate-400">{opp.city}</span>}
+                        </div>
+                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${signal.color}`}>{signal.label}</span>
+                          {opp.group_name && <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{opp.group_name}</span>}
+                          <span className={`text-xs px-1.5 py-0.5 rounded ${OPP_STATUSES[opp.status]?.color || 'bg-slate-100'}`}>{OPP_STATUSES[opp.status]?.label || opp.status}</span>
+                          {opp.project_date && <span className="text-xs text-slate-400">Projet {opp.project_date}</span>}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {opp.source_count} source{opp.source_count > 1 ? 's' : ''} · confiance {opp.confidence_score}/100
+                          · détecté {new Date(opp.first_seen_at).toLocaleDateString('fr-FR')}
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 flex gap-1">
+                        {opp.status === 'new' && (
+                          <button onClick={e => { e.stopPropagation(); handleOppStatus(opp.id, 'qualified'); }}
+                            className="text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100">Qualifier</button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {oppPage < oppPages && (
+                <div className="text-center py-4">
+                  <button onClick={() => loadOpportunities(oppPage + 1)}
+                    className="text-xs px-6 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">
+                    Charger plus ({oppTotal - opportunities.length} restantes)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── Onglet Articles ────────────────────────────────────────────────── */}
+      {tab === 'articles' && (
+        <>
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="flex bg-slate-100 rounded-lg p-0.5">
+              {[{ id: 'non-lus', label: `Non lus${stats ? ` (${stats.nonLus})` : ''}` }, { id: 'favoris', label: 'Favoris' }, { id: 'tous', label: 'Tous' }, { id: 'archived', label: 'Archives' }].map(f => (
+                <button key={f.id} onClick={() => { setFiltre(f.id); setPrioFiltre(''); }}
+                  className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${filtre === f.id && !prioFiltre ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+                  {f.label}
+                </button>
+              ))}
+            </div>
+            <div className="flex gap-1">
+              {['A', 'B', 'C'].map(p => (
+                <button key={p} onClick={() => { setPrioFiltre(prioFiltre === p ? '' : p); if (filtre !== 'tous') setFiltre('tous'); }}
+                  className={`px-2 py-1 rounded text-xs font-bold transition-colors ${prioFiltre === p ? PRIO[p].color + ' ring-1 ring-offset-1' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>{p}</button>
+              ))}
+            </div>
+            <select value={sourceFiltre} onChange={e => setSourceFiltre(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white">
+              <option value="">Toutes les sources</option>
+              {sources.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+            </select>
+            <input type="text" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:ring-1 focus:ring-blue-300" />
+          </div>
+
+          {articles.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
+              <div className="text-3xl mb-3">🔍</div>
+              <p className="text-sm text-slate-500">Aucun article trouvé</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {articles.map(article => {
+                const prio = PRIO[article.priorite] || PRIO.C;
+                return (
+                  <div key={article.id} className={`bg-white rounded-xl border p-4 transition-all ${article.lu ? 'border-slate-100' : 'border-l-4 ' + (article.priorite === 'A' ? 'border-l-red-400 bg-red-50/20' : article.priorite === 'B' ? 'border-l-amber-400 bg-amber-50/20' : 'border-l-slate-300 bg-blue-50/20')}`}>
+                    <div className="flex items-start gap-3">
+                      <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${prio.color}`}>{prio.label}</div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          {!article.lu && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
+                          <a href={article.url} target="_blank" rel="noopener noreferrer"
+                            onClick={() => { if (!article.lu) { api.patch(`/veille/articles/${article.id}`, { lu: true }).then(() => { setArticles(p => p.map(x => x.id === article.id ? { ...x, lu: 1 } : x)); loadStats(); }).catch(() => {}); } }}
+                            className={`text-sm font-semibold hover:text-blue-600 transition-colors ${article.lu ? 'text-slate-600' : 'text-slate-900'}`}>
+                            {article.titre}
+                          </a>
+                        </div>
+                        {article.resume && <p className="text-xs text-slate-500 line-clamp-2 mb-1.5">{article.resume}</p>}
+                        <div className="flex flex-wrap items-center gap-1.5">
+                          <span className="text-xs text-slate-400 font-medium">{article.source_nom}</span>
+                          {article.date_article && <span className="text-xs text-slate-300">· {article.date_article}</span>}
+                          <span className="text-xs text-slate-300">· Score {article.score_pertinence}</span>
+                          {article.mots_cles_trouves?.slice(0, 4).map((mot, i) => (
+                            <span key={i} className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{mot}</span>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-0.5 flex-shrink-0">
+                        <button onClick={() => toggleLu(article)} className={`p-1.5 rounded-lg transition-colors ${article.lu ? 'hover:bg-blue-50 text-slate-300' : 'bg-blue-100 text-blue-600'}`}>
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><circle cx="12" cy="12" r="10" />{article.lu && <path d="M8 12l3 3 5-5" />}</svg>
+                        </button>
+                        <button onClick={() => toggleFavori(article)} className={`p-1.5 rounded-lg transition-colors ${article.favori ? 'text-rose-500 bg-rose-50' : 'text-slate-300 hover:bg-slate-50'}`}>
+                          <svg className="w-4 h-4" fill={article.favori ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" /></svg>
+                        </button>
+                        <button onClick={() => archiver(article)} className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-50 transition-colors">
+                          <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}><path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" /></svg>
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {artPage < artPages && (
+                <div className="text-center py-4">
+                  <button onClick={() => loadArticles(artPage + 1)} className="text-xs px-6 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">Charger plus ({artTotal - articles.length} restants)</button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── Onglet Sources & Santé ─────────────────────────────────────────── */}
+      {tab === 'health' && (
+        <div className="space-y-4">
+          {/* Résumé santé */}
+          {sourceHealth && (
+            <div className="grid grid-cols-4 gap-3">
+              <div className="bg-emerald-50 rounded-xl border border-emerald-200 p-3 text-center">
+                <div className="text-2xl font-bold text-emerald-700">{sourceHealth.summary.healthy}</div>
+                <div className="text-xs text-emerald-600">Healthy</div>
+              </div>
+              <div className="bg-amber-50 rounded-xl border border-amber-200 p-3 text-center">
+                <div className="text-2xl font-bold text-amber-700">{sourceHealth.summary.degraded}</div>
+                <div className="text-xs text-amber-600">Degraded</div>
+              </div>
+              <div className="bg-red-50 rounded-xl border border-red-200 p-3 text-center">
+                <div className="text-2xl font-bold text-red-700">{sourceHealth.summary.failing}</div>
+                <div className="text-xs text-red-600">Failing</div>
+              </div>
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-3 text-center">
+                <div className="text-2xl font-bold text-slate-700">{sourceHealth.summary.unknown}</div>
+                <div className="text-xs text-slate-500">Unknown</div>
               </div>
             </div>
           )}
 
-          <div className="space-y-1.5">
-            {sources.map(s => {
-              const cat = catLabel(s.categorie);
-              return (
-                <div key={s.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2">
-                      <span className={`w-2 h-2 rounded-full ${s.actif ? 'bg-emerald-500' : 'bg-slate-300'}`} />
-                      <span className="text-xs font-medium text-slate-800">{s.nom}</span>
-                      <span className={`text-xs px-1.5 py-0.5 rounded ${cat.cls}`}>{cat.text}</span>
-                    </div>
-                    <div className="text-xs text-slate-400 ml-4 mt-0.5">
-                      {s.article_count || 0} articles · {s.unread_count || 0} non lus
-                      {s.last_run && ` · ${new Date(s.last_run).toLocaleString('fr-FR')}`}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1 flex-shrink-0 ml-2">
-                    <button onClick={() => handleScrapeSource(s.id)} disabled={scraping} className="text-xs px-2 py-1 rounded hover:bg-blue-50 text-blue-600 disabled:opacity-50">Scan</button>
-                    <button onClick={() => { setEditSource(s); setSourceForm({ nom: s.nom, url: s.url, type: s.type, mots_cles: Array.isArray(s.mots_cles) ? s.mots_cles.join(', ') : '' }); }} className="text-xs px-2 py-1 rounded hover:bg-slate-200 text-slate-600">Modifier</button>
-                    <button onClick={() => deleteSource(s.id)} className="text-xs px-2 py-1 rounded hover:bg-red-50 text-red-500">Suppr</button>
-                  </div>
+          {/* Sources */}
+          <div className="bg-white rounded-xl border border-slate-100 p-4">
+            <div className="flex items-center justify-between mb-3">
+              <h3 className="text-sm font-semibold text-slate-800">Sources ({sources.length})</h3>
+              <button onClick={() => { setEditSource({}); setSourceForm({ nom: '', url: '', type: 'brave_search', mots_cles: '' }); }}
+                className="text-xs px-3 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">+ Ajouter</button>
+            </div>
+
+            {editSource && (
+              <div className="bg-slate-50 rounded-lg p-3 mb-3 space-y-2">
+                <div className="grid grid-cols-2 gap-2">
+                  <input type="text" placeholder="Nom" value={sourceForm.nom} onChange={e => setSourceForm(p => ({ ...p, nom: e.target.value }))} className="text-xs border border-slate-200 rounded px-2 py-1.5" />
+                  <input type="text" placeholder="URL du site" value={sourceForm.url} onChange={e => setSourceForm(p => ({ ...p, url: e.target.value }))} className="text-xs border border-slate-200 rounded px-2 py-1.5" />
                 </div>
-              );
-            })}
-          </div>
-        </div>
-      )}
-
-      {/* Liste d'articles */}
-      {articles.length === 0 ? (
-        <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
-          <div className="text-3xl mb-3">🔍</div>
-          <p className="text-sm text-slate-500">Aucun article trouvé</p>
-          <p className="text-xs text-slate-400 mt-1">{sources.length === 0 ? 'Ajoutez des sources et lancez un scraping' : 'Changez les filtres ou lancez un scraping'}</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {articles.map(article => {
-            const prio = PRIO[article.priorite] || PRIO.C;
-            return (
-              <div key={article.id} className={`bg-white rounded-xl border p-4 transition-all ${article.lu ? 'border-slate-100' : 'border-l-4 ' + (article.priorite === 'A' ? 'border-l-red-400 bg-red-50/20' : article.priorite === 'B' ? 'border-l-amber-400 bg-amber-50/20' : 'border-l-slate-300 bg-blue-50/20')}`}>
-                <div className="flex items-start gap-3">
-                  {/* Badge priorité */}
-                  <div className={`flex-shrink-0 w-8 h-8 rounded-lg flex items-center justify-center text-xs font-bold ${prio.color}`}>
-                    {prio.label}
-                  </div>
-
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
-                      {!article.lu && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
-                      <a href={article.url} target="_blank" rel="noopener noreferrer"
-                        onClick={() => handleClickArticle(article)}
-                        className={`text-sm font-semibold hover:text-blue-600 transition-colors ${article.lu ? 'text-slate-600' : 'text-slate-900'}`}>
-                        {article.titre}
-                      </a>
-                    </div>
-
-                    {article.resume && (
-                      <p className="text-xs text-slate-500 line-clamp-2 mb-1.5">{article.resume}</p>
-                    )}
-
-                    <div className="flex flex-wrap items-center gap-1.5">
-                      <span className="text-xs text-slate-400 font-medium">{article.source_nom}</span>
-                      {article.date_article && <span className="text-xs text-slate-300">· {article.date_article}</span>}
-                      <span className="text-xs text-slate-300">· Score {article.score_pertinence}</span>
-                      {article.mots_cles_trouves?.length > 0 && article.mots_cles_trouves.slice(0, 5).map((mot, i) => (
-                        <span key={i} className={`text-xs px-1.5 py-0.5 rounded ${
-                          ['rénovation','rénové','rénove','réhabilitation','transformation','repositionnement','montée en gamme','réouverture','nomination','nommé directeur','nouveau directeur','nouveau gm','directeur général'].some(s => mot.toLowerCase().includes(s))
-                            ? 'bg-red-50 text-red-600'
-                            : ['ouverture','inauguration','conversion','rebranding','spa','acquisition','cession','rachat'].some(s => mot.toLowerCase().includes(s))
-                              ? 'bg-amber-50 text-amber-600'
-                              : 'bg-slate-100 text-slate-500'
-                        }`}>{mot}</span>
-                      ))}
-                    </div>
-                  </div>
-
-                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                    <button onClick={() => toggleLu(article)} title={article.lu ? 'Non lu' : 'Lu'}
-                      className={`p-1.5 rounded-lg transition-colors ${article.lu ? 'hover:bg-blue-50 text-slate-300' : 'bg-blue-100 text-blue-600'}`}>
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <circle cx="12" cy="12" r="10" />{article.lu && <path d="M8 12l3 3 5-5" />}
-                      </svg>
-                    </button>
-                    <button onClick={() => toggleFavori(article)} title="Favori"
-                      className={`p-1.5 rounded-lg transition-colors ${article.favori ? 'text-rose-500 bg-rose-50' : 'text-slate-300 hover:bg-slate-50'}`}>
-                      <svg className="w-4 h-4" fill={article.favori ? 'currentColor' : 'none'} viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path d="M12 21.35l-1.45-1.32C5.4 15.36 2 12.28 2 8.5 2 5.42 4.42 3 7.5 3c1.74 0 3.41.81 4.5 2.09C13.09 3.81 14.76 3 16.5 3 19.58 3 22 5.42 22 8.5c0 3.78-3.4 6.86-8.55 11.54L12 21.35z" />
-                      </svg>
-                    </button>
-                    <button onClick={() => archiver(article)} title="Archiver"
-                      className="p-1.5 rounded-lg text-slate-300 hover:bg-slate-50 transition-colors">
-                      <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                        <path d="M5 8h14M5 8a2 2 0 110-4h14a2 2 0 110 4M5 8v10a2 2 0 002 2h10a2 2 0 002-2V8m-9 4h4" />
-                      </svg>
-                    </button>
-                  </div>
+                <div className="grid grid-cols-2 gap-2">
+                  <select value={sourceForm.type} onChange={e => setSourceForm(p => ({ ...p, type: e.target.value }))} className="text-xs border border-slate-200 rounded px-2 py-1.5">
+                    <option value="brave_search">Brave Search</option><option value="html">HTML</option><option value="rss">RSS</option>
+                  </select>
+                  <input type="text" placeholder="Mots-clés (virgules)" value={sourceForm.mots_cles} onChange={e => setSourceForm(p => ({ ...p, mots_cles: e.target.value }))} className="text-xs border border-slate-200 rounded px-2 py-1.5" />
+                </div>
+                <div className="flex gap-2">
+                  <button onClick={saveSource} className="text-xs px-3 py-1 rounded bg-blue-600 text-white hover:bg-blue-700">{editSource.id ? 'Modifier' : 'Ajouter'}</button>
+                  <button onClick={() => setEditSource(null)} className="text-xs px-3 py-1 rounded border border-slate-200 hover:bg-slate-100">Annuler</button>
                 </div>
               </div>
-            );
-          })}
+            )}
 
-          {page < pages && (
-            <div className="text-center py-4">
-              <button onClick={handleLoadMore}
-                className="text-xs px-6 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 transition-colors">
-                Charger plus ({total - articles.length} restants)
-              </button>
+            <div className="space-y-1.5">
+              {sources.map(s => {
+                const cat = catLabel(s.categorie);
+                return (
+                  <div key={s.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className={`w-2 h-2 rounded-full ${healthColor(s.health_status)}`} title={s.health_status || 'unknown'} />
+                        <span className="text-xs font-medium text-slate-800">{s.nom}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${cat.cls}`}>{cat.text}</span>
+                        {s.error_count > 0 && <span className="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-600">{s.error_count} err</span>}
+                      </div>
+                      <div className="text-xs text-slate-400 ml-4 mt-0.5">
+                        {s.article_count || 0} articles · {s.unread_count || 0} non lus
+                        {s.last_run && ` · Dernier run: ${new Date(s.last_run).toLocaleString('fr-FR')}`}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 flex-shrink-0 ml-2">
+                      <button onClick={async () => { setScraping(true); try { const r = await api.post(`/veille/sources/${s.id}/run`); showToast?.(`${r.nouveaux} article(s)`, 'success'); await charger(); } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); } setScraping(false); }} disabled={scraping} className="text-xs px-2 py-1 rounded hover:bg-blue-50 text-blue-600 disabled:opacity-50">Scan</button>
+                      <button onClick={() => { setEditSource(s); setSourceForm({ nom: s.nom, url: s.url, type: s.type, mots_cles: Array.isArray(s.mots_cles) ? s.mots_cles.join(', ') : '' }); }} className="text-xs px-2 py-1 rounded hover:bg-slate-200 text-slate-600">Modifier</button>
+                      <button onClick={() => deleteSource(s.id)} className="text-xs px-2 py-1 rounded hover:bg-red-50 text-red-500">Suppr</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* Derniers runs */}
+          {recentRuns.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-100 p-4">
+              <h3 className="text-sm font-semibold text-slate-800 mb-3">Derniers runs</h3>
+              <div className="space-y-1">
+                {recentRuns.map(run => (
+                  <div key={run.id} className="flex items-center gap-3 bg-slate-50 rounded px-3 py-1.5 text-xs">
+                    <span className={`w-2 h-2 rounded-full ${run.status === 'success' ? 'bg-emerald-500' : run.status === 'error' ? 'bg-red-500' : 'bg-amber-500'}`} />
+                    <span className="text-slate-600 w-40 truncate">{run.source_nom}</span>
+                    <span className="text-slate-400">{run.trigger_type}</span>
+                    <span className="text-slate-400">{run.items_found || 0} trouvés</span>
+                    <span className="text-slate-400">{run.items_inserted || 0} insérés</span>
+                    <span className="text-slate-400">{run.duration_ms ? `${run.duration_ms}ms` : '—'}</span>
+                    {run.error_message && <span className="text-red-500 truncate flex-1">{run.error_message.substring(0, 60)}</span>}
+                    <span className="text-slate-300 ml-auto">{new Date(run.started_at).toLocaleString('fr-FR')}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           )}
         </div>

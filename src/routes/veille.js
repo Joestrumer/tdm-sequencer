@@ -317,11 +317,15 @@ module.exports = (db) => {
   });
 
   /**
-   * POST /run-all — Scraping de toutes les sources
+   * POST /run-all — Scraping de toutes les sources + enrichissement
    */
   router.post('/run-all', async (req, res) => {
     try {
       const result = await scraperToutesSources();
+      // Lancer l'enrichissement après le scraping
+      runEnrichmentPipeline().catch(err => {
+        console.error('Veille: erreur enrichissement post-run-all:', err.message);
+      });
       res.json({ ok: true, ...result });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
@@ -647,6 +651,90 @@ module.exports = (db) => {
             `| ${a.source_count} source(s)`,
           ].filter(Boolean).join(' '),
         })),
+      });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /digest — Résumé actionnable des dernières 24h
+   * Retourne les nouvelles opportunités, sources en échec, stats enrichissement
+   */
+  router.get('/digest', (req, res) => {
+    try {
+      const since = req.query.since || new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString();
+
+      // Nouvelles opportunités A/B depuis
+      const newOpps = db.prepare(`
+        SELECT o.*,
+          (SELECT COUNT(*) FROM veille_opportunity_sources os WHERE os.opportunity_id = o.id) as article_count
+        FROM veille_opportunities o
+        WHERE o.first_seen_at >= ? AND o.signal_strength IN ('A', 'B')
+        ORDER BY o.business_score DESC
+      `).all(since);
+
+      // Opportunités mises à jour (fusion multi-sources)
+      const mergedOpps = db.prepare(`
+        SELECT o.id, o.hotel_name, o.city, o.signal_type, o.source_count, o.business_score
+        FROM veille_opportunities o
+        WHERE o.last_seen_at >= ? AND o.first_seen_at < ? AND o.source_count >= 2
+        ORDER BY o.source_count DESC
+        LIMIT 10
+      `).all(since, since);
+
+      // Articles insérés
+      const articlesInserted = db.prepare(`
+        SELECT COUNT(*) as n FROM veille_articles WHERE created_at >= ?
+      `).get(since).n;
+
+      // Articles enrichis
+      const articlesEnriched = db.prepare(`
+        SELECT COUNT(*) as n FROM veille_articles WHERE enriched = 1 AND created_at >= ?
+      `).get(since).n;
+
+      // Sources en échec
+      const failingSources = db.prepare(`
+        SELECT id, nom, health_status, error_count, last_error_at
+        FROM veille_sources
+        WHERE health_status IN ('failing', 'degraded') AND actif = 1
+      `).all();
+
+      // Runs avec erreurs
+      const errorRuns = db.prepare(`
+        SELECT r.source_id, s.nom as source_nom, r.error_message, r.started_at
+        FROM veille_source_runs r
+        LEFT JOIN veille_sources s ON s.id = r.source_id
+        WHERE r.status = 'error' AND r.started_at >= ?
+        ORDER BY r.started_at DESC
+        LIMIT 10
+      `).all(since);
+
+      res.json({
+        period: { since, until: new Date().toISOString() },
+        opportunities: {
+          new_a_b: newOpps.map(o => ({
+            id: o.id,
+            hotel_name: o.hotel_name,
+            city: o.city,
+            group_name: o.group_name,
+            signal_type: o.signal_type,
+            business_score: o.business_score,
+            confidence_score: o.confidence_score,
+            source_count: o.article_count,
+            recommended_angle: o.recommended_angle,
+            project_date: o.project_date,
+          })),
+          merged: mergedOpps,
+        },
+        articles: {
+          inserted: articlesInserted,
+          enriched: articlesEnriched,
+        },
+        health: {
+          failing_sources: failingSources,
+          error_runs: errorRuns,
+        },
       });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
