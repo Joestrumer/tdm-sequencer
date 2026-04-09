@@ -9186,6 +9186,7 @@ const VueParametres = () => {
       {sousOnglet === 'integrations' && (
         <div className="space-y-4 max-w-2xl">
           <VueApiExterne />
+          <VueBraveSearchConfig />
           <VueHubspot />
           <VueVosFacturesConfig />
         </div>
@@ -9325,6 +9326,64 @@ const VueSegmentsConfig = () => {
 };
 
 // ─── Config API Externe ───────────────────────────────────────────────────────
+const VueBraveSearchConfig = () => {
+  const [braveKey, setBraveKey] = useState('');
+  const [configured, setConfigured] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.brave_search_api_key_configured) setConfigured(true);
+    }).catch(() => {});
+  }, []);
+
+  const sauvegarder = async () => {
+    if (!braveKey) return;
+    setSaving(true); setMsg('');
+    try {
+      await api.post('/config', { brave_search_api_key: braveKey });
+      setConfigured(true);
+      setBraveKey('');
+      setMsg('Clé API Brave Search sauvegardée');
+    } catch(e) { setMsg('Erreur'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">Brave Search API</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Pour la veille web hôtelière (scraping d'articles)</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs ${configured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${configured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {configured ? "Configurée" : "Non configurée"}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Clé API Brave Search</label>
+        <div className="flex gap-2">
+          <input type={showKey ? "text" : "password"} value={braveKey} onChange={e => setBraveKey(e.target.value)}
+            placeholder={configured ? "Nouvelle clé (laisser vide pour conserver)" : "Coller votre clé API Brave"}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <button onClick={() => setShowKey(!showKey)} className="px-2 text-xs text-slate-400 hover:text-slate-600">{showKey ? '🙈' : '👁'}</button>
+        </div>
+        <p className="text-xs text-slate-400 mt-1">Obtenez une clé sur <a href="https://brave.com/search/api/" target="_blank" rel="noopener" className="text-blue-500 hover:underline">brave.com/search/api</a></p>
+      </div>
+      {braveKey && (
+        <button onClick={sauvegarder} disabled={saving}
+          className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+          {saving ? "Sauvegarde..." : "Enregistrer"}
+        </button>
+      )}
+      {msg && <p className="text-xs text-emerald-600 font-medium">{msg}</p>}
+    </div>
+  );
+};
+
 const VueApiExterne = () => {
   const [apiKey, setApiKey] = useState('');
   const [configured, setConfigured] = useState(false);
@@ -12630,7 +12689,7 @@ const VueVeille = ({ showToast }) => {
 
   // Source editor
   const [editSource, setEditSource] = useState(null);
-  const [sourceForm, setSourceForm] = useState({ nom: '', url: '', type: 'html', mots_cles: '' });
+  const [sourceForm, setSourceForm] = useState({ nom: '', url: '', type: 'brave_search', mots_cles: '' });
 
   // Debounce search
   useEffect(() => {
@@ -12770,7 +12829,7 @@ const VueVeille = ({ showToast }) => {
         showToast?.('Source ajoutée', 'success');
       }
       setEditSource(null);
-      setSourceForm({ nom: '', url: '', type: 'html', mots_cles: '' });
+      setSourceForm({ nom: '', url: '', type: 'brave_search', mots_cles: '' });
       await loadSources();
     } catch (err) {
       showToast?.('Erreur: ' + err.message, 'error');
@@ -12888,7 +12947,7 @@ const VueVeille = ({ showToast }) => {
         <div className="bg-white rounded-xl border border-slate-100 p-4">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-slate-800">Sources de veille</h3>
-            <button onClick={() => { setEditSource({}); setSourceForm({ nom: '', url: '', type: 'html', mots_cles: '' }); }}
+            <button onClick={() => { setEditSource({}); setSourceForm({ nom: '', url: '', type: 'brave_search', mots_cles: '' }); }}
               className="text-xs px-3 py-1 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700">
               + Ajouter
             </button>
@@ -12906,7 +12965,8 @@ const VueVeille = ({ showToast }) => {
               <div className="grid grid-cols-2 gap-2">
                 <select value={sourceForm.type} onChange={e => setSourceForm(p => ({ ...p, type: e.target.value }))}
                   className="text-xs border border-slate-200 rounded px-2 py-1.5">
-                  <option value="html">HTML</option>
+                  <option value="brave_search">Brave Search (recommandé)</option>
+                  <option value="html">HTML (scraping)</option>
                   <option value="rss">RSS</option>
                 </select>
                 <input type="text" placeholder="Mots-clés (séparés par virgules)" value={sourceForm.mots_cles}

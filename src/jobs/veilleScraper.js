@@ -20,7 +20,7 @@ async function scraperUneSource(source) {
   try {
     logger.info(`🔍 Veille : scraping ${source.nom} (${source.url})`);
 
-    const articles = await scraperSource(source);
+    const articles = await scraperSource(source, db);
     if (!articles || articles.length === 0) {
       logger.info(`🔍 Veille : aucun article trouvé pour ${source.nom}`);
       db.prepare('UPDATE veille_sources SET last_run = datetime("now") WHERE id = ?').run(source.id);

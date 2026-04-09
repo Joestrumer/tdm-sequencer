@@ -714,31 +714,37 @@ if (segmentsInserted > 0) console.log(`🏷️  ${segmentsInserted} segment(s) p
 // ─── Seed source veille hospitality-on.com ──────────────────────────────────
 try {
   const { randomUUID } = require('crypto');
-  const existingSource = db.prepare('SELECT id FROM veille_sources WHERE url LIKE ?').get('%hospitality-on.com%');
-  if (!existingSource) {
-    db.prepare(`INSERT INTO veille_sources (id, nom, url, type, selecteurs, mots_cles, frequence, actif) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
-      randomUUID(),
-      'Hospitality ON',
-      'https://hospitality-on.com/fr/actualites',
-      'html',
-      JSON.stringify({
-        article: 'article, .view-content .views-row, .node--type-article',
-        titre: 'h2 a, h3 a, .node__title a, .field--name-title a',
-        lien: 'h2 a, h3 a, .node__title a, .field--name-title a',
-        resume: '.field--name-body p, .field--name-field-chapo, p',
-        date: 'time, .field--name-created, .date'
-      }),
-      JSON.stringify([
-        'rénovation', 'ouverture', 'nouveau', 'inauguration', 'repositionnement',
-        'transformation', 'chantier', 'travaux', 'réhabilitation', 'palace',
-        'boutique hotel', 'resort', 'spa', '5 étoiles', 'luxe', 'hôtel',
-        'inaugure', 'ouvre', 'rénove', 'projet', 'construction'
-      ]),
-      '6h',
-      1
-    );
-    console.log('🔍 Source veille hospitality-on.com ajoutée');
+  // Seed sources Brave Search (plus fiable que le scraping HTML)
+  const VEILLE_SOURCES = [
+    {
+      nom: 'Hospitality ON',
+      url: 'https://hospitality-on.com',
+      mots_cles: ['rénovation', 'ouverture', 'inauguration', 'repositionnement', 'transformation',
+        'chantier', 'travaux', 'réhabilitation', 'palace', 'boutique hotel', 'resort', 'spa',
+        '5 étoiles', 'luxe', 'projet', 'construction'],
+    },
+    {
+      nom: "L'Hôtellerie Restauration",
+      url: 'https://www.lhotellerie-restauration.fr',
+      mots_cles: ['rénovation', 'ouverture', 'inauguration', 'repositionnement',
+        'transformation', 'palace', 'boutique hotel', 'resort', 'spa', '5 étoiles',
+        'luxe', 'projet hôtelier', 'nouveau concept'],
+    },
+  ];
+
+  for (const src of VEILLE_SOURCES) {
+    const exists = db.prepare('SELECT id FROM veille_sources WHERE url LIKE ?').get(`%${new URL(src.url).hostname.replace('www.', '')}%`);
+    if (!exists) {
+      db.prepare(`INSERT INTO veille_sources (id, nom, url, type, selecteurs, mots_cles, frequence, actif) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`).run(
+        randomUUID(), src.nom, src.url, 'brave_search', '{}',
+        JSON.stringify(src.mots_cles), '6h', 1
+      );
+      console.log(`🔍 Source veille ajoutée : ${src.nom}`);
+    }
   }
+
+  // Migrer les sources HTML existantes vers brave_search
+  db.prepare("UPDATE veille_sources SET type = 'brave_search' WHERE type = 'html' AND url LIKE '%hospitality-on.com%'").run();
 } catch (e) {
   if (!e.message.includes('UNIQUE constraint')) {
     console.error('⚠️  Erreur seed veille:', e.message);
