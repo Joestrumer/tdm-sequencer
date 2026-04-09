@@ -165,17 +165,53 @@ const ScoreBar = ({ score }) => {
 
 // ─── HELPERS ─────────────────────────────────────────────────────────────────
 
+// Les dates de la DB sont stockées soit en UTC (datetime('now') → "2026-04-09 14:30:00")
+// soit en heure locale Paris (prochain_envoi, scheduled_at → "2026-04-09 16:30:00").
+// Sans suffixe "Z", le navigateur interprète comme heure locale — incorrect pour les dates UTC.
+// parseUTC() ajoute le "Z" manquant pour que le navigateur les convertisse correctement
+// dans le fuseau horaire de l'utilisateur.
+function parseUTC(iso) {
+  if (!iso) return null;
+  const s = iso.trim();
+  // Si déjà ISO avec Z ou +offset, ne pas modifier
+  if (/[Zz]$/.test(s) || /[+-]\d{2}:\d{2}$/.test(s)) return new Date(s);
+  // Remplacer l'espace par T si nécessaire et ajouter Z
+  return new Date(s.replace(' ', 'T') + 'Z');
+}
+
+// Pour les dates stockées en heure Paris (prochain_envoi, scheduled_at)
+// Ces dates sont "naïves" (sans timezone) mais représentent l'heure de Paris.
+// On les convertit en instant UTC correct pour que le navigateur les affiche
+// correctement dans le fuseau local de l'utilisateur.
+function parseParis(iso) {
+  if (!iso) return null;
+  const s = iso.trim().replace(' ', 'T');
+  const naive = new Date(s); // interprété comme heure locale du navigateur
+  if (isNaN(naive)) return null;
+  // Comparer l'heure locale du navigateur avec l'heure Paris pour cette date
+  const localStr = naive.toLocaleString('sv-SE');
+  const parisStr = naive.toLocaleString('sv-SE', { timeZone: 'Europe/Paris' });
+  if (localStr === parisStr) return naive; // navigateur déjà en heure Paris
+  // Calculer l'offset entre local et Paris et compenser
+  const localDate = new Date(localStr.replace(' ', 'T'));
+  const parisDate = new Date(parisStr.replace(' ', 'T'));
+  const offsetMs = localDate.getTime() - parisDate.getTime();
+  return new Date(naive.getTime() + offsetMs);
+}
+
 function relTime(iso) {
   if (!iso) return "—";
-  const diff = Date.now() - new Date(iso).getTime();
+  const d = parseUTC(iso);
+  if (!d || isNaN(d)) return "—";
+  const diff = Date.now() - d.getTime();
   const m = Math.floor(diff / 60000);
   if (m < 1) return "à l'instant";
   if (m < 60) return `il y a ${m}min`;
   const h = Math.floor(m / 60);
   if (h < 24) return `il y a ${h}h`;
-  const d = Math.floor(h / 24);
-  if (d < 7) return `il y a ${d}j`;
-  return new Date(iso).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  const dd = Math.floor(h / 24);
+  if (dd < 7) return `il y a ${dd}j`;
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
 }
 
 // ─── MODALS ───────────────────────────────────────────────────────────────────
@@ -1381,7 +1417,7 @@ const VueDashboard = ({ showToast }) => {
           </div>
           <div className="space-y-2.5 max-h-80 overflow-y-auto">
             {prochainsEnvois.map((envoi, i) => {
-              const prochainDate = new Date(envoi.prochain_envoi);
+              const prochainDate = parseParis(envoi.prochain_envoi);
               const isPast = prochainDate < new Date();
               return (
                 <div key={i} className={`flex items-start gap-3 p-2.5 rounded-lg ${isPast ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
@@ -1484,7 +1520,7 @@ const VueDashboard = ({ showToast }) => {
                 <div className="text-xs font-medium text-slate-900">{err.sujet}</div>
                 <div className="text-xs text-red-600 mt-1">{err.erreur}</div>
                 <div className="text-xs text-slate-400 mt-1">
-                  {new Date(err.envoye_at).toLocaleString('fr-FR')}
+                  {parseUTC(err.envoye_at).toLocaleString('fr-FR')}
                 </div>
               </div>
             ))}
@@ -1615,7 +1651,7 @@ const VueDashboardMarketing = ({ showToast }) => {
                   {topCampagnes.map(c => (
                     <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50/50">
                       <td className="py-2 px-2 font-medium text-slate-800 truncate max-w-[200px]">{c.nom}</td>
-                      <td className="py-2 px-2 text-slate-500">{c.completed_at ? new Date(c.completed_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—'}</td>
+                      <td className="py-2 px-2 text-slate-500">{c.completed_at ? parseUTC(c.completed_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' }) : '—'}</td>
                       <td className="py-2 px-2 text-right text-slate-700">{c.sent_count}</td>
                       <td className="py-2 px-2 text-right">
                         <span className={`font-medium ${c.open_rate >= 40 ? 'text-emerald-600' : c.open_rate >= 20 ? 'text-amber-600' : 'text-slate-500'}`}>{c.open_rate}%</span>
@@ -2411,7 +2447,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                   <td className="px-2 py-1.5 text-center overflow-hidden" style={{ width: (columnWidths.infos || 50) + 'px' }}>
                     {lead.last_event_type && (() => {
                       const icons = { ouverture: '👁', clic: '🔗', envoi: '📧', réponse: '💬', désabonnement: '🚫' };
-                      const diff = Date.now() - new Date(lead.last_event_at).getTime();
+                      const diff = Date.now() - parseUTC(lead.last_event_at).getTime();
                       const fresh = diff < 24 * 3600000;
                       return <span title={`${lead.last_event_type} — ${relTime(lead.last_event_at)}`} className={`text-sm ${fresh ? 'opacity-100' : 'opacity-40'}`}>{icons[lead.last_event_type] || '📌'}</span>;
                     })()}
@@ -2527,7 +2563,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                       const nbEtapes = seq?.etapes?.length || selectedLead.nb_etapes_sequence || 0;
                                       const formatCountdown = (iso) => {
                                         if (!iso) return '—';
-                                        const diff = new Date(iso) - Date.now();
+                                        const diff = parseParis(iso) - Date.now();
                                         if (diff < 0) return 'Imminent';
                                         const d = Math.floor(diff / 86400000);
                                         const h = Math.floor((diff % 86400000) / 3600000);
@@ -2560,9 +2596,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                           )}
                                           <div className="flex items-center justify-between bg-white rounded-lg p-2.5 border border-blue-100 mt-2">
                                             <span className="text-xs text-slate-500">Prochain email</span>
-                                            <span className={`text-xs font-semibold ${prochainEnvoi && new Date(prochainEnvoi) < Date.now() ? 'text-orange-600' : 'text-blue-700'}`}>
+                                            <span className={`text-xs font-semibold ${prochainEnvoi && parseParis(prochainEnvoi) < Date.now() ? 'text-orange-600' : 'text-blue-700'}`}>
                                               {prochainEnvoi
-                                                ? `📅 ${new Date(prochainEnvoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} (${formatCountdown(prochainEnvoi)})`
+                                                ? `📅 ${parseParis(prochainEnvoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (${formatCountdown(prochainEnvoi)})`
                                                 : '—'}
                                             </span>
                                           </div>
@@ -2630,7 +2666,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                             {meta?.url && <div className="text-xs text-slate-400 truncate mt-0.5">{meta.url}</div>}
                                           </div>
                                           <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">
-                                            {new Date(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}
+                                            {parseUTC(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                           </span>
                                         </div>
                                       );
@@ -2681,7 +2717,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                             </div>
                                             <p className="text-sm font-medium text-slate-800 truncate">{email.sujet}</p>
                                             <p className="text-xs text-slate-400 mt-0.5">
-                                              {email.envoye_at ? new Date(email.envoye_at).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' }) : '—'}
+                                              {email.envoye_at ? parseUTC(email.envoye_at).toLocaleDateString('fr-FR', { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : '—'}
                                             </p>
                                           </div>
                                           <div className="flex gap-3 flex-shrink-0">
@@ -2698,11 +2734,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                         {email.premier_ouvert && (
                                           <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-0.5">
                                             <span className="text-xs text-slate-400">
-                                              1ère ouverture : <span className="text-slate-600">{new Date(email.premier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}</span>
+                                              1ère ouverture : <span className="text-slate-600">{parseUTC(email.premier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                                             </span>
                                             {email.dernier_ouvert && email.dernier_ouvert !== email.premier_ouvert && (
                                               <span className="text-xs text-slate-400">
-                                                Dernière : <span className="text-slate-600">{new Date(email.dernier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}</span>
+                                                Dernière : <span className="text-slate-600">{parseUTC(email.dernier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                                               </span>
                                             )}
                                           </div>
@@ -2727,7 +2763,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                       {hsLeadLogs.length > 0 && (
                                         <span className="text-xs text-slate-400 ml-3">
                                           Dernier sync : {(() => {
-                                            const diff = Date.now() - new Date(hsLeadLogs[0].created_at).getTime();
+                                            const diff = Date.now() - parseUTC(hsLeadLogs[0].created_at).getTime();
                                             const mins = Math.floor(diff / 60000);
                                             if (mins < 1) return 'à l\'instant';
                                             if (mins < 60) return `il y a ${mins}min`;
@@ -2749,7 +2785,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                             <span className="text-xs flex-shrink-0">{({contact:'👤',email:'✉️',deal:'💰',task:'📋',lifecycle:'🔄'})[log.type] || '⚡'}</span>
                                             <span className="text-xs text-slate-600 flex-1 truncate">{log.action || log.type}</span>
                                             {log.erreur && <span className="text-xs text-red-500 truncate max-w-[120px]">{log.erreur}</span>}
-                                            <span className="text-xs text-slate-400 flex-shrink-0">{new Date(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Paris' })}</span>
+                                            <span className="text-xs text-slate-400 flex-shrink-0">{parseUTC(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>
                                           </div>
                                         ))}
                                       </div>
@@ -2986,7 +3022,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                         const nbEtapes = seq?.etapes?.length || selectedLead.nb_etapes_sequence || 0;
                         const formatCountdown = (iso) => {
                           if (!iso) return '—';
-                          const diff = new Date(iso) - Date.now();
+                          const diff = parseParis(iso) - Date.now();
                           if (diff < 0) return 'Imminent';
                           const d = Math.floor(diff / 86400000);
                           const h = Math.floor((diff % 86400000) / 3600000);
@@ -3019,9 +3055,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                             )}
                             <div className="flex items-center justify-between bg-white rounded-lg p-2.5 border border-blue-100 mt-2">
                               <span className="text-xs text-slate-500">Prochain email</span>
-                              <span className={`text-xs font-semibold ${prochainEnvoi && new Date(prochainEnvoi) < Date.now() ? 'text-orange-600' : 'text-blue-700'}`}>
+                              <span className={`text-xs font-semibold ${prochainEnvoi && parseParis(prochainEnvoi) < Date.now() ? 'text-orange-600' : 'text-blue-700'}`}>
                                 {prochainEnvoi
-                                  ? `📅 ${new Date(prochainEnvoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })} (${formatCountdown(prochainEnvoi)})`
+                                  ? `📅 ${parseParis(prochainEnvoi).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })} (${formatCountdown(prochainEnvoi)})`
                                   : '—'}
                               </span>
                             </div>
@@ -3094,7 +3130,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                               {meta?.url && <div className="text-xs text-slate-400 truncate mt-0.5">{meta.url}</div>}
                             </div>
                             <span className="text-xs text-slate-400 flex-shrink-0 whitespace-nowrap">
-                              {new Date(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}
+                              {parseUTC(ev.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                             </span>
                           </div>
                         );
@@ -3152,7 +3188,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                               <p className="text-sm font-medium text-slate-800 truncate">{email.sujet}</p>
                               <p className="text-xs text-slate-400 mt-0.5">
                                 {email.envoye_at
-                                  ? new Date(email.envoye_at).toLocaleDateString('fr-FR', {
+                                  ? parseUTC(email.envoye_at).toLocaleDateString('fr-FR', {
                                       weekday: 'short', day: 'numeric', month: 'short',
                                       year: 'numeric', hour: '2-digit', minute: '2-digit'
                                     })
@@ -3180,13 +3216,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                             <div className="mt-2 pt-2 border-t border-slate-100 flex flex-wrap gap-x-4 gap-y-0.5">
                               <span className="text-xs text-slate-400">
                                 1ère ouverture : <span className="text-slate-600">
-                                  {new Date(email.premier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}
+                                  {parseUTC(email.premier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                 </span>
                               </span>
                               {email.dernier_ouvert && email.dernier_ouvert !== email.premier_ouvert && (
                                 <span className="text-xs text-slate-400">
                                   Dernière : <span className="text-slate-600">
-                                    {new Date(email.dernier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}
+                                    {parseUTC(email.dernier_ouvert).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
                                   </span>
                                 </span>
                               )}
@@ -3214,7 +3250,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                         {hsLeadLogs.length > 0 && (
                           <span className="text-xs text-slate-400 ml-3">
                             Dernier sync : {(() => {
-                              const diff = Date.now() - new Date(hsLeadLogs[0].created_at).getTime();
+                              const diff = Date.now() - parseUTC(hsLeadLogs[0].created_at).getTime();
                               const mins = Math.floor(diff / 60000);
                               if (mins < 1) return 'à l\'instant';
                               if (mins < 60) return `il y a ${mins}min`;
@@ -3238,7 +3274,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                               <span className="text-xs flex-shrink-0">{({contact:'👤',email:'✉️',deal:'💰',task:'📋',lifecycle:'🔄'})[log.type] || '⚡'}</span>
                               <span className="text-xs text-slate-600 flex-1 truncate">{log.action || log.type}</span>
                               {log.erreur && <span className="text-xs text-red-500 truncate max-w-[120px]">{log.erreur}</span>}
-                              <span className="text-xs text-slate-400 flex-shrink-0">{new Date(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit', timeZone:'Europe/Paris' })}</span>
+                              <span className="text-xs text-slate-400 flex-shrink-0">{parseUTC(log.created_at).toLocaleDateString('fr-FR', { day:'2-digit', month:'short', hour:'2-digit', minute:'2-digit' })}</span>
                             </div>
                           ))}
                         </div>
@@ -3636,7 +3672,7 @@ const VueHubspot = () => {
 
   const formatDateLog = (date) => {
     if (!date) return '';
-    return new Date(date).toLocaleDateString('fr-FR', {
+    return parseUTC(date).toLocaleDateString('fr-FR', {
       day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit'
     });
   };
@@ -8465,7 +8501,7 @@ const FacturesShipments = ({ showToast }) => {
                       )}
                     </td>
                     <td className="px-4 py-3 text-sm font-medium text-slate-900">{s.montant_ht?.toFixed(2) || '0.00'}€</td>
-                    <td className="px-4 py-3 text-xs text-slate-500">{new Date(s.created_at).toLocaleDateString('fr-FR')}</td>
+                    <td className="px-4 py-3 text-xs text-slate-500">{parseUTC(s.created_at).toLocaleDateString('fr-FR')}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         <button onClick={() => refreshWMS(s.id)}
@@ -9561,7 +9597,7 @@ const VueBlocklist = ({ onRefresh, showToast }) => {
                       <span className="text-xs text-slate-600">Autoriser malgré blocage</span>
                     </label>
                   </td>
-                  <td className="px-6 py-4 text-sm text-slate-500">{new Date(entry.created_at).toLocaleDateString('fr-FR')}</td>
+                  <td className="px-6 py-4 text-sm text-slate-500">{parseUTC(entry.created_at).toLocaleDateString('fr-FR')}</td>
                   <td className="px-6 py-4 text-right">
                     <button onClick={() => supprimerEntree(entry.id)} className="px-3 py-1 text-xs border border-red-100 text-red-500 rounded-md hover:bg-red-50">Retirer</button>
                   </td>
@@ -9707,7 +9743,7 @@ const VueTemplates = ({ showToast }) => {
               </div>
 
               <div className="mt-3 pt-3 border-t border-slate-100 text-xs text-slate-400">
-                Créé le {new Date(template.created_at).toLocaleDateString('fr-FR')}
+                Créé le {parseUTC(template.created_at).toLocaleDateString('fr-FR')}
               </div>
             </div>
           ))}
@@ -10039,7 +10075,7 @@ const VueCampagnes = ({ showToast, readOnly }) => {
                     </div>
                   )}
                   {c.statut === 'brouillon' && <span className="text-xs">{c.total_recipients} destinataires</span>}
-                  <span className="text-xs text-slate-400">{new Date(c.scheduled_at || c.started_at || c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
+                  <span className="text-xs text-slate-400">{(c.scheduled_at ? parseParis(c.scheduled_at) : parseUTC(c.started_at || c.created_at)).toLocaleDateString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</span>
                   <svg className={`w-4 h-4 transition-transform ${expandedId === c.id ? 'rotate-180' : ''}`} fill="none" viewBox="0 0 24 24" stroke="currentColor"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
                 </div>
               </div>
@@ -10104,7 +10140,7 @@ const VueCampagnes = ({ showToast, readOnly }) => {
                           </td>
                           <td className="p-2 text-slate-600 truncate max-w-[120px]">{r.hotel || '—'}</td>
                           <td className="p-2"><span className={`px-1.5 py-0.5 rounded text-[10px] font-medium ${r.statut === 'envoyé' ? 'bg-emerald-50 text-emerald-700' : r.statut === 'erreur' ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600'}`}>{r.statut}</span></td>
-                          <td className="p-2 text-slate-400">{r.sent_at ? new Date(r.sent_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
+                          <td className="p-2 text-slate-400">{r.sent_at ? parseUTC(r.sent_at).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' }) : '—'}</td>
                           <td className="p-2 text-right">{(r.ouvertures || 0) > 0 ? <span className="text-emerald-600 font-semibold">{r.ouvertures}</span> : <span className="text-slate-300">0</span>}</td>
                           <td className="p-2 text-right">{(r.clics || 0) > 0 ? <span className="text-blue-600 font-semibold">{r.clics}</span> : <span className="text-slate-300">0</span>}</td>
                         </tr>
@@ -11465,7 +11501,7 @@ const VueCommandes = ({ showToast }) => {
                       {cfg.label}
                     </span>
                   </div>
-                  <div className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Paris' })}</div>
+                  <div className="text-xs text-slate-400">{parseUTC(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-semibold text-slate-900">{c.total_ht?.toFixed(2)} &euro; HT</div>
