@@ -932,9 +932,20 @@ try {
       categorie: 'radar',
       frequence_cron: '0 9 * * 2,4',
       search_mode: 'wide',
-      mots_cles: ['fermeture temporaire hôtel réouverture france',
-        'architecte intérieur hôtel projet design',
-        'recrutement directeur hôtel palace nomination'],
+      mots_cles: ['architecte intérieur hôtel projet design france',
+        'recrutement directeur hôtel palace nomination',
+        'nouveau directeur général hôtel nommé'],
+    },
+    {
+      nom: 'Recherche large — Fermetures temporaires',
+      url: 'https://search.brave.com',
+      categorie: 'radar',
+      frequence_cron: '0 8,20 * * *',
+      search_mode: 'wide',
+      mots_cles: ['"temporairement fermé" OR "temporarily closed" hôtel france',
+        '"fermé pour travaux" OR "fermé pour rénovation" hôtel',
+        'hôtel "fermeture temporaire" réouverture 2025 2026',
+        '"closed for renovation" hotel france palace boutique'],
     },
   ];
 
@@ -945,8 +956,10 @@ try {
 
   let sourcesAdded = 0;
   for (const src of VEILLE_SOURCES) {
-    const domain = new URL(src.url).hostname.replace('www.', '');
-    const exists = db.prepare('SELECT id FROM veille_sources WHERE url LIKE ?').get(`%${domain}%`);
+    // Pour les sources wide (même URL brave), dédupliquer par nom
+    const exists = src.search_mode === 'wide'
+      ? db.prepare('SELECT id FROM veille_sources WHERE nom = ?').get(src.nom)
+      : db.prepare('SELECT id FROM veille_sources WHERE url LIKE ?').get(`%${new URL(src.url).hostname.replace('www.', '')}%`);
     if (!exists) {
       stmtInsertSource.run(
         randomUUID(), src.nom, src.url,
