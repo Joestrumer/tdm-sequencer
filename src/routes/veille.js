@@ -516,16 +516,43 @@ module.exports = (db) => {
   });
 
   /**
-   * POST /scan-fermetures — Scanner les hôtels temporairement fermés (Google Places)
+   * POST /scan-fermetures — Scanner une ville ou une région
+   * Body: { city: "Paris" } ou { region: "Bretagne" } ou { cities: ["Paris","Lyon"] }
    */
   router.post('/scan-fermetures', async (req, res) => {
     try {
-      const { scanAllCities } = require('../services/googlePlacesService');
-      const result = await scanAllCities(db);
-      res.json({ ok: true, ...result });
+      const { scanCity, scanCities, REGIONS } = require('../services/googlePlacesService');
+      const { city, region, cities } = req.body;
+
+      if (city) {
+        // Scan d'une seule ville
+        const result = await scanCity(db, city);
+        return res.json({ ok: true, ...result });
+      }
+
+      if (region && REGIONS[region]) {
+        // Scan d'une région entière
+        const result = await scanCities(db, REGIONS[region]);
+        return res.json({ ok: true, region, ...result });
+      }
+
+      if (cities && Array.isArray(cities) && cities.length > 0) {
+        const result = await scanCities(db, cities.slice(0, 20)); // max 20 villes par requête
+        return res.json({ ok: true, ...result });
+      }
+
+      return res.status(400).json({ ok: false, erreur: 'Paramètre requis: city, region ou cities' });
     } catch (err) {
       res.status(500).json({ ok: false, erreur: err.message });
     }
+  });
+
+  /**
+   * GET /scan-fermetures/regions — Liste des régions disponibles
+   */
+  router.get('/scan-fermetures/regions', (req, res) => {
+    const { REGIONS } = require('../services/googlePlacesService');
+    res.json(Object.entries(REGIONS).map(([name, cities]) => ({ name, cities, count: cities.length })));
   });
 
   // ─── Enrichissement manuel ─────────────────────────────────────────────────

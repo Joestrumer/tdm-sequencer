@@ -12941,24 +12941,7 @@ const VueVeille = ({ showToast }) => {
     } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
   };
 
-  const [scanningPlaces, setScanningPlaces] = useState(false);
-
-  const handleScanFermetures = async () => {
-    setScanningPlaces(true);
-    try {
-      const res = await api.post('/veille/scan-fermetures');
-      if (res.ok) {
-        showToast?.(`Scan Google Places : ${res.found} hotel(s) ferme(s) sur ${res.scanned} villes`, 'success');
-        await loadOpportunities(1);
-        await loadOppDashboard();
-      } else {
-        showToast?.(res.erreur || 'Erreur scan', 'error');
-      }
-    } catch (err) {
-      showToast?.('Erreur scan fermetures: ' + (err.erreur || err.message), 'error');
-    }
-    setScanningPlaces(false);
-  };
+  const [showScanFermetures, setShowScanFermetures] = useState(false);
 
   const handleOppStatus = async (oppId, status) => {
     try {
@@ -13075,9 +13058,9 @@ const VueVeille = ({ showToast }) => {
           <button onClick={handleEnrich} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">
             Enrichir
           </button>
-          <button onClick={handleScanFermetures} disabled={scanningPlaces}
-            className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
-            {scanningPlaces ? <><span className="w-3 h-3 border-2 border-amber-400/30 border-t-amber-600 rounded-full animate-spin inline-block" /> Scan en cours...</> : 'Scanner fermetures'}
+          <button onClick={() => setShowScanFermetures(true)}
+            className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 transition-colors">
+            Scanner fermetures
           </button>
           <button onClick={handleScrapeAll} disabled={scraping}
             className="text-xs px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
@@ -13422,6 +13405,239 @@ const VueVeille = ({ showToast }) => {
           )}
         </div>
       )}
+
+      {/* Modale Scanner Fermetures Google Places */}
+      {showScanFermetures && (
+        <ModalScanFermetures
+          onClose={() => { setShowScanFermetures(false); loadOpportunities(1); loadOppDashboard(); }}
+          showToast={showToast}
+        />
+      )}
+    </div>
+  );
+};
+
+// ─── ModalScanFermetures — Scanner Google Places ──────────────────────────────
+
+const ModalScanFermetures = ({ onClose, showToast }) => {
+  const [regions, setRegions] = useState([]);
+  const [selectedRegion, setSelectedRegion] = useState('');
+  const [customCity, setCustomCity] = useState('');
+  const [scanning, setScanning] = useState(false);
+  const [results, setResults] = useState(null);
+  const [scanLog, setScanLog] = useState([]);
+
+  useEffect(() => {
+    api.get('/veille/scan-fermetures/regions').then(setRegions).catch(() => {});
+  }, []);
+
+  const scanVille = async (city) => {
+    if (!city.trim()) return;
+    setScanning(true);
+    setResults(null);
+    setScanLog([]);
+    try {
+      const res = await api.post('/veille/scan-fermetures', { city: city.trim() });
+      if (res.ok !== false) {
+        setResults(res);
+        if (res.closed > 0) {
+          showToast?.(`${res.closed} hotel(s) ferme(s) a ${city}`, 'success');
+        }
+      } else {
+        showToast?.(res.erreur || 'Erreur', 'error');
+      }
+    } catch (err) {
+      showToast?.('Erreur: ' + (err.erreur || err.message), 'error');
+    }
+    setScanning(false);
+  };
+
+  const scanRegion = async () => {
+    if (!selectedRegion) return;
+    const region = regions.find(r => r.name === selectedRegion);
+    if (!region) return;
+
+    setScanning(true);
+    setResults(null);
+    setScanLog([]);
+
+    try {
+      const res = await api.post('/veille/scan-fermetures', { region: selectedRegion });
+      if (res.ok !== false) {
+        setResults({ city: selectedRegion, total: 0, closed: res.found, hotels: [], regionResults: res.results });
+        if (res.found > 0) {
+          showToast?.(`${res.found} hotel(s) ferme(s) en ${selectedRegion}`, 'success');
+        } else {
+          showToast?.(`Aucun hotel ferme en ${selectedRegion}`, 'info');
+        }
+      } else {
+        showToast?.(res.erreur || 'Erreur', 'error');
+      }
+    } catch (err) {
+      showToast?.('Erreur: ' + (err.erreur || err.message), 'error');
+    }
+    setScanning(false);
+  };
+
+  const statusColors = {
+    OPERATIONAL: 'text-emerald-600 bg-emerald-50',
+    CLOSED_TEMPORARILY: 'text-amber-700 bg-amber-50 font-semibold',
+    CLOSED_PERMANENTLY: 'text-red-600 bg-red-50',
+  };
+
+  const statusLabels = {
+    OPERATIONAL: 'Ouvert',
+    CLOSED_TEMPORARILY: 'Ferme temporairement',
+    CLOSED_PERMANENTLY: 'Ferme definitivement',
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-3xl mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        {/* Header */}
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+          <div>
+            <h3 className="text-base font-semibold text-slate-900">Scanner Google Places</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Detecter les hotels temporairement fermes (signal renovation)</p>
+          </div>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+        </div>
+
+        {/* Controles */}
+        <div className="px-6 py-4 border-b border-slate-50 space-y-3 flex-shrink-0">
+          {/* Scan par ville */}
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Scanner une ville</label>
+            <div className="flex gap-2">
+              <input type="text" value={customCity} onChange={e => setCustomCity(e.target.value)}
+                placeholder="Ex: Paris, Nice, Chamonix..."
+                onKeyDown={e => e.key === 'Enter' && !scanning && scanVille(customCity)}
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20 focus:border-amber-400" />
+              <button onClick={() => scanVille(customCity)} disabled={scanning || !customCity.trim()}
+                className="px-4 py-2 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap">
+                {scanning ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" /> Scan...</> : 'Scanner'}
+              </button>
+            </div>
+          </div>
+
+          {/* Scan par region */}
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Ou scanner une region entiere</label>
+            <div className="flex gap-2">
+              <select value={selectedRegion} onChange={e => setSelectedRegion(e.target.value)}
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-amber-500/20">
+                <option value="">Choisir une region...</option>
+                {regions.map(r => (
+                  <option key={r.name} value={r.name}>{r.name} ({r.count} villes)</option>
+                ))}
+              </select>
+              <button onClick={scanRegion} disabled={scanning || !selectedRegion}
+                className="px-4 py-2 bg-amber-600 text-white text-xs font-medium rounded-lg hover:bg-amber-700 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap">
+                {scanning ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" /> Scan...</> : 'Scanner region'}
+              </button>
+            </div>
+          </div>
+        </div>
+
+        {/* Resultats */}
+        <div className="flex-1 overflow-y-auto px-6 py-4">
+          {scanning && !results && (
+            <div className="flex items-center justify-center py-12 text-slate-400 text-sm">
+              <span className="w-5 h-5 border-2 border-slate-200 border-t-amber-500 rounded-full animate-spin mr-3" />
+              Scan en cours... (peut prendre quelques secondes)
+            </div>
+          )}
+
+          {results && !results.regionResults && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm">
+                <span className="font-medium text-slate-700">{results.city}</span>
+                <span className="text-slate-400">{results.total} hotel(s) trouves</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${results.closed > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {results.closed > 0 ? `${results.closed} ferme(s) temporairement` : 'Aucune fermeture'}
+                </span>
+              </div>
+
+              {results.hotels && results.hotels.length > 0 && (
+                <div className="space-y-1">
+                  {/* Fermes en premier */}
+                  {results.hotels
+                    .sort((a, b) => {
+                      if (a.businessStatus === 'CLOSED_TEMPORARILY' && b.businessStatus !== 'CLOSED_TEMPORARILY') return -1;
+                      if (b.businessStatus === 'CLOSED_TEMPORARILY' && a.businessStatus !== 'CLOSED_TEMPORARILY') return 1;
+                      return 0;
+                    })
+                    .map((h, i) => (
+                    <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${h.businessStatus === 'CLOSED_TEMPORARILY' ? 'bg-amber-50 border border-amber-200' : 'hover:bg-slate-50'}`}>
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-slate-800 truncate">{h.name}</div>
+                        <div className="text-xs text-slate-400 truncate">{h.address}</div>
+                      </div>
+                      {h.rating && (
+                        <span className="text-xs text-slate-500 flex-shrink-0">{h.rating} ({h.ratingCount})</span>
+                      )}
+                      <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${statusColors[h.businessStatus] || 'text-slate-500 bg-slate-50'}`}>
+                        {statusLabels[h.businessStatus] || h.businessStatus}
+                      </span>
+                      {h.website && (
+                        <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 text-xs flex-shrink-0">Site</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Resultats par region */}
+          {results && results.regionResults && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm">
+                <span className="font-medium text-slate-700">{results.city}</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${results.closed > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {results.closed > 0 ? `${results.closed} hotel(s) ferme(s) au total` : 'Aucune fermeture detectee'}
+                </span>
+              </div>
+
+              {results.regionResults.map((r, i) => (
+                <div key={i} className="space-y-1">
+                  <div className="flex items-center gap-2 text-xs">
+                    <span className="font-medium text-slate-600">{r.city}</span>
+                    <span className="text-slate-400">{r.total} hotels</span>
+                    {r.closed > 0 && <span className="bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium">{r.closed} ferme(s)</span>}
+                    {r.error && <span className="text-red-500">{r.error}</span>}
+                  </div>
+                  {r.hotels && r.hotels.length > 0 && r.hotels.map((h, j) => (
+                    <div key={j} className="flex items-center gap-3 px-3 py-2 rounded-lg bg-amber-50 border border-amber-200 text-sm ml-4">
+                      <div className="flex-1 min-w-0">
+                        <div className="font-medium text-slate-800 truncate">{h.name}</div>
+                        <div className="text-xs text-slate-400 truncate">{h.address}</div>
+                      </div>
+                      <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium flex-shrink-0">Ferme temp.</span>
+                      {h.website && (
+                        <a href={h.website} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:text-blue-700 text-xs flex-shrink-0">Site</a>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              ))}
+            </div>
+          )}
+
+          {!scanning && !results && (
+            <div className="text-center py-12 text-slate-400 text-sm">
+              <p>Choisissez une ville ou une region pour lancer le scan.</p>
+              <p className="mt-1 text-xs">Le scan detecte les hotels avec statut "Temporarily Closed" sur Google — signal fort de renovation.</p>
+            </div>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-3 border-t border-slate-100 flex items-center justify-between flex-shrink-0">
+          <p className="text-xs text-slate-400">Les hotels fermes sont automatiquement ajoutes comme opportunites</p>
+          <button onClick={onClose} className="px-4 py-2 text-xs text-slate-600 hover:text-slate-800">Fermer</button>
+        </div>
+      </div>
     </div>
   );
 };
