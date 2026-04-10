@@ -455,6 +455,79 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Google Places — Scanner fermetures temporaires ──────────────────────
+
+  /**
+   * GET /test-google-places — Tester la clé API Google Places
+   */
+  router.get('/test-google-places', async (req, res) => {
+    try {
+      const { getApiKey, searchHotelsInCity } = require('../services/googlePlacesService');
+      const apiKey = getApiKey(db);
+
+      if (!apiKey) {
+        return res.json({ ok: false, erreur: 'Clé API Google Places non configurée. Allez dans Paramètres > Intégrations.' });
+      }
+
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 10000);
+
+      try {
+        // Test simple : recherche hôtels à Paris
+        const r = await fetch('https://places.googleapis.com/v1/places:searchText', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'X-Goog-Api-Key': apiKey,
+            'X-Goog-FieldMask': 'places.displayName,places.businessStatus',
+          },
+          body: JSON.stringify({ textQuery: 'hôtel Paris', includedType: 'lodging', pageSize: 3 }),
+          signal: controller.signal,
+        });
+
+        clearTimeout(timeout);
+
+        if (!r.ok) {
+          const body = await r.text().catch(() => '');
+          return res.json({ ok: false, status: r.status, erreur: body.substring(0, 300) });
+        }
+
+        const data = await r.json();
+        const places = data.places || [];
+
+        res.json({
+          ok: true,
+          resultats: places.length,
+          exemples: places.map(p => ({
+            nom: p.displayName?.text,
+            statut: p.businessStatus || 'OPERATIONAL',
+          })),
+        });
+      } catch (err) {
+        clearTimeout(timeout);
+        if (err.name === 'AbortError') {
+          return res.json({ ok: false, erreur: 'Timeout (10s) — problème réseau ?' });
+        }
+        throw err;
+      }
+    } catch (err) {
+      res.status(500).json({ ok: false, erreur: err.message });
+    }
+  });
+
+  /**
+   * POST /scan-fermetures — Scanner les hôtels temporairement fermés (Google Places)
+   */
+  router.post('/scan-fermetures', async (req, res) => {
+    try {
+      const { scanAllCities } = require('../services/googlePlacesService');
+      const result = await scanAllCities(db);
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ ok: false, erreur: err.message });
+    }
+  });
+
   // ─── Enrichissement manuel ─────────────────────────────────────────────────
 
   /**

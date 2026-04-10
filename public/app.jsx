@@ -9187,6 +9187,7 @@ const VueParametres = () => {
         <div className="space-y-4 max-w-2xl">
           <VueApiExterne />
           <VueBraveSearchConfig />
+          <VueGooglePlacesConfig />
           <VueHubspot />
           <VueVosFacturesConfig />
         </div>
@@ -9408,6 +9409,99 @@ const VueBraveSearchConfig = () => {
               <p className="font-medium text-emerald-700">API Brave fonctionnelle — {testResult.resultats} résultat(s)</p>
               {testResult.exemples?.map((ex, i) => (
                 <p key={i} className="text-emerald-600 truncate">• <a href={ex.url} target="_blank" rel="noopener" className="hover:underline">{ex.titre}</a></p>
+              ))}
+            </div>
+          ) : (
+            <p className="text-red-700 font-medium">{testResult.erreur || `Erreur HTTP ${testResult.status}`}</p>
+          )}
+        </div>
+      )}
+    </div>
+  );
+};
+
+const VueGooglePlacesConfig = () => {
+  const [gpKey, setGpKey] = useState('');
+  const [configured, setConfigured] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [testResult, setTestResult] = useState(null);
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.google_places_api_key_configured) setConfigured(true);
+    }).catch(() => {});
+  }, []);
+
+  const sauvegarder = async () => {
+    if (!gpKey) return;
+    setSaving(true); setMsg(''); setTestResult(null);
+    try {
+      await api.post('/config', { google_places_api_key: gpKey });
+      setConfigured(true);
+      setGpKey('');
+      setMsg('Cle API Google Places sauvegardee');
+    } catch(e) { setMsg('Erreur'); }
+    setSaving(false);
+  };
+
+  const tester = async () => {
+    setTesting(true); setTestResult(null); setMsg('');
+    try {
+      const res = await api.get('/veille/test-google-places');
+      setTestResult(res);
+    } catch(e) { setTestResult({ ok: false, erreur: e.message }); }
+    setTesting(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">Google Places API</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Scanner les hotels temporairement fermes (signal renovation)</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs ${configured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${configured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {configured ? "Configuree" : "Non configuree"}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Cle API Google Places</label>
+        <div className="flex gap-2">
+          <input type={showKey ? "text" : "password"} value={gpKey} onChange={e => setGpKey(e.target.value)}
+            placeholder={configured ? "Nouvelle cle (laisser vide pour conserver)" : "Coller votre cle API Google Places"}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <button onClick={() => setShowKey(!showKey)} className="px-2 text-xs text-slate-400 hover:text-slate-600">{showKey ? 'Masquer' : 'Afficher'}</button>
+        </div>
+        <p className="text-xs text-slate-400 mt-1">Activez l'API Places (New) dans la console Google Cloud</p>
+      </div>
+      <div className="flex items-center gap-2">
+        {gpKey && (
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+            {saving ? "Sauvegarde..." : "Enregistrer"}
+          </button>
+        )}
+        {configured && (
+          <button onClick={tester} disabled={testing}
+            className="px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5">
+            {testing ? (
+              <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" /> Test en cours...</>
+            ) : 'Tester la connexion'}
+          </button>
+        )}
+      </div>
+      {msg && <p className="text-xs text-emerald-600 font-medium">{msg}</p>}
+      {testResult && (
+        <div className={`rounded-lg p-3 text-xs ${testResult.ok ? 'bg-emerald-50 border border-emerald-200' : 'bg-red-50 border border-red-200'}`}>
+          {testResult.ok ? (
+            <div className="space-y-1">
+              <p className="font-medium text-emerald-700">API Google Places fonctionnelle — {testResult.resultats} resultat(s)</p>
+              {testResult.exemples?.map((ex, i) => (
+                <p key={i} className="text-emerald-600">- {ex.nom} ({ex.statut})</p>
               ))}
             </div>
           ) : (
@@ -12713,6 +12807,11 @@ const SIGNAL_LABELS = {
   acquisition: { label: 'Acquisition', color: 'bg-blue-100 text-blue-700' },
   conversion: { label: 'Conversion', color: 'bg-amber-100 text-amber-700' },
   spa_wellness: { label: 'Spa/Wellness', color: 'bg-pink-100 text-pink-700' },
+  fermeture_temp: { label: 'Fermeture temp.', color: 'bg-amber-100 text-amber-700' },
+  boamp_travaux: { label: 'BOAMP Travaux', color: 'bg-indigo-100 text-indigo-700' },
+  architecte: { label: 'Architecte', color: 'bg-teal-100 text-teal-700' },
+  vente: { label: 'Vente', color: 'bg-orange-100 text-orange-700' },
+  recrutement: { label: 'Recrutement', color: 'bg-cyan-100 text-cyan-700' },
   autre: { label: 'Autre', color: 'bg-slate-100 text-slate-600' },
 };
 
@@ -12842,6 +12941,25 @@ const VueVeille = ({ showToast }) => {
     } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
   };
 
+  const [scanningPlaces, setScanningPlaces] = useState(false);
+
+  const handleScanFermetures = async () => {
+    setScanningPlaces(true);
+    try {
+      const res = await api.post('/veille/scan-fermetures');
+      if (res.ok) {
+        showToast?.(`Scan Google Places : ${res.found} hotel(s) ferme(s) sur ${res.scanned} villes`, 'success');
+        await loadOpportunities(1);
+        await loadOppDashboard();
+      } else {
+        showToast?.(res.erreur || 'Erreur scan', 'error');
+      }
+    } catch (err) {
+      showToast?.('Erreur scan fermetures: ' + (err.erreur || err.message), 'error');
+    }
+    setScanningPlaces(false);
+  };
+
   const handleOppStatus = async (oppId, status) => {
     try {
       await api.patch(`/veille/opportunities/${oppId}`, { status });
@@ -12956,6 +13074,10 @@ const VueVeille = ({ showToast }) => {
           <div className="flex-1" />
           <button onClick={handleEnrich} className="text-xs px-3 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">
             Enrichir
+          </button>
+          <button onClick={handleScanFermetures} disabled={scanningPlaces}
+            className="text-xs px-3 py-1.5 rounded-lg border border-amber-300 bg-amber-50 hover:bg-amber-100 text-amber-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
+            {scanningPlaces ? <><span className="w-3 h-3 border-2 border-amber-400/30 border-t-amber-600 rounded-full animate-spin inline-block" /> Scan en cours...</> : 'Scanner fermetures'}
           </button>
           <button onClick={handleScrapeAll} disabled={scraping}
             className="text-xs px-4 py-1.5 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 transition-colors flex items-center gap-1.5">
