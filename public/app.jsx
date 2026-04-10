@@ -13423,6 +13423,7 @@ const ModalScanFermetures = ({ onClose, showToast }) => {
   const [regions, setRegions] = useState([]);
   const [selectedRegion, setSelectedRegion] = useState('');
   const [customCity, setCustomCity] = useState('');
+  const [hotelSearch, setHotelSearch] = useState('');
   const [scanning, setScanning] = useState(false);
   const [results, setResults] = useState(null);
   const [scanLog, setScanLog] = useState([]);
@@ -13445,6 +13446,30 @@ const ModalScanFermetures = ({ onClose, showToast }) => {
         }
       } else {
         showToast?.(res.erreur || 'Erreur', 'error');
+      }
+    } catch (err) {
+      showToast?.('Erreur: ' + (err.erreur || err.message), 'error');
+    }
+    setScanning(false);
+  };
+
+  const searchHotel = async () => {
+    if (!hotelSearch.trim()) return;
+    setScanning(true);
+    setResults(null);
+    try {
+      const res = await api.post('/veille/scan-fermetures/hotel', { name: hotelSearch.trim() });
+      if (res.ok !== false && res.results) {
+        setResults({
+          city: hotelSearch.trim(),
+          total: res.results.length,
+          closed: res.results.filter(h => h.businessStatus === 'CLOSED_TEMPORARILY').length,
+          queries: 1,
+          hotels: res.results.map(h => ({ ...h, city: '' })),
+          isHotelSearch: true,
+        });
+      } else {
+        showToast?.(res.erreur || 'Aucun resultat', 'error');
       }
     } catch (err) {
       showToast?.('Erreur: ' + (err.erreur || err.message), 'error');
@@ -13519,6 +13544,24 @@ const ModalScanFermetures = ({ onClose, showToast }) => {
               </button>
             </div>
           </div>
+
+          {/* Recherche hotel specifique */}
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Chercher un hotel par nom</label>
+            <div className="flex gap-2">
+              <input type="text" value={hotelSearch} onChange={e => setHotelSearch(e.target.value)}
+                placeholder="Ex: Hotel d'Aubusson Paris, Le Meurice..."
+                onKeyDown={e => e.key === 'Enter' && !scanning && searchHotel()}
+                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              <button onClick={searchHotel} disabled={scanning || !hotelSearch.trim()}
+                className="px-4 py-2 bg-blue-600 text-white text-xs font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap">
+                {scanning ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" /> ...</> : 'Chercher'}
+              </button>
+            </div>
+            <p className="text-xs text-slate-400 mt-1">Verifie le statut Google (ouvert, ferme temp., ferme definitivement)</p>
+          </div>
+
+          <div className="border-t border-slate-100 pt-3" />
 
           {/* Scan par region */}
           <div>

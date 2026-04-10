@@ -558,6 +558,23 @@ module.exports = (db) => {
     res.json(Object.entries(REGIONS).map(([name, cities]) => ({ name, cities, count: cities.length })));
   });
 
+  /**
+   * POST /scan-fermetures/hotel — Chercher un hôtel spécifique par nom
+   * Body: { name: "Hôtel d'Aubusson", city: "Paris" }
+   */
+  router.post('/scan-fermetures/hotel', async (req, res) => {
+    try {
+      const { searchSpecificHotel } = require('../services/googlePlacesService');
+      const { name, city } = req.body;
+      if (!name) return res.status(400).json({ ok: false, erreur: 'Nom requis' });
+
+      const results = await searchSpecificHotel(db, name, city || '');
+      res.json({ ok: true, results });
+    } catch (err) {
+      res.status(500).json({ ok: false, erreur: err.message });
+    }
+  });
+
   // ─── Enrichissement manuel ─────────────────────────────────────────────────
 
   /**

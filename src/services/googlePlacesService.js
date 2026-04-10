@@ -111,8 +111,11 @@ async function textSearch(apiKey, query, options = {}) {
 
 /**
  * Génère les requêtes de recherche pour une ville.
- * Grandes villes → recherche par quartier.
- * Petites villes → quelques variantes de requêtes.
+ * Grandes villes → recherche par quartier + requêtes ciblées "fermé".
+ * Petites villes → variantes + requêtes ciblées.
+ *
+ * Stratégie : les hôtels fermés ne remontent PAS dans les résultats
+ * génériques (triés par popularité). Il faut des requêtes qui les ciblent.
  */
 function buildQueries(city) {
   const queries = [];
@@ -123,13 +126,29 @@ function buildQueries(city) {
       queries.push(`hôtel ${quartier}`);
     }
   } else {
-    // Ville normale : quelques variantes
+    // Ville normale
     queries.push(`hôtel ${city}`);
     queries.push(`hotel ${city} France`);
-    queries.push(`hébergement ${city}`);
   }
 
+  // Requêtes ciblées pour trouver les hôtels fermés/en travaux
+  queries.push(`hôtel fermé ${city}`);
+  queries.push(`hotel closed ${city}`);
+  queries.push(`hôtel rénovation travaux ${city}`);
+
   return queries;
+}
+
+/**
+ * Recherche un hôtel spécifique par nom et vérifie son statut.
+ */
+async function searchSpecificHotel(db, hotelName, city) {
+  const apiKey = getApiKey(db);
+  if (!apiKey) throw new Error('Clé API Google Places non configurée');
+
+  const query = city ? `${hotelName} ${city}` : hotelName;
+  const results = await textSearch(apiKey, query);
+  return results;
 }
 
 /**
@@ -231,6 +250,7 @@ async function scanCities(db, cities) {
 module.exports = {
   getApiKey,
   textSearch,
+  searchSpecificHotel,
   scanCity,
   scanCities,
   VILLES_SCAN,
