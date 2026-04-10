@@ -13542,17 +13542,19 @@ const ModalScanFermetures = ({ onClose, showToast }) => {
         {/* Resultats */}
         <div className="flex-1 overflow-y-auto px-6 py-4">
           {scanning && !results && (
-            <div className="flex items-center justify-center py-12 text-slate-400 text-sm">
-              <span className="w-5 h-5 border-2 border-slate-200 border-t-amber-500 rounded-full animate-spin mr-3" />
-              Scan en cours... (peut prendre quelques secondes)
+            <div className="flex flex-col items-center justify-center py-12 text-slate-400 text-sm gap-2">
+              <span className="w-5 h-5 border-2 border-slate-200 border-t-amber-500 rounded-full animate-spin" />
+              <p>Scan en cours...</p>
+              <p className="text-xs">Recherche multi-requetes par quartier — peut prendre 10 a 30 secondes</p>
             </div>
           )}
 
           {results && !results.regionResults && (
             <div className="space-y-3">
-              <div className="flex items-center gap-3 text-sm">
+              <div className="flex items-center gap-3 text-sm flex-wrap">
                 <span className="font-medium text-slate-700">{results.city}</span>
-                <span className="text-slate-400">{results.total} hotel(s) trouves</span>
+                {results.queries && <span className="text-slate-400">{results.queries} requete(s)</span>}
+                <span className="text-slate-400">{results.total} hotel(s) uniques</span>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${results.closed > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
                   {results.closed > 0 ? `${results.closed} ferme(s) temporairement` : 'Aucune fermeture'}
                 </span>

@@ -1,15 +1,15 @@
 /**
  * googlePlacesService.js — Scanner Google Places pour hôtels temporairement fermés
  *
- * Utilise l'API Text Search (New) de Google Places pour détecter
- * les hôtels avec businessStatus = CLOSED_TEMPORARILY.
- * Signal fort de rénovation → création automatique d'opportunités.
+ * Stratégie multi-requêtes : pour chaque ville on lance plusieurs recherches
+ * avec des angles différents, puis on déduplique par placeId.
+ * Les grandes villes (Paris, Lyon, Marseille) sont découpées par quartier.
  */
 
 const logger = require('../config/logger');
 const { upsertOpportunity } = require('./veilleOpportunity');
 
-// Régions avec leurs villes pour le scan ciblé
+// Régions avec leurs villes
 const REGIONS = {
   'Île-de-France': ['Paris', 'Versailles', 'Fontainebleau', 'Saint-Germain-en-Laye', 'Enghien-les-Bains', 'Chantilly'],
   'Provence-Alpes-Côte d\'Azur': ['Nice', 'Cannes', 'Marseille', 'Aix-en-Provence', 'Avignon', 'Saint-Tropez', 'Antibes', 'Menton', 'Èze', 'Fréjus', 'Saint-Raphaël', 'Bandol', 'Cassis', 'Hyères', 'Arles', 'Gordes', 'Saint-Rémy-de-Provence'],
@@ -26,8 +26,25 @@ const REGIONS = {
   'Corse': ['Ajaccio', 'Bastia', 'Bonifacio', 'Porto-Vecchio', 'Calvi', 'Propriano'],
 };
 
-// Liste plate de toutes les villes
 const VILLES_SCAN = Object.values(REGIONS).flat();
+
+// Quartiers pour les grandes villes (multiplier les requêtes)
+const QUARTIERS = {
+  'Paris': [
+    'Paris 1er Louvre', 'Paris 2ème Bourse', 'Paris 3ème Marais',
+    'Paris 4ème Hôtel de Ville', 'Paris 5ème Quartier Latin',
+    'Paris 6ème Saint-Germain-des-Prés', 'Paris 7ème Tour Eiffel',
+    'Paris 8ème Champs-Élysées', 'Paris 9ème Opéra',
+    'Paris 10ème Gare du Nord', 'Paris 11ème Bastille',
+    'Paris 12ème Bercy', 'Paris 13ème', 'Paris 14ème Montparnasse',
+    'Paris 15ème', 'Paris 16ème Trocadéro', 'Paris 17ème Batignolles',
+    'Paris 18ème Montmartre', 'Paris 19ème', 'Paris 20ème Belleville',
+  ],
+  'Lyon': ['Lyon Presqu\'île', 'Lyon Vieux Lyon', 'Lyon Part-Dieu', 'Lyon Confluence', 'Lyon Bellecour'],
+  'Marseille': ['Marseille Vieux-Port', 'Marseille Prado', 'Marseille Joliette', 'Marseille Castellane'],
+  'Nice': ['Nice Promenade des Anglais', 'Nice Vieux Nice', 'Nice port'],
+  'Bordeaux': ['Bordeaux centre', 'Bordeaux Chartrons', 'Bordeaux Saint-Pierre'],
+};
 
 function getApiKey(db) {
   try {
@@ -39,90 +56,113 @@ function getApiKey(db) {
 }
 
 /**
- * Recherche les hôtels dans une ville via Google Places Text Search (New).
- * Retourne TOUS les hôtels avec leur businessStatus.
+ * Effectue UNE requête Text Search et retourne les résultats.
  */
-async function searchHotelsInCity(apiKey, city) {
-  const allPlaces = [];
-  let pageToken = null;
+async function textSearch(apiKey, query, options = {}) {
+  const body = {
+    textQuery: query,
+    languageCode: 'fr',
+    regionCode: 'FR',
+    pageSize: 20,
+    ...options,
+  };
 
-  do {
-    const body = {
-      textQuery: `hôtel ${city} France`,
-      includedType: 'lodging',
-      languageCode: 'fr',
-      regionCode: 'FR',
-      pageSize: 20,
-    };
-    if (pageToken) body.pageToken = pageToken;
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 15000);
 
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 15000);
+  try {
+    const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Goog-Api-Key': apiKey,
+        'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.businessStatus,places.id,places.rating,places.userRatingCount,places.websiteUri',
+      },
+      body: JSON.stringify(body),
+      signal: controller.signal,
+    });
 
-    try {
-      const res = await fetch('https://places.googleapis.com/v1/places:searchText', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': 'places.displayName,places.formattedAddress,places.businessStatus,places.id,places.rating,places.userRatingCount,places.websiteUri,nextPageToken',
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
+    clearTimeout(timeout);
 
-      clearTimeout(timeout);
-
-      if (!res.ok) {
-        const errText = await res.text().catch(() => '');
-        throw new Error(`Google Places API ${res.status}: ${errText.substring(0, 500)}`);
-      }
-
-      const data = await res.json();
-      const places = data.places || [];
-
-      for (const place of places) {
-        allPlaces.push({
-          name: place.displayName?.text || 'Inconnu',
-          address: place.formattedAddress || '',
-          placeId: place.id,
-          rating: place.rating || null,
-          ratingCount: place.userRatingCount || 0,
-          website: place.websiteUri || null,
-          businessStatus: place.businessStatus || 'OPERATIONAL',
-          city,
-        });
-      }
-
-      pageToken = data.nextPageToken || null;
-
-      // Respecter le rate limiting
-      if (pageToken) {
-        await new Promise(r => setTimeout(r, 1200));
-      }
-    } catch (err) {
-      clearTimeout(timeout);
-      if (err.name === 'AbortError') {
-        logger.warn(`Google Places: timeout pour ${city}`);
-      } else {
-        throw err;
-      }
-      break;
+    if (!res.ok) {
+      const errText = await res.text().catch(() => '');
+      throw new Error(`Google Places API ${res.status}: ${errText.substring(0, 300)}`);
     }
-  } while (pageToken);
 
-  return allPlaces;
+    const data = await res.json();
+    return (data.places || []).map(place => ({
+      name: place.displayName?.text || 'Inconnu',
+      address: place.formattedAddress || '',
+      placeId: place.id,
+      rating: place.rating || null,
+      ratingCount: place.userRatingCount || 0,
+      website: place.websiteUri || null,
+      businessStatus: place.businessStatus || 'OPERATIONAL',
+    }));
+  } catch (err) {
+    clearTimeout(timeout);
+    if (err.name === 'AbortError') {
+      logger.warn(`Google Places: timeout pour "${query}"`);
+      return [];
+    }
+    throw err;
+  }
 }
 
 /**
- * Scanner une ville et créer des opportunités pour les CLOSED_TEMPORARILY.
- * Retourne tous les résultats (pour affichage) + les fermés (pour opportunités).
+ * Génère les requêtes de recherche pour une ville.
+ * Grandes villes → recherche par quartier.
+ * Petites villes → quelques variantes de requêtes.
+ */
+function buildQueries(city) {
+  const queries = [];
+
+  if (QUARTIERS[city]) {
+    // Grande ville : rechercher par quartier
+    for (const quartier of QUARTIERS[city]) {
+      queries.push(`hôtel ${quartier}`);
+    }
+  } else {
+    // Ville normale : quelques variantes
+    queries.push(`hôtel ${city}`);
+    queries.push(`hotel ${city} France`);
+    queries.push(`hébergement ${city}`);
+  }
+
+  return queries;
+}
+
+/**
+ * Scanner une ville avec multi-requêtes et déduplication.
  */
 async function scanCity(db, city) {
   const apiKey = getApiKey(db);
   if (!apiKey) throw new Error('Clé API Google Places non configurée');
 
-  const allHotels = await searchHotelsInCity(apiKey, city);
+  const queries = buildQueries(city);
+  const seenIds = new Set();
+  const allHotels = [];
+  let queryCount = 0;
+
+  for (const query of queries) {
+    try {
+      const results = await textSearch(apiKey, query);
+      queryCount++;
+
+      for (const place of results) {
+        if (!seenIds.has(place.placeId)) {
+          seenIds.add(place.placeId);
+          allHotels.push({ ...place, city, query });
+        }
+      }
+
+      // Rate limiting entre requêtes
+      await new Promise(r => setTimeout(r, 300));
+    } catch (err) {
+      logger.error(`Google Places: erreur requête "${query}": ${err.message}`);
+    }
+  }
+
   const closed = allHotels.filter(h => h.businessStatus === 'CLOSED_TEMPORARILY');
   const opportunities = [];
 
@@ -130,7 +170,7 @@ async function scanCity(db, city) {
     const oppId = upsertOpportunity(db, {
       article_id: null,
       hotel_name: hotel.name,
-      city: hotel.city,
+      city,
       region: null,
       group_name: null,
       signal_type: 'fermeture_temp',
@@ -140,10 +180,13 @@ async function scanCity(db, city) {
     opportunities.push({ ...hotel, opportunity_id: oppId });
   }
 
+  logger.info(`Google Places scan ${city}: ${queryCount} requêtes, ${allHotels.length} hôtels uniques, ${closed.length} fermé(s)`);
+
   return {
     city,
     total: allHotels.length,
     closed: closed.length,
+    queries: queryCount,
     hotels: allHotels,
     opportunities,
   };
@@ -158,45 +201,39 @@ async function scanCities(db, cities) {
 
   const results = [];
   let totalFound = 0;
+  let totalHotels = 0;
 
   for (const city of cities) {
     try {
-      const allHotels = await searchHotelsInCity(apiKey, city);
-      const closed = allHotels.filter(h => h.businessStatus === 'CLOSED_TEMPORARILY');
+      const result = await scanCity(db, city);
+      results.push({
+        city,
+        total: result.total,
+        closed: result.closed,
+        queries: result.queries,
+        hotels: result.opportunities, // Seulement les fermés pour la vue région
+      });
+      totalFound += result.closed;
+      totalHotels += result.total;
 
-      for (const hotel of closed) {
-        upsertOpportunity(db, {
-          article_id: null,
-          hotel_name: hotel.name,
-          city: hotel.city,
-          region: null,
-          group_name: null,
-          signal_type: 'fermeture_temp',
-          signal_subtype: 'google_places',
-          project_date: null,
-        });
-      }
-
-      results.push({ city, total: allHotels.length, closed: closed.length, hotels: closed });
-      totalFound += closed.length;
-
-      // Rate limiting entre villes
-      await new Promise(r => setTimeout(r, 1100));
+      // Pause entre villes
+      await new Promise(r => setTimeout(r, 500));
     } catch (err) {
       logger.error(`Google Places: erreur pour ${city}: ${err.message}`);
-      results.push({ city, total: 0, closed: 0, hotels: [], error: err.message });
+      results.push({ city, total: 0, closed: 0, queries: 0, hotels: [], error: err.message });
     }
   }
 
-  logger.info(`Google Places scan: ${cities.length} villes, ${totalFound} hôtels fermés`);
-  return { scanned: cities.length, found: totalFound, results };
+  logger.info(`Google Places scan: ${cities.length} villes, ${totalHotels} hôtels scannés, ${totalFound} fermés`);
+  return { scanned: cities.length, found: totalFound, totalHotels, results };
 }
 
 module.exports = {
   getApiKey,
-  searchHotelsInCity,
+  textSearch,
   scanCity,
   scanCities,
   VILLES_SCAN,
   REGIONS,
+  QUARTIERS,
 };

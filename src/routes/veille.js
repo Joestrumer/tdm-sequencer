@@ -520,6 +520,9 @@ module.exports = (db) => {
    * Body: { city: "Paris" } ou { region: "Bretagne" } ou { cities: ["Paris","Lyon"] }
    */
   router.post('/scan-fermetures', async (req, res) => {
+    // Timeout long pour les scans multi-requêtes (Paris = 20 arrondissements)
+    req.setTimeout(120000);
+    res.setTimeout(120000);
     try {
       const { scanCity, scanCities, REGIONS } = require('../services/googlePlacesService');
       const { city, region, cities } = req.body;
