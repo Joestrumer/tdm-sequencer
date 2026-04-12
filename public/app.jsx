@@ -10488,6 +10488,7 @@ const VueCampagnes = ({ showToast, readOnly }) => {
 
 // ─── MODAL CAMPAIGN EDITOR (Wizard 3 étapes) ───────────────────────────────
 const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
+  useEscapeClose(onClose);
   const [step, setStep] = useState(1);
   const [saving, setSaving] = useState(false);
   const [campaignId, setCampaignId] = useState(campaign?.id || null);
@@ -13427,6 +13428,7 @@ const VueVeille = ({ showToast }) => {
 // ─── ModalScanFermetures — Scanner Google Places ──────────────────────────────
 
 const ModalScanFermetures = ({ onClose, showToast }) => {
+  useEscapeClose(onClose);
   const [regions, setRegions] = useState([]);
   const [selectedRegion, setSelectedRegion] = useState('');
   const [customCity, setCustomCity] = useState('');
