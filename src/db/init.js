@@ -209,6 +209,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_etapes_sequence ON etapes(sequence_id, ordre);
   CREATE INDEX IF NOT EXISTS idx_events_lead_id ON events(lead_id);
   CREATE INDEX IF NOT EXISTS idx_leads_hotel ON leads(hotel);
+  CREATE INDEX IF NOT EXISTS idx_emails_envoye_at ON emails(envoye_at);
+  CREATE INDEX IF NOT EXISTS idx_events_created_at ON events(created_at);
 
   CREATE INDEX IF NOT EXISTS idx_vf_catalog_actif ON vf_catalog(actif);
   CREATE INDEX IF NOT EXISTS idx_vf_partners_nom ON vf_partners(nom_normalise);

@@ -258,22 +258,27 @@ function verifierQuotaJournalier(db) {
   const today = todayParis();
   const maxParJour = parseInt(process.env.MAX_EMAILS_PER_DAY) || 50;
 
-  const row = db.prepare('SELECT count FROM envoi_quota WHERE date_jour = ?').get(today);
-  const count = row?.count || 0;
+  // Vérifier ET réserver le slot atomiquement (évite les race conditions)
+  return db.transaction(() => {
+    const row = db.prepare('SELECT count FROM envoi_quota WHERE date_jour = ?').get(today);
+    const count = row?.count || 0;
 
-  if (count >= maxParJour) {
-    throw new Error(`Quota journalier atteint : ${count}/${maxParJour} emails envoyés aujourd'hui`);
-  }
+    if (count >= maxParJour) {
+      throw new Error(`Quota journalier atteint : ${count}/${maxParJour} emails envoyés aujourd'hui`);
+    }
 
-  return { count, maxParJour, today };
+    db.prepare(`
+      INSERT INTO envoi_quota (date_jour, count) VALUES (?, 1)
+      ON CONFLICT(date_jour) DO UPDATE SET count = count + 1
+    `).run(today);
+
+    return { count: count + 1, maxParJour, today };
+  })();
 }
 
-// ─── Incrémenter le quota journalier ─────────────────────────────────────────
-function incrementerQuota(db, today) {
-  db.prepare(`
-    INSERT INTO envoi_quota (date_jour, count) VALUES (?, 1)
-    ON CONFLICT(date_jour) DO UPDATE SET count = count + 1
-  `).run(today);
+// ─── Libérer un slot quota (en cas d'échec après réservation) ───────────────
+function libererQuota(db, today) {
+  db.prepare(`UPDATE envoi_quota SET count = MAX(count - 1, 0) WHERE date_jour = ?`).run(today);
 }
 
 // ─── Retry avec backoff exponentiel ──────────────────────────────────────────
@@ -318,16 +323,18 @@ function verifierBlocklist(db, email) {
 
 // ─── Envoi principal ─────────────────────────────────────────────────────────
 async function envoyerEmail(db, { lead, etape, inscriptionId }) {
-  // 1. Vérifier quota
-  const { today } = verifierQuotaJournalier(db);
-
-  // 2. Vérifier que le lead n'est pas désabonné
+  // 1. Vérifier que le lead n'est pas désabonné (avant réservation quota)
   if (lead.unsubscribed) {
     throw new Error(`Lead désabonné : ${lead.email}`);
   }
 
-  // 3. Vérifier la blocklist
+  // 2. Vérifier la blocklist (avant réservation quota)
   verifierBlocklist(db, lead.email);
+
+  // 3. Réserver le quota (vérifie ET incrémente atomiquement)
+  const { today } = verifierQuotaJournalier(db);
+
+  try {
 
   // 4. Substituer les variables
   const sujet = substituerVariables(etape.sujet, lead);
@@ -408,10 +415,13 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
   // 10. Enregistrer l'événement
   db.prepare(`INSERT INTO events (id, email_id, lead_id, type) VALUES (?, ?, ?, 'envoi')`).run(uuidv4(), emailId, lead.id);
 
-  // 11. Mettre à jour le quota
-  incrementerQuota(db, today);
-
   return { emailId, trackingId, brevoMessageId };
+
+  } catch (err) {
+    // Libérer le slot quota réservé si l'envoi échoue
+    libererQuota(db, today);
+    throw err;
+  }
 }
 
 // ─── Vérifier si on est dans la fenêtre d'envoi ──────────────────────────────
