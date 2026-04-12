@@ -100,13 +100,18 @@ function useConfirmDialog() {
 }
 
 // ─── HOOKS UTILITAIRES ──────────────────────────────────────────────────────────
+let _modalCount = 0;
 function useEscapeClose(onClose) {
+  const callbackRef = useRef(onClose);
+  callbackRef.current = onClose;
   useEffect(() => {
-    const handler = (e) => { if (e.key === 'Escape') onClose(); };
+    _modalCount++;
+    const myLevel = _modalCount;
+    const handler = (e) => { if (e.key === 'Escape' && _modalCount === myLevel) callbackRef.current(); };
     window.addEventListener('keydown', handler);
     document.body.style.overflow = 'hidden';
-    return () => { window.removeEventListener('keydown', handler); document.body.style.overflow = ''; };
-  }, [onClose]);
+    return () => { _modalCount--; window.removeEventListener('keydown', handler); if (_modalCount === 0) document.body.style.overflow = ''; };
+  }, []);
 }
 
 // ─── TOAST ───────────────────────────────────────────────────────────────────
@@ -1873,6 +1878,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [showBulkLaunch, setShowBulkLaunch] = useState(false);
   const [hsDetails, setHsDetails] = useState(null);
   const [loadingHs, setLoadingHs] = useState(false);
+  const [hsLifecycleStage, setHsLifecycleStage] = useState('lead');
   const [hsLeadLogs, setHsLeadLogs] = useState([]);
   const [detailData, setDetailData] = useState(null);     // détail complet lead (emails + events)
   const [loadingDetail, setLoadingDetail] = useState(false);
@@ -2117,6 +2123,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         return;
       }
       if (selectedLead?.id === lead.id) setSelectedLead(null);
+      showToast('Lead supprimé', 'success');
       if (onRefresh) onRefresh();
     } catch (err) {
       console.error('Erreur suppression lead:', err);
@@ -2296,7 +2303,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             <span className="font-medium">{selectedIds.size} lead{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
             <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer</button>
             <button onClick={async () => { if(!await confirmDialog(`Arrêter les séquences de ${selectedIds.size} lead(s) ?`, { danger: true, confirmLabel: 'Arrêter' })) return; try { await api.post('/sequences/stop-batch', { lead_ids: Array.from(selectedIds) }); showToast('Séquences arrêtées','success'); setSelectedIds(new Set()); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600">⏹ Arrêter</button>
-            <button onClick={async () => { const ids = Array.from(selectedIds); if(!await confirmDialog('Supprimer ' + ids.length + ' leads ?', { danger: true, confirmLabel: 'Supprimer' })) return; let errCount = 0; for(const id of ids) { try { await api.delete('/leads/' + id); } catch(err) { errCount++; } } setSelectedIds(new Set()); if(onRefresh) onRefresh(); showToast(errCount ? `${ids.length - errCount} supprimé(s), ${errCount} erreur(s)` : `${ids.length} lead(s) supprimé(s)`, errCount ? 'error' : 'success'); }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50">✕ Supprimer</button>
+            <button onClick={async () => { const ids = Array.from(selectedIds); if(!await confirmDialog('Supprimer ' + ids.length + ' leads ?', { danger: true, confirmLabel: 'Supprimer' })) return; const results = await Promise.allSettled(ids.map(id => api.delete('/leads/' + id))); const errCount = results.filter(r => r.status === 'rejected').length; setSelectedIds(new Set()); if(onRefresh) onRefresh(); showToast(errCount ? `${ids.length - errCount} supprimé(s), ${errCount} erreur(s)` : `${ids.length} lead(s) supprimé(s)`, errCount ? 'error' : 'success'); }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50">✕ Supprimer</button>
             <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-blue-200 hover:text-white text-xs">Annuler</button>
           </div>
         )}
@@ -2830,7 +2837,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                         <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions manuelles</div>
                                         <div className="flex flex-wrap gap-2">
                                           <div className="flex items-center gap-1.5">
-                                            <select id="hs-lifecycle-select-inline" className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600">
+                                            <select value={hsLifecycleStage} onChange={e => setHsLifecycleStage(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600">
                                               <option value="lead">Lead</option>
                                               <option value="marketingqualifiedlead">MQL</option>
                                               <option value="salesqualifiedlead">SQL</option>
@@ -2839,7 +2846,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                                             </select>
                                             <button onClick={async (e) => {
                                               const btn = e.currentTarget; btn.disabled = true;
-                                              const stage = document.getElementById('hs-lifecycle-select-inline').value;
+                                              const stage = hsLifecycleStage;
                                               try {
                                                 await api.post(`/hubspot/force-lifecycle/${selectedLead.id}`, { stage });
                                                 showToast(`Lifecycle → ${stage}`, 'success');
@@ -3330,7 +3337,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                           <div className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Actions manuelles</div>
                           <div className="flex flex-wrap gap-2">
                             <div className="flex items-center gap-1.5">
-                              <select id="hs-lifecycle-select" className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600">
+                              <select value={hsLifecycleStage} onChange={e => setHsLifecycleStage(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600">
                                 <option value="lead">Lead</option>
                                 <option value="marketingqualifiedlead">MQL</option>
                                 <option value="salesqualifiedlead">SQL</option>
@@ -3339,7 +3346,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                               </select>
                               <button onClick={async (e) => {
                                 const btn = e.currentTarget; btn.disabled = true;
-                                const stage = document.getElementById('hs-lifecycle-select').value;
+                                const stage = hsLifecycleStage;
                                 try {
                                   await api.post(`/hubspot/force-lifecycle/${selectedLead.id}`, { stage });
                                   showToast(`Lifecycle → ${stage}`, 'success');
