@@ -575,6 +575,23 @@ module.exports = (db) => {
     }
   });
 
+  /**
+   * POST /scan-fermetures/leads — Scanner les hôtels de la base leads
+   * Body: { limit: 50, offset: 0 }
+   */
+  router.post('/scan-fermetures/leads', async (req, res) => {
+    req.setTimeout(300000);
+    res.setTimeout(300000);
+    try {
+      const { scanFromLeads } = require('../services/googlePlacesService');
+      const { limit = 30, offset = 0 } = req.body;
+      const result = await scanFromLeads(db, { limit: Math.min(limit, 50), offset });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ ok: false, erreur: err.message });
+    }
+  });
+
   // ─── Enrichissement manuel ─────────────────────────────────────────────────
 
   /**

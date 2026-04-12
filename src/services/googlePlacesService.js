@@ -247,12 +247,106 @@ async function scanCities(db, cities) {
   return { scanned: cities.length, found: totalFound, totalHotels, results };
 }
 
+/**
+ * Scanner les hôtels de la base leads pour vérifier leur statut Google.
+ * Récupère les hôtels distincts (hotel + ville), cherche chacun par nom.
+ * Bien plus fiable que le scan par zone car on cherche par nom exact.
+ */
+async function scanFromLeads(db, options = {}) {
+  const apiKey = getApiKey(db);
+  if (!apiKey) throw new Error('Clé API Google Places non configurée');
+
+  const limit = options.limit || 50;
+  const offset = options.offset || 0;
+
+  // Récupérer les hôtels distincts de la base leads
+  const hotels = db.prepare(`
+    SELECT DISTINCT hotel, ville FROM leads
+    WHERE hotel IS NOT NULL AND hotel != ''
+    ORDER BY hotel
+    LIMIT ? OFFSET ?
+  `).all(limit, offset);
+
+  const totalHotels = db.prepare(`
+    SELECT COUNT(DISTINCT hotel || '|' || COALESCE(ville, '')) as n
+    FROM leads WHERE hotel IS NOT NULL AND hotel != ''
+  `).get().n;
+
+  const results = [];
+  let closedCount = 0;
+
+  for (const lead of hotels) {
+    try {
+      const query = lead.ville ? `${lead.hotel} ${lead.ville}` : lead.hotel;
+      const places = await textSearch(apiKey, query);
+
+      // Prendre le premier résultat (le plus pertinent)
+      const match = places[0] || null;
+      const status = match?.businessStatus || 'NOT_FOUND';
+
+      const entry = {
+        hotel: lead.hotel,
+        ville: lead.ville,
+        match: match ? {
+          name: match.name,
+          address: match.address,
+          businessStatus: match.businessStatus,
+          rating: match.rating,
+          ratingCount: match.ratingCount,
+          website: match.website,
+          placeId: match.placeId,
+        } : null,
+        status,
+      };
+
+      if (status === 'CLOSED_TEMPORARILY') {
+        closedCount++;
+        // Créer une opportunité
+        upsertOpportunity(db, {
+          article_id: null,
+          hotel_name: lead.hotel,
+          city: lead.ville,
+          region: null,
+          group_name: null,
+          signal_type: 'fermeture_temp',
+          signal_subtype: 'google_places_leads',
+          project_date: null,
+        });
+      }
+
+      results.push(entry);
+
+      // Rate limiting
+      await new Promise(r => setTimeout(r, 350));
+    } catch (err) {
+      results.push({
+        hotel: lead.hotel,
+        ville: lead.ville,
+        match: null,
+        status: 'ERROR',
+        error: err.message,
+      });
+    }
+  }
+
+  logger.info(`Google Places scan leads: ${results.length}/${totalHotels} hotels verifies, ${closedCount} ferme(s)`);
+
+  return {
+    checked: results.length,
+    total: totalHotels,
+    closed: closedCount,
+    offset,
+    results,
+  };
+}
+
 module.exports = {
   getApiKey,
   textSearch,
   searchSpecificHotel,
   scanCity,
   scanCities,
+  scanFromLeads,
   VILLES_SCAN,
   REGIONS,
   QUARTIERS,

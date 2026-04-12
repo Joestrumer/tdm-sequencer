@@ -13504,16 +13504,62 @@ const ModalScanFermetures = ({ onClose, showToast }) => {
     setScanning(false);
   };
 
+  const [leadsOffset, setLeadsOffset] = useState(0);
+
+  const scanLeads = async (offset = 0) => {
+    setScanning(true);
+    if (offset === 0) setResults(null);
+    try {
+      const res = await api.post('/veille/scan-fermetures/leads', { limit: 30, offset });
+      if (res.ok !== false) {
+        const leadsResults = res.results.map(r => ({
+          name: r.hotel + (r.ville ? ` (${r.ville})` : ''),
+          address: r.match?.address || '',
+          businessStatus: r.status === 'NOT_FOUND' ? 'NOT_FOUND' : (r.match?.businessStatus || r.status),
+          rating: r.match?.rating || null,
+          ratingCount: r.match?.ratingCount || 0,
+          website: r.match?.website || null,
+          placeId: r.match?.placeId || null,
+          googleName: r.match?.name || null,
+          city: r.ville || '',
+        }));
+        setResults(prev => ({
+          city: 'Mes leads',
+          total: prev ? prev.total + leadsResults.length : leadsResults.length,
+          closed: (prev?.closed || 0) + res.closed,
+          queries: res.checked,
+          hotels: prev ? [...prev.hotels, ...leadsResults] : leadsResults,
+          isLeadsScan: true,
+          leadsTotal: res.total,
+          hasMore: offset + res.checked < res.total,
+        }));
+        setLeadsOffset(offset + res.checked);
+        if (res.closed > 0) {
+          showToast?.(`${res.closed} hotel(s) ferme(s) detecte(s)`, 'success');
+        }
+      } else {
+        showToast?.(res.erreur || 'Erreur', 'error');
+      }
+    } catch (err) {
+      showToast?.('Erreur: ' + (err.erreur || err.message), 'error');
+    }
+    setScanning(false);
+  };
+
   const statusColors = {
     OPERATIONAL: 'text-emerald-600 bg-emerald-50',
     CLOSED_TEMPORARILY: 'text-amber-700 bg-amber-50 font-semibold',
     CLOSED_PERMANENTLY: 'text-red-600 bg-red-50',
+    NOT_FOUND: 'text-slate-400 bg-slate-50',
+    ERROR: 'text-red-400 bg-red-50',
   };
 
   const statusLabels = {
     OPERATIONAL: 'Ouvert',
     CLOSED_TEMPORARILY: 'Ferme temporairement',
     CLOSED_PERMANENTLY: 'Ferme definitivement',
+    NOT_FOUND: 'Non trouve',
+    ERROR: 'Erreur',
   };
 
   return (
@@ -13579,6 +13625,20 @@ const ModalScanFermetures = ({ onClose, showToast }) => {
                 {scanning ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" /> Scan...</> : 'Scanner region'}
               </button>
             </div>
+          </div>
+
+          <div className="border-t border-slate-100 pt-3" />
+
+          {/* Scanner les leads */}
+          <div className="flex items-center justify-between">
+            <div>
+              <label className="text-xs font-medium text-slate-500 block">Scanner mes leads</label>
+              <p className="text-xs text-slate-400">Verifie le statut Google de chaque hotel de votre base (30 par lot)</p>
+            </div>
+            <button onClick={() => scanLeads(0)} disabled={scanning}
+              className="px-4 py-2 bg-slate-800 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 flex items-center gap-1.5 whitespace-nowrap">
+              {scanning ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" /> Scan...</> : 'Scanner mes leads'}
+            </button>
           </div>
         </div>
 
@@ -13669,9 +13729,62 @@ const ModalScanFermetures = ({ onClose, showToast }) => {
             </div>
           )}
 
+          {/* Resultats scan leads */}
+          {results && results.isLeadsScan && (
+            <div className="space-y-3">
+              <div className="flex items-center gap-3 text-sm flex-wrap">
+                <span className="font-medium text-slate-700">Scan leads</span>
+                <span className="text-slate-400">{results.total} / {results.leadsTotal || '?'} verifies</span>
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${results.closed > 0 ? 'bg-amber-100 text-amber-700' : 'bg-emerald-100 text-emerald-700'}`}>
+                  {results.closed > 0 ? `${results.closed} ferme(s) temporairement` : 'Aucune fermeture'}
+                </span>
+              </div>
+
+              <div className="space-y-1">
+                {results.hotels
+                  .sort((a, b) => {
+                    if (a.businessStatus === 'CLOSED_TEMPORARILY' && b.businessStatus !== 'CLOSED_TEMPORARILY') return -1;
+                    if (b.businessStatus === 'CLOSED_TEMPORARILY' && a.businessStatus !== 'CLOSED_TEMPORARILY') return 1;
+                    if (a.businessStatus === 'CLOSED_PERMANENTLY' && b.businessStatus === 'OPERATIONAL') return -1;
+                    return 0;
+                  })
+                  .map((h, i) => (
+                  <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${h.businessStatus === 'CLOSED_TEMPORARILY' ? 'bg-amber-50 border border-amber-200' : 'hover:bg-slate-50'}`}>
+                    <div className="flex-1 min-w-0">
+                      <div className="font-medium text-slate-800 truncate">{h.name}</div>
+                      {h.googleName && h.googleName !== h.name.split(' (')[0] && (
+                        <div className="text-xs text-blue-500 truncate">Google: {h.googleName}</div>
+                      )}
+                      <div className="text-xs text-slate-400 truncate">{h.address}</div>
+                    </div>
+                    {h.rating && (
+                      <span className="text-xs text-slate-500 flex-shrink-0">{h.rating}</span>
+                    )}
+                    <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 ${statusColors[h.businessStatus] || 'text-slate-500 bg-slate-50'}`}>
+                      {statusLabels[h.businessStatus] || h.businessStatus}
+                    </span>
+                  </div>
+                ))}
+              </div>
+
+              {results.hasMore && !scanning && (
+                <button onClick={() => scanLeads(leadsOffset)}
+                  className="w-full py-2 text-xs text-blue-600 hover:text-blue-800 font-medium border border-blue-200 rounded-lg hover:bg-blue-50">
+                  Charger les 30 suivants ({results.leadsTotal - results.total} restants)
+                </button>
+              )}
+              {scanning && results.total > 0 && (
+                <div className="flex items-center justify-center py-3 text-slate-400 text-xs gap-2">
+                  <span className="w-4 h-4 border-2 border-slate-200 border-t-amber-500 rounded-full animate-spin" />
+                  Verification en cours...
+                </div>
+              )}
+            </div>
+          )}
+
           {!scanning && !results && (
             <div className="text-center py-12 text-slate-400 text-sm">
-              <p>Choisissez une ville ou une region pour lancer le scan.</p>
+              <p>Choisissez une ville, un hotel ou scannez vos leads.</p>
               <p className="mt-1 text-xs">Le scan detecte les hotels avec statut "Temporarily Closed" sur Google — signal fort de renovation.</p>
             </div>
           )}
