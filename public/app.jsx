@@ -3744,7 +3744,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     });
   };
 
-  const handleConvertToLeads = async (sequenceId = null) => {
+  const handleConvertContactsToLeads = async (sequenceId = null) => {
     const contactsToConvert = Array.from(selectedContacts).map(idx => contacts[idx]);
 
     if (contactsToConvert.length === 0) {
@@ -4391,7 +4391,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
             <div className="p-5">
               <div className="space-y-3">
                 <button
-                  onClick={() => handleConvertToLeads(null)}
+                  onClick={() => handleConvertContactsToLeads(null)}
                   disabled={converting}
                   className="w-full px-4 py-3 rounded-lg border-2 border-slate-300 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-50 text-left"
                 >
@@ -4419,7 +4419,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                     {sequences.filter(s => s.actif).map(seq => (
                       <button
                         key={seq.id}
-                        onClick={() => handleConvertToLeads(seq.id)}
+                        onClick={() => handleConvertContactsToLeads(seq.id)}
                         disabled={converting}
                         className="w-full px-4 py-3 rounded-lg border border-slate-300 text-slate-700 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 text-left transition-colors"
                       >
