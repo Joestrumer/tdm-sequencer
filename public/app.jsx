@@ -3459,6 +3459,7 @@ const VueProspection = ({ showToast, readOnly }) => {
   const [contactsHotel, setContactsHotel] = useState(null);
   const [contactsResults, setContactsResults] = useState(null);
   const [contactsLoading, setContactsLoading] = useState(false);
+  const [contactsCache, setContactsCache] = useState({}); // Cache des résultats par hotel_id
   const [filters, setFilters] = useState({
     classement: '',
     type_hebergement: '',
@@ -3654,17 +3655,30 @@ const VueProspection = ({ showToast, readOnly }) => {
     }
   };
 
-  const handleFindContacts = async (hotel) => {
+  const handleFindContacts = async (hotel, forceRefresh = false) => {
     setContactsHotel(hotel);
     setShowContactsModal(true);
+
+    // Si on a déjà des résultats en cache et qu'on ne force pas le refresh
+    if (!forceRefresh && contactsCache[hotel.id]) {
+      setContactsResults(contactsCache[hotel.id]);
+      setContactsLoading(false);
+      return;
+    }
+
+    // Sinon, lancer la recherche
     setContactsResults(null);
     setContactsLoading(true);
 
     try {
       const res = await api.post('/prospection/find-contacts', { hotel_id: hotel.id });
       setContactsResults(res);
+      // Mettre en cache
+      setContactsCache(prev => ({ ...prev, [hotel.id]: res }));
     } catch (err) {
-      setContactsResults({ error: err.message });
+      const errorResult = { error: err.message };
+      setContactsResults(errorResult);
+      setContactsCache(prev => ({ ...prev, [hotel.id]: errorResult }));
     }
     setContactsLoading(false);
   };
@@ -3990,11 +4004,22 @@ const VueProspection = ({ showToast, readOnly }) => {
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowContactsModal(false)}>
           <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-slate-200 flex-shrink-0">
-              <div>
+              <div className="flex-1">
                 <h3 className="text-lg font-semibold text-slate-900">Contacts LinkedIn</h3>
                 <p className="text-sm text-slate-500 mt-1">{contactsHotel?.nom_commercial}</p>
               </div>
-              <button onClick={() => setShowContactsModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+              <div className="flex items-center gap-2">
+                {contactsResults && !contactsLoading && (
+                  <button
+                    onClick={() => handleFindContacts(contactsHotel, true)}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
+                    title="Relancer la recherche"
+                  >
+                    🔄 Actualiser
+                  </button>
+                )}
+                <button onClick={() => setShowContactsModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+              </div>
             </div>
 
             <div className="flex-1 overflow-y-auto p-5">
