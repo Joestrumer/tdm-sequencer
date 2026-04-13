@@ -8,6 +8,7 @@ const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
 const logger = require('../config/logger');
+const scraperService = require('../services/hotelScraperService');
 
 // Configuration multer pour upload CSV
 const upload = multer({
@@ -285,5 +286,76 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/prospection/scrape — Lance le scraping pour une sélection d'hôtels
+  router.post('/scrape', async (req, res) => {
+    const { hotel_ids } = req.body;
+
+    if (!hotel_ids || !Array.isArray(hotel_ids) || hotel_ids.length === 0) {
+      return res.status(400).json({ error: 'hotel_ids requis (array)' });
+    }
+
+    logger.info(`🔍 Lancement scraping pour ${hotel_ids.length} hôtels`);
+
+    try {
+      // Lancer le scraping en background (async sans await)
+      // Pour éviter le timeout de la requête HTTP, on retourne immédiatement
+      // et le scraping se poursuit en arrière-plan
+
+      scrapeBatchAsync(db, hotel_ids);
+
+      res.json({
+        success: true,
+        queued: hotel_ids.length,
+        message: `Scraping lancé pour ${hotel_ids.length} hôtel(s)`,
+      });
+
+    } catch (err) {
+      logger.error('Erreur POST /scrape:', err);
+      res.status(500).json({ error: 'Erreur lors du lancement du scraping' });
+    }
+  });
+
+  // GET /api/prospection/scrape-status — Statut du scraping en cours
+  router.get('/scrape-status', (req, res) => {
+    try {
+      const processing = db.prepare(`
+        SELECT COUNT(*) as count FROM hotels_france WHERE scraping_status = 'processing'
+      `).get();
+
+      const recent = db.prepare(`
+        SELECT id, nom_commercial, scraping_status, scraping_error, scraping_date
+        FROM hotels_france
+        WHERE scraping_date >= datetime('now', '-1 hour')
+        ORDER BY scraping_date DESC
+        LIMIT 50
+      `).all();
+
+      res.json({
+        processing: processing.count,
+        recent,
+      });
+    } catch (err) {
+      logger.error('Erreur GET /scrape-status:', err);
+      res.status(500).json({ error: 'Erreur lors de la récupération du statut' });
+    }
+  });
+
   return router;
 };
+
+/**
+ * Scrape un batch d'hôtels en arrière-plan
+ */
+async function scrapeBatchAsync(db, hotelIds) {
+  try {
+    const results = await scraperService.scrapeBatch(db, hotelIds, (progress) => {
+      if (progress.success + progress.errors === progress.total) {
+        logger.info(`✅ Scraping batch terminé: ${progress.success} OK, ${progress.errors} erreurs`);
+      }
+    });
+
+    return results;
+  } catch (err) {
+    logger.error('❌ Erreur scraping batch:', err);
+  }
+}
