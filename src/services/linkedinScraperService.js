@@ -60,8 +60,12 @@ function extraireNomPrenom(nomComplet) {
  * Recherche Google pour trouver des contacts LinkedIn
  */
 async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
-  const query = `"${nomHotel}" ${fonction} site:linkedin.com`;
-  const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=10`;
+  // Enlever les guillemets pour être moins strict, normaliser les apostrophes
+  const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
+  const query = `${nomNormalise} ${fonction} linkedin`;
+  const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=20`;
+
+  logger.info(`🔍 Recherche Google: "${query}"`);
 
   try {
     const controller = new AbortController();
@@ -70,9 +74,11 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
     const response = await fetch(url, {
       signal: controller.signal,
       headers: {
-        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8',
         'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
+        'Accept-Encoding': 'gzip, deflate, br',
+        'Referer': 'https://www.google.com/',
       },
     });
 
@@ -87,30 +93,82 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
 
     const contacts = [];
 
-    // Parser les résultats de recherche Google
-    $('div.g, div[data-sokoban-container]').each((i, elem) => {
-      const $elem = $(elem);
-      const titre = $elem.find('h3').first().text();
-      const snippet = $elem.find('.VwiC3b, .yXK7lf, [data-sncf], .MjjYud').first().text();
-      const lien = $elem.find('a').first().attr('href');
-
-      // Vérifier que c'est un profil LinkedIn
-      if (!lien || !lien.includes('linkedin.com/in/')) {
-        return;
+    // Parser tous les liens LinkedIn dans la page
+    const linkedinUrls = new Set();
+    $('a[href*="linkedin.com/in/"]').each((i, elem) => {
+      const href = $(elem).attr('href');
+      if (href && href.includes('linkedin.com/in/')) {
+        // Nettoyer l'URL (enlever les paramètres Google)
+        const cleanUrl = href.split('&')[0].replace('/url?q=', '');
+        if (cleanUrl.startsWith('http')) {
+          linkedinUrls.add(cleanUrl);
+        }
       }
+    });
+
+    logger.info(`🔗 ${linkedinUrls.size} profils LinkedIn trouvés`);
+
+    // Parser les résultats de recherche Google (plusieurs sélecteurs possibles)
+    const resultSelectors = [
+      'div.g',
+      'div[data-sokoban-container]',
+      'div.Gx5Zad',
+      'div[jscontroller]',
+      '.MjjYud',
+    ];
+
+    for (const selector of resultSelectors) {
+      $(selector).each((i, elem) => {
+        const $elem = $(elem);
+
+        // Trouver le titre
+        const titre = $elem.find('h3, h2, [role="heading"]').first().text();
+
+        // Trouver le snippet/description
+        const snippet = $elem.find('.VwiC3b, .yXK7lf, [data-sncf], .MjjYud, .IsZvec, .aCOpRe, span').filter(function() {
+          const text = $(this).text();
+          return text.length > 20 && text.length < 500;
+        }).first().text();
+
+        // Trouver le lien
+        let lien = $elem.find('a[href*="linkedin.com/in/"]').first().attr('href');
+
+        if (!lien) {
+          // Chercher dans tous les liens de l'élément
+          $elem.find('a').each((j, link) => {
+            const href = $(link).attr('href');
+            if (href && href.includes('linkedin.com/in/')) {
+              lien = href;
+              return false; // break
+            }
+          });
+        }
+
+        // Vérifier que c'est un profil LinkedIn
+        if (!lien || !lien.includes('linkedin.com/in/')) {
+          return;
+        }
+
+        // Nettoyer l'URL Google
+        if (lien.startsWith('/url?q=')) {
+          lien = decodeURIComponent(lien.replace('/url?q=', '').split('&')[0]);
+        }
 
       // Extraire le nom du titre ou snippet
-      // Format typique : "Prénom NOM - Fonction - Entreprise"
       const texte = titre + ' ' + snippet;
 
-      // Patterns pour extraire le nom
+      // Patterns pour extraire le nom (plus permissifs)
       const patterns = [
-        // "Prénom NOM - Directeur"
-        /([A-ZÀ-Ú][a-zà-ú]+(?: [A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-–—]\s*(?:Directeur|Directrice|DG|Manager|Responsable|Gérant)/i,
+        // "Prénom NOM - Fonction"
+        /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,3})\s*[-–—]\s*(?:Directeur|Directrice|DG|Manager|Responsable|Gérant|Adjoint|Revenue)/i,
         // "Prénom NOM | LinkedIn"
-        /([A-ZÀ-Ú][a-zà-ú]+(?: [A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[|•]\s*LinkedIn/i,
+        /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,3})\s*[|•·]\s*(?:LinkedIn|Profil)/i,
         // Début du titre (souvent le nom)
-        /^([A-ZÀ-Ú][a-zà-ú]+(?: [A-ZÀ-Ú][a-zà-ú]+){1,2})/,
+        /^([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,3})/,
+        // "Prénom NOM," (avec virgule)
+        /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,3}),/,
+        // Dans le snippet
+        /(?:M\.|Mme)\s+([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,3})/,
       ];
 
       let nomExtrait = null;
@@ -122,7 +180,24 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
         }
       }
 
-      if (!nomExtrait) return;
+      // Si pas de nom extrait, essayer d'extraire depuis l'URL LinkedIn
+      if (!nomExtrait && lien) {
+        const urlMatch = lien.match(/linkedin\.com\/in\/([^/]+)/);
+        if (urlMatch && urlMatch[1]) {
+          // Convertir l'URL slug en nom (ex: "franck-farneti-1ab5731a" → "Franck Farneti")
+          const slug = urlMatch[1].replace(/-\w{8,}$/, ''); // Enlever l'ID à la fin
+          const parts = slug.split('-').filter(p => p.length > 1);
+          if (parts.length >= 2) {
+            nomExtrait = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+            logger.info(`📝 Nom extrait de l'URL: ${nomExtrait}`);
+          }
+        }
+      }
+
+      if (!nomExtrait) {
+        logger.warn(`⚠️ Impossible d'extraire le nom de: "${titre}"`);
+        return;
+      }
 
       // Détecter la fonction
       let fonctionDetectee = fonction;
@@ -144,15 +219,28 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
         pertinence: hotelMentioned ? 'haute' : 'moyenne',
       });
     });
+    } // Fin boucle sélecteurs
+
+    // Dédupliquer par URL LinkedIn
+    const seen = new Set();
+    const unique = [];
+    for (const contact of contacts) {
+      if (!seen.has(contact.linkedin_url)) {
+        seen.add(contact.linkedin_url);
+        unique.push(contact);
+      }
+    }
+
+    logger.info(`✅ ${unique.length} contact(s) unique(s) après parsing`);
 
     // Trier par pertinence (haute en premier)
-    contacts.sort((a, b) => {
+    unique.sort((a, b) => {
       if (a.pertinence === 'haute' && b.pertinence !== 'haute') return -1;
       if (a.pertinence !== 'haute' && b.pertinence === 'haute') return 1;
       return 0;
     });
 
-    return contacts;
+    return unique;
 
   } catch (err) {
     if (err.name === 'AbortError') {
@@ -166,26 +254,27 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
  * Recherche complète pour un hôtel : essaie plusieurs fonctions
  */
 async function rechercherContactsHotel(nomHotel) {
-  const fonctionsPrioritaires = ['Directeur', 'Directeur Général', 'Revenue Manager', 'Responsable'];
+  const fonctionsPrioritaires = ['Directeur', 'Directeur Général Adjoint', 'DG', 'Revenue Manager'];
 
   const tousContacts = [];
 
   for (const fonction of fonctionsPrioritaires) {
     try {
+      logger.info(`🔎 Essai: ${nomHotel} + ${fonction}`);
       const contacts = await rechercherContactsGoogle(nomHotel, fonction);
       tousContacts.push(...contacts);
 
-      // Si on a trouvé au moins 2 contacts avec haute pertinence, on arrête
-      const hautePertinence = contacts.filter(c => c.pertinence === 'haute');
-      if (hautePertinence.length >= 2) {
+      // Si on a trouvé au moins 1 contact, on arrête (pour économiser les crédits ZB)
+      if (contacts.length >= 1) {
+        logger.info(`✅ ${contacts.length} contact(s) trouvé(s), arrêt de la recherche`);
         break;
       }
 
       // Délai entre recherches pour ne pas être bloqué
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      await new Promise(resolve => setTimeout(resolve, 3000));
 
     } catch (err) {
-      logger.warn(`Erreur recherche ${fonction} pour ${nomHotel}:`, err.message);
+      logger.warn(`❌ Erreur recherche ${fonction} pour ${nomHotel}:`, err.message);
     }
   }
 
