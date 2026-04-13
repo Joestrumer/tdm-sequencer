@@ -57,7 +57,100 @@ function extraireNomPrenom(nomComplet) {
 }
 
 /**
- * Recherche Google pour trouver des contacts LinkedIn
+ * Recherche via Brave Search API (gratuite, 2000 requêtes/mois)
+ */
+async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey) {
+  const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
+  const query = `${nomNormalise} ${fonction} site:linkedin.com/in/`;
+
+  logger.info(`🔍 Recherche Brave API: "${query}"`);
+
+  try {
+    const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`, {
+      headers: {
+        'Accept': 'application/json',
+        'X-Subscription-Token': apiKey,
+      },
+    });
+
+    if (!response.ok) {
+      throw new Error(`Brave API HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const contacts = [];
+
+    if (data.web && data.web.results) {
+      for (const result of data.web.results) {
+        const titre = result.title || '';
+        const description = result.description || '';
+        const url = result.url || '';
+
+        if (!url.includes('linkedin.com/in/')) continue;
+
+        const texte = titre + ' ' + description;
+
+        // Extraction du nom (même logique que Google)
+        const patterns = [
+          /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,3})\s*[-–—|]/,
+          /^([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,3})/,
+        ];
+
+        let nomExtrait = null;
+        for (const pattern of patterns) {
+          const match = texte.match(pattern);
+          if (match && match[1]) {
+            nomExtrait = match[1];
+            break;
+          }
+        }
+
+        // Extraction depuis URL si nécessaire
+        if (!nomExtrait) {
+          const urlMatch = url.match(/linkedin\.com\/in\/([^/]+)/);
+          if (urlMatch && urlMatch[1]) {
+            const slug = urlMatch[1].replace(/-\w{8,}$/, '');
+            const parts = slug.split('-').filter(p => p.length > 1);
+            if (parts.length >= 2) {
+              nomExtrait = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+            }
+          }
+        }
+
+        if (!nomExtrait) continue;
+
+        // Détecter la fonction
+        let fonctionDetectee = fonction;
+        for (const poste of POSTES_CIBLES) {
+          if (texte.toLowerCase().includes(poste.toLowerCase())) {
+            fonctionDetectee = poste;
+            break;
+          }
+        }
+
+        const hotelMentioned = texte.toLowerCase().includes(nomHotel.toLowerCase().substring(0, 15));
+
+        contacts.push({
+          nom_complet: normaliserNom(nomExtrait),
+          fonction: fonctionDetectee,
+          linkedin_url: url,
+          snippet: description.substring(0, 200),
+          pertinence: hotelMentioned ? 'haute' : 'moyenne',
+        });
+      }
+    }
+
+    logger.info(`✅ ${contacts.length} contact(s) trouvé(s) via Brave API`);
+    return contacts;
+
+  } catch (err) {
+    logger.error(`❌ Erreur Brave API: ${err.message}`);
+    throw err;
+  }
+}
+
+/**
+ * Recherche Google pour trouver des contacts LinkedIn (fallback)
  */
 async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
   // Enlever les guillemets pour être moins strict, normaliser les apostrophes
@@ -85,10 +178,21 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
     clearTimeout(timeout);
 
     if (!response.ok) {
-      throw new Error(`HTTP ${response.status}`);
+      logger.error(`❌ Google HTTP ${response.status}: ${response.statusText}`);
+      throw new Error(`HTTP ${response.status} - ${response.statusText}`);
     }
 
     const html = await response.text();
+
+    // Vérifier si Google nous bloque avec un CAPTCHA
+    if (html.includes('captcha') || html.includes('unusual traffic')) {
+      logger.error('🚫 Google détecte un bot (CAPTCHA requis)');
+      throw new Error('Google CAPTCHA - utilisez une API de recherche à la place');
+    }
+
+    // Log début du HTML pour debug
+    logger.debug(`HTML reçu (premiers 500 chars): ${html.substring(0, 500)}`);
+
     const $ = cheerio.load(html);
 
     const contacts = [];
@@ -244,8 +348,10 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
 
   } catch (err) {
     if (err.name === 'AbortError') {
+      logger.error('⏱️ Timeout recherche Google (15s)');
       throw new Error('Timeout recherche Google (15s)');
     }
+    logger.error(`❌ Erreur fetch Google: ${err.message}`, { stack: err.stack?.substring(0, 200) });
     throw err;
   }
 }
@@ -253,15 +359,24 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
 /**
  * Recherche complète pour un hôtel : essaie plusieurs fonctions
  */
-async function rechercherContactsHotel(nomHotel) {
+async function rechercherContactsHotel(nomHotel, braveApiKey = null) {
   const fonctionsPrioritaires = ['Directeur', 'Directeur Général Adjoint', 'DG', 'Revenue Manager'];
 
   const tousContacts = [];
 
+  // Choisir la méthode de recherche
+  const useBrave = !!braveApiKey;
+  const searchMethod = useBrave ? 'Brave API' : 'Google scraping';
+  logger.info(`📡 Méthode de recherche: ${searchMethod}`);
+
   for (const fonction of fonctionsPrioritaires) {
     try {
       logger.info(`🔎 Essai: ${nomHotel} + ${fonction}`);
-      const contacts = await rechercherContactsGoogle(nomHotel, fonction);
+
+      const contacts = useBrave
+        ? await rechercherContactsBrave(nomHotel, fonction, braveApiKey)
+        : await rechercherContactsGoogle(nomHotel, fonction);
+
       tousContacts.push(...contacts);
 
       // Si on a trouvé au moins 1 contact, on arrête (pour économiser les crédits ZB)
@@ -274,7 +389,13 @@ async function rechercherContactsHotel(nomHotel) {
       await new Promise(resolve => setTimeout(resolve, 3000));
 
     } catch (err) {
-      logger.warn(`❌ Erreur recherche ${fonction} pour ${nomHotel}:`, err.message);
+      logger.error(`❌ Erreur recherche ${fonction} pour ${nomHotel}: ${err.message}`);
+
+      // Si c'est un CAPTCHA, arrêter immédiatement
+      if (err.message.includes('CAPTCHA') || err.message.includes('unusual traffic')) {
+        logger.error('🚫 Google bloque les requêtes - arrêt de la recherche');
+        break;
+      }
     }
   }
 
@@ -346,6 +467,7 @@ async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey) {
 
 module.exports = {
   rechercherContactsGoogle,
+  rechercherContactsBrave,
   rechercherContactsHotel,
   trouverEmailAvecZeroBounce,
   extraireNomPrenom,

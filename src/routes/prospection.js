@@ -542,8 +542,13 @@ module.exports = (db) => {
 
       logger.info(`🔍 Recherche contacts LinkedIn pour ${hotel.nom_commercial}`);
 
+      // Récupérer la clé Brave Search API si disponible
+      const braveApiKey = process.env.BRAVE_SEARCH_API_KEY ||
+        db.prepare("SELECT valeur FROM config WHERE cle = 'brave_search_api_key'").get()?.valeur ||
+        null;
+
       // Rechercher les contacts sur LinkedIn
-      const contacts = await linkedinService.rechercherContactsHotel(hotel.nom_commercial);
+      const contacts = await linkedinService.rechercherContactsHotel(hotel.nom_commercial, braveApiKey);
 
       if (contacts.length === 0) {
         return res.json({ message: 'Aucun contact trouvé', contacts: [] });
