@@ -10247,6 +10247,7 @@ const VueParametres = () => {
         <div className="space-y-4 max-w-2xl">
           <VueApiExterne />
           <VueBraveSearchConfig />
+          <VuePappersConfig />
           <VueGooglePlacesConfig />
           <VueHubspot />
           <VueVosFacturesConfig />
@@ -10476,6 +10477,66 @@ const VueBraveSearchConfig = () => {
           )}
         </div>
       )}
+    </div>
+  );
+};
+
+const VuePappersConfig = () => {
+  const [pappersKey, setPappersKey] = useState('');
+  const [configured, setConfigured] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.pappers_api_key_configured) setConfigured(true);
+    }).catch(() => {});
+  }, []);
+
+  const sauvegarder = async () => {
+    if (!pappersKey) return;
+    setSaving(true); setMsg('');
+    try {
+      await api.post('/config', { pappers_api_key: pappersKey });
+      setConfigured(true);
+      setPappersKey('');
+      setMsg('Clé API Pappers sauvegardée');
+    } catch(e) { setMsg('Erreur'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">Pappers API</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Pour la recherche de contacts décideurs (données officielles françaises)</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs ${configured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${configured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {configured ? "Configurée" : "Non configurée"}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Clé API Pappers</label>
+        <div className="flex gap-2">
+          <input type={showKey ? "text" : "password"} value={pappersKey} onChange={e => setPappersKey(e.target.value)}
+            placeholder={configured ? "Nouvelle clé (laisser vide pour conserver)" : "Coller votre clé API Pappers"}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <button onClick={() => setShowKey(!showKey)} className="px-2 text-xs text-slate-400 hover:text-slate-600">{showKey ? '🙈' : '👁'}</button>
+        </div>
+        <p className="text-xs text-slate-400 mt-1">Obtenez une clé sur <a href="https://www.pappers.fr/api" target="_blank" rel="noopener" className="text-blue-500 hover:underline">pappers.fr/api</a> (offre gratuite disponible)</p>
+      </div>
+      <div className="flex items-center gap-2">
+        {pappersKey && (
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+            {saving ? "Sauvegarde..." : "Enregistrer"}
+          </button>
+        )}
+      </div>
+      {msg && <p className="text-xs text-emerald-600 font-medium">{msg}</p>}
     </div>
   );
 };
