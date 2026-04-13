@@ -3729,7 +3729,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     if (activeTab === 'contacts') {
       chargerContacts();
     }
-  }, [activeTab, contactsFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, contactsFilter.search, contactsFilter.avec_email, contactsFilter.fonction]);
 
   const toggleSelectContact = (index) => {
     setSelectedContacts(prev => {
