@@ -11,6 +11,7 @@ const os = require('os');
 const path = require('path');
 const logger = require('../config/logger');
 const scraperService = require('../services/hotelScraperService');
+const linkedinService = require('../services/linkedinScraperService');
 const { v4: uuidv4 } = require('uuid');
 
 // Configuration multer pour upload CSV
@@ -490,6 +491,97 @@ module.exports = (db) => {
     } catch (err) {
       logger.error('Erreur DELETE /reset:', err);
       res.status(500).json({ error: 'Erreur lors de la suppression' });
+    }
+  });
+
+  // POST /api/prospection/find-contacts — Recherche LinkedIn + ZeroBounce pour un hôtel
+  router.post('/find-contacts', async (req, res) => {
+    const { hotel_id } = req.body;
+
+    if (!hotel_id) {
+      return res.status(400).json({ error: 'hotel_id requis' });
+    }
+
+    try {
+      // Récupérer l'hôtel
+      const hotel = db.prepare('SELECT * FROM hotels_france WHERE id = ?').get(hotel_id);
+      if (!hotel) {
+        return res.status(404).json({ error: 'Hôtel non trouvé' });
+      }
+
+      if (!hotel.site_internet) {
+        return res.json({ error: 'Pas de site internet', contacts: [] });
+      }
+
+      // Extraire le domaine du site
+      const domaine = hotel.site_internet.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+
+      logger.info(`🔍 Recherche contacts LinkedIn pour ${hotel.nom_commercial}`);
+
+      // Rechercher les contacts sur LinkedIn
+      const contacts = await linkedinService.rechercherContactsHotel(hotel.nom_commercial);
+
+      if (contacts.length === 0) {
+        return res.json({ message: 'Aucun contact trouvé', contacts: [] });
+      }
+
+      // Récupérer la clé ZeroBounce
+      const zbKey = process.env.ZEROBOUNCE_API_KEY ||
+        db.prepare("SELECT valeur FROM config WHERE cle = 'zerobounce_api_key'").get()?.valeur ||
+        null;
+
+      const results = [];
+
+      // Pour chaque contact, chercher l'email avec ZeroBounce
+      for (const contact of contacts) {
+        const { prenom, nom } = linkedinService.extraireNomPrenom(contact.nom_complet);
+
+        let emailResult = null;
+
+        if (zbKey && prenom && nom) {
+          try {
+            emailResult = await linkedinService.trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey);
+            // Délai entre appels ZeroBounce
+            await new Promise(resolve => setTimeout(resolve, 300));
+          } catch (err) {
+            logger.warn(`Erreur ZeroBounce pour ${contact.nom_complet}:`, err.message);
+          }
+        }
+
+        results.push({
+          ...contact,
+          prenom,
+          nom,
+          email: emailResult?.email || null,
+          email_status: emailResult?.status || null,
+          email_score: emailResult?.quality_score || null,
+        });
+      }
+
+      // Trier par : email trouvé + pertinence
+      results.sort((a, b) => {
+        if (a.email && !b.email) return -1;
+        if (!a.email && b.email) return 1;
+        if (a.pertinence === 'haute' && b.pertinence !== 'haute') return -1;
+        if (a.pertinence !== 'haute' && b.pertinence === 'haute') return 1;
+        return 0;
+      });
+
+      res.json({
+        success: true,
+        hotel: {
+          id: hotel.id,
+          nom: hotel.nom_commercial,
+          domaine,
+        },
+        contacts: results,
+        total: results.length,
+        avec_email: results.filter(r => r.email).length,
+      });
+
+    } catch (err) {
+      logger.error('Erreur POST /find-contacts:', err);
+      res.status(500).json({ error: 'Erreur lors de la recherche de contacts', details: err.message });
     }
   });
 
