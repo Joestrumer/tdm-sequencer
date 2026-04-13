@@ -3451,7 +3451,10 @@ const VueProspection = ({ showToast, readOnly }) => {
   const [loading, setLoading] = useState(false);
   const [importing, setImporting] = useState(false);
   const [scraping, setScraping] = useState(false);
+  const [converting, setConverting] = useState(false);
   const [selectedHotels, setSelectedHotels] = useState(new Set());
+  const [showSequenceModal, setShowSequenceModal] = useState(false);
+  const [createdLeadIds, setCreatedLeadIds] = useState([]);
   const [filters, setFilters] = useState({
     classement: '',
     type_hebergement: '',
@@ -3600,6 +3603,38 @@ const VueProspection = ({ showToast, readOnly }) => {
     setScraping(false);
   };
 
+  const handleConvertToLeads = async () => {
+    if (selectedHotels.size === 0) {
+      showToast('Aucun hôtel sélectionné', 'error');
+      return;
+    }
+
+    setConverting(true);
+    try {
+      const res = await api.post('/prospection/create-leads', {
+        hotel_ids: Array.from(selectedHotels),
+      });
+
+      if (res.created > 0) {
+        showToast(`✅ ${res.created} lead(s) créé(s)`, 'success');
+        setSelectedHotels(new Set());
+        chargerHotels();
+
+        // Demander si l'utilisateur veut lancer une séquence
+        // (modal à implémenter si nécessaire)
+      } else {
+        showToast('Aucun hôtel éligible pour conversion', 'info');
+      }
+
+      if (res.errors && res.errors.length > 0) {
+        console.warn('Erreurs de conversion:', res.errors);
+      }
+    } catch (err) {
+      showToast('Erreur conversion: ' + err.message, 'error');
+    }
+    setConverting(false);
+  };
+
   const getScrapingBadge = (status) => {
     if (status === 'success') return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Scrapé</span>;
     if (status === 'error') return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-600">✗ Erreur</span>;
@@ -3671,13 +3706,23 @@ const VueProspection = ({ showToast, readOnly }) => {
           </button>
 
           {selectedHotels.size > 0 && (
-            <button
-              onClick={handleScrape}
-              disabled={scraping || readOnly}
-              className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-            >
-              {scraping ? '⏳ Scraping...' : `🔍 Scraper (${selectedHotels.size})`}
-            </button>
+            <>
+              <button
+                onClick={handleScrape}
+                disabled={scraping || readOnly}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {scraping ? '⏳ Scraping...' : `🔍 Scraper (${selectedHotels.size})`}
+              </button>
+
+              <button
+                onClick={handleConvertToLeads}
+                disabled={converting || readOnly}
+                className="px-4 py-2 rounded-lg bg-amber-600 text-white text-sm font-medium hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {converting ? '⏳ Conversion...' : `→ Convertir en leads (${selectedHotels.size})`}
+              </button>
+            </>
           )}
 
           <button
