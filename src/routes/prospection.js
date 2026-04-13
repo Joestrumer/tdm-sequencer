@@ -33,15 +33,30 @@ module.exports = (db) => {
     let firstRow = null;
 
     try {
-      // Détection automatique du séparateur
-      const sampleData = fs.readFileSync(req.file.path, 'utf8').slice(0, 1000);
+      // Détection encodage et séparateur
+      // Essayer UTF-8 puis ISO-8859-1 (Latin-1, courant pour CSV français)
+      let sampleData;
+      let encoding = 'utf8';
+
+      try {
+        sampleData = fs.readFileSync(req.file.path, 'utf8').slice(0, 1000);
+        // Vérifier si des caractères invalides (signe que ce n'est pas UTF-8)
+        if (sampleData.includes('�') || /[\x80-\xFF]/.test(sampleData)) {
+          encoding = 'latin1';
+          sampleData = fs.readFileSync(req.file.path, 'latin1').slice(0, 1000);
+        }
+      } catch (err) {
+        encoding = 'latin1';
+        sampleData = fs.readFileSync(req.file.path, 'latin1').slice(0, 1000);
+      }
+
       const separator = sampleData.includes(';') && sampleData.split(';').length > sampleData.split(',').length ? ';' : ',';
 
-      logger.info(`Import CSV: séparateur détecté = "${separator}"`);
+      logger.info(`Import CSV: encodage=${encoding}, séparateur="${separator}"`);
 
       // Lecture et parsing du CSV
       await new Promise((resolve, reject) => {
-        fs.createReadStream(req.file.path)
+        fs.createReadStream(req.file.path, { encoding })
           .pipe(csv({
             separator,
             skipEmptyLines: true,
