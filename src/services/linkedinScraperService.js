@@ -432,7 +432,24 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null) {
     }
   }
 
-  return unique.slice(0, 5); // Max 5 contacts
+  // Filtrer uniquement les décideurs (titres de direction)
+  const titresDecideurs = [
+    'directeur', 'directrice', 'dg', 'pdg', 'ceo', 'directeur général',
+    'directrice générale', 'directeur adjoint', 'directrice adjointe',
+    'directeur des opérations', 'directrice des opérations',
+    'directeur marketing', 'directrice marketing',
+    'revenue manager', 'general manager', 'gérant', 'gérante',
+    'responsable', 'manager', 'propriétaire'
+  ];
+
+  const decideurs = unique.filter(contact => {
+    const fonctionLower = contact.fonction.toLowerCase();
+    return titresDecideurs.some(titre => fonctionLower.includes(titre));
+  });
+
+  logger.info(`🎯 ${decideurs.length} décideur(s) sur ${unique.length} contact(s)`);
+
+  return decideurs.slice(0, 5); // Max 5 décideurs
 }
 
 /**
@@ -473,78 +490,30 @@ async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMe
   // Troncature du prénom
   const pTrunc4 = p.length > 4 ? p.substring(0, 4) : null;
 
-  // Générer TOUS les patterns (ordre de priorité décroissante)
+  // Générer patterns optimisés (TOP 15 les plus probables)
   const patternTemplates = [
-    // ── Priorité haute : patterns classiques ──
-    { template: `${p}.${n}@${d}`, type: 'prenom.nom' },
-    { template: `${pi}.${n}@${d}`, type: 'p.nom' },
-    { template: `${p}@${d}`, type: 'prenom' },
-    { template: `${pi}${n}@${d}`, type: 'pnom' },
-    { template: `${p}${n}@${d}`, type: 'prenomnom' },
-    { template: `${n}@${d}`, type: 'nom' },
-    { template: `${p}-${n}@${d}`, type: 'prenom-nom' },
-    { template: `${p}_${n}@${d}`, type: 'prenom_nom' },
-    { template: `${n}.${p}@${d}`, type: 'nom.prenom' },
-    { template: `${p}.${ni}@${d}`, type: 'prenom.n' },
-    { template: `${pi}.${ni}@${d}`, type: 'p.n' },
+    // ── Top 15 patterns les plus fréquents en hôtellerie ──
+    { template: `${p}.${n}@${d}`, type: 'prenom.nom' },           // #1 le plus courant
+    { template: `${pi}.${n}@${d}`, type: 'p.nom' },               // #2 très courant
+    { template: `${p}@${d}`, type: 'prenom' },                     // #3 petites structures
+    { template: `${pi}${n}@${d}`, type: 'pnom' },                 // #4 format compact
+    { template: `${p}${n}@${d}`, type: 'prenomnom' },             // #5 sans séparateur
+    { template: `${p}-${n}@${d}`, type: 'prenom-nom' },           // #6 tiret
+    { template: `${p}_${n}@${d}`, type: 'prenom_nom' },           // #7 underscore
+    { template: `${n}.${p}@${d}`, type: 'nom.prenom' },           // #8 inversé
+    { template: `${p}.${ni}@${d}`, type: 'prenom.n' },            // #9 initiale nom
+    { template: `${pi}.${ni}@${d}`, type: 'p.n' },                // #10 double initiale
 
-    // ── Troncatures du nom ──
-    ...nTrunc.map(t => ({ template: `${p}.${t}@${d}`, type: 'prenom.nomT' })),
-    ...nTrunc.map(t => ({ template: `${pi}.${t}@${d}`, type: 'p.nomT' })),
-    ...nTrunc.map(t => ({ template: `${p}${t}@${d}`, type: 'prenomNomT' })),
-    ...nTrunc.map(t => ({ template: `${pi}${t}@${d}`, type: 'pNomT' })),
-
-    // ── Variantes inversées et composites ──
-    { template: `${n}${p}@${d}`, type: 'nomprenom' },
-    { template: `${p}${ni}@${d}`, type: 'prenomN' },
-    { template: `${n}-${p}@${d}`, type: 'nom-prenom' },
-    { template: `${n}_${p}@${d}`, type: 'nom_prenom' },
-
-    // ── Prenom tronqué + nom ──
-    ...(pTrunc4 ? [
-      { template: `${pTrunc4}.${n}@${d}`, type: 'prenomT.nom' },
-      { template: `${pTrunc4}${n}@${d}`, type: 'prenomTnom' },
-      { template: `${pTrunc4}.${ni}@${d}`, type: 'prenomT.n' },
-    ] : []),
-
-    // ── Combinaisons prenom4 + nom4 ──
-    ...(pTrunc4 && n.length > 4 ? [
-      { template: `${pTrunc4}${n.substring(0, 4)}@${d}`, type: 'prenomT4nomT4' },
-    ] : []),
-
-    // ── Nom composé ──
+    // ── Nom composé (si applicable) ──
     ...(secondNom ? [
       { template: `${p}.${secondNom}@${d}`, type: 'prenom.nom2' },
       { template: `${pi}.${secondNom}@${d}`, type: 'p.nom2' },
-      { template: `${p}.${nomParts.join('')}@${d}`, type: 'prenom.nomComplet' },
-      { template: `${p}.${nRaw}@${d}`, type: 'prenom.nom-compose' },
-      { template: `${p}${secondNom}@${d}`, type: 'prenomNom2' },
-      { template: `${pi}${secondNom}@${d}`, type: 'pNom2' },
-      ...(secondNom.length > 3 ? [
-        { template: `${p}.${secondNom.substring(0, 3)}@${d}`, type: 'prenom.nom2T3' },
-        { template: `${p}.${secondNom.substring(0, 4)}@${d}`, type: 'prenom.nom2T4' },
-      ] : []),
     ] : []),
 
-    // ── Prénom composé ──
-    ...(pRaw.includes('-') ? [
-      { template: `${pRaw}.${n}@${d}`, type: 'prenom-compose.nom' },
-      { template: `${pRaw}${n}@${d}`, type: 'prenom-composenom' },
-      { template: `${pRaw.split('-').map(s => s[0]).join('')}${n}@${d}`, type: 'ppNom' },
-      { template: `${pRaw.split('-').map(s => s[0]).join('')}.${n}@${d}`, type: 'pp.nom' },
-      { template: `${pRaw.split('-')[0]}.${n}@${d}`, type: 'prenom1.nom' },
-    ] : []),
-
-    // ── Emails génériques ──
+    // ── Emails génériques direction ──
+    { template: `direction@${d}`, type: 'direction' },
     { template: `contact@${d}`, type: 'contact' },
     { template: `info@${d}`, type: 'info' },
-    { template: `reservation@${d}`, type: 'reservation' },
-    { template: `reservations@${d}`, type: 'reservations' },
-    { template: `booking@${d}`, type: 'booking' },
-    { template: `reception@${d}`, type: 'reception' },
-    { template: `direction@${d}`, type: 'direction' },
-    { template: `hotel@${d}`, type: 'hotel' },
-    { template: `accueil@${d}`, type: 'accueil' },
   ];
 
   // Dédupliquer

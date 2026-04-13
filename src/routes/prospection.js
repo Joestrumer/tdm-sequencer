@@ -562,9 +562,14 @@ module.exports = (db) => {
       const results = [];
       let patternMemoire = null; // Mémoriser le pattern qui marche
 
+      logger.info(`📧 Recherche emails pour ${contacts.length} contact(s)...`);
+
       // Pour chaque contact, chercher l'email avec ZeroBounce
-      for (const contact of contacts) {
+      for (let i = 0; i < contacts.length; i++) {
+        const contact = contacts[i];
         const { prenom, nom } = linkedinService.extraireNomPrenom(contact.nom_complet);
+
+        logger.info(`📧 [${i + 1}/${contacts.length}] ${contact.nom_complet} (${contact.fonction})`);
 
         let emailResult = null;
 
@@ -584,6 +589,8 @@ module.exports = (db) => {
           } catch (err) {
             logger.warn(`Erreur ZeroBounce pour ${contact.nom_complet}:`, err.message);
           }
+        } else {
+          logger.warn(`⚠️ Pas de clé ZeroBounce ou nom incomplet pour ${contact.nom_complet}`);
         }
 
         results.push({
@@ -595,6 +602,8 @@ module.exports = (db) => {
           email_score: emailResult?.quality_score || null,
         });
       }
+
+      logger.info(`✅ Recherche terminée: ${results.filter(r => r.email).length}/${results.length} emails trouvés`);
 
       // Trier par : email trouvé + pertinence
       results.sort((a, b) => {
