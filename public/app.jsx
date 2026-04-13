@@ -3790,6 +3790,8 @@ const VueProspection = ({ showToast, readOnly }) => {
             <option value="3 étoiles">3 étoiles</option>
             <option value="2 étoiles">2 étoiles</option>
             <option value="1 étoile">1 étoile</option>
+            <option value="Aire naturelle">Aire naturelle</option>
+            <option value="Auberge collective">Auberge collective</option>
           </select>
           <select
             value={filters.type_hebergement}
@@ -3797,9 +3799,12 @@ const VueProspection = ({ showToast, readOnly }) => {
             className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
           >
             <option value="">Tous types</option>
-            <option value="Hôtel de tourisme">Hôtel</option>
-            <option value="Résidence de tourisme">Résidence</option>
-            <option value="Village de vacances">Village</option>
+            <option value="HÔTEL DE TOURISME">Hôtel</option>
+            <option value="RÉSIDENCE DE TOURISME">Résidence</option>
+            <option value="VILLAGE DE VACANCES">Village</option>
+            <option value="CAMPING">Camping</option>
+            <option value="PARC RÉSIDENTIEL DE LOISIRS">Parc résidentiel</option>
+            <option value="AUBERGE COLLECTIVE">Auberge collective</option>
           </select>
           <input
             type="number"
