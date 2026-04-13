@@ -518,6 +518,77 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/prospection/contacts — Liste de tous les contacts LinkedIn trouvés
+  router.get('/contacts', (req, res) => {
+    try {
+      const { search, avec_email, fonction, limit = 100, offset = 0 } = req.query;
+
+      // Récupérer tous les hôtels avec des contacts LinkedIn
+      let query = `
+        SELECT id, nom_commercial, commune, site_internet,
+               linkedin_contacts, linkedin_search_date,
+               contact_email as email_generique
+        FROM hotels_france
+        WHERE linkedin_contacts IS NOT NULL
+          AND linkedin_contacts != '[]'
+      `;
+      const params = [];
+
+      if (search) {
+        query += ' AND nom_commercial LIKE ?';
+        params.push(`%${search}%`);
+      }
+
+      query += ' ORDER BY linkedin_search_date DESC LIMIT ? OFFSET ?';
+      params.push(parseInt(limit), parseInt(offset));
+
+      const hotels = db.prepare(query).all(...params);
+
+      // Parser et aplatir les contacts
+      const allContacts = [];
+      for (const hotel of hotels) {
+        try {
+          const contacts = JSON.parse(hotel.linkedin_contacts || '[]');
+          for (const contact of contacts) {
+            // Filtrer si nécessaire
+            if (avec_email === 'true' && !contact.email) continue;
+            if (fonction && !contact.fonction.toLowerCase().includes(fonction.toLowerCase())) continue;
+
+            allContacts.push({
+              hotel_id: hotel.id,
+              hotel_nom: hotel.nom_commercial,
+              hotel_commune: hotel.commune,
+              email_generique: hotel.email_generique,
+              ...contact,
+              search_date: hotel.linkedin_search_date,
+            });
+          }
+        } catch (err) {
+          logger.warn(`Erreur parse contacts pour ${hotel.nom_commercial}:`, err.message);
+        }
+      }
+
+      // Stats
+      const totalContacts = allContacts.length;
+      const avecEmail = allContacts.filter(c => c.email).length;
+      const sansEmail = totalContacts - avecEmail;
+
+      res.json({
+        contacts: allContacts,
+        total: totalContacts,
+        stats: {
+          avec_email: avecEmail,
+          sans_email: sansEmail,
+          hotels: hotels.length,
+        },
+      });
+
+    } catch (err) {
+      logger.error('Erreur GET /contacts:', err);
+      res.status(500).json({ error: 'Erreur lors de la récupération des contacts' });
+    }
+  });
+
   // POST /api/prospection/find-contacts — Recherche LinkedIn + ZeroBounce pour un hôtel
   router.post('/find-contacts', async (req, res) => {
     const { hotel_id } = req.body;
@@ -658,6 +729,99 @@ module.exports = (db) => {
     } catch (err) {
       logger.error('Erreur POST /find-contacts:', err);
       res.status(500).json({ error: 'Erreur lors de la recherche de contacts', details: err.message });
+    }
+  });
+
+  // POST /api/prospection/contacts-to-leads — Convertit des contacts LinkedIn en leads
+  router.post('/contacts-to-leads', (req, res) => {
+    const { contacts, sequence_id } = req.body;
+
+    if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
+      return res.status(400).json({ error: 'contacts requis (array)' });
+    }
+
+    try {
+      const createLead = db.prepare(`
+        INSERT OR IGNORE INTO leads (
+          id, prenom, nom, email, hotel, ville, segment,
+          poste, langue, source, statut, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `);
+
+      let created = 0;
+      let errors = [];
+      const leadIds = [];
+
+      const transaction = db.transaction((contactsToConvert) => {
+        for (const contact of contactsToConvert) {
+          try {
+            // Skip si pas d'email
+            if (!contact.email) {
+              errors.push({ contact: contact.nom_complet, error: 'Email manquant' });
+              continue;
+            }
+
+            const leadId = uuidv4();
+
+            // Mapper depuis contact LinkedIn
+            const segment = '5*'; // Par défaut, à ajuster selon classement hôtel
+
+            createLead.run(
+              leadId,
+              contact.prenom || contact.nom_complet.split(' ')[0],
+              contact.nom || contact.nom_complet.split(' ').slice(1).join(' '),
+              contact.email,
+              contact.hotel_nom || 'Hotel',
+              contact.hotel_commune || null,
+              segment,
+              contact.fonction || null,
+              'fr',
+              'Prospection LinkedIn',
+              'Nouveau'
+            );
+
+            leadIds.push(leadId);
+            created++;
+          } catch (err) {
+            if (err.message.includes('UNIQUE constraint')) {
+              errors.push({ contact: contact.nom_complet, error: 'Email déjà existant' });
+            } else {
+              errors.push({ contact: contact.nom_complet, error: err.message });
+            }
+          }
+        }
+      });
+
+      transaction(contacts);
+
+      // Si une séquence est spécifiée, inscrire les leads
+      if (sequence_id && leadIds.length > 0) {
+        const scheduler = require('../jobs/sequenceScheduler');
+        let inscribed = 0;
+        for (const leadId of leadIds) {
+          try {
+            scheduler.inscrireLead(db, leadId, sequence_id);
+            inscribed++;
+          } catch (err) {
+            logger.warn(`Erreur inscription lead ${leadId} en séquence:`, err.message);
+          }
+        }
+        logger.info(`✅ ${inscribed} lead(s) inscrit(s) en séquence ${sequence_id}`);
+      }
+
+      logger.info(`✅ ${created} contact(s) converti(s) en leads`);
+
+      res.json({
+        success: true,
+        created,
+        total: contacts.length,
+        lead_ids: leadIds,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+
+    } catch (err) {
+      logger.error('Erreur POST /contacts-to-leads:', err);
+      res.status(500).json({ error: 'Erreur lors de la conversion des contacts' });
     }
   });
 
