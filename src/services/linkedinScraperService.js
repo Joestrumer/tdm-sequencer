@@ -82,42 +82,60 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey)
 
     if (data.web && data.web.results) {
       for (const result of data.web.results) {
-        const titre = result.title || '';
-        const description = result.description || '';
+        let titre = result.title || '';
+        let description = result.description || '';
         const url = result.url || '';
 
         if (!url.includes('linkedin.com/in/')) continue;
 
-        const texte = titre + ' ' + description;
+        // Décoder les HTML entities (&#x27; → ', &amp; → &, etc.)
+        titre = titre.replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
+        description = description.replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
 
-        // Extraction du nom (même logique que Google)
-        const patterns = [
-          /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,3})\s*[-–—|]/,
-          /^([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,3})/,
-        ];
-
+        // Extraire le nom depuis l'URL LinkedIn en PRIORITÉ (plus fiable)
         let nomExtrait = null;
-        for (const pattern of patterns) {
-          const match = texte.match(pattern);
-          if (match && match[1]) {
-            nomExtrait = match[1];
-            break;
+        const urlMatch = url.match(/linkedin\.com\/in\/([^/?]+)/);
+        if (urlMatch && urlMatch[1]) {
+          const slug = urlMatch[1]
+            .replace(/-\w{8,}$/, '')  // Enlever l'ID à la fin (ex: -1ab5731a)
+            .replace(/%C3%A9/g, 'e')   // Décoder URL encoding
+            .replace(/%20/g, '-');
+
+          const parts = slug.split('-').filter(p => p.length > 1);
+          if (parts.length >= 2) {
+            // Prendre max 3 parties (prénom + nom + éventuel nom composé)
+            const nameParts = parts.slice(0, 3);
+            nomExtrait = nameParts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+            logger.info(`📝 Nom extrait de l'URL: ${nomExtrait} (depuis ${slug})`);
           }
         }
 
-        // Extraction depuis URL si nécessaire
+        // Si pas de nom depuis URL, essayer depuis le texte
         if (!nomExtrait) {
-          const urlMatch = url.match(/linkedin\.com\/in\/([^/]+)/);
-          if (urlMatch && urlMatch[1]) {
-            const slug = urlMatch[1].replace(/-\w{8,}$/, '');
-            const parts = slug.split('-').filter(p => p.length > 1);
-            if (parts.length >= 2) {
-              nomExtrait = parts.map(p => p.charAt(0).toUpperCase() + p.slice(1)).join(' ');
+          const texte = titre + ' ' + description;
+          const patterns = [
+            // "Vito Santoro - Directeur"
+            /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-–—]\s*(?:Directeur|Director|Manager)/i,
+            // Au début du titre
+            /^([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-|]/,
+            // "View Vito Santoro" ou "Connect Vito Santoro"
+            /(?:View|Connect)\s+<strong>([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})<\/strong>/,
+            /(?:View|Connect)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s*'/,
+          ];
+
+          for (const pattern of patterns) {
+            const match = texte.match(pattern);
+            if (match && match[1]) {
+              nomExtrait = match[1].replace(/<\/?strong>/g, '').trim();
+              break;
             }
           }
         }
 
-        if (!nomExtrait) continue;
+        if (!nomExtrait) {
+          logger.warn(`⚠️ Impossible d'extraire le nom de: "${titre}"`);
+          continue;
+        }
 
         // Détecter la fonction
         let fonctionDetectee = fonction;
