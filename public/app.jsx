@@ -11134,6 +11134,10 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => {
+                            const newIds = previewLeads.filter(l => !l.already_added).map(l => l.id).slice(0, 10);
+                            setSelectedLeadIds(new Set(newIds));
+                          }} className="text-[11px] text-slate-600 hover:text-slate-800 font-medium">Sélectionner 10</button>
+                          <button onClick={() => {
                             const newIds = previewLeads.filter(l => !l.already_added).map(l => l.id);
                             setSelectedLeadIds(new Set(newIds));
                           }} className="text-[11px] text-blue-600 hover:text-blue-800 font-medium">Tout sélectionner ({previewNewCount})</button>
