@@ -463,8 +463,11 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null) {
  */
 async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMemoire = null) {
   if (!zbKey) {
+    logger.error('❌ Clé ZeroBounce non configurée');
     throw new Error('Clé ZeroBounce non configurée');
   }
+
+  logger.info(`🔍 ZeroBounce: recherche email pour "${prenom}" "${nom}" @ ${domaine}`);
 
   const normalize = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z-]/g, '');
   const p = normalize(prenom).replace(/-/g, ''); // prénom sans tirets
@@ -541,8 +544,11 @@ async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMe
   }
 
   // Tester les patterns
+  logger.info(`📋 Test de ${patternsToTest.length} pattern(s)...`);
+
   for (const { email, type } of patternsToTest) {
     try {
+      logger.debug(`  Testing: ${email}`);
       const r = await fetch(`https://api.zerobounce.net/v2/validate?api_key=${zbKey}&email=${encodeURIComponent(email)}&ip_address=`);
       if (!r.ok) continue;
 

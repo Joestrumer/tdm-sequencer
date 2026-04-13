@@ -574,9 +574,16 @@ module.exports = (db) => {
         let emailResult = null;
 
         if (zbKey && prenom && nom) {
+          logger.info(`  → Prénom: "${prenom}", Nom: "${nom}", Domaine: "${domaine}"`);
           try {
             // Utiliser le pattern mémorisé s'il existe
             emailResult = await linkedinService.trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMemoire);
+
+            if (emailResult) {
+              logger.info(`  ✅ Email trouvé: ${emailResult.email}`);
+            } else {
+              logger.warn(`  ❌ Aucun email valide trouvé après test des patterns`);
+            }
 
             // Si un email valide est trouvé, mémoriser le pattern pour les prochains contacts
             if (emailResult && emailResult.pattern) {
@@ -604,6 +611,19 @@ module.exports = (db) => {
       }
 
       logger.info(`✅ Recherche terminée: ${results.filter(r => r.email).length}/${results.length} emails trouvés`);
+
+      // Sauvegarder les contacts dans la table hotels_france
+      try {
+        db.prepare(`
+          UPDATE hotels_france
+          SET linkedin_contacts = ?,
+              linkedin_search_date = datetime('now')
+          WHERE id = ?
+        `).run(JSON.stringify(results), hotel.id);
+        logger.info(`💾 Contacts sauvegardés pour ${hotel.nom_commercial}`);
+      } catch (err) {
+        logger.warn(`Erreur sauvegarde contacts:`, err.message);
+      }
 
       // Trier par : email trouvé + pertinence
       results.sort((a, b) => {

@@ -550,6 +550,9 @@ const migrations = [
   'ALTER TABLE veille_source_runs ADD COLUMN items_merged INTEGER DEFAULT 0',
   // Audit Passe 2 — Sources : support type recherche large
   'ALTER TABLE veille_sources ADD COLUMN search_mode TEXT DEFAULT \'site\'',
+  // Prospection — Contacts LinkedIn trouvés
+  'ALTER TABLE hotels_france ADD COLUMN linkedin_contacts TEXT DEFAULT \'[]\'',
+  'ALTER TABLE hotels_france ADD COLUMN linkedin_search_date TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
