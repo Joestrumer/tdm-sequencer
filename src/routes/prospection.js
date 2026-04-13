@@ -9,6 +9,7 @@ const csv = require('csv-parser');
 const fs = require('fs');
 const logger = require('../config/logger');
 const scraperService = require('../services/hotelScraperService');
+const { v4: uuidv4 } = require('uuid');
 
 // Configuration multer pour upload CSV
 const upload = multer({
@@ -337,6 +338,110 @@ module.exports = (db) => {
     } catch (err) {
       logger.error('Erreur GET /scrape-status:', err);
       res.status(500).json({ error: 'Erreur lors de la récupération du statut' });
+    }
+  });
+
+  // POST /api/prospection/create-leads — Convertit des hôtels scrapés en leads
+  router.post('/create-leads', (req, res) => {
+    const { hotel_ids } = req.body;
+
+    if (!hotel_ids || !Array.isArray(hotel_ids) || hotel_ids.length === 0) {
+      return res.status(400).json({ error: 'hotel_ids requis (array)' });
+    }
+
+    try {
+      // Récupérer les hôtels avec contact_email
+      const placeholders = hotel_ids.map(() => '?').join(',');
+      const hotels = db.prepare(`
+        SELECT * FROM hotels_france
+        WHERE id IN (${placeholders})
+          AND contact_email IS NOT NULL
+          AND imported_as_lead = 0
+      `).all(...hotel_ids);
+
+      if (hotels.length === 0) {
+        return res.json({
+          success: true,
+          created: 0,
+          message: 'Aucun hôtel éligible (contact_email manquant ou déjà converti)',
+        });
+      }
+
+      const createLead = db.prepare(`
+        INSERT INTO leads (
+          id, prenom, nom, email, hotel, ville, segment,
+          poste, langue, source, statut, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `);
+
+      const markHotel = db.prepare(`
+        UPDATE hotels_france
+        SET imported_as_lead = 1, lead_id = ?
+        WHERE id = ?
+      `);
+
+      let created = 0;
+      let errors = [];
+
+      const transaction = db.transaction((hotelsToConvert) => {
+        for (const hotel of hotelsToConvert) {
+          try {
+            const leadId = uuidv4();
+
+            // Mapper classement vers segment
+            let segment = '3*'; // Par défaut
+            if (hotel.classement) {
+              if (hotel.classement.includes('5')) segment = '5*';
+              else if (hotel.classement.includes('4')) segment = '4*';
+              else if (hotel.classement.includes('3')) segment = '3*';
+              else if (hotel.classement.includes('2')) segment = '2*';
+              else if (hotel.classement.includes('1')) segment = '1*';
+            }
+
+            // Créer le lead
+            createLead.run(
+              leadId,
+              hotel.contact_prenom || 'Contact',
+              hotel.contact_nom || hotel.nom_commercial,
+              hotel.contact_email,
+              hotel.nom_commercial,
+              hotel.commune,
+              segment,
+              hotel.contact_fonction || null,
+              'fr',
+              'Prospection automatique',
+              'Nouveau'
+            );
+
+            // Marquer l'hôtel comme converti
+            markHotel.run(leadId, hotel.id);
+
+            created++;
+          } catch (err) {
+            // Ignorer les erreurs de doublons (email déjà existant)
+            if (err.message.includes('UNIQUE constraint')) {
+              errors.push({ hotel: hotel.nom_commercial, error: 'Email déjà existant' });
+            } else {
+              errors.push({ hotel: hotel.nom_commercial, error: err.message });
+            }
+          }
+        }
+      });
+
+      transaction(hotels);
+
+      logger.info(`✅ ${created} hôtel(s) converti(s) en leads`);
+
+      res.json({
+        success: true,
+        created,
+        total: hotels.length,
+        errors: errors.length > 0 ? errors : undefined,
+      });
+
+    } catch (err) {
+      logger.error('Erreur POST /create-leads:', err);
+      res.status(500).json({ error: 'Erreur lors de la création des leads' });
     }
   });
 
