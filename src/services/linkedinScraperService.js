@@ -59,9 +59,10 @@ function extraireNomPrenom(nomComplet) {
 /**
  * Recherche via Brave Search API (gratuite, 2000 requêtes/mois)
  */
-async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey) {
+async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey, commune = null) {
   const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
-  const query = `${nomNormalise} ${fonction} site:linkedin.com/in/`;
+  const communePart = commune ? ` ${commune}` : '';
+  const query = `${nomNormalise}${communePart} ${fonction} site:linkedin.com/in/`;
 
   logger.info(`🔍 Recherche Brave API: "${query}"`);
 
@@ -174,10 +175,11 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey)
 /**
  * Recherche Google pour trouver des contacts LinkedIn (fallback)
  */
-async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
+async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur', commune = null) {
   // Enlever les guillemets pour être moins strict, normaliser les apostrophes
   const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
-  const query = `${nomNormalise} ${fonction} linkedin`;
+  const communePart = commune ? ` ${commune}` : '';
+  const query = `${nomNormalise}${communePart} ${fonction} linkedin`;
   const url = `https://www.google.com/search?q=${encodeURIComponent(query)}&num=20`;
 
   logger.info(`🔍 Recherche Google: "${query}"`);
@@ -381,7 +383,7 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur') {
 /**
  * Recherche complète pour un hôtel : essaie plusieurs fonctions
  */
-async function rechercherContactsHotel(nomHotel, braveApiKey = null) {
+async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null) {
   const fonctionsPrioritaires = ['Directeur', 'Directeur Général Adjoint', 'DG', 'Revenue Manager'];
 
   const tousContacts = [];
@@ -393,11 +395,11 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null) {
 
   for (const fonction of fonctionsPrioritaires) {
     try {
-      logger.info(`🔎 Essai: ${nomHotel} + ${fonction}`);
+      logger.info(`🔎 Essai: ${nomHotel}${commune ? ' (' + commune + ')' : ''} + ${fonction}`);
 
       const contacts = useBrave
-        ? await rechercherContactsBrave(nomHotel, fonction, braveApiKey)
-        : await rechercherContactsGoogle(nomHotel, fonction);
+        ? await rechercherContactsBrave(nomHotel, fonction, braveApiKey, commune)
+        : await rechercherContactsGoogle(nomHotel, fonction, commune);
 
       tousContacts.push(...contacts);
 

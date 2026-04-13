@@ -202,6 +202,7 @@ module.exports = (db) => {
         scraping_status,
         imported,
         search,
+        linkedin_contacts,
         limit = 100,
         offset = 0
       } = req.query;
@@ -253,6 +254,9 @@ module.exports = (db) => {
         query += ' AND (nom_commercial LIKE ? OR adresse LIKE ? OR commune LIKE ?)';
         const s = `%${search}%`;
         params.push(s, s, s);
+      }
+      if (linkedin_contacts === 'true') {
+        query += ' AND linkedin_contacts IS NOT NULL AND linkedin_contacts != \'[]\'';
       }
 
       // Comptage total
@@ -620,15 +624,15 @@ module.exports = (db) => {
         return res.json({ error: 'Impossible d\'extraire le domaine', contacts: [] });
       }
 
-      logger.info(`🔍 Recherche contacts LinkedIn pour ${hotel.nom_commercial}`);
+      logger.info(`🔍 Recherche contacts LinkedIn pour ${hotel.nom_commercial}${hotel.commune ? ' (' + hotel.commune + ')' : ''}`);
 
       // Récupérer la clé Brave Search API si disponible
       const braveApiKey = process.env.BRAVE_SEARCH_API_KEY ||
         db.prepare("SELECT valeur FROM config WHERE cle = 'brave_search_api_key'").get()?.valeur ||
         null;
 
-      // Rechercher les contacts sur LinkedIn
-      const contacts = await linkedinService.rechercherContactsHotel(hotel.nom_commercial, braveApiKey);
+      // Rechercher les contacts sur LinkedIn (avec commune pour meilleurs résultats)
+      const contacts = await linkedinService.rechercherContactsHotel(hotel.nom_commercial, braveApiKey, hotel.commune);
 
       if (contacts.length === 0) {
         return res.json({ message: 'Aucun contact trouvé', contacts: [] });
@@ -649,11 +653,12 @@ module.exports = (db) => {
         const contact = contacts[i];
         const { prenom, nom } = linkedinService.extraireNomPrenom(contact.nom_complet);
 
-        logger.info(`📧 [${i + 1}/${contacts.length}] ${contact.nom_complet} (${contact.fonction})`);
+        logger.info(`📧 [${i + 1}/${contacts.length}] ${contact.nom_complet} (${contact.fonction}) - Pertinence: ${contact.pertinence}`);
 
         let emailResult = null;
 
-        if (zbKey && prenom && nom) {
+        // Ne tester ZeroBounce QUE sur les contacts pertinents (économise des crédits)
+        if (contact.pertinence === 'haute' && zbKey && prenom && nom) {
           logger.info(`  → Prénom: "${prenom}", Nom: "${nom}", Domaine: "${domaine}"`);
           try {
             // Utiliser le pattern mémorisé s'il existe
@@ -676,6 +681,8 @@ module.exports = (db) => {
           } catch (err) {
             logger.warn(`Erreur ZeroBounce pour ${contact.nom_complet}:`, err.message);
           }
+        } else if (contact.pertinence !== 'haute') {
+          logger.info(`  ⏭️ Skip ZeroBounce (pertinence moyenne)`);
         } else {
           logger.warn(`⚠️ Pas de clé ZeroBounce ou nom incomplet pour ${contact.nom_complet}`);
         }

@@ -3479,6 +3479,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     scraping_status: '',
     imported: '',
     search: '',
+    linkedin_contacts: '', // 'true' = avec contacts LinkedIn
   });
   const [pagination, setPagination] = useState({ limit: 50, offset: 0 });
   const [scrapingProgress, setScrapingProgress] = useState({ processing: 0, watching: false });
@@ -3987,6 +3988,14 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
             <option value="success">Scrapé</option>
             <option value="error">Erreur</option>
           </select>
+          <select
+            value={filters.linkedin_contacts}
+            onChange={(e) => setFilters({ ...filters, linkedin_contacts: e.target.value })}
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+          >
+            <option value="">Tous les hôtels</option>
+            <option value="true">👥 Avec contacts LinkedIn</option>
+          </select>
         </div>
       </div>
 
@@ -4007,6 +4016,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Hôtel</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Classement</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Commune</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Site web</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Chambres</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Contact</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Statut</th>
@@ -4016,13 +4026,13 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan="8" className="px-4 py-12 text-center text-sm text-slate-400">
+                  <td colSpan="9" className="px-4 py-12 text-center text-sm text-slate-400">
                     Chargement...
                   </td>
                 </tr>
               ) : hotels.length === 0 ? (
                 <tr>
-                  <td colSpan="8" className="px-4 py-12 text-center text-sm text-slate-400">
+                  <td colSpan="9" className="px-4 py-12 text-center text-sm text-slate-400">
                     Aucun hôtel trouvé. Importez un CSV pour commencer.
                   </td>
                 </tr>
@@ -4043,6 +4053,20 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-700">{hotel.classement || '-'}</td>
                     <td className="px-4 py-3 text-sm text-slate-700">{hotel.commune || '-'}</td>
+                    <td className="px-4 py-3">
+                      {hotel.site_internet ? (
+                        <a
+                          href={hotel.site_internet}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-xs text-blue-600 hover:underline flex items-center gap-1"
+                        >
+                          🔗 Site
+                        </a>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
+                    </td>
                     <td className="px-4 py-3 text-sm text-slate-700">{hotel.nombre_chambres || '-'}</td>
                     <td className="px-4 py-3">
                       {hotel.contact_email ? (
