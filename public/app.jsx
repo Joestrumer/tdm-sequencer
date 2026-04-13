@@ -3444,6 +3444,353 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   );
 };
 
+const VueProspection = ({ showToast, readOnly }) => {
+  const [hotels, setHotels] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [total, setTotal] = useState(0);
+  const [loading, setLoading] = useState(false);
+  const [importing, setImporting] = useState(false);
+  const [scraping, setScraping] = useState(false);
+  const [selectedHotels, setSelectedHotels] = useState(new Set());
+  const [filters, setFilters] = useState({
+    classement: '',
+    type_hebergement: '',
+    commune: '',
+    capacite_min: '',
+    capacite_max: '',
+    chambres_min: '',
+    chambres_max: '',
+    scraping_status: '',
+    imported: '',
+    search: '',
+  });
+  const [pagination, setPagination] = useState({ limit: 50, offset: 0 });
+  const fileInputRef = useRef(null);
+
+  const chargerHotels = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        ...filters,
+        limit: pagination.limit,
+        offset: pagination.offset,
+      });
+      Object.keys(params).forEach(key => params.get(key) === '' && params.delete(key));
+      const res = await api.get(`/prospection/hotels?${params}`);
+      setHotels(res.hotels || []);
+      setTotal(res.total || 0);
+      setStats(res.stats || null);
+    } catch (err) {
+      showToast('Erreur chargement hôtels: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    chargerHotels();
+  }, [filters, pagination]);
+
+  const handleImport = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const formData = new FormData();
+    formData.append('file', file);
+
+    setImporting(true);
+    try {
+      const res = await fetch('/api/prospection/import', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
+        body: formData,
+      });
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.error || 'Erreur import');
+
+      showToast(`✅ Import réussi: ${data.imported} hôtels importés, ${data.duplicates} doublons ignorés`, 'success');
+      chargerHotels();
+    } catch (err) {
+      showToast('Erreur import: ' + err.message, 'error');
+    }
+    setImporting(false);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const toggleSelect = (id) => {
+    setSelectedHotels(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAll = () => {
+    if (selectedHotels.size === hotels.length) {
+      setSelectedHotels(new Set());
+    } else {
+      setSelectedHotels(new Set(hotels.map(h => h.id)));
+    }
+  };
+
+  const handleScrape = async () => {
+    if (selectedHotels.size === 0) {
+      showToast('Aucun hôtel sélectionné', 'error');
+      return;
+    }
+
+    setScraping(true);
+    try {
+      const res = await api.post('/prospection/scrape', {
+        hotel_ids: Array.from(selectedHotels),
+      });
+      showToast(`✅ Scraping lancé pour ${res.queued || selectedHotels.size} hôtels`, 'success');
+      setSelectedHotels(new Set());
+      chargerHotels();
+    } catch (err) {
+      showToast('Erreur scraping: ' + err.message, 'error');
+    }
+    setScraping(false);
+  };
+
+  const getScrapingBadge = (status) => {
+    if (status === 'success') return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Scrapé</span>;
+    if (status === 'error') return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-600">✗ Erreur</span>;
+    if (status === 'processing') return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">⏳ En cours</span>;
+    return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500">⊙ À faire</span>;
+  };
+
+  return (
+    <div className="max-w-[1800px] mx-auto">
+      {/* Header avec stats */}
+      {stats && (
+        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total hôtels</p>
+            <p className="text-2xl font-bold text-slate-900">{stats.total?.toLocaleString()}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-slate-200 p-4">
+            <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">À scraper</p>
+            <p className="text-2xl font-bold text-slate-700">{stats.pending?.toLocaleString()}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-emerald-200 p-4">
+            <p className="text-xs font-medium text-emerald-600 uppercase tracking-wide mb-1">Scrapés OK</p>
+            <p className="text-2xl font-bold text-emerald-700">{stats.scraped?.toLocaleString()}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-red-200 p-4">
+            <p className="text-xs font-medium text-red-500 uppercase tracking-wide mb-1">Erreurs</p>
+            <p className="text-2xl font-bold text-red-600">{stats.errors?.toLocaleString()}</p>
+          </div>
+          <div className="bg-white rounded-xl border border-amber-200 p-4">
+            <p className="text-xs font-medium text-amber-600 uppercase tracking-wide mb-1">Convertis leads</p>
+            <p className="text-2xl font-bold text-amber-700">{stats.imported_as_leads?.toLocaleString()}</p>
+          </div>
+        </div>
+      )}
+
+      {/* Actions et filtres */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+        <div className="flex flex-wrap items-center gap-3 mb-4">
+          <input
+            type="file"
+            ref={fileInputRef}
+            onChange={handleImport}
+            accept=".csv"
+            className="hidden"
+          />
+          <button
+            onClick={() => fileInputRef.current?.click()}
+            disabled={importing || readOnly}
+            className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+          >
+            {importing ? '⏳ Import...' : '📁 Importer CSV'}
+          </button>
+
+          {selectedHotels.size > 0 && (
+            <button
+              onClick={handleScrape}
+              disabled={scraping || readOnly}
+              className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+            >
+              {scraping ? '⏳ Scraping...' : `🔍 Scraper (${selectedHotels.size})`}
+            </button>
+          )}
+
+          <button
+            onClick={chargerHotels}
+            className="ml-auto px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 flex items-center gap-2"
+          >
+            🔄 Actualiser
+          </button>
+        </div>
+
+        {/* Filtres */}
+        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+          <SearchInput
+            value={filters.search}
+            onChange={(e) => setFilters({ ...filters, search: e.target.value })}
+            placeholder="Rechercher..."
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+          />
+          <select
+            value={filters.classement}
+            onChange={(e) => setFilters({ ...filters, classement: e.target.value })}
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+          >
+            <option value="">Tous classements</option>
+            <option value="5 étoiles">5 étoiles</option>
+            <option value="4 étoiles">4 étoiles</option>
+            <option value="3 étoiles">3 étoiles</option>
+            <option value="2 étoiles">2 étoiles</option>
+            <option value="1 étoile">1 étoile</option>
+          </select>
+          <select
+            value={filters.type_hebergement}
+            onChange={(e) => setFilters({ ...filters, type_hebergement: e.target.value })}
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+          >
+            <option value="">Tous types</option>
+            <option value="Hôtel de tourisme">Hôtel</option>
+            <option value="Résidence de tourisme">Résidence</option>
+            <option value="Village de vacances">Village</option>
+          </select>
+          <input
+            type="number"
+            value={filters.chambres_min}
+            onChange={(e) => setFilters({ ...filters, chambres_min: e.target.value })}
+            placeholder="Chambres min"
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+          />
+          <input
+            type="number"
+            value={filters.chambres_max}
+            onChange={(e) => setFilters({ ...filters, chambres_max: e.target.value })}
+            placeholder="Chambres max"
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+          />
+          <select
+            value={filters.scraping_status}
+            onChange={(e) => setFilters({ ...filters, scraping_status: e.target.value })}
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+          >
+            <option value="">Tous statuts</option>
+            <option value="pending">À scraper</option>
+            <option value="processing">En cours</option>
+            <option value="success">Scrapé</option>
+            <option value="error">Erreur</option>
+          </select>
+        </div>
+      </div>
+
+      {/* Tableau */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full">
+            <thead className="bg-slate-50 border-b border-slate-200">
+              <tr>
+                <th className="px-4 py-3 text-left">
+                  <input
+                    type="checkbox"
+                    checked={hotels.length > 0 && selectedHotels.size === hotels.length}
+                    onChange={toggleSelectAll}
+                    className="rounded border-slate-300"
+                  />
+                </th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Hôtel</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Classement</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Commune</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Chambres</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Contact</th>
+                <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Statut</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {loading ? (
+                <tr>
+                  <td colSpan="7" className="px-4 py-12 text-center text-sm text-slate-400">
+                    Chargement...
+                  </td>
+                </tr>
+              ) : hotels.length === 0 ? (
+                <tr>
+                  <td colSpan="7" className="px-4 py-12 text-center text-sm text-slate-400">
+                    Aucun hôtel trouvé. Importez un CSV pour commencer.
+                  </td>
+                </tr>
+              ) : (
+                hotels.map(hotel => (
+                  <tr key={hotel.id} className="hover:bg-slate-50 transition-colors">
+                    <td className="px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedHotels.has(hotel.id)}
+                        onChange={() => toggleSelect(hotel.id)}
+                        className="rounded border-slate-300"
+                      />
+                    </td>
+                    <td className="px-4 py-3">
+                      <div className="font-medium text-slate-900 text-sm">{hotel.nom_commercial}</div>
+                      <div className="text-xs text-slate-500 mt-0.5">{hotel.adresse}</div>
+                    </td>
+                    <td className="px-4 py-3 text-sm text-slate-700">{hotel.classement || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700">{hotel.commune || '-'}</td>
+                    <td className="px-4 py-3 text-sm text-slate-700">{hotel.nombre_chambres || '-'}</td>
+                    <td className="px-4 py-3">
+                      {hotel.contact_email ? (
+                        <div>
+                          <div className="text-sm font-medium text-slate-900">{hotel.contact_prenom} {hotel.contact_nom}</div>
+                          <div className="text-xs text-slate-500">{hotel.contact_email}</div>
+                        </div>
+                      ) : (
+                        <span className="text-xs text-slate-400">-</span>
+                      )}
+                    </td>
+                    <td className="px-4 py-3">
+                      {getScrapingBadge(hotel.scraping_status)}
+                      {hotel.imported_as_lead === 1 && (
+                        <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700">→ Lead</span>
+                      )}
+                    </td>
+                  </tr>
+                ))
+              )}
+            </tbody>
+          </table>
+        </div>
+
+        {/* Pagination */}
+        {total > pagination.limit && (
+          <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-between">
+            <p className="text-sm text-slate-600">
+              {pagination.offset + 1} - {Math.min(pagination.offset + pagination.limit, total)} sur {total}
+            </p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setPagination(p => ({ ...p, offset: Math.max(0, p.offset - p.limit) }))}
+                disabled={pagination.offset === 0}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                ← Précédent
+              </button>
+              <button
+                onClick={() => setPagination(p => ({ ...p, offset: p.offset + p.limit }))}
+                disabled={pagination.offset + pagination.limit >= total}
+                className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+              >
+                Suivant →
+              </button>
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
 const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [testModal, setTestModal] = useState(null); // seq id
@@ -13923,7 +14270,10 @@ function App() {
       { id: "commandes", label: "Commandes" },
       { id: "partenaires", label: "Partenaires" },
     ]},
-    { id: "leads", icon: "👥", label: "Leads" },
+    { id: "leads-group", icon: "👥", label: "Leads", children: [
+      { id: "leads", label: "Contacts" },
+      { id: "prospection", label: "Prospection" },
+    ]},
     { id: "campagnes", icon: "📨", label: "Campagnes", children: [
       { id: "sequences", label: "Séquences" },
       { id: "email-campaigns", label: "Email Marketing" },
@@ -13946,6 +14296,7 @@ function App() {
     if (id === 'sequences' || id === 'templates' || id === 'email-campaigns') return 'campagnes';
     if (id === 'parametres' || id === 'blocklist') return 'config';
     if (id === 'dashboard' || id === 'dashboard-marketing' || id === 'dashboard-ventes') return 'dashboard';
+    if (id === 'prospection') return 'leads';
     return id;
   };
 
@@ -14128,6 +14479,7 @@ function App() {
           {vue === "commandes" && <VueCommandes showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "partenaires" && <VuePartenaires showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}
+          {vue === "prospection" && <VueProspection showToast={showToast} readOnly={!canWrite('leads')} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "templates" && <VueTemplates showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "email-campaigns" && <VueCampagnes showToast={showToast} readOnly={!canWrite('campagnes')} />}
