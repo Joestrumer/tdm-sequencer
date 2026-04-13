@@ -11134,8 +11134,13 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                         </div>
                         <div className="flex items-center gap-2">
                           <button onClick={() => {
-                            const newIds = previewLeads.filter(l => !l.already_added).map(l => l.id).slice(0, 10);
-                            setSelectedLeadIds(new Set(newIds));
+                            const availableLeads = previewLeads.filter(l => !l.already_added && !selectedLeadIds.has(l.id));
+                            const nextTen = availableLeads.slice(0, 10);
+                            setSelectedLeadIds(prev => {
+                              const newSet = new Set(prev);
+                              nextTen.forEach(l => newSet.add(l.id));
+                              return newSet;
+                            });
                           }} className="text-[11px] text-slate-600 hover:text-slate-800 font-medium">Sélectionner 10</button>
                           <button onClick={() => {
                             const newIds = previewLeads.filter(l => !l.already_added).map(l => l.id);
