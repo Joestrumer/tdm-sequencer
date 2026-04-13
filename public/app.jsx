@@ -3444,7 +3444,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   );
 };
 
-const VueProspection = ({ showToast, readOnly }) => {
+const VueProspection = ({ showToast, readOnly, sequences }) => {
+  const [activeTab, setActiveTab] = useState('hotels'); // 'hotels' ou 'contacts'
   const [hotels, setHotels] = useState([]);
   const [stats, setStats] = useState(null);
   const [total, setTotal] = useState(0);
@@ -3460,6 +3461,13 @@ const VueProspection = ({ showToast, readOnly }) => {
   const [contactsResults, setContactsResults] = useState(null);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsCache, setContactsCache] = useState({}); // Cache des résultats par hotel_id
+
+  // States pour vue contacts LinkedIn
+  const [contacts, setContacts] = useState([]);
+  const [contactsStats, setContactsStats] = useState(null);
+  const [selectedContacts, setSelectedContacts] = useState(new Set());
+  const [contactsFilter, setContactsFilter] = useState({ search: '', avec_email: '', fonction: '' });
+  const [showConvertModal, setShowConvertModal] = useState(false);
   const [filters, setFilters] = useState({
     classement: '',
     type_hebergement: '',
@@ -3703,6 +3711,68 @@ const VueProspection = ({ showToast, readOnly }) => {
     }
   };
 
+  const chargerContacts = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams(contactsFilter);
+      Object.keys(params).forEach(key => params.get(key) === '' && params.delete(key));
+      const res = await api.get(`/prospection/contacts?${params}`);
+      setContacts(res.contacts || []);
+      setContactsStats(res.stats || null);
+    } catch (err) {
+      showToast('Erreur chargement contacts: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'contacts') {
+      chargerContacts();
+    }
+  }, [activeTab, contactsFilter]);
+
+  const toggleSelectContact = (index) => {
+    setSelectedContacts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) {
+        newSet.delete(index);
+      } else {
+        newSet.add(index);
+      }
+      return newSet;
+    });
+  };
+
+  const handleConvertToLeads = async (sequenceId = null) => {
+    const contactsToConvert = Array.from(selectedContacts).map(idx => contacts[idx]);
+
+    if (contactsToConvert.length === 0) {
+      showToast('Aucun contact sélectionné', 'error');
+      return;
+    }
+
+    setConverting(true);
+    try {
+      const res = await api.post('/prospection/contacts-to-leads', {
+        contacts: contactsToConvert,
+        sequence_id: sequenceId,
+      });
+
+      if (res.errors && res.errors.length > 0) {
+        showToast(`⚠️ ${res.created}/${res.total} leads créés (${res.errors.length} erreurs)`, 'warning');
+      } else {
+        showToast(`✅ ${res.created} lead(s) créé(s)${sequenceId ? ' et inscrit(s) en séquence' : ''}`, 'success');
+      }
+
+      setSelectedContacts(new Set());
+      setShowConvertModal(false);
+      chargerContacts();
+    } catch (err) {
+      showToast('Erreur conversion: ' + err.message, 'error');
+    }
+    setConverting(false);
+  };
+
   const getScrapingBadge = (status) => {
     if (status === 'success') return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Scrapé</span>;
     if (status === 'error') return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-600">✗ Erreur</span>;
@@ -3729,9 +3799,41 @@ const VueProspection = ({ showToast, readOnly }) => {
         </div>
       )}
 
-      {/* Header avec stats */}
-      {stats && (
-        <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
+      {/* Onglets */}
+      <div className="flex gap-2 mb-6 border-b border-slate-200">
+        <button
+          onClick={() => setActiveTab('hotels')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'hotels'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          🏨 Hôtels
+        </button>
+        <button
+          onClick={() => setActiveTab('contacts')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'contacts'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          👥 Contacts LinkedIn
+          {contactsStats && contactsStats.avec_email > 0 && (
+            <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 font-medium">
+              {contactsStats.avec_email}
+            </span>
+          )}
+        </button>
+      </div>
+
+      {/* Contenu onglet Hôtels */}
+      {activeTab === 'hotels' && (
+        <>
+          {/* Header avec stats */}
+          {stats && (
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total hôtels</p>
             <p className="text-2xl font-bold text-slate-900">{stats.total?.toLocaleString()}</p>
@@ -3998,6 +4100,175 @@ const VueProspection = ({ showToast, readOnly }) => {
           </div>
         )}
       </div>
+        </>
+      )}
+
+      {/* Contenu onglet Contacts LinkedIn */}
+      {activeTab === 'contacts' && (
+        <>
+          {/* Stats */}
+          {contactsStats && (
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total contacts</p>
+                <p className="text-2xl font-bold text-slate-900">{contactsStats.avec_email + contactsStats.sans_email}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-emerald-200 p-4">
+                <p className="text-xs font-medium text-emerald-600 uppercase tracking-wide mb-1">Avec email</p>
+                <p className="text-2xl font-bold text-emerald-700">{contactsStats.avec_email}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Hôtels</p>
+                <p className="text-2xl font-bold text-slate-900">{contactsStats.hotels}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Filtres */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input
+                type="text"
+                placeholder="Rechercher hôtel..."
+                value={contactsFilter.search}
+                onChange={(e) => setContactsFilter(prev => ({ ...prev, search: e.target.value }))}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+              />
+              <select
+                value={contactsFilter.avec_email}
+                onChange={(e) => setContactsFilter(prev => ({ ...prev, avec_email: e.target.value }))}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+              >
+                <option value="">Tous les contacts</option>
+                <option value="true">Avec email uniquement</option>
+              </select>
+              <input
+                type="text"
+                placeholder="Filtrer par fonction..."
+                value={contactsFilter.fonction}
+                onChange={(e) => setContactsFilter(prev => ({ ...prev, fonction: e.target.value }))}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          {selectedContacts.size > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center justify-between">
+              <p className="text-sm font-medium text-blue-900">{selectedContacts.size} contact(s) sélectionné(s)</p>
+              <button
+                onClick={() => setShowConvertModal(true)}
+                disabled={converting}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {converting ? 'Conversion...' : 'Créer les leads'}
+              </button>
+            </div>
+          )}
+
+          {/* Tableau des contacts */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="w-8 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedContacts.size === contacts.length && contacts.length > 0}
+                        onChange={() => {
+                          if (selectedContacts.size === contacts.length) {
+                            setSelectedContacts(new Set());
+                          } else {
+                            setSelectedContacts(new Set(contacts.map((_, i) => i)));
+                          }
+                        }}
+                        className="w-4 h-4"
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Contact</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Fonction</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Email</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Hôtel</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Pertinence</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
+                        <div className="flex justify-center"><div className="w-6 h-6 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" /></div>
+                      </td>
+                    </tr>
+                  ) : contacts.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
+                        Aucun contact trouvé. Utilisez le bouton "🔍 Contacts" sur les hôtels pour trouver des contacts LinkedIn.
+                      </td>
+                    </tr>
+                  ) : (
+                    contacts.map((contact, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedContacts.has(i)}
+                            onChange={() => toggleSelectContact(i)}
+                            className="w-4 h-4"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <p className="text-sm font-medium text-slate-900">{contact.nom_complet}</p>
+                              {contact.linkedin_url && (
+                                <a
+                                  href={contact.linkedin_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline"
+                                >
+                                  🔗 Voir profil
+                                </a>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-slate-700">{contact.fonction}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {contact.email ? (
+                            <div>
+                              <span className="text-sm font-mono text-slate-900">{contact.email}</span>
+                              <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓</span>
+                            </div>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-50 text-orange-700">⚠️ Sans email</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">{contact.hotel_nom}</p>
+                            <p className="text-xs text-slate-500">{contact.hotel_commune}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {contact.pertinence === 'haute' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Pertinent</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600">Moyenne</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
+      )}
 
       {/* Modal Contacts LinkedIn */}
       {showContactsModal && (
@@ -4101,6 +4372,73 @@ const VueProspection = ({ showToast, readOnly }) => {
             <div className="p-5 border-t border-slate-200 flex-shrink-0">
               <button onClick={() => setShowContactsModal(false)} className="w-full px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50">
                 Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal Conversion en leads */}
+      {showConvertModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowConvertModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-md w-full" onClick={e => e.stopPropagation()}>
+            <div className="p-5 border-b border-slate-200">
+              <h3 className="text-lg font-semibold text-slate-900">Créer {selectedContacts.size} lead(s)</h3>
+              <p className="text-sm text-slate-500 mt-1">Optionnel : assigner directement à une séquence</p>
+            </div>
+
+            <div className="p-5">
+              <div className="space-y-3">
+                <button
+                  onClick={() => handleConvertToLeads(null)}
+                  disabled={converting}
+                  className="w-full px-4 py-3 rounded-lg border-2 border-slate-300 text-slate-700 font-medium hover:bg-slate-50 disabled:opacity-50 text-left"
+                >
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <p className="font-medium">Créer uniquement les leads</p>
+                      <p className="text-xs text-slate-500 mt-0.5">Sans assignation automatique</p>
+                    </div>
+                    <span className="text-xl">→</span>
+                  </div>
+                </button>
+
+                <div className="relative">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-200"></div>
+                  </div>
+                  <div className="relative flex justify-center text-xs">
+                    <span className="bg-white px-2 text-slate-500">ou</span>
+                  </div>
+                </div>
+
+                <p className="text-sm font-medium text-slate-700">Créer et assigner à une séquence :</p>
+                {sequences && sequences.length > 0 ? (
+                  <div className="space-y-2 max-h-60 overflow-y-auto">
+                    {sequences.filter(s => s.actif).map(seq => (
+                      <button
+                        key={seq.id}
+                        onClick={() => handleConvertToLeads(seq.id)}
+                        disabled={converting}
+                        className="w-full px-4 py-3 rounded-lg border border-slate-300 text-slate-700 hover:bg-blue-50 hover:border-blue-300 disabled:opacity-50 text-left transition-colors"
+                      >
+                        <p className="font-medium text-sm">{seq.nom}</p>
+                        <p className="text-xs text-slate-500 mt-0.5">Segment : {seq.segment}</p>
+                      </button>
+                    ))}
+                  </div>
+                ) : (
+                  <p className="text-sm text-slate-500 italic">Aucune séquence active disponible</p>
+                )}
+              </div>
+            </div>
+
+            <div className="p-5 border-t border-slate-200 flex gap-3">
+              <button
+                onClick={() => setShowConvertModal(false)}
+                className="flex-1 px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50"
+              >
+                Annuler
               </button>
             </div>
           </div>
@@ -14798,7 +15136,7 @@ function App() {
           {vue === "commandes" && <VueCommandes showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "partenaires" && <VuePartenaires showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}
-          {vue === "prospection" && <VueProspection showToast={showToast} readOnly={!canWrite('leads')} />}
+          {vue === "prospection" && <VueProspection showToast={showToast} readOnly={!canWrite('leads')} sequences={sequencesNorm} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "templates" && <VueTemplates showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "email-campaigns" && <VueCampagnes showToast={showToast} readOnly={!canWrite('campagnes')} />}
