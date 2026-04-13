@@ -631,8 +631,13 @@ module.exports = (db) => {
         db.prepare("SELECT valeur FROM config WHERE cle = 'brave_search_api_key'").get()?.valeur ||
         null;
 
-      // Rechercher les contacts sur LinkedIn (avec commune pour meilleurs résultats)
-      const contacts = await linkedinService.rechercherContactsHotel(hotel.nom_commercial, braveApiKey, hotel.commune);
+      // Récupérer la clé Pappers API si disponible
+      const pappersApiKey = process.env.PAPPERS_API_KEY ||
+        db.prepare("SELECT valeur FROM config WHERE cle = 'pappers_api_key'").get()?.valeur ||
+        null;
+
+      // Rechercher les contacts sur LinkedIn et Pappers (avec commune pour meilleurs résultats)
+      const contacts = await linkedinService.rechercherContactsHotel(hotel.nom_commercial, braveApiKey, hotel.commune, pappersApiKey);
 
       if (contacts.length === 0) {
         return res.json({ message: 'Aucun contact trouvé', contacts: [] });

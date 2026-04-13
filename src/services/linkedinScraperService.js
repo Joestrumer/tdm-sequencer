@@ -62,6 +62,7 @@ function extraireNomPrenom(nomComplet) {
 async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey, commune = null) {
   const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
   const communePart = commune ? ` ${commune}` : '';
+  // Enlever "linkedin" du texte, mais garder site:linkedin.com/in/ pour filtrer les résultats
   const query = `${nomNormalise}${communePart} ${fonction} site:linkedin.com/in/`;
 
   logger.info(`🔍 Recherche Brave API: "${query}"`);
@@ -142,13 +143,26 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
           continue;
         }
 
-        // Détecter la fonction
-        let fonctionDetectee = fonction;
+        // Détecter la fonction depuis le titre/description (plus fiable que le paramètre de recherche)
+        let fonctionDetectee = null;
+        const texteNormalise = texte.toLowerCase();
+
+        // Chercher dans l'ordre de priorité
         for (const poste of POSTES_CIBLES) {
-          if (texte.toLowerCase().includes(poste.toLowerCase())) {
+          const posteNorm = poste.toLowerCase();
+          // Vérifier que le poste est mentionné avec un séparateur (pas au milieu d'un mot)
+          const regex = new RegExp(`\\b${posteNorm}\\b`, 'i');
+          if (regex.test(texteNormalise)) {
             fonctionDetectee = poste;
+            logger.info(`  → Fonction détectée: ${poste}`);
             break;
           }
+        }
+
+        // Si aucune fonction détectée, utiliser celle de la recherche
+        if (!fonctionDetectee) {
+          fonctionDetectee = fonction;
+          logger.warn(`  → Aucune fonction détectée dans le texte, utilisation par défaut: ${fonction}`);
         }
 
         const hotelMentioned = texte.toLowerCase().includes(nomHotel.toLowerCase().substring(0, 15));
@@ -381,17 +395,82 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur', commun
 }
 
 /**
+ * Recherche via Pappers.fr (API gratuite pour données entreprises françaises)
+ */
+async function rechercherContactsPappers(nomHotel, commune = null, pappersApiKey = null) {
+  if (!pappersApiKey) {
+    logger.info('⏭️ Pas de clé Pappers, skip');
+    return [];
+  }
+
+  try {
+    const query = commune ? `${nomHotel} ${commune}` : nomHotel;
+    const url = `https://api.pappers.fr/v2/recherche?api_token=${pappersApiKey}&q=${encodeURIComponent(query)}&par_page=5`;
+
+    logger.info(`🔍 Recherche Pappers: "${query}"`);
+
+    const response = await fetch(url);
+    if (!response.ok) {
+      throw new Error(`Pappers API HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    const contacts = [];
+
+    if (data.resultats && data.resultats.length > 0) {
+      for (const entreprise of data.resultats.slice(0, 3)) {
+        // Extraire les dirigeants
+        if (entreprise.representants && entreprise.representants.length > 0) {
+          for (const rep of entreprise.representants) {
+            if (rep.nom_complet) {
+              contacts.push({
+                nom_complet: rep.nom_complet,
+                fonction: rep.qualite || 'Dirigeant',
+                linkedin_url: null,
+                snippet: `${entreprise.nom_entreprise} - ${entreprise.siege?.ville || ''}`,
+                pertinence: 'haute', // Pappers est très fiable
+                source: 'Pappers',
+              });
+            }
+          }
+        }
+      }
+    }
+
+    logger.info(`✅ ${contacts.length} contact(s) trouvé(s) via Pappers`);
+    return contacts;
+
+  } catch (err) {
+    logger.error(`❌ Erreur Pappers: ${err.message}`);
+    return [];
+  }
+}
+
+/**
  * Recherche complète pour un hôtel : essaie plusieurs fonctions
  */
-async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null) {
+async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null, pappersApiKey = null) {
   const fonctionsPrioritaires = ['Directeur', 'Directeur Général Adjoint', 'DG', 'Revenue Manager'];
 
   const tousContacts = [];
 
-  // Choisir la méthode de recherche
+  // 1. D'ABORD chercher dans Pappers (données officielles françaises)
+  if (pappersApiKey) {
+    try {
+      const contactsPappers = await rechercherContactsPappers(nomHotel, commune, pappersApiKey);
+      if (contactsPappers.length > 0) {
+        logger.info(`📊 Pappers: ${contactsPappers.length} contact(s) trouvé(s)`);
+        tousContacts.push(...contactsPappers);
+      }
+    } catch (err) {
+      logger.error(`❌ Erreur Pappers: ${err.message}`);
+    }
+  }
+
+  // 2. ENSUITE chercher sur LinkedIn
   const useBrave = !!braveApiKey;
   const searchMethod = useBrave ? 'Brave API' : 'Google scraping';
-  logger.info(`📡 Méthode de recherche: ${searchMethod}`);
+  logger.info(`📡 Méthode de recherche LinkedIn: ${searchMethod}`);
 
   for (const fonction of fonctionsPrioritaires) {
     try {
@@ -441,7 +520,7 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     'directeur des opérations', 'directrice des opérations',
     'directeur marketing', 'directrice marketing',
     'revenue manager', 'general manager', 'gérant', 'gérante',
-    'responsable', 'manager', 'propriétaire'
+    'responsable', 'manager', 'propriétaire', 'dirigeant', 'dirigeante'
   ];
 
   const decideurs = unique.filter(contact => {
@@ -575,6 +654,7 @@ async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMe
 module.exports = {
   rechercherContactsGoogle,
   rechercherContactsBrave,
+  rechercherContactsPappers,
   rechercherContactsHotel,
   trouverEmailAvecZeroBounce,
   extraireNomPrenom,
