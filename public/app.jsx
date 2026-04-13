@@ -13127,77 +13127,6 @@ const VueVeille = ({ showToast }) => {
               className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-blue-300" />
           </div>
 
-          {/* Détail opportunité sélectionnée */}
-          {selectedOpp && (
-            <div className="bg-white rounded-xl border border-blue-200 p-5 shadow-sm">
-              <div className="flex items-start justify-between mb-3">
-                <div>
-                  <div className="flex items-center gap-2 mb-1">
-                    <span className={`text-xs px-2 py-0.5 rounded font-bold ${PRIO[selectedOpp.signal_strength]?.color || 'bg-slate-100'}`}>{selectedOpp.signal_strength}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded ${SIGNAL_LABELS[selectedOpp.signal_type]?.color || 'bg-slate-100'}`}>{SIGNAL_LABELS[selectedOpp.signal_type]?.label || selectedOpp.signal_type}</span>
-                    <span className={`text-xs px-2 py-0.5 rounded ${OPP_STATUSES[selectedOpp.status]?.color || 'bg-slate-100'}`}>{OPP_STATUSES[selectedOpp.status]?.label || selectedOpp.status}</span>
-                  </div>
-                  <h3 className="text-lg font-bold text-slate-900">{selectedOpp.hotel_name || 'Établissement inconnu'}</h3>
-                  <p className="text-sm text-slate-500">{[selectedOpp.city, selectedOpp.region, selectedOpp.group_name ? `Groupe: ${selectedOpp.group_name}` : ''].filter(Boolean).join(' · ')}</p>
-                </div>
-                <button onClick={() => setSelectedOpp(null)} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
-              </div>
-
-              <div className="grid grid-cols-4 gap-3 mb-3">
-                <div className="bg-slate-50 rounded-lg p-2 text-center">
-                  <div className="text-xl font-bold text-slate-900">{selectedOpp.business_score}</div>
-                  <div className="text-xs text-slate-500">Score /100</div>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-2 text-center">
-                  <div className="text-xl font-bold text-slate-900">{selectedOpp.confidence_score}</div>
-                  <div className="text-xs text-slate-500">Confiance</div>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-2 text-center">
-                  <div className="text-xl font-bold text-slate-900">{selectedOpp.source_count}</div>
-                  <div className="text-xs text-slate-500">Sources</div>
-                </div>
-                <div className="bg-slate-50 rounded-lg p-2 text-center">
-                  <div className="text-xl font-bold text-slate-900">{selectedOpp.project_date || '—'}</div>
-                  <div className="text-xs text-slate-500">Date projet</div>
-                </div>
-              </div>
-
-              {selectedOpp.recommended_angle && (
-                <div className="bg-blue-50 rounded-lg p-3 mb-3">
-                  <div className="text-xs font-semibold text-blue-700 mb-1">Angle commercial recommandé</div>
-                  <p className="text-xs text-blue-800">{selectedOpp.recommended_angle}</p>
-                </div>
-              )}
-
-              {/* Pipeline statut */}
-              <div className="flex items-center gap-1 mb-3">
-                <span className="text-xs text-slate-500 mr-2">Statut :</span>
-                {['new', 'qualified', 'contacted', 'won', 'lost'].map(s => (
-                  <button key={s} onClick={() => handleOppStatus(selectedOpp.id, s)}
-                    className={`text-xs px-2 py-1 rounded transition-colors ${selectedOpp.status === s ? OPP_STATUSES[s].color + ' ring-1 ring-offset-1' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
-                    {OPP_STATUSES[s].label}
-                  </button>
-                ))}
-              </div>
-
-              {/* Articles liés */}
-              {selectedOpp.articles?.length > 0 && (
-                <div>
-                  <div className="text-xs font-semibold text-slate-600 mb-2">Articles liés ({selectedOpp.articles.length})</div>
-                  <div className="space-y-1">
-                    {selectedOpp.articles.map(a => (
-                      <div key={a.id} className="flex items-center gap-2 bg-slate-50 rounded px-3 py-1.5">
-                        <span className="text-xs text-slate-400">{a.source_nom}</span>
-                        <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex-1 truncate">{a.titre}</a>
-                        <span className="text-xs text-slate-300">{new Date(a.created_at).toLocaleDateString('fr-FR')}</span>
-                      </div>
-                    ))}
-                  </div>
-                </div>
-              )}
-            </div>
-          )}
-
           {/* Liste opportunités */}
           {opportunities.length === 0 ? (
             <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
@@ -13210,37 +13139,111 @@ const VueVeille = ({ showToast }) => {
               {opportunities.map(opp => {
                 const signal = SIGNAL_LABELS[opp.signal_type] || SIGNAL_LABELS.autre;
                 const prio = PRIO[opp.signal_strength] || PRIO.C;
+                const isSelected = selectedOpp?.id === opp.id;
                 return (
-                  <div key={opp.id} onClick={() => handleViewOpp(opp.id)}
-                    className={`bg-white rounded-xl border p-4 cursor-pointer hover:shadow-md transition-all ${opp.signal_strength === 'A' ? 'border-l-4 border-l-red-400' : opp.signal_strength === 'B' ? 'border-l-4 border-l-amber-400' : 'border-slate-100'}`}>
-                    <div className="flex items-start gap-3">
-                      <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${prio.color}`}>
-                        {opp.business_score}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <div className="flex items-center gap-2 mb-0.5">
-                          <span className="text-sm font-semibold text-slate-900">{opp.hotel_name || 'Établissement non identifié'}</span>
-                          {opp.city && <span className="text-xs text-slate-400">{opp.city}</span>}
+                  <React.Fragment key={opp.id}>
+                    <div onClick={() => handleViewOpp(opp.id)}
+                      className={`bg-white rounded-xl border p-4 cursor-pointer hover:shadow-md transition-all ${opp.signal_strength === 'A' ? 'border-l-4 border-l-red-400' : opp.signal_strength === 'B' ? 'border-l-4 border-l-amber-400' : 'border-slate-100'} ${isSelected ? 'ring-2 ring-blue-300' : ''}`}>
+                      <div className="flex items-start gap-3">
+                        <div className={`flex-shrink-0 w-10 h-10 rounded-lg flex items-center justify-center text-sm font-bold ${prio.color}`}>
+                          {opp.business_score}
                         </div>
-                        <div className="flex flex-wrap items-center gap-1.5 mb-1">
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${signal.color}`}>{signal.label}</span>
-                          {opp.group_name && <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{opp.group_name}</span>}
-                          <span className={`text-xs px-1.5 py-0.5 rounded ${OPP_STATUSES[opp.status]?.color || 'bg-slate-100'}`}>{OPP_STATUSES[opp.status]?.label || opp.status}</span>
-                          {opp.project_date && <span className="text-xs text-slate-400">Projet {opp.project_date}</span>}
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-0.5">
+                            <span className="text-sm font-semibold text-slate-900">{opp.hotel_name || 'Établissement non identifié'}</span>
+                            {opp.city && <span className="text-xs text-slate-400">{opp.city}</span>}
+                          </div>
+                          <div className="flex flex-wrap items-center gap-1.5 mb-1">
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${signal.color}`}>{signal.label}</span>
+                            {opp.group_name && <span className="text-xs px-1.5 py-0.5 rounded bg-slate-100 text-slate-600">{opp.group_name}</span>}
+                            <span className={`text-xs px-1.5 py-0.5 rounded ${OPP_STATUSES[opp.status]?.color || 'bg-slate-100'}`}>{OPP_STATUSES[opp.status]?.label || opp.status}</span>
+                            {opp.project_date && <span className="text-xs text-slate-400">Projet {opp.project_date}</span>}
+                          </div>
+                          <div className="text-xs text-slate-400">
+                            {opp.source_count} source{opp.source_count > 1 ? 's' : ''} · confiance {opp.confidence_score}/100
+                            · détecté {new Date(opp.first_seen_at).toLocaleDateString('fr-FR')}
+                          </div>
                         </div>
-                        <div className="text-xs text-slate-400">
-                          {opp.source_count} source{opp.source_count > 1 ? 's' : ''} · confiance {opp.confidence_score}/100
-                          · détecté {new Date(opp.first_seen_at).toLocaleDateString('fr-FR')}
+                        <div className="flex-shrink-0 flex gap-1">
+                          {opp.status === 'new' && (
+                            <button onClick={e => { e.stopPropagation(); handleOppStatus(opp.id, 'qualified'); }}
+                              className="text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100">Qualifier</button>
+                          )}
                         </div>
-                      </div>
-                      <div className="flex-shrink-0 flex gap-1">
-                        {opp.status === 'new' && (
-                          <button onClick={e => { e.stopPropagation(); handleOppStatus(opp.id, 'qualified'); }}
-                            className="text-xs px-2 py-1 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100">Qualifier</button>
-                        )}
                       </div>
                     </div>
-                  </div>
+
+                    {/* Détail opportunité inline */}
+                    {isSelected && selectedOpp && (
+                      <div className="bg-white rounded-xl border border-blue-200 p-5 shadow-sm ml-4 mb-2">
+                        <div className="flex items-start justify-between mb-3">
+                          <div>
+                            <div className="flex items-center gap-2 mb-1">
+                              <span className={`text-xs px-2 py-0.5 rounded font-bold ${PRIO[selectedOpp.signal_strength]?.color || 'bg-slate-100'}`}>{selectedOpp.signal_strength}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded ${SIGNAL_LABELS[selectedOpp.signal_type]?.color || 'bg-slate-100'}`}>{SIGNAL_LABELS[selectedOpp.signal_type]?.label || selectedOpp.signal_type}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded ${OPP_STATUSES[selectedOpp.status]?.color || 'bg-slate-100'}`}>{OPP_STATUSES[selectedOpp.status]?.label || selectedOpp.status}</span>
+                            </div>
+                            <h3 className="text-lg font-bold text-slate-900">{selectedOpp.hotel_name || 'Établissement inconnu'}</h3>
+                            <p className="text-sm text-slate-500">{[selectedOpp.city, selectedOpp.region, selectedOpp.group_name ? `Groupe: ${selectedOpp.group_name}` : ''].filter(Boolean).join(' · ')}</p>
+                          </div>
+                          <button onClick={(e) => { e.stopPropagation(); setSelectedOpp(null); }} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
+                        </div>
+
+                        <div className="grid grid-cols-4 gap-3 mb-3">
+                          <div className="bg-slate-50 rounded-lg p-2 text-center">
+                            <div className="text-xl font-bold text-slate-900">{selectedOpp.business_score}</div>
+                            <div className="text-xs text-slate-500">Score /100</div>
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-2 text-center">
+                            <div className="text-xl font-bold text-slate-900">{selectedOpp.confidence_score}</div>
+                            <div className="text-xs text-slate-500">Confiance</div>
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-2 text-center">
+                            <div className="text-xl font-bold text-slate-900">{selectedOpp.source_count}</div>
+                            <div className="text-xs text-slate-500">Sources</div>
+                          </div>
+                          <div className="bg-slate-50 rounded-lg p-2 text-center">
+                            <div className="text-xl font-bold text-slate-900">{selectedOpp.project_date || '—'}</div>
+                            <div className="text-xs text-slate-500">Date projet</div>
+                          </div>
+                        </div>
+
+                        {selectedOpp.recommended_angle && (
+                          <div className="bg-blue-50 rounded-lg p-3 mb-3">
+                            <div className="text-xs font-semibold text-blue-700 mb-1">Angle commercial recommandé</div>
+                            <p className="text-xs text-blue-800">{selectedOpp.recommended_angle}</p>
+                          </div>
+                        )}
+
+                        {/* Pipeline statut */}
+                        <div className="flex items-center gap-1 mb-3">
+                          <span className="text-xs text-slate-500 mr-2">Statut :</span>
+                          {['new', 'qualified', 'contacted', 'won', 'lost'].map(s => (
+                            <button key={s} onClick={(e) => { e.stopPropagation(); handleOppStatus(selectedOpp.id, s); }}
+                              className={`text-xs px-2 py-1 rounded transition-colors ${selectedOpp.status === s ? OPP_STATUSES[s].color + ' ring-1 ring-offset-1' : 'bg-slate-50 text-slate-400 hover:bg-slate-100'}`}>
+                              {OPP_STATUSES[s].label}
+                            </button>
+                          ))}
+                        </div>
+
+                        {/* Articles liés */}
+                        {selectedOpp.articles?.length > 0 && (
+                          <div>
+                            <div className="text-xs font-semibold text-slate-600 mb-2">Articles liés ({selectedOpp.articles.length})</div>
+                            <div className="space-y-1">
+                              {selectedOpp.articles.map(a => (
+                                <div key={a.id} className="flex items-center gap-2 bg-slate-50 rounded px-3 py-1.5">
+                                  <span className="text-xs text-slate-400">{a.source_nom}</span>
+                                  <a href={a.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex-1 truncate">{a.titre}</a>
+                                  <span className="text-xs text-slate-300">{new Date(a.created_at).toLocaleDateString('fr-FR')}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </React.Fragment>
                 );
               })}
               {oppPage < oppPages && (
