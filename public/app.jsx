@@ -3455,6 +3455,10 @@ const VueProspection = ({ showToast, readOnly }) => {
   const [selectedHotels, setSelectedHotels] = useState(new Set());
   const [showSequenceModal, setShowSequenceModal] = useState(false);
   const [createdLeadIds, setCreatedLeadIds] = useState([]);
+  const [showContactsModal, setShowContactsModal] = useState(false);
+  const [contactsHotel, setContactsHotel] = useState(null);
+  const [contactsResults, setContactsResults] = useState(null);
+  const [contactsLoading, setContactsLoading] = useState(false);
   const [filters, setFilters] = useState({
     classement: '',
     type_hebergement: '',
@@ -3647,6 +3651,41 @@ const VueProspection = ({ showToast, readOnly }) => {
       chargerHotels();
     } catch (err) {
       showToast('Erreur suppression: ' + err.message, 'error');
+    }
+  };
+
+  const handleFindContacts = async (hotel) => {
+    setContactsHotel(hotel);
+    setShowContactsModal(true);
+    setContactsResults(null);
+    setContactsLoading(true);
+
+    try {
+      const res = await api.post('/prospection/find-contacts', { hotel_id: hotel.id });
+      setContactsResults(res);
+    } catch (err) {
+      setContactsResults({ error: err.message });
+    }
+    setContactsLoading(false);
+  };
+
+  const handleSelectContact = async (contact) => {
+    if (!contactsHotel) return;
+
+    try {
+      await api.patch(`/prospection/hotels/${contactsHotel.id}/contact`, {
+        contact_prenom: contact.prenom,
+        contact_nom: contact.nom,
+        contact_email: contact.email,
+        contact_fonction: contact.fonction,
+        scraping_status: 'success',
+      });
+
+      showToast(`✅ Contact "${contact.prenom} ${contact.nom}" sauvegardé`, 'success');
+      setShowContactsModal(false);
+      chargerHotels();
+    } catch (err) {
+      showToast('Erreur sauvegarde: ' + err.message, 'error');
     }
   };
 
@@ -3854,18 +3893,19 @@ const VueProspection = ({ showToast, readOnly }) => {
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Chambres</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Contact</th>
                 <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Statut</th>
+                <th className="px-4 py-3 text-right text-xs font-semibold text-slate-600 uppercase tracking-wide">Actions</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100">
               {loading ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-12 text-center text-sm text-slate-400">
+                  <td colSpan="8" className="px-4 py-12 text-center text-sm text-slate-400">
                     Chargement...
                   </td>
                 </tr>
               ) : hotels.length === 0 ? (
                 <tr>
-                  <td colSpan="7" className="px-4 py-12 text-center text-sm text-slate-400">
+                  <td colSpan="8" className="px-4 py-12 text-center text-sm text-slate-400">
                     Aucun hôtel trouvé. Importez un CSV pour commencer.
                   </td>
                 </tr>
@@ -3903,6 +3943,15 @@ const VueProspection = ({ showToast, readOnly }) => {
                         <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700">→ Lead</span>
                       )}
                     </td>
+                    <td className="px-4 py-3 text-right">
+                      <button
+                        onClick={() => handleFindContacts(hotel)}
+                        className="text-xs px-2 py-1 rounded hover:bg-blue-50 text-blue-600 font-medium"
+                        title="Rechercher contacts LinkedIn"
+                      >
+                        🔍 Contacts
+                      </button>
+                    </td>
                   </tr>
                 ))
               )}
@@ -3935,6 +3984,103 @@ const VueProspection = ({ showToast, readOnly }) => {
           </div>
         )}
       </div>
+
+      {/* Modal Contacts LinkedIn */}
+      {showContactsModal && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowContactsModal(false)}>
+          <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between p-5 border-b border-slate-200 flex-shrink-0">
+              <div>
+                <h3 className="text-lg font-semibold text-slate-900">Contacts LinkedIn</h3>
+                <p className="text-sm text-slate-500 mt-1">{contactsHotel?.nom_commercial}</p>
+              </div>
+              <button onClick={() => setShowContactsModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+            </div>
+
+            <div className="flex-1 overflow-y-auto p-5">
+              {contactsLoading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-3" />
+                  <p className="text-sm text-slate-500">Recherche des contacts sur LinkedIn...</p>
+                  <p className="text-xs text-slate-400 mt-1">Test des emails avec ZeroBounce</p>
+                </div>
+              ) : contactsResults?.error ? (
+                <div className="text-center py-12">
+                  <p className="text-red-600 text-sm">{contactsResults.error}</p>
+                </div>
+              ) : !contactsResults?.contacts || contactsResults.contacts.length === 0 ? (
+                <div className="text-center py-12">
+                  <p className="text-slate-500 text-sm">Aucun contact trouvé sur LinkedIn</p>
+                  <p className="text-xs text-slate-400 mt-1">Essayez avec un autre hôtel ou vérifiez le nom</p>
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  <div className="text-sm text-slate-600 mb-4">
+                    <strong>{contactsResults.total}</strong> contact(s) trouvé(s) ·
+                    <strong className="ml-2">{contactsResults.avec_email}</strong> avec email valide
+                  </div>
+
+                  {contactsResults.contacts.map((contact, i) => (
+                    <div key={i} className="border border-slate-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 mb-2">
+                            <h4 className="font-semibold text-slate-900">{contact.nom_complet}</h4>
+                            {contact.pertinence === 'haute' && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Pertinent</span>
+                            )}
+                          </div>
+
+                          <p className="text-sm text-slate-600 mb-2">{contact.fonction}</p>
+
+                          {contact.email ? (
+                            <div className="flex items-center gap-2 mb-2">
+                              <span className="text-sm font-mono text-blue-600">{contact.email}</span>
+                              {contact.email_status === 'valid' && (
+                                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Valid</span>
+                              )}
+                              {contact.email_score && (
+                                <span className="text-xs text-slate-500">Score: {contact.email_score}</span>
+                              )}
+                            </div>
+                          ) : (
+                            <p className="text-xs text-slate-400 mb-2">Email non trouvé</p>
+                          )}
+
+                          {contact.linkedin_url && (
+                            <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                              🔗 Voir le profil LinkedIn
+                            </a>
+                          )}
+
+                          {contact.snippet && (
+                            <p className="text-xs text-slate-400 mt-2 line-clamp-2">{contact.snippet}</p>
+                          )}
+                        </div>
+
+                        {contact.email && (
+                          <button
+                            onClick={() => handleSelectContact(contact)}
+                            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex-shrink-0"
+                          >
+                            Sélectionner
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            <div className="p-5 border-t border-slate-200 flex-shrink-0">
+              <button onClick={() => setShowContactsModal(false)} className="w-full px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50">
+                Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

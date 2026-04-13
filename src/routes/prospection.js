@@ -494,6 +494,30 @@ module.exports = (db) => {
     }
   });
 
+  // PATCH /api/prospection/hotels/:id/contact — Met à jour le contact d'un hôtel
+  router.patch('/hotels/:id/contact', (req, res) => {
+    const { id } = req.params;
+    const { contact_prenom, contact_nom, contact_email, contact_fonction, scraping_status } = req.body;
+
+    try {
+      db.prepare(`
+        UPDATE hotels_france
+        SET contact_prenom = ?,
+            contact_nom = ?,
+            contact_email = ?,
+            contact_fonction = ?,
+            scraping_status = ?,
+            scraping_date = datetime('now')
+        WHERE id = ?
+      `).run(contact_prenom, contact_nom, contact_email, contact_fonction, scraping_status || 'success', id);
+
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('Erreur PATCH /hotels/:id/contact:', err);
+      res.status(500).json({ error: 'Erreur lors de la mise à jour' });
+    }
+  });
+
   // POST /api/prospection/find-contacts — Recherche LinkedIn + ZeroBounce pour un hôtel
   router.post('/find-contacts', async (req, res) => {
     const { hotel_id } = req.body;
