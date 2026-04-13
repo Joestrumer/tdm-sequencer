@@ -3504,9 +3504,10 @@ const VueProspection = ({ showToast, readOnly }) => {
 
     setImporting(true);
     try {
+      const token = sessionStorage.getItem('tdm_token') || '';
       const res = await fetch('/api/prospection/import', {
         method: 'POST',
-        headers: { 'Authorization': 'Bearer ' + localStorage.getItem('token') },
+        headers: { 'Authorization': 'Bearer ' + token },
         body: formData,
       });
       const data = await res.json();

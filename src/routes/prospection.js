@@ -7,13 +7,15 @@ const router = express.Router();
 const multer = require('multer');
 const csv = require('csv-parser');
 const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const logger = require('../config/logger');
 const scraperService = require('../services/hotelScraperService');
 const { v4: uuidv4 } = require('uuid');
 
 // Configuration multer pour upload CSV
 const upload = multer({
-  dest: '/tmp/',
+  dest: os.tmpdir(),
   limits: { fileSize: 50 * 1024 * 1024 } // 50MB max
 });
 
@@ -28,23 +30,37 @@ module.exports = (db) => {
     const results = [];
     const errors = [];
     let lineNumber = 0;
+    let firstRow = null;
 
     try {
+      // Détection automatique du séparateur
+      const sampleData = fs.readFileSync(req.file.path, 'utf8').slice(0, 1000);
+      const separator = sampleData.includes(';') && sampleData.split(';').length > sampleData.split(',').length ? ';' : ',';
+
+      logger.info(`Import CSV: séparateur détecté = "${separator}"`);
+
       // Lecture et parsing du CSV
       await new Promise((resolve, reject) => {
         fs.createReadStream(req.file.path)
           .pipe(csv({
-            separator: ',',
+            separator,
             skipEmptyLines: true,
             trim: true
           }))
           .on('data', (row) => {
             lineNumber++;
+
+            // Log première ligne pour debug
+            if (lineNumber === 1) {
+              firstRow = Object.keys(row);
+              logger.info('Colonnes CSV détectées:', firstRow);
+            }
+
             try {
               // Mapping des colonnes CSV vers la base de données
               const hotel = {
                 date_classement: row['DATE DE CLASSEMENT'] || null,
-                type_hebergement: row['TYPE D\'HÉBERGEMENT'] || null,
+                type_hebergement: row["TYPE D'HÉBERGEMENT"] || null,
                 classement: row['CLASSEMENT'] || null,
                 categorie: row['CATÉGORIE'] || null,
                 mention: row['MENTION'] || null,
@@ -54,23 +70,27 @@ module.exports = (db) => {
                 commune: row['COMMUNE'] || null,
                 site_internet: row['SITE INTERNET'] || null,
                 type_sejour: row['TYPE DE SÉJOUR'] || null,
-                capacite_accueil: parseInt(row['CAPACITÉ D\'ACCUEIL (PERSONNES)']) || null,
+                capacite_accueil: parseInt(row["CAPACITÉ D'ACCUEIL (PERSONNES)"]) || null,
                 nombre_chambres: parseInt(row['NOMBRE DE CHAMBRES']) || null,
                 nombre_emplacements: parseInt(row['NOMBRE D\'EMPLACEMENTS']) || null,
-                nombre_unites: parseInt(row['NOMBRE D\'UNITÉS D\'HABITATION']) || null,
+                nombre_unites: parseInt(row["NOMBRE D'UNITÉS D'HABITATION"]) || null,
                 nombre_logements: parseInt(row['NOMBRE DE LOGEMENTS']) || null,
                 classement_proroge: row['classement prorogé'] || null
               };
 
               // Validation: nom_commercial est requis
               if (!hotel.nom_commercial) {
-                errors.push({ line: lineNumber, error: 'NOM COMMERCIAL manquant' });
+                if (lineNumber <= 5) {
+                  errors.push({ line: lineNumber, error: 'NOM COMMERCIAL manquant', row: Object.keys(row).slice(0, 3) });
+                }
                 return;
               }
 
               results.push(hotel);
             } catch (err) {
-              errors.push({ line: lineNumber, error: err.message });
+              if (lineNumber <= 10) {
+                errors.push({ line: lineNumber, error: err.message });
+              }
             }
           })
           .on('end', resolve)
