@@ -438,6 +438,51 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_veille_oppsrc_opp ON veille_opportunity_sources(opportunity_id);
   CREATE INDEX IF NOT EXISTS idx_veille_oppsrc_art ON veille_opportunity_sources(article_id);
+
+  -- ─── Table Prospection Hôtels France (import CSV officiel) ──────────────────
+
+  CREATE TABLE IF NOT EXISTS hotels_france (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    date_classement TEXT,
+    type_hebergement TEXT,
+    classement TEXT,
+    categorie TEXT,
+    mention TEXT,
+    nom_commercial TEXT NOT NULL,
+    adresse TEXT,
+    code_postal TEXT,
+    commune TEXT,
+    site_internet TEXT,
+    type_sejour TEXT,
+    capacite_accueil INTEGER,
+    nombre_chambres INTEGER,
+    nombre_emplacements INTEGER,
+    nombre_unites INTEGER,
+    nombre_logements INTEGER,
+    classement_proroge TEXT,
+    -- Champs scraping
+    contact_nom TEXT,
+    contact_prenom TEXT,
+    contact_fonction TEXT,
+    contact_email TEXT,
+    scraping_status TEXT DEFAULT 'pending',
+    scraping_date TEXT,
+    scraping_error TEXT,
+    -- Champs conversion
+    imported_as_lead INTEGER DEFAULT 0,
+    lead_id TEXT REFERENCES leads(id),
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_hotels_france_classement ON hotels_france(classement);
+  CREATE INDEX IF NOT EXISTS idx_hotels_france_commune ON hotels_france(commune);
+  CREATE INDEX IF NOT EXISTS idx_hotels_france_code_postal ON hotels_france(code_postal);
+  CREATE INDEX IF NOT EXISTS idx_hotels_france_type ON hotels_france(type_hebergement);
+  CREATE INDEX IF NOT EXISTS idx_hotels_france_scraping ON hotels_france(scraping_status);
+  CREATE INDEX IF NOT EXISTS idx_hotels_france_imported ON hotels_france(imported_as_lead);
+  CREATE INDEX IF NOT EXISTS idx_hotels_france_capacite ON hotels_france(capacite_accueil);
+  CREATE INDEX IF NOT EXISTS idx_hotels_france_chambres ON hotels_france(nombre_chambres);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_hotels_france_unique ON hotels_france(nom_commercial, code_postal);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
