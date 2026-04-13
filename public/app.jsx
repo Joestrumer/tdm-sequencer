@@ -3465,7 +3465,9 @@ const VueProspection = ({ showToast, readOnly }) => {
     search: '',
   });
   const [pagination, setPagination] = useState({ limit: 50, offset: 0 });
+  const [scrapingProgress, setScrapingProgress] = useState({ processing: 0, watching: false });
   const fileInputRef = useRef(null);
+  const pollingIntervalRef = useRef(null);
 
   const chargerHotels = async () => {
     setLoading(true);
@@ -3537,6 +3539,42 @@ const VueProspection = ({ showToast, readOnly }) => {
     }
   };
 
+  // Vérifie le statut du scraping en cours
+  const checkScrapingStatus = async () => {
+    try {
+      const res = await api.get('/prospection/scrape-status');
+      setScrapingProgress({ processing: res.processing || 0, watching: res.processing > 0 });
+
+      // Si le scraping est terminé, recharger les hôtels et arrêter le polling
+      if (res.processing === 0 && scrapingProgress.watching) {
+        chargerHotels();
+        showToast('✅ Scraping terminé', 'success');
+        stopPolling();
+      }
+    } catch (err) {
+      console.error('Erreur vérification statut scraping:', err);
+    }
+  };
+
+  const startPolling = () => {
+    if (pollingIntervalRef.current) return; // Déjà en cours
+    pollingIntervalRef.current = setInterval(checkScrapingStatus, 3000); // Toutes les 3 secondes
+    setScrapingProgress(prev => ({ ...prev, watching: true }));
+  };
+
+  const stopPolling = () => {
+    if (pollingIntervalRef.current) {
+      clearInterval(pollingIntervalRef.current);
+      pollingIntervalRef.current = null;
+    }
+    setScrapingProgress({ processing: 0, watching: false });
+  };
+
+  // Cleanup polling on unmount
+  useEffect(() => {
+    return () => stopPolling();
+  }, []);
+
   const handleScrape = async () => {
     if (selectedHotels.size === 0) {
       showToast('Aucun hôtel sélectionné', 'error');
@@ -3548,9 +3586,14 @@ const VueProspection = ({ showToast, readOnly }) => {
       const res = await api.post('/prospection/scrape', {
         hotel_ids: Array.from(selectedHotels),
       });
-      showToast(`✅ Scraping lancé pour ${res.queued || selectedHotels.size} hôtels`, 'success');
+      showToast(`🔍 Scraping lancé pour ${res.queued || selectedHotels.size} hôtel(s)`, 'success');
       setSelectedHotels(new Set());
-      chargerHotels();
+
+      // Démarrer le polling pour suivre la progression
+      startPolling();
+
+      // Recharger immédiatement pour voir les statuts "processing"
+      setTimeout(() => chargerHotels(), 500);
     } catch (err) {
       showToast('Erreur scraping: ' + err.message, 'error');
     }
@@ -3566,6 +3609,23 @@ const VueProspection = ({ showToast, readOnly }) => {
 
   return (
     <div className="max-w-[1800px] mx-auto">
+      {/* Indicateur de scraping en cours */}
+      {scrapingProgress.watching && scrapingProgress.processing > 0 && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center gap-3">
+          <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+          <div className="flex-1">
+            <p className="text-sm font-medium text-blue-900">Scraping en cours...</p>
+            <p className="text-xs text-blue-700">{scrapingProgress.processing} hôtel(s) en traitement</p>
+          </div>
+          <button
+            onClick={stopPolling}
+            className="text-xs text-blue-600 hover:text-blue-800 font-medium"
+          >
+            Masquer
+          </button>
+        </div>
+      )}
+
       {/* Header avec stats */}
       {stats && (
         <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
