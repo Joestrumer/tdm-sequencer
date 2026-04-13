@@ -560,6 +560,7 @@ module.exports = (db) => {
         null;
 
       const results = [];
+      let patternMemoire = null; // Mémoriser le pattern qui marche
 
       // Pour chaque contact, chercher l'email avec ZeroBounce
       for (const contact of contacts) {
@@ -569,7 +570,15 @@ module.exports = (db) => {
 
         if (zbKey && prenom && nom) {
           try {
-            emailResult = await linkedinService.trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey);
+            // Utiliser le pattern mémorisé s'il existe
+            emailResult = await linkedinService.trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMemoire);
+
+            // Si un email valide est trouvé, mémoriser le pattern pour les prochains contacts
+            if (emailResult && emailResult.pattern) {
+              patternMemoire = emailResult.pattern;
+              logger.info(`🎯 Pattern mémorisé pour le domaine ${domaine}: ${patternMemoire}`);
+            }
+
             // Délai entre appels ZeroBounce
             await new Promise(resolve => setTimeout(resolve, 300));
           } catch (err) {

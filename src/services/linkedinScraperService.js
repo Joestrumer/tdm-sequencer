@@ -92,6 +92,8 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey)
         titre = titre.replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
         description = description.replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
 
+        const texte = titre + ' ' + description; // Pour la détection de fonction et pertinence
+
         // Extraire le nom depuis l'URL LinkedIn en PRIORITÉ (plus fiable)
         let nomExtrait = null;
         const urlMatch = url.match(/linkedin\.com\/in\/([^/?]+)/);
@@ -99,10 +101,13 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey)
           const slug = urlMatch[1]
             .replace(/-\w{8,}$/, '')  // Enlever l'ID à la fin (ex: -1ab5731a)
             .replace(/%C3%A9/g, 'e')   // Décoder URL encoding
+            .replace(/%C3%A8/g, 'e')
+            .replace(/%C3%AA/g, 'e')
+            .replace(/%C3%A0/g, 'a')
             .replace(/%20/g, '-');
 
-          const parts = slug.split('-').filter(p => p.length > 1);
-          if (parts.length >= 2) {
+          const parts = slug.split('-').filter(p => p.length > 0 && !/^\d+$/.test(p)); // Enlever seulement parties vides ou purement numériques
+          if (parts.length >= 1) {
             // Prendre max 3 parties (prénom + nom + éventuel nom composé)
             const nameParts = parts.slice(0, 3);
             nomExtrait = nameParts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
@@ -112,7 +117,6 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey)
 
         // Si pas de nom depuis URL, essayer depuis le texte
         if (!nomExtrait) {
-          const texte = titre + ' ' + description;
           const patterns = [
             // "Vito Santoro - Directeur"
             /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-–—]\s*(?:Directeur|Director|Manager)/i,
@@ -433,35 +437,142 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null) {
 
 /**
  * Teste les patterns d'email avec ZeroBounce
+ * @param {string} prenom
+ * @param {string} nom
+ * @param {string} domaine
+ * @param {string} zbKey
+ * @param {string|null} patternMemoire - Pattern mémorisé qui a marché pour un contact précédent
+ * @returns {Promise<{email: string, status: string, quality_score: number, pattern: string}|null>}
  */
-async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey) {
+async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMemoire = null) {
   if (!zbKey) {
     throw new Error('Clé ZeroBounce non configurée');
   }
 
-  // Utiliser la même logique que emailValidation.js
   const normalize = (s) => (s || '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^a-z-]/g, '');
-  const p = normalize(prenom).replace(/-/g, '');
-  const n = normalize(nom).replace(/-/g, '');
-  const pi = p.charAt(0);
+  const p = normalize(prenom).replace(/-/g, ''); // prénom sans tirets
+  const n = normalize(nom).replace(/-/g, '');     // nom sans tirets
+  const pRaw = normalize(prenom); // prénom avec tirets
+  const nRaw = normalize(nom);     // nom avec tirets
+  const pi = p.charAt(0);  // initiale prénom
+  const ni = n.charAt(0);  // initiale nom
   const d = domaine.trim().replace(/^@/, '');
 
-  // Patterns prioritaires (top 20)
-  const patterns = [
-    `${p}.${n}@${d}`,
-    `${pi}.${n}@${d}`,
-    `${p}@${d}`,
-    `${pi}${n}@${d}`,
-    `${p}${n}@${d}`,
-    `${n}@${d}`,
-    `${p}-${n}@${d}`,
-    `${p}_${n}@${d}`,
-    `${n}.${p}@${d}`,
-    `${p}.${n.charAt(0)}@${d}`,
-  ].filter(Boolean);
+  // Parties du nom composé
+  const nomParts = nom.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/[\s-]+/).filter(Boolean).map(s => s.replace(/[^a-z]/g, ''));
+  const secondNom = nomParts.length > 1 ? nomParts[nomParts.length - 1] : null;
 
-  // Tester les patterns un par un
-  for (const email of patterns) {
+  // Troncatures du nom
+  const nTrunc = [];
+  if (n.length > 1) nTrunc.push(n.substring(0, 1));
+  if (n.length > 3) nTrunc.push(n.substring(0, 3));
+  if (n.length > 4) nTrunc.push(n.substring(0, 4));
+  if (n.length > 5) nTrunc.push(n.substring(0, 5));
+  if (n.length > 6) nTrunc.push(n.substring(0, 6));
+
+  // Troncature du prénom
+  const pTrunc4 = p.length > 4 ? p.substring(0, 4) : null;
+
+  // Générer TOUS les patterns (ordre de priorité décroissante)
+  const patternTemplates = [
+    // ── Priorité haute : patterns classiques ──
+    { template: `${p}.${n}@${d}`, type: 'prenom.nom' },
+    { template: `${pi}.${n}@${d}`, type: 'p.nom' },
+    { template: `${p}@${d}`, type: 'prenom' },
+    { template: `${pi}${n}@${d}`, type: 'pnom' },
+    { template: `${p}${n}@${d}`, type: 'prenomnom' },
+    { template: `${n}@${d}`, type: 'nom' },
+    { template: `${p}-${n}@${d}`, type: 'prenom-nom' },
+    { template: `${p}_${n}@${d}`, type: 'prenom_nom' },
+    { template: `${n}.${p}@${d}`, type: 'nom.prenom' },
+    { template: `${p}.${ni}@${d}`, type: 'prenom.n' },
+    { template: `${pi}.${ni}@${d}`, type: 'p.n' },
+
+    // ── Troncatures du nom ──
+    ...nTrunc.map(t => ({ template: `${p}.${t}@${d}`, type: 'prenom.nomT' })),
+    ...nTrunc.map(t => ({ template: `${pi}.${t}@${d}`, type: 'p.nomT' })),
+    ...nTrunc.map(t => ({ template: `${p}${t}@${d}`, type: 'prenomNomT' })),
+    ...nTrunc.map(t => ({ template: `${pi}${t}@${d}`, type: 'pNomT' })),
+
+    // ── Variantes inversées et composites ──
+    { template: `${n}${p}@${d}`, type: 'nomprenom' },
+    { template: `${p}${ni}@${d}`, type: 'prenomN' },
+    { template: `${n}-${p}@${d}`, type: 'nom-prenom' },
+    { template: `${n}_${p}@${d}`, type: 'nom_prenom' },
+
+    // ── Prenom tronqué + nom ──
+    ...(pTrunc4 ? [
+      { template: `${pTrunc4}.${n}@${d}`, type: 'prenomT.nom' },
+      { template: `${pTrunc4}${n}@${d}`, type: 'prenomTnom' },
+      { template: `${pTrunc4}.${ni}@${d}`, type: 'prenomT.n' },
+    ] : []),
+
+    // ── Combinaisons prenom4 + nom4 ──
+    ...(pTrunc4 && n.length > 4 ? [
+      { template: `${pTrunc4}${n.substring(0, 4)}@${d}`, type: 'prenomT4nomT4' },
+    ] : []),
+
+    // ── Nom composé ──
+    ...(secondNom ? [
+      { template: `${p}.${secondNom}@${d}`, type: 'prenom.nom2' },
+      { template: `${pi}.${secondNom}@${d}`, type: 'p.nom2' },
+      { template: `${p}.${nomParts.join('')}@${d}`, type: 'prenom.nomComplet' },
+      { template: `${p}.${nRaw}@${d}`, type: 'prenom.nom-compose' },
+      { template: `${p}${secondNom}@${d}`, type: 'prenomNom2' },
+      { template: `${pi}${secondNom}@${d}`, type: 'pNom2' },
+      ...(secondNom.length > 3 ? [
+        { template: `${p}.${secondNom.substring(0, 3)}@${d}`, type: 'prenom.nom2T3' },
+        { template: `${p}.${secondNom.substring(0, 4)}@${d}`, type: 'prenom.nom2T4' },
+      ] : []),
+    ] : []),
+
+    // ── Prénom composé ──
+    ...(pRaw.includes('-') ? [
+      { template: `${pRaw}.${n}@${d}`, type: 'prenom-compose.nom' },
+      { template: `${pRaw}${n}@${d}`, type: 'prenom-composenom' },
+      { template: `${pRaw.split('-').map(s => s[0]).join('')}${n}@${d}`, type: 'ppNom' },
+      { template: `${pRaw.split('-').map(s => s[0]).join('')}.${n}@${d}`, type: 'pp.nom' },
+      { template: `${pRaw.split('-')[0]}.${n}@${d}`, type: 'prenom1.nom' },
+    ] : []),
+
+    // ── Emails génériques ──
+    { template: `contact@${d}`, type: 'contact' },
+    { template: `info@${d}`, type: 'info' },
+    { template: `reservation@${d}`, type: 'reservation' },
+    { template: `reservations@${d}`, type: 'reservations' },
+    { template: `booking@${d}`, type: 'booking' },
+    { template: `reception@${d}`, type: 'reception' },
+    { template: `direction@${d}`, type: 'direction' },
+    { template: `hotel@${d}`, type: 'hotel' },
+    { template: `accueil@${d}`, type: 'accueil' },
+  ];
+
+  // Dédupliquer
+  const seen = new Set();
+  const patterns = [];
+  for (const item of patternTemplates) {
+    const email = item.template;
+    if (!email || email.startsWith('.') || email.includes('..') || email.startsWith('@')) continue;
+    const lower = email.toLowerCase();
+    if (!seen.has(lower)) {
+      seen.add(lower);
+      patterns.push({ email: lower, type: item.type });
+    }
+  }
+
+  // Si un pattern a marché avant, le tester EN PREMIER
+  let patternsToTest = patterns;
+  if (patternMemoire) {
+    const memoIndex = patterns.findIndex(p => p.type === patternMemoire);
+    if (memoIndex > -1) {
+      const [memoPattern] = patterns.splice(memoIndex, 1);
+      patternsToTest = [memoPattern, ...patterns];
+      logger.info(`🎯 Test pattern mémorisé en premier: ${memoPattern.type} (${memoPattern.email})`);
+    }
+  }
+
+  // Tester les patterns
+  for (const { email, type } of patternsToTest) {
     try {
       const r = await fetch(`https://api.zerobounce.net/v2/validate?api_key=${zbKey}&email=${encodeURIComponent(email)}&ip_address=`);
       if (!r.ok) continue;
@@ -469,7 +580,8 @@ async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey) {
       const data = await r.json();
 
       if (data.status === 'valid') {
-        return { email, status: 'valid', quality_score: data.quality_score };
+        logger.info(`✅ Email trouvé: ${email} (pattern: ${type})`);
+        return { email, status: 'valid', quality_score: data.quality_score, pattern: type };
       }
 
       // Rate limit
