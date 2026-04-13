@@ -533,12 +533,21 @@ module.exports = (db) => {
         return res.status(404).json({ error: 'Hôtel non trouvé' });
       }
 
-      if (!hotel.site_internet) {
-        return res.json({ error: 'Pas de site internet', contacts: [] });
+      if (!hotel.site_internet && !hotel.contact_email) {
+        return res.json({ error: 'Pas de site internet ni email', contacts: [] });
       }
 
-      // Extraire le domaine du site
-      const domaine = hotel.site_internet.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+      // Extraire le domaine : priorité à l'email scrapé (plus fiable), sinon site web
+      let domaine;
+      if (hotel.contact_email && hotel.contact_email.includes('@')) {
+        domaine = hotel.contact_email.split('@')[1];
+        logger.info(`📧 Domaine extrait de l'email scrapé: ${domaine}`);
+      } else if (hotel.site_internet) {
+        domaine = hotel.site_internet.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+        logger.info(`🌐 Domaine extrait du site web: ${domaine}`);
+      } else {
+        return res.json({ error: 'Impossible d\'extraire le domaine', contacts: [] });
+      }
 
       logger.info(`🔍 Recherche contacts LinkedIn pour ${hotel.nom_commercial}`);
 
