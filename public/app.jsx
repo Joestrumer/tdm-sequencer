@@ -99,6 +99,28 @@ function useConfirmDialog() {
   return { confirm, dialog };
 }
 
+// ─── SEARCH INPUT WITH CLEAR BUTTON ─────────────────────────────────────────────
+const SearchInput = ({ value, onChange, placeholder = "Rechercher...", className = "", ...props }) => (
+  <div className="relative">
+    <input
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      className={className}
+      {...props}
+    />
+    {value && (
+      <button
+        onClick={() => onChange({ target: { value: '' } })}
+        className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-xl leading-none px-1"
+        type="button"
+      >
+        ×
+      </button>
+    )}
+  </div>
+);
+
 // ─── HOOKS UTILITAIRES ──────────────────────────────────────────────────────────
 let _modalCount = 0;
 function useEscapeClose(onClose) {
@@ -2244,7 +2266,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             <button onClick={() => setVueMode("liste")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vueMode === "liste" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>☰ Liste</button>
             <button onClick={() => setVueMode("kanban")} className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${vueMode === "kanban" ? "bg-white shadow-sm text-slate-900" : "text-slate-500"}`}>⬛ Kanban</button>
           </div>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
+          <SearchInput value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
         <div className="flex gap-2 overflow-x-auto">
           <div className="flex items-center gap-1" data-info-popup>
@@ -7153,7 +7175,7 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
           <button onClick={onBack} className="text-xs text-slate-500 hover:text-slate-700">← Retour</button>
         </div>
       </div>
-      <input value={query} onChange={e => rechercher(e.target.value)} placeholder="Rechercher un client VosFactures..."
+      <SearchInput value={query} onChange={e => rechercher(e.target.value)} placeholder="Rechercher un client VosFactures..."
         className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" autoFocus />
       {loading && <p className="text-xs text-slate-400">Chargement des clients VosFactures...</p>}
       {erreur && <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{erreur}</p>}
@@ -7945,8 +7967,8 @@ const FacturesSamples = ({ showToast }) => {
               );
             })}
           </div>
-          <div className="mt-2 relative">
-            <input value={searchRef} onChange={e => setSearchRef(e.target.value)}
+          <div className="mt-2">
+            <SearchInput value={searchRef} onChange={e => setSearchRef(e.target.value)}
               placeholder="Ajouter un produit (code ou nom)..."
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             {filteredCatalog.length > 0 && (
@@ -7964,12 +7986,14 @@ const FacturesSamples = ({ showToast }) => {
         </div>
 
         {/* Client search */}
-        <div className="relative">
+        <div>
           <label className="text-xs font-medium text-slate-500 mb-1 block">Rechercher un client VosFactures</label>
-          <input value={clientSearch} onChange={e => rechercherClient(e.target.value)}
-            placeholder="Nom, email ou ville..."
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-          {searchingClient && <div className="absolute right-3 top-8 text-xs text-slate-400">Recherche...</div>}
+          <div className="relative">
+            <SearchInput value={clientSearch} onChange={e => rechercherClient(e.target.value)}
+              placeholder="Nom, email ou ville..."
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            {searchingClient && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">Recherche...</div>}
+          </div>
           {clientResults.length > 0 && (
             <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
               {clientResults.slice(0, 10).map(c => (
@@ -10403,7 +10427,7 @@ const VueCampagnes = ({ showToast, readOnly }) => {
 
                 {/* Filtres recipients */}
                 <div className="flex items-center gap-2 mb-3">
-                  <input value={recipientSearch} onChange={e => setRecipientSearch(e.target.value)}
+                  <SearchInput value={recipientSearch} onChange={e => setRecipientSearch(e.target.value)}
                     onKeyDown={e => { if (e.key === 'Enter') { setRecipientPage(1); loadRecipients(c.id, 1, recipientFilter, recipientSearch); } }}
                     placeholder="Rechercher email, nom..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-xs flex-1 max-w-xs" />
                   <div className="flex bg-slate-100 rounded-lg p-0.5 gap-0.5">
@@ -11094,7 +11118,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                   </div>
                   <div>
                     <label className="block text-xs text-slate-500 mb-1">Recherche</label>
-                    <input value={filterSearch} onChange={e => setFilterSearch(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Nom, hôtel, email..." />
+                    <SearchInput value={filterSearch} onChange={e => setFilterSearch(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Nom, hôtel, email..." />
                   </div>
                   <button onClick={previewMatchingLeads} disabled={previewLoading} className="bg-slate-600 text-white px-4 py-2 rounded-lg text-sm font-medium hover:bg-slate-500 disabled:opacity-50">
                     {previewLoading ? 'Recherche...' : 'Rechercher les leads'}
@@ -13095,7 +13119,7 @@ const VueVeille = ({ showToast }) => {
               <option value="">Tous les signaux</option>
               {Object.entries(SIGNAL_LABELS).map(([k, v]) => <option key={k} value={k}>{v.label}</option>)}
             </select>
-            <input type="text" placeholder="Rechercher hôtel, ville, groupe..." value={oppSearch} onChange={e => setOppSearch(e.target.value)}
+            <SearchInput type="text" placeholder="Rechercher hôtel, ville, groupe..." value={oppSearch} onChange={e => setOppSearch(e.target.value)}
               className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-blue-300" />
           </div>
 
@@ -13250,7 +13274,7 @@ const VueVeille = ({ showToast }) => {
               <option value="">Toutes les sources</option>
               {sources.map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
             </select>
-            <input type="text" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)}
+            <SearchInput type="text" placeholder="Rechercher..." value={search} onChange={e => setSearch(e.target.value)}
               className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 w-48 focus:outline-none focus:ring-1 focus:ring-blue-300" />
           </div>
 
@@ -13604,7 +13628,7 @@ const ModalScanFermetures = ({ onClose, showToast }) => {
           <div>
             <label className="text-xs font-medium text-slate-500 mb-1 block">Chercher un hotel par nom</label>
             <div className="flex gap-2">
-              <input type="text" value={hotelSearch} onChange={e => setHotelSearch(e.target.value)}
+              <SearchInput type="text" value={hotelSearch} onChange={e => setHotelSearch(e.target.value)}
                 placeholder="Ex: Hotel d'Aubusson Paris, Le Meurice..."
                 onKeyDown={e => e.key === 'Enter' && !scanning && searchHotel()}
                 className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
