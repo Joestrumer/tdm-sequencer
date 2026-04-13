@@ -480,6 +480,19 @@ module.exports = (db) => {
     }
   });
 
+  // DELETE /api/prospection/reset — Vide la table hotels_france
+  router.delete('/reset', (req, res) => {
+    try {
+      const count = db.prepare('SELECT COUNT(*) as total FROM hotels_france').get().total;
+      db.prepare('DELETE FROM hotels_france').run();
+      logger.info(`🗑️ Table hotels_france vidée (${count} lignes supprimées)`);
+      res.json({ success: true, deleted: count });
+    } catch (err) {
+      logger.error('Erreur DELETE /reset:', err);
+      res.status(500).json({ error: 'Erreur lors de la suppression' });
+    }
+  });
+
   return router;
 };
 

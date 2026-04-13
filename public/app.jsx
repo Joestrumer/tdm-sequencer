@@ -3636,6 +3636,20 @@ const VueProspection = ({ showToast, readOnly }) => {
     setConverting(false);
   };
 
+  const handleReset = async () => {
+    if (!confirm('⚠️ Êtes-vous sûr de vouloir supprimer TOUS les hôtels de la base ? Cette action est irréversible.')) {
+      return;
+    }
+
+    try {
+      const res = await api.delete('/prospection/reset');
+      showToast(`🗑️ ${res.deleted} hôtel(s) supprimé(s)`, 'success');
+      chargerHotels();
+    } catch (err) {
+      showToast('Erreur suppression: ' + err.message, 'error');
+    }
+  };
+
   const getScrapingBadge = (status) => {
     if (status === 'success') return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Scrapé</span>;
     if (status === 'error') return <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-600">✗ Erreur</span>;
@@ -3732,14 +3746,37 @@ const VueProspection = ({ showToast, readOnly }) => {
           >
             🔄 Actualiser
           </button>
+
+          {!readOnly && (
+            <button
+              onClick={handleReset}
+              className="px-4 py-2 rounded-lg border border-red-300 text-red-600 text-sm font-medium hover:bg-red-50 flex items-center gap-2"
+            >
+              🗑️ Vider la base
+            </button>
+          )}
         </div>
 
         {/* Filtres */}
-        <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-3">
+        <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
           <SearchInput
             value={filters.search}
             onChange={(e) => setFilters({ ...filters, search: e.target.value })}
-            placeholder="Rechercher..."
+            placeholder="Rechercher nom..."
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+          />
+          <input
+            type="text"
+            value={filters.commune}
+            onChange={(e) => setFilters({ ...filters, commune: e.target.value })}
+            placeholder="Commune..."
+            className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+          />
+          <input
+            type="text"
+            value={filters.code_postal}
+            onChange={(e) => setFilters({ ...filters, code_postal: e.target.value })}
+            placeholder="Code postal..."
             className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
           />
           <select
