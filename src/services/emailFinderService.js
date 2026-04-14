@@ -15,57 +15,67 @@ const logger = require('../config/logger');
 async function trouverEmailLusha(prenom, nom, entreprise, lushaApiKey) {
   if (!lushaApiKey) return null;
 
-  try {
-    logger.info(`🔍 Lusha: recherche email pour "${prenom} ${nom}" @ ${entreprise}`);
+  // Essayer plusieurs endpoints possibles (Lusha change souvent)
+  const endpoints = [
+    {
+      url: 'https://api.lusha.com/person',
+      body: { firstName: prenom, lastName: nom, company: entreprise },
+    },
+    {
+      url: 'https://api.lusha.com/company/person',
+      body: { person: { firstName: prenom, lastName: nom }, company: { name: entreprise } },
+    },
+    {
+      url: 'https://api.lusha.com/v1/person',
+      body: { firstName: prenom, lastName: nom, companyName: entreprise },
+    },
+  ];
 
-    // API Lusha - Enrichment (v2)
-    // Documentation: https://www.lusha.com/docs/api/#enrichment
-    const response = await fetch('https://api.lusha.com/enrichment', {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'api_key': lushaApiKey,
-      },
-      body: JSON.stringify({
-        data: [{
-          property: 'person',
-          firstName: prenom,
-          lastName: nom,
-          company: entreprise,
-        }],
-      }),
-    });
+  for (const endpoint of endpoints) {
+    try {
+      logger.info(`🔍 Lusha: tentative ${endpoint.url} pour "${prenom} ${nom}" @ ${entreprise}`);
 
-    if (!response.ok) {
-      const errorText = await response.text();
-      logger.warn(`⚠️ Lusha HTTP ${response.status}: ${errorText}`);
-      return null;
+      const response = await fetch(endpoint.url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'api_key': lushaApiKey,
+        },
+        body: JSON.stringify(endpoint.body),
+      });
+
+      if (!response.ok) {
+        const errorText = await response.text();
+        logger.warn(`⚠️ Lusha ${endpoint.url} HTTP ${response.status}: ${errorText.substring(0, 100)}`);
+        continue; // Essayer le prochain endpoint
+      }
+
+      const data = await response.json();
+
+      // Chercher l'email dans différentes structures de réponse possibles
+      const email = data.email || data.emailAddress || data?.data?.email || data?.data?.[0]?.emailAddress;
+
+      if (email) {
+        logger.info(`✅ Lusha: email trouvé ${email} via ${endpoint.url}`);
+        return {
+          email,
+          source: 'Lusha',
+          confidence: 'high',
+        };
+      }
+
+    } catch (err) {
+      logger.warn(`⚠️ Erreur Lusha ${endpoint.url}: ${err.message}`);
+      continue;
     }
-
-    const data = await response.json();
-
-    // Structure de réponse Lusha v2
-    if (data && data.data && data.data[0] && data.data[0].emailAddress) {
-      const email = data.data[0].emailAddress;
-      logger.info(`✅ Lusha: email trouvé ${email}`);
-      return {
-        email,
-        source: 'Lusha',
-        confidence: data.data[0].accuracy || 'high',
-      };
-    }
-
-    logger.info(`ℹ️ Lusha: aucun email trouvé`);
-    return null;
-
-  } catch (err) {
-    logger.error(`❌ Erreur Lusha: ${err.message}`);
-    return null;
   }
+
+  logger.info(`ℹ️ Lusha: aucun email trouvé (tous endpoints testés)`);
+  return null;
 }
 
 /**
- * Trouve un email via l'API Lemlist
+ * Trouve un email via l'API Lemlist Enrich
  * @param {string} prenom
  * @param {string} nom
  * @param {string} domaine - Domaine de l'entreprise (ex: hotel-example.com)
@@ -78,37 +88,59 @@ async function trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey) {
   try {
     logger.info(`🔍 Lemlist: recherche email pour "${prenom} ${nom}" @ ${domaine}`);
 
-    // API Lemlist - Email Finder
-    // Documentation: https://developer.lemlist.com/#email-finder
+    // API Lemlist Enrich - Documentation: https://developer.lemlist.com/
     const params = new URLSearchParams({
+      findEmail: 'true',
       firstName: prenom,
       lastName: nom,
-      domain: domaine,
+      companyDomain: domaine,
     });
 
-    const response = await fetch(`https://api.lemlist.com/api/email-finder?${params}`, {
-      method: 'GET',
+    // Basic Auth avec format :apiKey (deux-points avant la clé)
+    const auth = Buffer.from(':' + lemlistApiKey).toString('base64');
+
+    const response = await fetch(`https://api.lemlist.com/api/enrich?${params}`, {
+      method: 'POST',
       headers: {
-        'Authorization': `Bearer ${lemlistApiKey}`,
+        'Authorization': `Basic ${auth}`,
       },
     });
 
     if (!response.ok) {
       const errorText = await response.text();
-      logger.warn(`⚠️ Lemlist HTTP ${response.status}: ${errorText}`);
+      logger.warn(`⚠️ Lemlist HTTP ${response.status}: ${errorText.substring(0, 200)}`);
       return null;
     }
 
     const data = await response.json();
 
-    // Lemlist retourne { email, isValid, score }
-    if (data.email && data.isValid) {
-      logger.info(`✅ Lemlist: email trouvé ${data.email}`);
-      return {
-        email: data.email,
-        source: 'Lemlist',
-        confidence: data.score > 80 ? 'high' : 'medium',
-      };
+    // Lemlist Enrich retourne un enrichId - les résultats sont asynchrones
+    // Pour une version synchrone simple, on attend un peu et on check directement
+    if (data._id) {
+      logger.info(`🔄 Lemlist: enrichissement lancé (ID: ${data._id})`);
+
+      // Attendre 2 secondes pour que l'enrichissement se termine
+      await new Promise(resolve => setTimeout(resolve, 2000));
+
+      // Récupérer le résultat
+      const resultResponse = await fetch(`https://api.lemlist.com/api/enrich/${data._id}`, {
+        method: 'GET',
+        headers: {
+          'Authorization': `Basic ${auth}`,
+        },
+      });
+
+      if (resultResponse.ok) {
+        const result = await resultResponse.json();
+        if (result.email) {
+          logger.info(`✅ Lemlist: email trouvé ${result.email}`);
+          return {
+            email: result.email,
+            source: 'Lemlist',
+            confidence: result.emailStatus === 'valid' ? 'high' : 'medium',
+          };
+        }
+      }
     }
 
     logger.info(`ℹ️ Lemlist: aucun email trouvé`);
@@ -152,19 +184,17 @@ async function trouverEmail({
     return null;
   }
 
-  // 1. Lusha : DÉSACTIVÉ temporairement (endpoint API non documenté)
-  // TODO: Réactiver quand la documentation sera accessible
-  // if (lushaApiKey && entreprise) {
-  //   const resultatLusha = await trouverEmailLusha(prenom, nom, entreprise, lushaApiKey);
-  //   if (resultatLusha) return resultatLusha;
-  // }
+  // 1. Lusha : Teste plusieurs endpoints possibles
+  if (lushaApiKey && entreprise) {
+    const resultatLusha = await trouverEmailLusha(prenom, nom, entreprise, lushaApiKey);
+    if (resultatLusha) return resultatLusha;
+  }
 
-  // 2. Lemlist : DÉSACTIVÉ temporairement (API asynchrone, nécessite 2 requêtes)
-  // TODO: Implémenter le système asynchrone (enrich + fetch result)
-  // if (lemlistApiKey && domaine) {
-  //   const resultatLemlist = await trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey);
-  //   if (resultatLemlist) return resultatLemlist;
-  // }
+  // 2. Lemlist Enrich (asynchrone avec délai de 2s)
+  if (lemlistApiKey && domaine) {
+    const resultatLemlist = await trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey);
+    if (resultatLemlist) return resultatLemlist;
+  }
 
   // 3. Dernier recours : ZeroBounce patterns
   if (zbFallback && zerobounceApiKey && domaine) {
