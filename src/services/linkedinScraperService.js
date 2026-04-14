@@ -397,6 +397,12 @@ async function rechercherContactsBrave(nomHotel, queryOrFonction = 'Directeur', 
     const contacts = [];
 
     if (data.web && data.web.results) {
+      logger.info(`📊 Brave API: ${data.web.results.length} résultat(s) bruts`);
+      // Debug : logger les 5 premiers résultats
+      for (let i = 0; i < Math.min(5, data.web.results.length); i++) {
+        const r = data.web.results[i];
+        logger.info(`  [${i}] ${r.url?.substring(0, 80)} | ${r.title?.substring(0, 60)}`);
+      }
       for (const result of data.web.results) {
         let titre = result.title || '';
         let description = result.description || '';
