@@ -187,32 +187,40 @@ function extraireNomPrenom(nomComplet) {
 
 /**
  * Recherche via Brave Search API (gratuite, 2000 requêtes/mois)
- * Best practices: caching, retry, proper headers, rate limiting
+ * @param {string} nomHotel - Nom de l'hôtel (pour matching pertinence)
+ * @param {string} queryOrFonction - Requête complète pré-construite OU nom de fonction
+ * @param {string} apiKey - Clé API Brave
+ * @param {string} commune - Commune pour géoloc
+ * @param {boolean} isFullQuery - true si queryOrFonction est une requête complète
  */
-async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey, commune = null) {
-  const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
-  const communePart = commune ? ` ${commune}` : '';
-  const query = `${nomNormalise}${communePart} ${fonction} site:linkedin.com/in/`;
+async function rechercherContactsBrave(nomHotel, queryOrFonction = 'Directeur', apiKey, commune = null, isFullQuery = false) {
+  let query;
+  if (isFullQuery) {
+    query = queryOrFonction;
+  } else {
+    const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
+    const communePart = commune ? ` ${commune}` : '';
+    query = `${nomNormalise}${communePart} ${queryOrFonction} site:linkedin.com/in/`;
+  }
 
-  // Cache check pour éviter recherches dupliquées (TTL: 1h)
+  // Cache check (TTL: 1h)
   const cacheKey = `brave:${query}`;
   const cached = requestCache.get(cacheKey);
   if (cached && Date.now() - cached.timestamp < 3600000) {
-    logger.info(`💾 Cache hit: "${query}"`);
+    logger.info(`💾 Cache hit`);
     return cached.data;
   }
 
-  logger.info(`🔍 Recherche Brave API: "${query}"`);
+  logger.info(`🔍 Brave API: "${query.substring(0, 120)}..."`);
 
   try {
-    // Retry avec exponential backoff en cas d'échec
     const data = await retryWithBackoff(async () => {
-      const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`, {
+      const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=20`, {
         headers: {
           'Accept': 'application/json',
           'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
           'X-Subscription-Token': apiKey,
-          'User-Agent': USER_AGENT, // Identification honnête avec contact
+          'User-Agent': USER_AGENT,
         },
       });
 
@@ -221,7 +229,7 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
       }
 
       return await response.json();
-    }, 3, `Brave API "${query}"`);
+    }, 3, 'Brave API');
 
     const contacts = [];
 
@@ -960,59 +968,65 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
 }
 
 /**
- * Génère des variations du nom d'hôtel pour améliorer le matching
- * Ex: "LE DRIPS HÔTEL ET RESTAURANT" → ["LE DRIPS", "DRIPS", "HOTEL LE DRIPS", "LE DRIP'S"]
+ * Construit UNE requête Brave optimale pour un hôtel donné
+ * Technique "X-Ray Search" : guillemets + OR + site:linkedin.com/in/
+ *
+ * Ex: "ELSA HOTEL PARIS" OR "elsa hôtel paris" directeur OR manager OR
+ *     "general manager" OR "directeur général" site:linkedin.com/in/
  */
-function genererVariationsNom(nomHotel) {
-  const variations = new Set([nomHotel]); // Original d'abord
+function construireRequeteBrave(nomHotel, commune = null) {
+  // 1. Générer variations du nom d'hôtel entre guillemets
+  const variations = new Set();
+  const nom = nomHotel.trim();
 
-  // Normaliser
-  let nom = nomHotel.trim();
+  // Version originale
+  variations.add(nom);
 
-  // Version sans "HÔTEL", "RESTAURANT", "SPA", etc.
-  const motsCommunsRetires = nom
-    .replace(/\b(HÔTEL|HOTEL|RESTAURANT|SPA|ET|&|DE|DU|LA|LE|LES)\b/gi, ' ')
+  // Sans accents
+  const sansAccents = nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+  if (sansAccents !== nom) variations.add(sansAccents);
+
+  // Sans "HÔTEL", "RESTAURANT", "ET", etc. si le reste est distinctif
+  const sansMotsCommuns = nom
+    .replace(/\b(HÔTEL|HOTEL|RESTAURANT|SPA|ET|&|ARTY)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
-  if (motsCommunsRetires && motsCommunsRetires !== nom) {
-    variations.add(motsCommunsRetires);
+  if (sansMotsCommuns.length >= 4 && sansMotsCommuns !== nom) {
+    variations.add(sansMotsCommuns);
   }
 
-  // Version avec apostrophe (DRIPS → DRIP'S)
-  if (!nom.includes("'")) {
-    const avecApostrophe = nom.replace(/S\b/g, "'S");
-    if (avecApostrophe !== nom) variations.add(avecApostrophe);
-  }
+  // Avec apostrophe (DRIPS → DRIP'S)
+  const avecApostrophe = nom.replace(/(\w)S\b/gi, "$1'S");
+  if (avecApostrophe !== nom) variations.add(avecApostrophe);
 
-  // Version sans apostrophe (DRIP'S → DRIPS)
+  // Sans apostrophe (DRIP'S → DRIPS)
   if (nom.includes("'")) {
     variations.add(nom.replace(/'/g, ''));
   }
 
-  return Array.from(variations).slice(0, 3); // Max 3 variations
+  // Construire la partie hotel avec OR et guillemets
+  const hotelPart = Array.from(variations)
+    .slice(0, 4) // Max 4 variations
+    .map(v => `"${v}"`)
+    .join(' OR ');
+
+  // 2. Tous les titres de direction en un seul OR
+  const titres = 'directeur OR directrice OR "directeur général" OR "general manager" OR gérant OR "revenue manager" OR "housekeeping manager"';
+
+  // 3. Commune si disponible (améliore la précision géographique)
+  const geo = commune ? ` ${commune}` : '';
+
+  // 4. Assembler la requête finale
+  const query = `${hotelPart}${geo} ${titres} site:linkedin.com/in/`;
+
+  logger.info(`🔍 Requête X-Ray: ${query}`);
+  return query;
 }
 
 /**
- * Recherche complète pour un hôtel : essaie plusieurs fonctions ET variations du nom
+ * Recherche complète pour un hôtel : UNE requête optimale au lieu de N requêtes médiocres
  */
 async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null, pappersApiKey = null) {
-  // Titres variés pour couvrir tous les profils (GM, directeurs, responsables, gérants)
-  const fonctionsPrioritaires = [
-    'General Manager',
-    'Directeur Général',
-    'Directeur',
-    'Responsable',
-    'Gérant',
-    'Manager'
-  ];
-
-  // Générer variations du nom pour améliorer matching
-  const variationsNom = genererVariationsNom(nomHotel);
-  logger.info(`🔄 Variations du nom: ${variationsNom.join(' | ')}`);
-
-  // Utiliser la variation la plus courte et distinctive (meilleurs résultats)
-  const nomRecherche = variationsNom.reduce((a, b) => a.length < b.length ? a : b);
-
   const tousContacts = [];
 
   // 1. D'ABORD chercher dans Pappers API (données officielles françaises)
@@ -1055,50 +1069,31 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     }
   }
 
-  // 4. Chercher sur LinkedIn avec TOUS les termes EN PARALLÈLE pour maximiser les résultats
-  logger.info(`🚀 Recherches LinkedIn parallèles : ${fonctionsPrioritaires.length} termes × 2 sources (Brave + Google)`);
-
-  const linkedinPromises = [];
-
-  // Lancer TOUTES les recherches en même temps (Brave ET Google pour chaque terme)
-  for (const fonction of fonctionsPrioritaires) {
-    // Brave API si disponible
-    if (useBrave) {
-      linkedinPromises.push(
-        rechercherContactsBrave(nomRecherche, fonction, braveApiKey, commune)
-          .catch(err => {
-            logger.warn(`⚠️ Brave ${fonction}: ${err.message}`);
-            return [];
-          })
-      );
-    }
-
-    // Google scraping en parallèle (toujours actif pour maximiser résultats)
-    linkedinPromises.push(
-      rechercherContactsGoogle(nomRecherche, fonction, commune)
-        .catch(err => {
-          if (!err.message.includes('CAPTCHA')) {
-            logger.warn(`⚠️ Google ${fonction}: ${err.message}`);
-          }
-          return [];
-        })
-    );
-  }
-
-  // Attendre TOUTES les recherches en parallèle
-  logger.info(`⏳ Lancement de ${linkedinPromises.length} recherches parallèles...`);
-  const resultsArrays = await Promise.all(linkedinPromises);
-
-  // Fusionner tous les résultats
-  for (const contacts of resultsArrays) {
-    if (contacts && contacts.length > 0) {
+  // 4. UNE SEULE requête Brave optimale (technique X-Ray Search)
+  if (useBrave) {
+    try {
+      const query = construireRequeteBrave(nomHotel, commune);
+      const contacts = await rechercherContactsBrave(nomHotel, query, braveApiKey, commune, true);
       tousContacts.push(...contacts);
+      logger.info(`✅ Brave X-Ray: ${contacts.length} contact(s) trouvé(s)`);
+    } catch (err) {
+      logger.error(`❌ Erreur Brave X-Ray: ${err.message}`);
     }
   }
 
-  const nbTotal = tousContacts.length;
+  // 5. Fallback Google si Brave ne trouve pas assez de résultats pertinents
   const nbHaute = tousContacts.filter(c => c.pertinence === 'haute').length;
-  logger.info(`✅ Recherches parallèles terminées : ${nbTotal} contacts dont ${nbHaute} pertinents`);
+  if (nbHaute < 2) {
+    try {
+      const googleContacts = await rechercherContactsGoogle(nomHotel, 'directeur', commune);
+      tousContacts.push(...googleContacts);
+      logger.info(`✅ Google fallback: ${googleContacts.length} contact(s) ajouté(s)`);
+    } catch (err) {
+      if (!err.message.includes('CAPTCHA')) {
+        logger.warn(`⚠️ Google fallback: ${err.message}`);
+      }
+    }
+  }
 
   // Dédupliquer par nom
   const seen = new Set();
