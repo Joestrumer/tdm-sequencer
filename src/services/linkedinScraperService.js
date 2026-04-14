@@ -922,7 +922,40 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
 }
 
 /**
- * Recherche complète pour un hôtel : essaie plusieurs fonctions
+ * Génère des variations du nom d'hôtel pour améliorer le matching
+ * Ex: "LE DRIPS HÔTEL ET RESTAURANT" → ["LE DRIPS", "DRIPS", "HOTEL LE DRIPS", "LE DRIP'S"]
+ */
+function genererVariationsNom(nomHotel) {
+  const variations = new Set([nomHotel]); // Original d'abord
+
+  // Normaliser
+  let nom = nomHotel.trim();
+
+  // Version sans "HÔTEL", "RESTAURANT", "SPA", etc.
+  const motsCommunsRetires = nom
+    .replace(/\b(HÔTEL|HOTEL|RESTAURANT|SPA|ET|&|DE|DU|LA|LE|LES)\b/gi, ' ')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (motsCommunsRetires && motsCommunsRetires !== nom) {
+    variations.add(motsCommunsRetires);
+  }
+
+  // Version avec apostrophe (DRIPS → DRIP'S)
+  if (!nom.includes("'")) {
+    const avecApostrophe = nom.replace(/S\b/g, "'S");
+    if (avecApostrophe !== nom) variations.add(avecApostrophe);
+  }
+
+  // Version sans apostrophe (DRIP'S → DRIPS)
+  if (nom.includes("'")) {
+    variations.add(nom.replace(/'/g, ''));
+  }
+
+  return Array.from(variations).slice(0, 3); // Max 3 variations
+}
+
+/**
+ * Recherche complète pour un hôtel : essaie plusieurs fonctions ET variations du nom
  */
 async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null, pappersApiKey = null) {
   // Titres variés pour couvrir tous les profils (GM, directeurs, responsables, gérants)
@@ -934,6 +967,13 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     'Gérant',
     'Manager'
   ];
+
+  // Générer variations du nom pour améliorer matching
+  const variationsNom = genererVariationsNom(nomHotel);
+  logger.info(`🔄 Variations du nom: ${variationsNom.join(' | ')}`);
+
+  // Utiliser la variation la plus courte et distinctive (meilleurs résultats)
+  const nomRecherche = variationsNom.reduce((a, b) => a.length < b.length ? a : b);
 
   const tousContacts = [];
 
@@ -977,48 +1017,50 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     }
   }
 
-  // 4. ENSUITE chercher sur LinkedIn en complément
-  const searchMethod = useBrave ? 'Brave API' : 'Google scraping';
-  logger.info(`📡 Méthode de recherche LinkedIn: ${searchMethod}`);
+  // 4. Chercher sur LinkedIn avec TOUS les termes EN PARALLÈLE pour maximiser les résultats
+  logger.info(`🚀 Recherches LinkedIn parallèles : ${fonctionsPrioritaires.length} termes × 2 sources (Brave + Google)`);
 
+  const linkedinPromises = [];
+
+  // Lancer TOUTES les recherches en même temps (Brave ET Google pour chaque terme)
   for (const fonction of fonctionsPrioritaires) {
-    try {
-      logger.info(`🔎 Essai LinkedIn: ${nomHotel}${commune ? ' (' + commune + ')' : ''} + ${fonction}`);
+    // Brave API si disponible
+    if (useBrave) {
+      linkedinPromises.push(
+        rechercherContactsBrave(nomRecherche, fonction, braveApiKey, commune)
+          .catch(err => {
+            logger.warn(`⚠️ Brave ${fonction}: ${err.message}`);
+            return [];
+          })
+      );
+    }
 
-      const contacts = useBrave
-        ? await rechercherContactsBrave(nomHotel, fonction, braveApiKey, commune)
-        : await rechercherContactsGoogle(nomHotel, fonction, commune);
+    // Google scraping en parallèle (toujours actif pour maximiser résultats)
+    linkedinPromises.push(
+      rechercherContactsGoogle(nomRecherche, fonction, commune)
+        .catch(err => {
+          if (!err.message.includes('CAPTCHA')) {
+            logger.warn(`⚠️ Google ${fonction}: ${err.message}`);
+          }
+          return [];
+        })
+    );
+  }
 
+  // Attendre TOUTES les recherches en parallèle
+  logger.info(`⏳ Lancement de ${linkedinPromises.length} recherches parallèles...`);
+  const resultsArrays = await Promise.all(linkedinPromises);
+
+  // Fusionner tous les résultats
+  for (const contacts of resultsArrays) {
+    if (contacts && contacts.length > 0) {
       tousContacts.push(...contacts);
-
-      // Continuer à chercher jusqu'à avoir plusieurs résultats pertinents
-      const nbHauteTotal = tousContacts.filter(c => c.pertinence === 'haute').length;
-
-      // Arrêter si on a trouvé au moins 2 contacts pertinents
-      if (nbHauteTotal >= 2) {
-        logger.info(`✅ ${nbHauteTotal} contact(s) pertinent(s) trouvé(s), arrêt`);
-        break;
-      }
-
-      // Ou si on a déjà essayé les 3 premiers termes et qu'on a au moins 1 pertinent
-      if (tousContacts.length > 0 && nbHauteTotal >= 1 && fonctionsPrioritaires.indexOf(fonction) >= 2) {
-        logger.info(`✅ ${nbHauteTotal} pertinent(s) après 3 recherches, arrêt`);
-        break;
-      }
-
-      // Délai court entre recherches pour rapidité maximale
-      await quickDelay(200, 500);
-
-    } catch (err) {
-      logger.error(`❌ Erreur recherche ${fonction} pour ${nomHotel}: ${err.message}`);
-
-      // Si c'est un CAPTCHA, arrêter immédiatement
-      if (err.message.includes('CAPTCHA') || err.message.includes('unusual traffic')) {
-        logger.error('🚫 Google bloque les requêtes - arrêt de la recherche');
-        break;
-      }
     }
   }
+
+  const nbTotal = tousContacts.length;
+  const nbHaute = tousContacts.filter(c => c.pertinence === 'haute').length;
+  logger.info(`✅ Recherches parallèles terminées : ${nbTotal} contacts dont ${nbHaute} pertinents`);
 
   // Dédupliquer par nom
   const seen = new Set();
@@ -1060,9 +1102,9 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
   logger.info(`🎯 ${decideurs.length} décideur(s) sur ${unique.length} contact(s)`);
   logger.info(`✅ Pertinence: ${hautePertin} haute, ${moyennePertin} moyenne`);
 
-  // Si aucun contact pertinent trouvé, limiter à 3 résultats "moyenne" (probablement non pertinents)
-  // Sinon, retourner jusqu'à 10 contacts (pertinents en premier)
-  const maxResults = hautePertin === 0 ? 3 : 10;
+  // Si aucun contact pertinent trouvé, limiter à 3 résultats "moyenne"
+  // Si contacts pertinents : jusqu'à 20 résultats (multi-sources = plus de résultats)
+  const maxResults = hautePertin === 0 ? 3 : 20;
 
   if (hautePertin === 0 && moyennePertin > 0) {
     logger.warn(`⚠️ Aucun contact pertinent - les résultats "moyenne" sont probablement hors-sujet`);
