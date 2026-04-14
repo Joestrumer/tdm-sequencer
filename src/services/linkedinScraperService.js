@@ -211,23 +211,48 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
           continue; // Skip ce contact
         }
 
-        // Détecter la fonction depuis le titre/description (plus fiable que le paramètre de recherche)
+        // Détecter la fonction depuis le titre/description (extraire le titre complet)
         let fonctionDetectee = null;
         const texteNormalise = texte.toLowerCase();
 
-        // Chercher dans l'ordre de priorité
-        for (const poste of POSTES_CIBLES) {
-          const posteNorm = poste.toLowerCase();
-          // Vérifier que le poste est mentionné avec un séparateur (pas au milieu d'un mot)
-          const regex = new RegExp(`\\b${posteNorm}\\b`, 'i');
-          if (regex.test(texteNormalise)) {
-            fonctionDetectee = poste;
-            logger.info(`  → Fonction détectée: ${poste}`);
+        // Patterns pour extraire le titre complet (ex: "Responsable F&B", "Directeur Commercial")
+        const patternsComplets = [
+          /\b(directeur|directrice|responsable|manager|gérant|gérante)\s+(général|générale|adjoint|adjointe|des?\s+\w+|commercial|marketing|f&b|revenue|rse|opérations|communication|[\w\s&]+)/i,
+          /\b(revenue\s+manager|gouvernante\s+générale|dg)\b/i,
+        ];
+
+        // 1. Essayer d'abord d'extraire un titre complet
+        for (const pattern of patternsComplets) {
+          const match = texte.match(pattern);
+          if (match) {
+            fonctionDetectee = match[0].trim();
+            // Capitaliser correctement
+            fonctionDetectee = fonctionDetectee
+              .split(' ')
+              .map(mot => mot.charAt(0).toUpperCase() + mot.slice(1).toLowerCase())
+              .join(' ')
+              .replace(/F&b/i, 'F&B')
+              .replace(/Rse/i, 'RSE')
+              .replace(/Dg/i, 'DG');
+            logger.info(`  → Fonction complète extraite: ${fonctionDetectee}`);
             break;
           }
         }
 
-        // Si aucune fonction détectée, utiliser celle de la recherche
+        // 2. Si pas de titre complet, chercher un mot-clé simple
+        if (!fonctionDetectee) {
+          for (const poste of POSTES_CIBLES) {
+            const posteNorm = poste.toLowerCase();
+            const regex = new RegExp(`\\b${posteNorm}\\b`, 'i');
+            if (regex.test(texteNormalise)) {
+              fonctionDetectee = poste;
+              logger.info(`  → Fonction mot-clé détectée: ${poste}`);
+              break;
+            }
+          }
+        }
+
+        // 3. Si aucune fonction détectée, utiliser celle de la recherche
         if (!fonctionDetectee) {
           fonctionDetectee = fonction;
           logger.warn(`  → Aucune fonction détectée dans le texte, utilisation par défaut: ${fonction}`);
@@ -414,12 +439,40 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur', commun
         return; // Skip ce contact
       }
 
-      // Détecter la fonction
+      // Détecter la fonction (extraire le titre complet)
       let fonctionDetectee = fonction;
-      for (const poste of POSTES_CIBLES) {
-        if (texte.toLowerCase().includes(poste.toLowerCase())) {
-          fonctionDetectee = poste;
+      const texteNormalise = texte.toLowerCase();
+
+      // Patterns pour extraire le titre complet
+      const patternsComplets = [
+        /\b(directeur|directrice|responsable|manager|gérant|gérante)\s+(général|générale|adjoint|adjointe|des?\s+\w+|commercial|marketing|f&b|revenue|rse|opérations|communication|[\w\s&]+)/i,
+        /\b(revenue\s+manager|gouvernante\s+générale|dg)\b/i,
+      ];
+
+      // 1. Essayer d'extraire un titre complet
+      for (const pattern of patternsComplets) {
+        const match = texte.match(pattern);
+        if (match) {
+          fonctionDetectee = match[0].trim();
+          // Capitaliser correctement
+          fonctionDetectee = fonctionDetectee
+            .split(' ')
+            .map(mot => mot.charAt(0).toUpperCase() + mot.slice(1).toLowerCase())
+            .join(' ')
+            .replace(/F&b/i, 'F&B')
+            .replace(/Rse/i, 'RSE')
+            .replace(/Dg/i, 'DG');
           break;
+        }
+      }
+
+      // 2. Si pas de titre complet, chercher un mot-clé simple
+      if (fonctionDetectee === fonction) {
+        for (const poste of POSTES_CIBLES) {
+          if (texteNormalise.includes(poste.toLowerCase())) {
+            fonctionDetectee = poste;
+            break;
+          }
         }
       }
 
@@ -559,8 +612,9 @@ async function rechercherContactsSociete(nomHotel, fonction = 'Dirigeant', brave
           // Patterns pour extraire nom et fonction depuis societe.com
           // Format : "Prénom NOM - Président | Société XYZ"
           const patterns = [
-            /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][A-Z\s]+)\s*[-–—]\s*(Président|Directeur|Gérant|PDG|DG|Directeur général)/i,
-            /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][A-Z]+),?\s+(Président|Directeur|Gérant|PDG|DG)/i,
+            // Titres complets (ex: "Directeur Commercial", "Responsable F&B")
+            /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][A-Z\s]+)\s*[-–—]\s*((?:Président|Directeur|Directrice|Responsable|Manager|Gérant|Gérante|PDG|DG)(?:\s+[\w&]+)*)/i,
+            /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][A-Z]+),?\s+((?:Président|Directeur|Directrice|Responsable|Manager|Gérant|Gérante|PDG|DG)(?:\s+[\w&]+)*)/i,
           ];
 
           let nomExtrait = null;
@@ -570,7 +624,16 @@ async function rechercherContactsSociete(nomHotel, fonction = 'Dirigeant', brave
             const match = texte.match(pattern);
             if (match && match[1]) {
               nomExtrait = match[1].trim();
-              fonctionDetectee = match[2] || fonction;
+              fonctionDetectee = (match[2] || fonction).trim();
+              // Capitaliser correctement le titre
+              fonctionDetectee = fonctionDetectee
+                .split(' ')
+                .map(mot => mot.charAt(0).toUpperCase() + mot.slice(1).toLowerCase())
+                .join(' ')
+                .replace(/F&b/i, 'F&B')
+                .replace(/Rse/i, 'RSE')
+                .replace(/Pdg/i, 'PDG')
+                .replace(/Dg\b/i, 'DG');
               logger.info(`📝 Societe.com: ${nomExtrait} - ${fonctionDetectee}`);
               break;
             }
@@ -654,8 +717,9 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
           // Extraire nom et fonction depuis le texte Pappers
           // Format typique : "Prénom NOM - Président - Société XYZ"
           const patterns = [
-            /([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,3})\s*[-–—]\s*(Président|Directeur|Gérant|PDG|DG)/i,
-            /([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,3}),\s*(Président|Directeur|Gérant|PDG|DG)/i,
+            // Titres complets (ex: "Directeur Commercial", "Responsable F&B")
+            /([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,3})\s*[-–—]\s*((?:Président|Directeur|Directrice|Responsable|Manager|Gérant|Gérante|PDG|DG)(?:\s+[\w&]+)*)/i,
+            /([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,3}),\s*((?:Président|Directeur|Directrice|Responsable|Manager|Gérant|Gérante|PDG|DG)(?:\s+[\w&]+)*)/i,
           ];
 
           let nomExtrait = null;
@@ -665,7 +729,16 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
             const match = texte.match(pattern);
             if (match && match[1]) {
               nomExtrait = match[1].trim();
-              fonctionDetectee = match[2] || fonction;
+              fonctionDetectee = (match[2] || fonction).trim();
+              // Capitaliser correctement le titre
+              fonctionDetectee = fonctionDetectee
+                .split(' ')
+                .map(mot => mot.charAt(0).toUpperCase() + mot.slice(1).toLowerCase())
+                .join(' ')
+                .replace(/F&b/i, 'F&B')
+                .replace(/Rse/i, 'RSE')
+                .replace(/Pdg/i, 'PDG')
+                .replace(/Dg\b/i, 'DG');
               logger.info(`📝 Pappers: ${nomExtrait} - ${fonctionDetectee}`);
               break;
             }
