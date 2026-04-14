@@ -12,6 +12,7 @@ const path = require('path');
 const logger = require('../config/logger');
 const scraperService = require('../services/hotelScraperService');
 const linkedinService = require('../services/linkedinScraperService');
+const emailFinderService = require('../services/emailFinderService');
 const { v4: uuidv4 } = require('uuid');
 
 // Configuration multer pour upload CSV
@@ -643,17 +644,26 @@ module.exports = (db) => {
         return res.json({ message: 'Aucun contact trouvé', contacts: [] });
       }
 
-      // Récupérer la clé ZeroBounce
+      // Récupérer les clés API pour recherche d'emails
+      const lushaApiKey = process.env.LUSHA_API_KEY ||
+        db.prepare("SELECT valeur FROM config WHERE cle = 'lusha_api_key'").get()?.valeur ||
+        null;
+
+      const lemlistApiKey = process.env.LEMLIST_API_KEY ||
+        db.prepare("SELECT valeur FROM config WHERE cle = 'lemlist_api_key'").get()?.valeur ||
+        null;
+
       const zbKey = process.env.ZEROBOUNCE_API_KEY ||
         db.prepare("SELECT valeur FROM config WHERE cle = 'zerobounce_api_key'").get()?.valeur ||
         null;
 
       const results = [];
-      let patternMemoire = null; // Mémoriser le pattern qui marche
+      let patternMemoire = null; // Mémoriser le pattern ZB qui marche
 
       logger.info(`📧 Recherche emails pour ${contacts.length} contact(s)...`);
+      logger.info(`🔑 APIs disponibles: Lusha=${!!lushaApiKey}, Lemlist=${!!lemlistApiKey}, ZeroBounce=${!!zbKey}`);
 
-      // Pour chaque contact, chercher l'email avec ZeroBounce
+      // Pour chaque contact, chercher l'email avec Lusha → Lemlist → ZeroBounce
       for (let i = 0; i < contacts.length; i++) {
         const contact = contacts[i];
         const { prenom, nom } = linkedinService.extraireNomPrenom(contact.nom_complet);
@@ -662,34 +672,46 @@ module.exports = (db) => {
 
         let emailResult = null;
 
-        // Ne tester ZeroBounce QUE sur les contacts pertinents (économise des crédits)
-        if (contact.pertinence === 'haute' && zbKey && prenom && nom) {
-          logger.info(`  → Prénom: "${prenom}", Nom: "${nom}", Domaine: "${domaine}"`);
+        // Chercher email uniquement pour contacts à haute pertinence
+        if (contact.pertinence === 'haute' && prenom && nom) {
+          logger.info(`  → Prénom: "${prenom}", Nom: "${nom}"`);
+
           try {
-            // Utiliser le pattern mémorisé s'il existe
-            emailResult = await linkedinService.trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMemoire);
+            // Utiliser le nouveau service de recherche d'emails (Lusha → Lemlist → ZeroBounce)
+            emailResult = await emailFinderService.trouverEmail({
+              prenom,
+              nom,
+              entreprise: hotel.nom_commercial,
+              domaine,
+              lushaApiKey,
+              lemlistApiKey,
+              zerobounceApiKey: zbKey,
+              patternMemoire,
+              zbFallback: linkedinService.trouverEmailAvecZeroBounce,
+            });
 
             if (emailResult) {
-              logger.info(`  ✅ Email trouvé: ${emailResult.email}`);
+              logger.info(`  ✅ Email trouvé: ${emailResult.email} (source: ${emailResult.source})`);
+
+              // Mémoriser le pattern ZeroBounce si c'est la source
+              if (emailResult.source === 'ZeroBounce' && emailResult.pattern) {
+                patternMemoire = emailResult.pattern;
+                logger.info(`🎯 Pattern ZB mémorisé: ${patternMemoire}`);
+              }
             } else {
-              logger.warn(`  ❌ Aucun email valide trouvé après test des patterns`);
+              logger.warn(`  ❌ Aucun email trouvé`);
             }
 
-            // Si un email valide est trouvé, mémoriser le pattern pour les prochains contacts
-            if (emailResult && emailResult.pattern) {
-              patternMemoire = emailResult.pattern;
-              logger.info(`🎯 Pattern mémorisé pour le domaine ${domaine}: ${patternMemoire}`);
-            }
-
-            // Délai entre appels ZeroBounce
+            // Petit délai entre appels
             await new Promise(resolve => setTimeout(resolve, 300));
+
           } catch (err) {
-            logger.warn(`Erreur ZeroBounce pour ${contact.nom_complet}:`, err.message);
+            logger.warn(`Erreur recherche email pour ${contact.nom_complet}:`, err.message);
           }
         } else if (contact.pertinence !== 'haute') {
-          logger.info(`  ⏭️ Skip ZeroBounce (pertinence moyenne)`);
+          logger.info(`  ⏭️ Skip recherche email (pertinence moyenne)`);
         } else {
-          logger.warn(`⚠️ Pas de clé ZeroBounce ou nom incomplet pour ${contact.nom_complet}`);
+          logger.warn(`⚠️ Nom incomplet pour ${contact.nom_complet}`);
         }
 
         results.push({
@@ -697,8 +719,9 @@ module.exports = (db) => {
           prenom,
           nom,
           email: emailResult?.email || null,
-          email_status: emailResult?.status || null,
-          email_score: emailResult?.quality_score || null,
+          email_source: emailResult?.source || null,
+          email_confidence: emailResult?.confidence || null,
+          email_pattern: emailResult?.pattern || null,
         });
       }
 
