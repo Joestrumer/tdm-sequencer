@@ -3461,6 +3461,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [contactsResults, setContactsResults] = useState(null);
   const [contactsLoading, setContactsLoading] = useState(false);
   const [contactsCache, setContactsCache] = useState({}); // Cache des résultats par hotel_id
+  const [selectedModalContacts, setSelectedModalContacts] = useState(new Set()); // Contacts sélectionnés dans le modal
+  const [emailSearchLoading, setEmailSearchLoading] = useState(false); // Loading recherche emails
 
   // States pour vue contacts LinkedIn
   const [contacts, setContacts] = useState([]);
@@ -3710,6 +3712,49 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     } catch (err) {
       showToast('Erreur sauvegarde: ' + err.message, 'error');
     }
+  };
+
+  const toggleModalContact = (index) => {
+    setSelectedModalContacts(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(index)) newSet.delete(index);
+      else newSet.add(index);
+      return newSet;
+    });
+  };
+
+  const handleFindEmailsForSelected = async () => {
+    if (!contactsResults?.contacts || selectedModalContacts.size === 0 || !contactsHotel) return;
+
+    const selectedList = Array.from(selectedModalContacts).map(i => contactsResults.contacts[i]);
+    setEmailSearchLoading(true);
+
+    try {
+      const res = await api.post('/prospection/find-emails', {
+        hotel_id: contactsHotel.id,
+        contacts: selectedList,
+      });
+
+      // Mettre à jour les contacts dans les résultats
+      if (res.contacts) {
+        const updated = [...contactsResults.contacts];
+        for (const result of res.contacts) {
+          const idx = updated.findIndex(c => c.linkedin_url === result.linkedin_url);
+          if (idx !== -1) {
+            updated[idx] = { ...updated[idx], ...result };
+          }
+        }
+        const newResults = { ...contactsResults, contacts: updated, avec_email: updated.filter(c => c.email).length };
+        setContactsResults(newResults);
+        setContactsCache(prev => ({ ...prev, [contactsHotel.id]: newResults }));
+      }
+
+      setSelectedModalContacts(new Set());
+      showToast(`✅ ${res.avec_email}/${res.total} email(s) trouvé(s)`, res.avec_email > 0 ? 'success' : 'warning');
+    } catch (err) {
+      showToast('Erreur recherche emails: ' + err.message, 'error');
+    }
+    setEmailSearchLoading(false);
   };
 
   const chargerContacts = async () => {
@@ -4297,7 +4342,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       {/* Modal Contacts LinkedIn */}
       {showContactsModal && (
-        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => setShowContactsModal(false)}>
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4" onClick={() => { setShowContactsModal(false); setSelectedModalContacts(new Set()); }}>
           <div className="bg-white rounded-xl shadow-2xl max-w-3xl w-full max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
             <div className="flex items-center justify-between p-5 border-b border-slate-200 flex-shrink-0">
               <div className="flex-1">
@@ -4305,16 +4350,16 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                 <p className="text-sm text-slate-500 mt-1">{contactsHotel?.nom_commercial}</p>
               </div>
               <div className="flex items-center gap-2">
-                {contactsResults && !contactsLoading && (
+                {contactsResults && !contactsLoading && !emailSearchLoading && (
                   <button
-                    onClick={() => handleFindContacts(contactsHotel, true)}
+                    onClick={() => { setSelectedModalContacts(new Set()); handleFindContacts(contactsHotel, true); }}
                     className="px-3 py-1.5 rounded-lg text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 transition-colors"
                     title="Relancer la recherche"
                   >
                     🔄 Actualiser
                   </button>
                 )}
-                <button onClick={() => setShowContactsModal(false)} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
+                <button onClick={() => { setShowContactsModal(false); setSelectedModalContacts(new Set()); }} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">×</button>
               </div>
             </div>
 
@@ -4323,7 +4368,12 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                 <div className="flex flex-col items-center justify-center py-12">
                   <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-3" />
                   <p className="text-sm text-slate-500">Recherche des contacts sur LinkedIn...</p>
-                  <p className="text-xs text-slate-400 mt-1">Test des emails avec ZeroBounce</p>
+                </div>
+              ) : emailSearchLoading ? (
+                <div className="flex flex-col items-center justify-center py-12">
+                  <div className="w-8 h-8 border-2 border-slate-200 border-t-blue-600 rounded-full animate-spin mb-3" />
+                  <p className="text-sm text-slate-500">Recherche des emails en cours...</p>
+                  <p className="text-xs text-slate-400 mt-1">Test via Lusha, Lemlist, ZeroBounce</p>
                 </div>
               ) : contactsResults?.error ? (
                 <div className="text-center py-12">
@@ -4336,52 +4386,80 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                 </div>
               ) : (
                 <div className="space-y-3">
-                  <div className="text-sm text-slate-600 mb-4">
-                    <strong>{contactsResults.total}</strong> contact(s) trouvé(s) ·
-                    <strong className="ml-2">{contactsResults.avec_email}</strong> avec email valide
+                  <div className="flex items-center justify-between mb-4">
+                    <div className="text-sm text-slate-600">
+                      <strong>{contactsResults.total}</strong> contact(s) trouvé(s)
+                      {contactsResults.contacts.some(c => c.email) && (
+                        <span> · <strong>{contactsResults.contacts.filter(c => c.email).length}</strong> avec email</span>
+                      )}
+                    </div>
+                    {selectedModalContacts.size > 0 && (
+                      <span className="text-xs text-blue-600 font-medium">{selectedModalContacts.size} sélectionné(s)</span>
+                    )}
+                  </div>
+
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-3 text-xs text-amber-800">
+                    Cochez les contacts pertinents puis cliquez sur "Rechercher les emails" pour lancer la recherche (Lusha/Lemlist/ZeroBounce).
                   </div>
 
                   {contactsResults.contacts.map((contact, i) => (
-                    <div key={i} className="border border-slate-200 rounded-lg p-4 hover:border-blue-300 transition-colors">
-                      <div className="flex items-start justify-between gap-3">
+                    <div
+                      key={i}
+                      className={`border rounded-lg p-4 transition-colors cursor-pointer ${
+                        selectedModalContacts.has(i) ? 'border-blue-400 bg-blue-50/50' : 'border-slate-200 hover:border-blue-300'
+                      }`}
+                      onClick={() => !contact.email && toggleModalContact(i)}
+                    >
+                      <div className="flex items-start gap-3">
+                        {/* Checkbox pour sélection (uniquement si pas d'email trouvé) */}
+                        {!contact.email && (
+                          <div className="flex-shrink-0 pt-0.5">
+                            <input
+                              type="checkbox"
+                              checked={selectedModalContacts.has(i)}
+                              onChange={() => toggleModalContact(i)}
+                              className="w-4 h-4 text-blue-600 border-slate-300 rounded cursor-pointer"
+                              onClick={e => e.stopPropagation()}
+                            />
+                          </div>
+                        )}
+
                         <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-2">
+                          <div className="flex items-center gap-2 mb-1">
                             <h4 className="font-semibold text-slate-900">{contact.nom_complet}</h4>
                             {contact.pertinence === 'haute' && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Pertinent</span>
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">Pertinent</span>
+                            )}
+                            {contact.pertinence !== 'haute' && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500">A vérifier</span>
                             )}
                           </div>
 
-                          <p className="text-sm text-slate-600 mb-2">{contact.fonction}</p>
+                          <p className="text-sm text-slate-600 mb-1">{contact.fonction}</p>
 
                           {contact.email ? (
-                            <div className="flex items-center gap-2 mb-2">
+                            <div className="flex items-center gap-2 mb-1">
                               <span className="text-sm font-mono text-blue-600">{contact.email}</span>
-                              {contact.email_status === 'valid' && (
-                                <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Valid</span>
-                              )}
-                              {contact.email_score && (
-                                <span className="text-xs text-slate-500">Score: {contact.email_score}</span>
-                              )}
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">
+                                {contact.email_source || 'Valid'}
+                              </span>
                             </div>
-                          ) : (
-                            <p className="text-xs text-slate-400 mb-2">Email non trouvé</p>
-                          )}
+                          ) : null}
 
                           {contact.linkedin_url && (
-                            <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline flex items-center gap-1">
+                            <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1" onClick={e => e.stopPropagation()}>
                               🔗 Voir le profil LinkedIn
                             </a>
                           )}
 
                           {contact.snippet && (
-                            <p className="text-xs text-slate-400 mt-2 line-clamp-2">{contact.snippet}</p>
+                            <p className="text-xs text-slate-400 mt-1 line-clamp-2">{contact.snippet}</p>
                           )}
                         </div>
 
                         {contact.email && (
                           <button
-                            onClick={() => handleSelectContact(contact)}
+                            onClick={(e) => { e.stopPropagation(); handleSelectContact(contact); }}
                             className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex-shrink-0"
                           >
                             Sélectionner
@@ -4394,8 +4472,16 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
               )}
             </div>
 
-            <div className="p-5 border-t border-slate-200 flex-shrink-0">
-              <button onClick={() => setShowContactsModal(false)} className="w-full px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50">
+            <div className="p-5 border-t border-slate-200 flex-shrink-0 flex gap-3">
+              {selectedModalContacts.size > 0 && !emailSearchLoading && (
+                <button
+                  onClick={handleFindEmailsForSelected}
+                  className="flex-1 px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700"
+                >
+                  📧 Rechercher les emails ({selectedModalContacts.size} contact{selectedModalContacts.size > 1 ? 's' : ''})
+                </button>
+              )}
+              <button onClick={() => { setShowContactsModal(false); setSelectedModalContacts(new Set()); }} className={`px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50 ${selectedModalContacts.size > 0 ? '' : 'flex-1'}`}>
                 Fermer
               </button>
             </div>

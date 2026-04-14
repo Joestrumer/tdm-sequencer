@@ -662,86 +662,21 @@ module.exports = (db) => {
         return res.json({ message: 'Aucun contact trouvé', contacts: [] });
       }
 
-      // Récupérer les clés API pour recherche d'emails
-      const lushaApiKey = process.env.LUSHA_API_KEY ||
-        db.prepare("SELECT valeur FROM config WHERE cle = 'lusha_api_key'").get()?.valeur ||
-        null;
-
-      const lemlistApiKey = process.env.LEMLIST_API_KEY ||
-        db.prepare("SELECT valeur FROM config WHERE cle = 'lemlist_api_key'").get()?.valeur ||
-        null;
-
-      const zbKey = process.env.ZEROBOUNCE_API_KEY ||
-        db.prepare("SELECT valeur FROM config WHERE cle = 'zerobounce_api_key'").get()?.valeur ||
-        null;
-
-      const results = [];
-      let patternMemoire = null; // Mémoriser le pattern ZB qui marche
-
-      logger.info(`📧 Recherche emails pour ${contacts.length} contact(s)...`);
-      logger.info(`🔑 APIs disponibles: Lusha=${!!lushaApiKey}, Lemlist=${!!lemlistApiKey}, ZeroBounce=${!!zbKey}`);
-
-      // Pour chaque contact, chercher l'email avec Lusha → Lemlist → ZeroBounce
-      for (let i = 0; i < contacts.length; i++) {
-        const contact = contacts[i];
+      // Extraire prénom/nom pour chaque contact (sans chercher les emails)
+      const results = contacts.map(contact => {
         const { prenom, nom } = linkedinService.extraireNomPrenom(contact.nom_complet);
-
-        logger.info(`📧 [${i + 1}/${contacts.length}] ${contact.nom_complet} (${contact.fonction}) - Pertinence: ${contact.pertinence}`);
-
-        let emailResult = null;
-
-        // Chercher email pour tous les contacts (l'utilisateur sélectionnera ensuite)
-        if (prenom && nom) {
-          logger.info(`  → Prénom: "${prenom}", Nom: "${nom}"`);
-
-          try {
-            // Utiliser le nouveau service de recherche d'emails (Lusha → Lemlist → ZeroBounce)
-            emailResult = await emailFinderService.trouverEmail({
-              prenom,
-              nom,
-              entreprise: hotel.nom_commercial,
-              domaine,
-              lushaApiKey,
-              lemlistApiKey,
-              zerobounceApiKey: zbKey,
-              patternMemoire,
-              zbFallback: linkedinService.trouverEmailAvecZeroBounce,
-            });
-
-            if (emailResult) {
-              logger.info(`  ✅ Email trouvé: ${emailResult.email} (source: ${emailResult.source})`);
-
-              // Mémoriser le pattern ZeroBounce si c'est la source
-              if (emailResult.source === 'ZeroBounce' && emailResult.pattern) {
-                patternMemoire = emailResult.pattern;
-                logger.info(`🎯 Pattern ZB mémorisé: ${patternMemoire}`);
-              }
-            } else {
-              logger.warn(`  ❌ Aucun email trouvé`);
-            }
-
-            // Petit délai entre appels
-            await new Promise(resolve => setTimeout(resolve, 300));
-
-          } catch (err) {
-            logger.warn(`Erreur recherche email pour ${contact.nom_complet}:`, err.message);
-          }
-        } else {
-          logger.warn(`⚠️ Nom incomplet pour ${contact.nom_complet}`);
-        }
-
-        results.push({
+        return {
           ...contact,
           prenom,
           nom,
-          email: emailResult?.email || null,
-          email_source: emailResult?.source || null,
-          email_confidence: emailResult?.confidence || null,
-          email_pattern: emailResult?.pattern || null,
-        });
-      }
+          email: null,
+          email_source: null,
+          email_confidence: null,
+          email_pattern: null,
+        };
+      });
 
-      logger.info(`✅ Recherche terminée: ${results.filter(r => r.email).length}/${results.length} emails trouvés`);
+      logger.info(`✅ ${results.length} contact(s) trouvé(s) (emails non recherchés - en attente de sélection utilisateur)`);
 
       // Sauvegarder les contacts dans la table hotels_france
       try {
@@ -756,10 +691,8 @@ module.exports = (db) => {
         logger.warn(`Erreur sauvegarde contacts:`, err.message);
       }
 
-      // Trier par : email trouvé + pertinence
+      // Trier par pertinence
       results.sort((a, b) => {
-        if (a.email && !b.email) return -1;
-        if (!a.email && b.email) return 1;
         if (a.pertinence === 'haute' && b.pertinence !== 'haute') return -1;
         if (a.pertinence !== 'haute' && b.pertinence === 'haute') return 1;
         return 0;
@@ -774,12 +707,137 @@ module.exports = (db) => {
         },
         contacts: results,
         total: results.length,
-        avec_email: results.filter(r => r.email).length,
       });
 
     } catch (err) {
       logger.error('Erreur POST /find-contacts:', err);
       res.status(500).json({ error: 'Erreur lors de la recherche de contacts', details: err.message });
+    }
+  });
+
+  // POST /api/prospection/find-emails — Recherche emails pour des contacts sélectionnés
+  router.post('/find-emails', async (req, res) => {
+    const { hotel_id, contacts } = req.body;
+
+    if (!hotel_id || !contacts || !Array.isArray(contacts) || contacts.length === 0) {
+      return res.status(400).json({ error: 'hotel_id et contacts[] requis' });
+    }
+
+    try {
+      const hotel = db.prepare('SELECT * FROM hotels_france WHERE id = ?').get(hotel_id);
+      if (!hotel) {
+        return res.status(404).json({ error: 'Hôtel non trouvé' });
+      }
+
+      // Extraire le domaine
+      let domaine = null;
+      const extensionsImages = ['.gif', '.png', '.jpg', '.jpeg', '.svg', '.webp', '.bmp', '.ico'];
+      if (hotel.contact_email && hotel.contact_email.includes('@')) {
+        const domaineCandidat = hotel.contact_email.split('@')[1];
+        if (!extensionsImages.some(ext => domaineCandidat.toLowerCase().endsWith(ext))) {
+          domaine = domaineCandidat;
+        }
+      }
+      if (!domaine && hotel.site_internet) {
+        const domaineCandidat = hotel.site_internet.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+        if (!extensionsImages.some(ext => domaineCandidat.toLowerCase().endsWith(ext))) {
+          domaine = domaineCandidat;
+        }
+      }
+
+      // Récupérer les clés API
+      const lushaApiKey = process.env.LUSHA_API_KEY ||
+        db.prepare("SELECT valeur FROM config WHERE cle = 'lusha_api_key'").get()?.valeur || null;
+      const lemlistApiKey = process.env.LEMLIST_API_KEY ||
+        db.prepare("SELECT valeur FROM config WHERE cle = 'lemlist_api_key'").get()?.valeur || null;
+      const zbKey = process.env.ZEROBOUNCE_API_KEY ||
+        db.prepare("SELECT valeur FROM config WHERE cle = 'zerobounce_api_key'").get()?.valeur || null;
+
+      logger.info(`📧 Recherche emails pour ${contacts.length} contact(s) sélectionné(s) de ${hotel.nom_commercial}`);
+      logger.info(`🔑 APIs: Lusha=${!!lushaApiKey}, Lemlist=${!!lemlistApiKey}, ZeroBounce=${!!zbKey}, Domaine=${domaine}`);
+
+      const results = [];
+      let patternMemoire = null;
+
+      for (let i = 0; i < contacts.length; i++) {
+        const contact = contacts[i];
+        const prenom = contact.prenom;
+        const nom = contact.nom;
+
+        logger.info(`📧 [${i + 1}/${contacts.length}] ${contact.nom_complet} (${contact.fonction})`);
+
+        let emailResult = null;
+
+        if (prenom && nom) {
+          logger.info(`  → Prénom: "${prenom}", Nom: "${nom}", Domaine: ${domaine}`);
+
+          try {
+            emailResult = await emailFinderService.trouverEmail({
+              prenom,
+              nom,
+              entreprise: hotel.nom_commercial,
+              domaine,
+              lushaApiKey,
+              lemlistApiKey,
+              zerobounceApiKey: zbKey,
+              patternMemoire,
+              zbFallback: linkedinService.trouverEmailAvecZeroBounce,
+            });
+
+            if (emailResult) {
+              logger.info(`  ✅ Email trouvé: ${emailResult.email} (source: ${emailResult.source})`);
+              if (emailResult.source === 'ZeroBounce' && emailResult.pattern) {
+                patternMemoire = emailResult.pattern;
+                logger.info(`🎯 Pattern ZB mémorisé: ${patternMemoire}`);
+              }
+            } else {
+              logger.warn(`  ❌ Aucun email trouvé`);
+            }
+
+            await new Promise(resolve => setTimeout(resolve, 300));
+          } catch (err) {
+            logger.warn(`Erreur recherche email pour ${contact.nom_complet}:`, err.message);
+          }
+        } else {
+          logger.warn(`⚠️ Nom incomplet pour ${contact.nom_complet}`);
+        }
+
+        results.push({
+          ...contact,
+          email: emailResult?.email || null,
+          email_source: emailResult?.source || null,
+          email_confidence: emailResult?.confidence || null,
+          email_pattern: emailResult?.pattern || null,
+        });
+      }
+
+      logger.info(`✅ Recherche terminée: ${results.filter(r => r.email).length}/${results.length} emails trouvés`);
+
+      // Mettre à jour les contacts sauvegardés
+      try {
+        const savedContacts = JSON.parse(hotel.linkedin_contacts || '[]');
+        for (const result of results) {
+          const idx = savedContacts.findIndex(c => c.linkedin_url === result.linkedin_url);
+          if (idx !== -1) {
+            savedContacts[idx] = { ...savedContacts[idx], ...result };
+          }
+        }
+        db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
+          .run(JSON.stringify(savedContacts), hotel.id);
+      } catch (err) {
+        logger.warn('Erreur mise à jour contacts:', err.message);
+      }
+
+      res.json({
+        success: true,
+        contacts: results,
+        total: results.length,
+        avec_email: results.filter(r => r.email).length,
+      });
+
+    } catch (err) {
+      logger.error('Erreur POST /find-emails:', err);
+      res.status(500).json({ error: 'Erreur recherche emails', details: err.message });
     }
   });
 

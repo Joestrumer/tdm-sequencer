@@ -125,8 +125,9 @@ function extraireNomPrenom(nomComplet) {
 async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey, commune = null) {
   const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
   const communePart = commune ? ` ${commune}` : '';
-  // Enlever "linkedin" du texte, mais garder site:linkedin.com/in/ pour filtrer les résultats
-  const query = `${nomNormalise}${communePart} ${fonction} site:linkedin.com/in/`;
+  // Mettre le nom d'hôtel entre guillemets pour forcer la recherche exacte
+  // (évite que "ELSA HÔTEL" soit interprété comme prénom "Elsa")
+  const query = `"${nomNormalise}"${communePart} ${fonction} site:linkedin.com/in/`;
 
   logger.info(`🔍 Recherche Brave API: "${query}"`);
 
