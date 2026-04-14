@@ -397,36 +397,25 @@ async function rechercherContactsBrave(nomHotel, queryOrFonction = 'Directeur', 
         const motsHotel = nomHotelNorm.split(' ')
           .filter(mot => mot.length >= 3 && !motsCommuns.includes(mot));
 
-        // Pertinence STRICTE : vérifier que le nom d'hôtel COMPLET apparaît
+        // Pertinence : vérifier que le nom d'hôtel apparaît dans le snippet
+        // Utilise des RACINES de mots (4 chars min) car LinkedIn tronque les textes
+        // Ex: "Kitchen" → "Kitche" dans un snippet → on cherche "kitc"
         let hotelMentioned = false;
 
-        // Méthode 1 : nom complet ou partie significative (min 8 chars)
-        const partieSignificative = nomHotelNorm.substring(0, Math.max(8, nomHotelNorm.length));
-        if (texteNorm.includes(partieSignificative)) {
-          hotelMentioned = true;
-          logger.debug(`  ✓ Nom d'hôtel trouvé: "${partieSignificative}"`);
-        }
-        // Méthode 2 : vérifier que PLUSIEURS mots distinctifs apparaissent ensemble
-        else if (motsHotel.length >= 2) {
-          const mot1 = motsHotel[0];
-          const mot2 = motsHotel[1];
-          const mot1Present = texteNorm.includes(mot1);
-          const mot2Present = texteNorm.includes(mot2);
+        // Calculer les racines (4 premiers caractères de chaque mot distinctif)
+        const racinesHotel = motsHotel.map(m => m.length >= 4 ? m.substring(0, 4) : m);
 
-          if (mot1Present && mot2Present) {
-            // Les 2 mots sont présents - vérifier qu'ils sont proches (max 20 chars d'écart)
-            const idx1 = texteNorm.indexOf(mot1);
-            const idx2 = texteNorm.indexOf(mot2);
-            if (Math.abs(idx1 - idx2) < 20) {
-              hotelMentioned = true;
-              logger.debug(`  ✓ Mots-clés proches: "${mot1}" + "${mot2}"`);
-            }
+        if (racinesHotel.length >= 2) {
+          // 2+ mots : les deux racines doivent être présentes
+          const r1Present = texteNorm.includes(racinesHotel[0]);
+          const r2Present = texteNorm.includes(racinesHotel[1]);
+          if (r1Present && r2Present) {
+            hotelMentioned = true;
+            logger.debug(`  ✓ Mots-clés trouvés: "${racinesHotel[0]}" + "${racinesHotel[1]}"`);
           }
-        }
-        // Méthode 3 : 1 seul mot distinctif TRÈS spécifique + "hotel" PROCHE
-        else if (motsHotel.length === 1) {
-          const mot = motsHotel[0];
-          const racine = mot.length >= 4 ? mot.substring(0, 4) : mot;
+        } else if (racinesHotel.length === 1) {
+          // 1 seul mot : racine + "hotel" proches
+          const racine = racinesHotel[0];
           const idxMot = texteNorm.indexOf(racine);
           const idxHotel = texteNorm.indexOf('hotel');
 
@@ -979,16 +968,20 @@ function construireRequeteBrave(nomHotel, commune = null) {
   const variations = new Set();
   const nom = nomHotel.trim();
 
-  // Version originale
+  // Version originale (remplacer & par "and" pour compatibilité recherche)
   variations.add(nom);
+  if (nom.includes('&')) {
+    variations.add(nom.replace(/&/g, 'and'));
+  }
 
   // Sans accents
   const sansAccents = nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
   if (sansAccents !== nom) variations.add(sansAccents);
 
-  // Sans "HÔTEL", "RESTAURANT", "ET", etc. si le reste est distinctif
+  // Sans "HÔTEL", "RESTAURANT", "ET" si le reste est distinctif
+  // NE PAS retirer & car ça fait partie du nom (ex: "DANDY HÔTEL & KITCHEN")
   const sansMotsCommuns = nom
-    .replace(/\b(HÔTEL|HOTEL|RESTAURANT|SPA|ET|&|ARTY)\b/gi, ' ')
+    .replace(/\b(HÔTEL|HOTEL|RESTAURANT|SPA|ARTY)\b/gi, ' ')
     .replace(/\s+/g, ' ')
     .trim();
   if (sansMotsCommuns.length >= 4 && sansMotsCommuns !== nom) {
@@ -1106,35 +1099,38 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     }
   }
 
-  // Filtrer STRICTEMENT : seulement top management hôtelier
+  // Filtrer : management hôtelier (base large, exclusions strictes)
   const titresAcceptes = [
-    'directeur général', 'directrice générale', 'dg',
-    'general manager', 'gm',
-    'directeur adjoint', 'directrice adjointe',
-    'directeur des opérations', 'directrice des opérations',
-    'directeur marketing', 'directrice marketing',
-    'directeur commercial', 'directrice commerciale',
-    'revenue manager',
-    'housekeeping manager', 'gouvernante générale',
+    'directeur', 'directrice',    // couvre "Directeur Opérationnel", "Directrice Générale", etc.
+    'general manager', 'gm', 'dg',
     'gérant', 'gérante',
-    'propriétaire', 'owner'
+    'manager',                     // couvre "Revenue Manager", "Housekeeping Manager", etc.
+    'responsable',
+    'propriétaire', 'owner',
+    'gouvernante générale'
   ];
 
   // Titres à EXCLURE (cuisine, non-hôtelier, etc.)
   const titresExclus = [
-    'chef', 'cuisine', 'cuisinier',
-    'mairie', 'municipal', 'ville',
+    'chef de cuisine', 'chef cuisinier', 'executive chef',
+    'sous-chef', 'commis',
+    'cuisine', 'cuisinier', 'pâtissier',
+    'mairie', 'municipal', 'commune', 'ville', 'département',
+    'caisse des ecoles', 'école', 'lycée', 'collège',
     'serveur', 'barman', 'sommelier',
-    'réceptionniste', 'concierge',
-    'stagiaire', 'étudiant', 'apprenti'
+    'réceptionniste',
+    'stagiaire', 'étudiant', 'apprenti', 'alternant',
+    'community manager', 'social media'
   ];
 
   const decideurs = unique.filter(contact => {
     const fonctionLower = contact.fonction.toLowerCase();
+    const snippetLower = (contact.snippet || '').toLowerCase();
 
-    // EXCLURE d'abord
-    if (titresExclus.some(exclu => fonctionLower.includes(exclu))) {
-      logger.debug(`❌ Exclu: ${contact.nom_complet} (${contact.fonction})`);
+    // EXCLURE d'abord (vérifier titre ET snippet pour détecter les faux positifs)
+    const texteComplet = fonctionLower + ' ' + snippetLower;
+    if (titresExclus.some(exclu => texteComplet.includes(exclu))) {
+      logger.info(`❌ Exclu: ${contact.nom_complet} — "${contact.fonction}" (mot exclu détecté)`);
       return false;
     }
 
