@@ -125,9 +125,9 @@ function extraireNomPrenom(nomComplet) {
 async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey, commune = null) {
   const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
   const communePart = commune ? ` ${commune}` : '';
-  // Mettre le nom d'hôtel entre guillemets pour forcer la recherche exacte
-  // (évite que "ELSA HÔTEL" soit interprété comme prénom "Elsa")
-  const query = `"${nomNormalise}"${communePart} ${fonction} site:linkedin.com/in/`;
+  // Recherche large : nom + fonction + site LinkedIn
+  // Le filtrage par pertinence se fait après (nom d'hôtel dans le snippet)
+  const query = `${nomNormalise}${communePart} ${fonction} site:linkedin.com/in/`;
 
   logger.info(`🔍 Recherche Brave API: "${query}"`);
 
@@ -822,8 +822,8 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
  * Recherche complète pour un hôtel : essaie plusieurs fonctions
  */
 async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null, pappersApiKey = null) {
-  // Termes de recherche larges (comme un humain chercherait sur Google)
-  const fonctionsPrioritaires = ['direction', 'directeur général', 'responsable'];
+  // Titres de poste réels sur LinkedIn (du plus au moins spécifique)
+  const fonctionsPrioritaires = ['General Manager', 'Directeur Général', 'Directeur', 'Manager'];
 
   const tousContacts = [];
 
