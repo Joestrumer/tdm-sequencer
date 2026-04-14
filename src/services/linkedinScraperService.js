@@ -1,9 +1,79 @@
 /**
  * linkedinScraperService.js — Recherche de contacts via Google + LinkedIn
+ * Best practices 2026: Rate limiting, exponential backoff, proper User-Agent
  */
 
 const cheerio = require('cheerio');
 const logger = require('../config/logger');
+
+// ══════════════════════════════════════════════════════════════════════════════
+// SCRAPING BEST PRACTICES (2026)
+// ══════════════════════════════════════════════════════════════════════════════
+
+/**
+ * User-Agent conforme aux best practices : identification honnête avec contact
+ * Source: https://www.scrapingbee.com/blog/web-scraping-best-practices/
+ */
+const USER_AGENT = 'TDM-Prospector/1.0 (Business Contact Finder; +https://terredemars.com; contact@terredemars.com)';
+
+/**
+ * Cache des requêtes pour éviter les recherches dupliquées
+ */
+const requestCache = new Map();
+
+/**
+ * Exponential backoff : augmente progressivement le délai entre tentatives
+ * Source: https://www.scrapehero.com/rate-limiting-in-web-scraping/
+ * @param {number} attempt - Numéro de la tentative (0, 1, 2...)
+ * @param {number} baseDelay - Délai de base en ms (défaut: 1000ms)
+ * @returns {number} - Délai en ms
+ */
+function getExponentialBackoff(attempt, baseDelay = 1000) {
+  const maxDelay = 60000; // 60s max
+  const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+  const jitter = Math.random() * 0.3 * delay; // +/- 30% aléatoire
+  return Math.floor(delay + jitter);
+}
+
+/**
+ * Retry avec exponential backoff
+ * @param {Function} fn - Fonction async à exécuter
+ * @param {number} maxRetries - Nombre max de tentatives
+ * @param {string} context - Contexte pour logs
+ * @returns {Promise} - Résultat de la fonction
+ */
+async function retryWithBackoff(fn, maxRetries = 3, context = 'API call') {
+  let lastError;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < maxRetries - 1) {
+        const delay = getExponentialBackoff(attempt);
+        logger.warn(`⚠️ ${context} échec (tentative ${attempt + 1}/${maxRetries}), retry dans ${delay}ms: ${error.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  logger.error(`❌ ${context} échec après ${maxRetries} tentatives`);
+  throw lastError;
+}
+
+/**
+ * Rate limiting conservatif : délai aléatoire entre requêtes
+ * Source: https://use-apify.com/blog/web-scraping-best-practices-2026
+ * @param {number} minMs - Délai minimum
+ * @param {number} maxMs - Délai maximum
+ */
+async function respectfulDelay(minMs = 2000, maxMs = 5000) {
+  const delay = minMs + Math.random() * (maxMs - minMs);
+  logger.debug(`⏳ Rate limiting: pause de ${Math.floor(delay)}ms`);
+  await new Promise(resolve => setTimeout(resolve, delay));
+}
 
 /**
  * Titres de postes à rechercher (ordre de priorité)
@@ -121,29 +191,42 @@ function extraireNomPrenom(nomComplet) {
 
 /**
  * Recherche via Brave Search API (gratuite, 2000 requêtes/mois)
+ * Best practices: caching, retry, proper headers, rate limiting
  */
 async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey, commune = null) {
   const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
   const communePart = commune ? ` ${commune}` : '';
-  // Recherche large : nom + fonction + site LinkedIn
-  // Le filtrage par pertinence se fait après (nom d'hôtel dans le snippet)
   const query = `${nomNormalise}${communePart} ${fonction} site:linkedin.com/in/`;
+
+  // Cache check pour éviter recherches dupliquées (TTL: 1h)
+  const cacheKey = `brave:${query}`;
+  const cached = requestCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < 3600000) {
+    logger.info(`💾 Cache hit: "${query}"`);
+    return cached.data;
+  }
 
   logger.info(`🔍 Recherche Brave API: "${query}"`);
 
   try {
-    const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`, {
-      headers: {
-        'Accept': 'application/json',
-        'X-Subscription-Token': apiKey,
-      },
-    });
+    // Retry avec exponential backoff en cas d'échec
+    const data = await retryWithBackoff(async () => {
+      const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`, {
+        headers: {
+          'Accept': 'application/json',
+          'Accept-Language': 'fr-FR,fr;q=0.9,en;q=0.8',
+          'X-Subscription-Token': apiKey,
+          'User-Agent': USER_AGENT, // Identification honnête avec contact
+        },
+      });
 
-    if (!response.ok) {
-      throw new Error(`Brave API HTTP ${response.status}`);
-    }
+      if (!response.ok) {
+        throw new Error(`Brave API HTTP ${response.status}`);
+      }
 
-    const data = await response.json();
+      return await response.json();
+    }, 3, `Brave API "${query}"`);
+
     const contacts = [];
 
     if (data.web && data.web.results) {
@@ -323,6 +406,9 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
     }
 
     logger.info(`✅ ${contacts.length} contact(s) trouvé(s) via Brave API`);
+
+    // Sauvegarder en cache (TTL: 1h)
+    requestCache.set(cacheKey, { data: contacts, timestamp: Date.now() });
     return contacts;
 
   } catch (err) {
@@ -924,8 +1010,8 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
         break;
       }
 
-      // Délai entre recherches pour ne pas être bloqué
-      await new Promise(resolve => setTimeout(resolve, 3000));
+      // Rate limiting respectueux : délai aléatoire 2-5s (best practice: 10-15s conservatif)
+      await respectfulDelay(2000, 5000);
 
     } catch (err) {
       logger.error(`❌ Erreur recherche ${fonction} pour ${nomHotel}: ${err.message}`);
@@ -1096,8 +1182,8 @@ async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMe
         return { email, status: 'valid', quality_score: data.quality_score, pattern: type };
       }
 
-      // Rate limit
-      await new Promise(resolve => setTimeout(resolve, 200));
+      // Rate limit ZeroBounce : 300-500ms entre tests
+      await respectfulDelay(300, 500);
 
     } catch (err) {
       logger.warn(`Erreur test email ${email}:`, err.message);

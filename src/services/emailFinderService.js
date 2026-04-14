@@ -1,8 +1,46 @@
 /**
  * emailFinderService.js — Recherche d'emails via Lusha, Lemlist et ZeroBounce
+ * Best practices 2026: Retry logic, proper headers, rate limiting
  */
 
 const logger = require('../config/logger');
+
+// User-Agent conforme aux best practices
+const USER_AGENT = 'TDM-Prospector/1.0 (Business Contact Finder; +https://terredemars.com; contact@terredemars.com)';
+
+/**
+ * Exponential backoff pour retry
+ */
+function getExponentialBackoff(attempt, baseDelay = 1000) {
+  const maxDelay = 60000;
+  const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
+  const jitter = Math.random() * 0.3 * delay;
+  return Math.floor(delay + jitter);
+}
+
+/**
+ * Retry avec exponential backoff
+ */
+async function retryWithBackoff(fn, maxRetries = 3, context = 'API call') {
+  let lastError;
+
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (error) {
+      lastError = error;
+
+      if (attempt < maxRetries - 1) {
+        const delay = getExponentialBackoff(attempt);
+        logger.warn(`⚠️ ${context} échec (tentative ${attempt + 1}/${maxRetries}), retry dans ${delay}ms: ${error.message}`);
+        await new Promise(resolve => setTimeout(resolve, delay));
+      }
+    }
+  }
+
+  logger.error(`❌ ${context} échec après ${maxRetries} tentatives`);
+  throw lastError;
+}
 
 /**
  * Trouve un email via l'API Lusha
@@ -39,6 +77,8 @@ async function trouverEmailLusha(prenom, nom, entreprise, lushaApiKey) {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': USER_AGENT,
           'api_key': lushaApiKey,
         },
         body: JSON.stringify(endpoint.body),
@@ -103,6 +143,9 @@ async function trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey) {
       method: 'POST',
       headers: {
         'Authorization': `Basic ${auth}`,
+        'Content-Type': 'application/json',
+        'Accept': 'application/json',
+        'User-Agent': USER_AGENT,
       },
     });
 
@@ -127,6 +170,8 @@ async function trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey) {
         method: 'GET',
         headers: {
           'Authorization': `Basic ${auth}`,
+          'Accept': 'application/json',
+          'User-Agent': USER_AGENT,
         },
       });
 
