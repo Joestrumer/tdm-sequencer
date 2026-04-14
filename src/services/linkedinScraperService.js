@@ -815,9 +815,13 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     return titresDecideurs.some(titre => fonctionLower.includes(titre));
   });
 
-  logger.info(`🎯 ${decideurs.length} décideur(s) sur ${unique.length} contact(s)`);
+  // NE GARDER QUE les contacts avec pertinence HAUTE (employeur confirmé)
+  const pertinents = decideurs.filter(contact => contact.pertinence === 'haute');
 
-  return decideurs.slice(0, 5); // Max 5 décideurs
+  logger.info(`🎯 ${decideurs.length} décideur(s) sur ${unique.length} contact(s)`);
+  logger.info(`✅ ${pertinents.length} contact(s) pertinent(s) (haute pertinence uniquement)`);
+
+  return pertinents.slice(0, 5); // Max 5 décideurs pertinents
 }
 
 /**
