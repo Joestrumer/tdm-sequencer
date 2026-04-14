@@ -152,17 +152,19 @@ async function trouverEmail({
     return null;
   }
 
-  // 1. Essayer Lusha en priorité (utilise le nom de l'entreprise)
-  if (lushaApiKey && entreprise) {
-    const resultatLusha = await trouverEmailLusha(prenom, nom, entreprise, lushaApiKey);
-    if (resultatLusha) return resultatLusha;
-  }
+  // 1. Lusha : DÉSACTIVÉ temporairement (endpoint API non documenté)
+  // TODO: Réactiver quand la documentation sera accessible
+  // if (lushaApiKey && entreprise) {
+  //   const resultatLusha = await trouverEmailLusha(prenom, nom, entreprise, lushaApiKey);
+  //   if (resultatLusha) return resultatLusha;
+  // }
 
-  // 2. Fallback Lemlist (utilise le domaine)
-  if (lemlistApiKey && domaine) {
-    const resultatLemlist = await trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey);
-    if (resultatLemlist) return resultatLemlist;
-  }
+  // 2. Lemlist : DÉSACTIVÉ temporairement (API asynchrone, nécessite 2 requêtes)
+  // TODO: Implémenter le système asynchrone (enrich + fetch result)
+  // if (lemlistApiKey && domaine) {
+  //   const resultatLemlist = await trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey);
+  //   if (resultatLemlist) return resultatLemlist;
+  // }
 
   // 3. Dernier recours : ZeroBounce patterns
   if (zbFallback && zerobounceApiKey && domaine) {
