@@ -325,7 +325,24 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
         for (const pattern of patternsComplets) {
           const match = texte.match(pattern);
           if (match) {
-            fonctionDetectee = match[0].trim();
+            const candidat = match[0].trim();
+            const indexMatch = texte.indexOf(candidat);
+
+            // FILTRER les faux positifs (articles, descriptions, emojis)
+            const contextAvant = texte.substring(Math.max(0, indexMatch - 10), indexMatch);
+            const contextApres = texte.substring(indexMatch + candidat.length, Math.min(texte.length, indexMatch + candidat.length + 50));
+
+            // Rejeter si contexte suspect (emoji, #, liste numérotée, parenthèse explicative)
+            const estArticle = /[👨👩🔥💼#\d\.]/.test(contextAvant) || // emoji ou numéro avant
+                               /\(.*(?:head|responsible|charge|chef).*\)/i.test(contextApres) || // explication entre parenthèses
+                               /The\s+\w+\s+of/i.test(contextApres); // "The head of..."
+
+            if (estArticle) {
+              logger.debug(`  ⚠️ Titre rejeté (contexte article): "${candidat}"`);
+              continue;
+            }
+
+            fonctionDetectee = candidat;
             // Capitaliser correctement
             fonctionDetectee = fonctionDetectee
               .split(' ')
@@ -372,23 +389,44 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
         const motsHotel = nomHotelNorm.split(' ')
           .filter(mot => mot.length >= 3 && !motsCommuns.includes(mot));
 
-        // Pertinence : au moins 1 mot significatif trouvé dans le snippet
+        // Pertinence STRICTE : vérifier que le nom d'hôtel COMPLET apparaît
         let hotelMentioned = false;
-        if (motsHotel.length > 0) {
-          // Chercher le mot principal (racine minimum 4 caractères pour "drip"/"drips")
-          const motPrincipal = motsHotel[0];
-          const racine = motPrincipal.length >= 4 ? motPrincipal.substring(0, 4) : motPrincipal;
-          const aMotPrincipal = texteNorm.includes(racine);
-          const aHotel = texteNorm.includes('hotel') || texteNorm.includes('hotelerie');
-          hotelMentioned = aMotPrincipal && aHotel;
 
-          // Log pour debug
-          if (aMotPrincipal) {
-            logger.debug(`  ✓ Mot-clé "${racine}" trouvé dans snippet`);
+        // Méthode 1 : nom complet ou partie significative (min 8 chars)
+        const partieSignificative = nomHotelNorm.substring(0, Math.max(8, nomHotelNorm.length));
+        if (texteNorm.includes(partieSignificative)) {
+          hotelMentioned = true;
+          logger.debug(`  ✓ Nom d'hôtel trouvé: "${partieSignificative}"`);
+        }
+        // Méthode 2 : vérifier que PLUSIEURS mots distinctifs apparaissent ensemble
+        else if (motsHotel.length >= 2) {
+          const mot1 = motsHotel[0];
+          const mot2 = motsHotel[1];
+          const mot1Present = texteNorm.includes(mot1);
+          const mot2Present = texteNorm.includes(mot2);
+
+          if (mot1Present && mot2Present) {
+            // Les 2 mots sont présents - vérifier qu'ils sont proches (max 20 chars d'écart)
+            const idx1 = texteNorm.indexOf(mot1);
+            const idx2 = texteNorm.indexOf(mot2);
+            if (Math.abs(idx1 - idx2) < 20) {
+              hotelMentioned = true;
+              logger.debug(`  ✓ Mots-clés proches: "${mot1}" + "${mot2}"`);
+            }
           }
-        } else {
-          // Si pas de mot significatif, fallback sur substring
-          hotelMentioned = texteNorm.includes(nomHotelNorm.substring(0, Math.min(12, nomHotelNorm.length)));
+        }
+        // Méthode 3 : 1 seul mot distinctif TRÈS spécifique + "hotel" PROCHE
+        else if (motsHotel.length === 1) {
+          const mot = motsHotel[0];
+          const racine = mot.length >= 4 ? mot.substring(0, 4) : mot;
+          const idxMot = texteNorm.indexOf(racine);
+          const idxHotel = texteNorm.indexOf('hotel');
+
+          // Mot présent ET "hotel" à moins de 15 caractères
+          if (idxMot !== -1 && idxHotel !== -1 && Math.abs(idxMot - idxHotel) < 15) {
+            hotelMentioned = true;
+            logger.debug(`  ✓ "${racine}" proche de "hotel"`);
+          }
         }
 
         contacts.push({
@@ -1073,19 +1111,40 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     }
   }
 
-  // Filtrer uniquement les décideurs (titres de direction)
-  const titresDecideurs = [
-    'directeur', 'directrice', 'dg', 'pdg', 'ceo', 'directeur général',
-    'directrice générale', 'directeur adjoint', 'directrice adjointe',
+  // Filtrer STRICTEMENT : seulement top management hôtelier
+  const titresAcceptes = [
+    'directeur général', 'directrice générale', 'dg',
+    'general manager', 'gm',
+    'directeur adjoint', 'directrice adjointe',
     'directeur des opérations', 'directrice des opérations',
     'directeur marketing', 'directrice marketing',
-    'revenue manager', 'general manager', 'gérant', 'gérante',
-    'responsable', 'manager', 'propriétaire', 'dirigeant', 'dirigeante'
+    'directeur commercial', 'directrice commerciale',
+    'revenue manager',
+    'housekeeping manager', 'gouvernante générale',
+    'gérant', 'gérante',
+    'propriétaire', 'owner'
+  ];
+
+  // Titres à EXCLURE (cuisine, non-hôtelier, etc.)
+  const titresExclus = [
+    'chef', 'cuisine', 'cuisinier',
+    'mairie', 'municipal', 'ville',
+    'serveur', 'barman', 'sommelier',
+    'réceptionniste', 'concierge',
+    'stagiaire', 'étudiant', 'apprenti'
   ];
 
   const decideurs = unique.filter(contact => {
     const fonctionLower = contact.fonction.toLowerCase();
-    return titresDecideurs.some(titre => fonctionLower.includes(titre));
+
+    // EXCLURE d'abord
+    if (titresExclus.some(exclu => fonctionLower.includes(exclu))) {
+      logger.debug(`❌ Exclu: ${contact.nom_complet} (${contact.fonction})`);
+      return false;
+    }
+
+    // ACCEPTER seulement les titres validés
+    return titresAcceptes.some(titre => fonctionLower.includes(titre));
   });
 
   // Retourner TOUS les décideurs (user sélectionne manuellement)
@@ -1102,15 +1161,18 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
   logger.info(`🎯 ${decideurs.length} décideur(s) sur ${unique.length} contact(s)`);
   logger.info(`✅ Pertinence: ${hautePertin} haute, ${moyennePertin} moyenne`);
 
-  // Si aucun contact pertinent trouvé, limiter à 3 résultats "moyenne"
-  // Si contacts pertinents : jusqu'à 20 résultats (multi-sources = plus de résultats)
-  const maxResults = hautePertin === 0 ? 3 : 20;
+  // RETOURNER UNIQUEMENT LES CONTACTS PERTINENTS (haute pertinence)
+  // Max 4 pour garder les meilleurs uniquement
+  const contactsPertinents = decideurs.filter(c => c.pertinence === 'haute');
 
-  if (hautePertin === 0 && moyennePertin > 0) {
-    logger.warn(`⚠️ Aucun contact pertinent - les résultats "moyenne" sont probablement hors-sujet`);
+  if (contactsPertinents.length === 0) {
+    logger.warn(`⚠️ Aucun contact pertinent trouvé - vérifiez le nom de l'hôtel`);
+    // En dernier recours, retourner 2 contacts "moyenne" (probable faux positifs)
+    return decideurs.slice(0, 2);
   }
 
-  return decideurs.slice(0, maxResults);
+  logger.info(`🎯 ${contactsPertinents.length} contact(s) pertinent(s) - retour des ${Math.min(4, contactsPertinents.length)} meilleurs`);
+  return contactsPertinents.slice(0, 4);
 }
 
 /**
