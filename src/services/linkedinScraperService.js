@@ -976,9 +976,17 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
   const moyennePertin = decideurs.filter(c => c.pertinence === 'moyenne').length;
 
   logger.info(`🎯 ${decideurs.length} décideur(s) sur ${unique.length} contact(s)`);
-  logger.info(`✅ Pertinence: ${hautePertin} haute, ${moyennePertin} moyenne (sélection manuelle)`);
+  logger.info(`✅ Pertinence: ${hautePertin} haute, ${moyennePertin} moyenne`);
 
-  return decideurs.slice(0, 10); // Max 10 décideurs (user sélectionne)
+  // Si aucun contact pertinent trouvé, limiter à 3 résultats "moyenne" (probablement non pertinents)
+  // Sinon, retourner jusqu'à 10 contacts (pertinents en premier)
+  const maxResults = hautePertin === 0 ? 3 : 10;
+
+  if (hautePertin === 0 && moyennePertin > 0) {
+    logger.warn(`⚠️ Aucun contact pertinent - les résultats "moyenne" sont probablement hors-sujet`);
+  }
+
+  return decideurs.slice(0, maxResults);
 }
 
 /**
