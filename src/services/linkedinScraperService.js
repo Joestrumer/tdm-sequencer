@@ -279,7 +279,7 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
           logger.warn(`  → Aucune fonction détectée dans le texte, utilisation par défaut: ${fonction}`);
         }
 
-        // Matching flexible du nom d'hôtel (ignore ponctuation et espaces multiples)
+        // Matching flexible du nom d'hôtel (ignore ponctuation, espaces, ordre des mots)
         const normalizeText = (text) => text.toLowerCase()
           .replace(/[,\.;:«»"']/g, ' ')  // Remplacer ponctuation par espace
           .replace(/\s+/g, ' ')  // Normaliser espaces multiples
@@ -288,8 +288,29 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
         const nomHotelNorm = normalizeText(nomHotel);
         const texteNorm = normalizeText(texte);
 
-        // Chercher les 12 premiers caractères du nom normalisé (ex: "elsa hotel pa")
-        const hotelMentioned = texteNorm.includes(nomHotelNorm.substring(0, Math.min(12, nomHotelNorm.length)));
+        // Extraire les mots significatifs du nom d'hôtel (hors mots communs)
+        const motsCommuns = ['hotel', 'le', 'la', 'les', 'de', 'du', 'des', 'et', 'restaurant', 'spa', 'arty'];
+        const motsHotel = nomHotelNorm.split(' ')
+          .filter(mot => mot.length >= 3 && !motsCommuns.includes(mot));
+
+        // Pertinence : au moins 1 mot significatif trouvé dans le snippet
+        let hotelMentioned = false;
+        if (motsHotel.length > 0) {
+          // Chercher le mot principal (racine minimum 4 caractères pour "drip"/"drips")
+          const motPrincipal = motsHotel[0];
+          const racine = motPrincipal.length >= 4 ? motPrincipal.substring(0, 4) : motPrincipal;
+          const aMotPrincipal = texteNorm.includes(racine);
+          const aHotel = texteNorm.includes('hotel') || texteNorm.includes('hotelerie');
+          hotelMentioned = aMotPrincipal && aHotel;
+
+          // Log pour debug
+          if (aMotPrincipal) {
+            logger.debug(`  ✓ Mot-clé "${racine}" trouvé dans snippet`);
+          }
+        } else {
+          // Si pas de mot significatif, fallback sur substring
+          hotelMentioned = texteNorm.includes(nomHotelNorm.substring(0, Math.min(12, nomHotelNorm.length)));
+        }
 
         contacts.push({
           nom_complet: normaliserNom(nomExtrait),
