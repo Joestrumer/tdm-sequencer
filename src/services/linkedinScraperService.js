@@ -843,8 +843,15 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
  * Recherche complète pour un hôtel : essaie plusieurs fonctions
  */
 async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null, pappersApiKey = null) {
-  // Titres de poste réels sur LinkedIn (du plus au moins spécifique)
-  const fonctionsPrioritaires = ['General Manager', 'Directeur Général', 'Directeur', 'Manager'];
+  // Titres variés pour couvrir tous les profils (GM, directeurs, responsables, gérants)
+  const fonctionsPrioritaires = [
+    'General Manager',
+    'Directeur Général',
+    'Directeur',
+    'Responsable',
+    'Gérant',
+    'Manager'
+  ];
 
   const tousContacts = [];
 
@@ -902,14 +909,18 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
 
       tousContacts.push(...contacts);
 
-      // Arrêter si on a trouvé des contacts à haute pertinence (nom d'hôtel mentionné)
-      const nbHaute = contacts.filter(c => c.pertinence === 'haute').length;
-      if (nbHaute >= 1) {
-        logger.info(`✅ ${contacts.length} contact(s) trouvé(s) dont ${nbHaute} pertinent(s), arrêt`);
+      // Continuer à chercher jusqu'à avoir plusieurs résultats pertinents
+      const nbHauteTotal = tousContacts.filter(c => c.pertinence === 'haute').length;
+
+      // Arrêter si on a trouvé au moins 2 contacts pertinents
+      if (nbHauteTotal >= 2) {
+        logger.info(`✅ ${nbHauteTotal} contact(s) pertinent(s) trouvé(s), arrêt`);
         break;
       }
-      if (contacts.length >= 3) {
-        logger.info(`✅ ${contacts.length} contact(s) trouvé(s) (aucun pertinent, mais assez pour sélection manuelle)`);
+
+      // Ou si on a déjà essayé les 3 premiers termes et qu'on a au moins 1 pertinent
+      if (tousContacts.length > 0 && nbHauteTotal >= 1 && fonctionsPrioritaires.indexOf(fonction) >= 2) {
+        logger.info(`✅ ${nbHauteTotal} pertinent(s) après 3 recherches, arrêt`);
         break;
       }
 
