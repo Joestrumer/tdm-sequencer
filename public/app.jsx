@@ -10248,6 +10248,8 @@ const VueParametres = () => {
           <VueApiExterne />
           <VueBraveSearchConfig />
           <VuePappersConfig />
+          <VueLushaConfig />
+          <VueLemlistConfig />
           <VueGooglePlacesConfig />
           <VueHubspot />
           <VueVosFacturesConfig />
@@ -10530,6 +10532,126 @@ const VuePappersConfig = () => {
       </div>
       <div className="flex items-center gap-2">
         {pappersKey && (
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+            {saving ? "Sauvegarde..." : "Enregistrer"}
+          </button>
+        )}
+      </div>
+      {msg && <p className="text-xs text-emerald-600 font-medium">{msg}</p>}
+    </div>
+  );
+};
+
+const VueLushaConfig = () => {
+  const [lushaKey, setLushaKey] = useState('');
+  const [configured, setConfigured] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.lusha_api_key_configured) setConfigured(true);
+    }).catch(() => {});
+  }, []);
+
+  const sauvegarder = async () => {
+    if (!lushaKey) return;
+    setSaving(true); setMsg('');
+    try {
+      await api.post('/config', { lusha_api_key: lushaKey });
+      setConfigured(true);
+      setLushaKey('');
+      setMsg('Clé API Lusha sauvegardée');
+    } catch(e) { setMsg('Erreur'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">Lusha API</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Recherche d'emails professionnels (priorité)</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs ${configured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${configured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {configured ? "Configurée" : "Non configurée"}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Clé API Lusha</label>
+        <div className="flex gap-2">
+          <input type={showKey ? "text" : "password"} value={lushaKey} onChange={e => setLushaKey(e.target.value)}
+            placeholder={configured ? "Nouvelle clé (laisser vide pour conserver)" : "Coller votre clé API Lusha"}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <button onClick={() => setShowKey(!showKey)} className="px-2 text-xs text-slate-400 hover:text-slate-600">{showKey ? '🙈' : '👁'}</button>
+        </div>
+        <p className="text-xs text-slate-400 mt-1">Obtenez une clé sur <a href="https://www.lusha.com/api/" target="_blank" rel="noopener" className="text-blue-500 hover:underline">lusha.com/api</a></p>
+      </div>
+      <div className="flex items-center gap-2">
+        {lushaKey && (
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+            {saving ? "Sauvegarde..." : "Enregistrer"}
+          </button>
+        )}
+      </div>
+      {msg && <p className="text-xs text-emerald-600 font-medium">{msg}</p>}
+    </div>
+  );
+};
+
+const VueLemlistConfig = () => {
+  const [lemlistKey, setLemlistKey] = useState('');
+  const [configured, setConfigured] = useState(false);
+  const [showKey, setShowKey] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.lemlist_api_key_configured) setConfigured(true);
+    }).catch(() => {});
+  }, []);
+
+  const sauvegarder = async () => {
+    if (!lemlistKey) return;
+    setSaving(true); setMsg('');
+    try {
+      await api.post('/config', { lemlist_api_key: lemlistKey });
+      setConfigured(true);
+      setLemlistKey('');
+      setMsg('Clé API Lemlist sauvegardée');
+    } catch(e) { setMsg('Erreur'); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">Lemlist API</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Recherche d'emails (fallback si Lusha échoue)</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs ${configured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${configured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {configured ? "Configurée" : "Non configurée"}
+        </div>
+      </div>
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Clé API Lemlist</label>
+        <div className="flex gap-2">
+          <input type={showKey ? "text" : "password"} value={lemlistKey} onChange={e => setLemlistKey(e.target.value)}
+            placeholder={configured ? "Nouvelle clé (laisser vide pour conserver)" : "Coller votre clé API Lemlist"}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <button onClick={() => setShowKey(!showKey)} className="px-2 text-xs text-slate-400 hover:text-slate-600">{showKey ? '🙈' : '👁'}</button>
+        </div>
+        <p className="text-xs text-slate-400 mt-1">Obtenez une clé sur <a href="https://www.lemlist.com/api-documentation" target="_blank" rel="noopener" className="text-blue-500 hover:underline">lemlist.com/api</a></p>
+      </div>
+      <div className="flex items-center gap-2">
+        {lemlistKey && (
           <button onClick={sauvegarder} disabled={saving}
             className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
             {saving ? "Sauvegarde..." : "Enregistrer"}
