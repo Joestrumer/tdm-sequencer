@@ -1155,8 +1155,9 @@ function construireRequetesBrave(nomHotel, commune = null) {
     'Gouvernante générale housekeeping manager',
   ];
 
+  // L'API Brave ne supporte pas bien site: — on utilise "linkedin" comme mot-clé
   const requetes = roles.map(role =>
-    `site:www.linkedin.com/in/* ${nom}${communePart} ${role}`
+    `${nom}${communePart} ${role} linkedin`
   );
 
   logger.info(`🔍 ${requetes.length} requêtes Brave préparées pour "${nom}"`);
