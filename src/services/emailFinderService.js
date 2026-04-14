@@ -18,36 +18,40 @@ async function trouverEmailLusha(prenom, nom, entreprise, lushaApiKey) {
   try {
     logger.info(`🔍 Lusha: recherche email pour "${prenom} ${nom}" @ ${entreprise}`);
 
-    // API Lusha - Person Enrichment
-    const response = await fetch('https://api.lusha.com/person', {
+    // API Lusha - Enrichment (v2)
+    // Documentation: https://www.lusha.com/docs/api/#enrichment
+    const response = await fetch('https://api.lusha.com/enrichment', {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         'api_key': lushaApiKey,
       },
       body: JSON.stringify({
-        property: {
+        data: [{
+          property: 'person',
           firstName: prenom,
           lastName: nom,
           company: entreprise,
-        },
+        }],
       }),
     });
 
     if (!response.ok) {
-      logger.warn(`⚠️ Lusha HTTP ${response.status}`);
+      const errorText = await response.text();
+      logger.warn(`⚠️ Lusha HTTP ${response.status}: ${errorText}`);
       return null;
     }
 
     const data = await response.json();
 
-    if (data.data && data.data.emailAddress) {
-      const email = data.data.emailAddress;
+    // Structure de réponse Lusha v2
+    if (data && data.data && data.data[0] && data.data[0].emailAddress) {
+      const email = data.data[0].emailAddress;
       logger.info(`✅ Lusha: email trouvé ${email}`);
       return {
         email,
         source: 'Lusha',
-        confidence: data.data.accuracy || 'high',
+        confidence: data.data[0].accuracy || 'high',
       };
     }
 
@@ -64,43 +68,46 @@ async function trouverEmailLusha(prenom, nom, entreprise, lushaApiKey) {
  * Trouve un email via l'API Lemlist
  * @param {string} prenom
  * @param {string} nom
- * @param {string} entreprise
+ * @param {string} domaine - Domaine de l'entreprise (ex: hotel-example.com)
  * @param {string} lemlistApiKey
  * @returns {Promise<{email: string, source: string, confidence: string}|null>}
  */
-async function trouverEmailLemlist(prenom, nom, entreprise, lemlistApiKey) {
+async function trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey) {
   if (!lemlistApiKey) return null;
 
   try {
-    logger.info(`🔍 Lemlist: recherche email pour "${prenom} ${nom}" @ ${entreprise}`);
+    logger.info(`🔍 Lemlist: recherche email pour "${prenom} ${nom}" @ ${domaine}`);
 
     // API Lemlist - Email Finder
-    const response = await fetch('https://api.lemlist.com/api/email-verifier', {
-      method: 'POST',
+    // Documentation: https://developer.lemlist.com/#email-finder
+    const params = new URLSearchParams({
+      firstName: prenom,
+      lastName: nom,
+      domain: domaine,
+    });
+
+    const response = await fetch(`https://api.lemlist.com/api/email-finder?${params}`, {
+      method: 'GET',
       headers: {
-        'Content-Type': 'application/json',
         'Authorization': `Bearer ${lemlistApiKey}`,
       },
-      body: JSON.stringify({
-        firstName: prenom,
-        lastName: nom,
-        companyName: entreprise,
-      }),
     });
 
     if (!response.ok) {
-      logger.warn(`⚠️ Lemlist HTTP ${response.status}`);
+      const errorText = await response.text();
+      logger.warn(`⚠️ Lemlist HTTP ${response.status}: ${errorText}`);
       return null;
     }
 
     const data = await response.json();
 
-    if (data.email && data.status === 'valid') {
+    // Lemlist retourne { email, isValid, score }
+    if (data.email && data.isValid) {
       logger.info(`✅ Lemlist: email trouvé ${data.email}`);
       return {
         email: data.email,
         source: 'Lemlist',
-        confidence: data.confidence || 'medium',
+        confidence: data.score > 80 ? 'high' : 'medium',
       };
     }
 
@@ -120,8 +127,8 @@ async function trouverEmailLemlist(prenom, nom, entreprise, lemlistApiKey) {
  * @param {object} params
  * @param {string} params.prenom
  * @param {string} params.nom
- * @param {string} params.entreprise - Nom de l'entreprise
- * @param {string} params.domaine - Domaine email (pour ZeroBounce fallback)
+ * @param {string} params.entreprise - Nom de l'entreprise (pour Lusha)
+ * @param {string} params.domaine - Domaine email (pour Lemlist et ZeroBounce)
  * @param {string} params.lushaApiKey
  * @param {string} params.lemlistApiKey
  * @param {string} params.zerobounceApiKey
@@ -145,15 +152,15 @@ async function trouverEmail({
     return null;
   }
 
-  // 1. Essayer Lusha en priorité
+  // 1. Essayer Lusha en priorité (utilise le nom de l'entreprise)
   if (lushaApiKey && entreprise) {
     const resultatLusha = await trouverEmailLusha(prenom, nom, entreprise, lushaApiKey);
     if (resultatLusha) return resultatLusha;
   }
 
-  // 2. Fallback Lemlist
-  if (lemlistApiKey && entreprise) {
-    const resultatLemlist = await trouverEmailLemlist(prenom, nom, entreprise, lemlistApiKey);
+  // 2. Fallback Lemlist (utilise le domaine)
+  if (lemlistApiKey && domaine) {
+    const resultatLemlist = await trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey);
     if (resultatLemlist) return resultatLemlist;
   }
 

@@ -615,14 +615,32 @@ module.exports = (db) => {
 
       // Extraire le domaine : priorité à l'email scrapé (plus fiable), sinon site web
       let domaine;
+      const extensionsImages = ['.gif', '.png', '.jpg', '.jpeg', '.svg', '.webp', '.bmp', '.ico'];
+
       if (hotel.contact_email && hotel.contact_email.includes('@')) {
-        domaine = hotel.contact_email.split('@')[1];
-        logger.info(`📧 Domaine extrait de l'email scrapé: ${domaine}`);
-      } else if (hotel.site_internet) {
-        domaine = hotel.site_internet.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
-        logger.info(`🌐 Domaine extrait du site web: ${domaine}`);
-      } else {
-        return res.json({ error: 'Impossible d\'extraire le domaine', contacts: [] });
+        const domaineCandidat = hotel.contact_email.split('@')[1];
+        // Vérifier que ce n'est pas un fichier image
+        if (!extensionsImages.some(ext => domaineCandidat.toLowerCase().endsWith(ext))) {
+          domaine = domaineCandidat;
+          logger.info(`📧 Domaine extrait de l'email scrapé: ${domaine}`);
+        } else {
+          logger.warn(`⚠️ Domaine invalide détecté dans email (fichier image): ${domaineCandidat}`);
+        }
+      }
+
+      if (!domaine && hotel.site_internet) {
+        const domaineCandidat = hotel.site_internet.replace(/^https?:\/\/(www\.)?/, '').split('/')[0];
+        // Vérifier que ce n'est pas un fichier image
+        if (!extensionsImages.some(ext => domaineCandidat.toLowerCase().endsWith(ext))) {
+          domaine = domaineCandidat;
+          logger.info(`🌐 Domaine extrait du site web: ${domaine}`);
+        } else {
+          logger.warn(`⚠️ Domaine invalide détecté dans site web (fichier image): ${domaineCandidat}`);
+        }
+      }
+
+      if (!domaine) {
+        return res.json({ error: 'Impossible d\'extraire un domaine valide', contacts: [] });
       }
 
       logger.info(`🔍 Recherche contacts LinkedIn pour ${hotel.nom_commercial}${hotel.commune ? ' (' + hotel.commune + ')' : ''}`);
