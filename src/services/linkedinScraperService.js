@@ -743,7 +743,6 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
   }
 
   // 3. Chercher sur Pappers.fr (scraping) en complément
-  const useBrave = !!braveApiKey;
   if (useBrave) {
     try {
       const contactsPappersScraping = await rechercherContactsPappersScraping(nomHotel, 'Directeur', braveApiKey, commune);
