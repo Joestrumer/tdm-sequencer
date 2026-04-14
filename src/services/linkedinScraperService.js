@@ -399,7 +399,7 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur', commun
  */
 async function rechercherContactsPappers(nomHotel, commune = null, pappersApiKey = null) {
   if (!pappersApiKey) {
-    logger.info('⏭️ Pas de clé Pappers, skip');
+    logger.info('⏭️ Pas de clé Pappers API, skip');
     return [];
   }
 
@@ -407,7 +407,7 @@ async function rechercherContactsPappers(nomHotel, commune = null, pappersApiKey
     const query = commune ? `${nomHotel} ${commune}` : nomHotel;
     const url = `https://api.pappers.fr/v2/recherche?api_token=${pappersApiKey}&q=${encodeURIComponent(query)}&par_page=5`;
 
-    logger.info(`🔍 Recherche Pappers: "${query}"`);
+    logger.info(`🔍 Recherche Pappers API: "${query}"`);
 
     const response = await fetch(url);
     if (!response.ok) {
@@ -429,7 +429,7 @@ async function rechercherContactsPappers(nomHotel, commune = null, pappersApiKey
                 linkedin_url: null,
                 snippet: `${entreprise.nom_entreprise} - ${entreprise.siege?.ville || ''}`,
                 pertinence: 'haute', // Pappers est très fiable
-                source: 'Pappers',
+                source: 'Pappers API',
               });
             }
           }
@@ -437,11 +437,102 @@ async function rechercherContactsPappers(nomHotel, commune = null, pappersApiKey
       }
     }
 
-    logger.info(`✅ ${contacts.length} contact(s) trouvé(s) via Pappers`);
+    logger.info(`✅ ${contacts.length} contact(s) trouvé(s) via Pappers API`);
     return contacts;
 
   } catch (err) {
-    logger.error(`❌ Erreur Pappers: ${err.message}`);
+    logger.error(`❌ Erreur Pappers API: ${err.message}`);
+    return [];
+  }
+}
+
+/**
+ * Recherche via scraping Pappers.fr (Google/Brave avec site:pappers.fr)
+ */
+async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur', braveApiKey = null, commune = null) {
+  const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
+  const communePart = commune ? ` ${commune}` : '';
+  const query = `${nomNormalise}${communePart} ${fonction} site:pappers.fr`;
+
+  const useBrave = !!braveApiKey;
+  logger.info(`🔍 Recherche Pappers scraping (${useBrave ? 'Brave' : 'Google'}): "${query}"`);
+
+  try {
+    let html = '';
+
+    if (useBrave) {
+      // Utiliser Brave Search API
+      const response = await fetch(`https://api.search.brave.com/res/v1/web/search?q=${encodeURIComponent(query)}&count=10`, {
+        headers: {
+          'Accept': 'application/json',
+          'X-Subscription-Token': braveApiKey,
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`Brave API HTTP ${response.status}`);
+      }
+
+      const data = await response.json();
+      const contacts = [];
+
+      if (data.web && data.web.results) {
+        for (const result of data.web.results) {
+          const titre = (result.title || '').replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
+          const description = (result.description || '').replace(/&#x27;/g, "'").replace(/&amp;/g, "&").replace(/&quot;/g, '"');
+          const url = result.url || '';
+
+          if (!url.includes('pappers.fr')) continue;
+
+          const texte = titre + ' ' + description;
+
+          // Extraire nom et fonction depuis le texte Pappers
+          // Format typique : "Prénom NOM - Président - Société XYZ"
+          const patterns = [
+            /([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,3})\s*[-–—]\s*(Président|Directeur|Gérant|PDG|DG)/i,
+            /([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,3}),\s*(Président|Directeur|Gérant|PDG|DG)/i,
+          ];
+
+          let nomExtrait = null;
+          let fonctionDetectee = null;
+
+          for (const pattern of patterns) {
+            const match = texte.match(pattern);
+            if (match && match[1]) {
+              nomExtrait = match[1].trim();
+              fonctionDetectee = match[2] || fonction;
+              logger.info(`📝 Pappers: ${nomExtrait} - ${fonctionDetectee}`);
+              break;
+            }
+          }
+
+          if (!nomExtrait) {
+            logger.warn(`⚠️ Impossible d'extraire le nom de Pappers: "${titre}"`);
+            continue;
+          }
+
+          contacts.push({
+            nom_complet: normaliserNom(nomExtrait),
+            fonction: fonctionDetectee,
+            linkedin_url: url,
+            snippet: description.substring(0, 200),
+            pertinence: 'haute',
+            source: 'Pappers scraping',
+          });
+        }
+      }
+
+      logger.info(`✅ ${contacts.length} contact(s) trouvé(s) via Pappers scraping (Brave)`);
+      return contacts;
+
+    } else {
+      // Google scraping (fallback)
+      logger.info(`ℹ️ Pappers scraping via Google non implémenté (utiliser Brave API recommandé)`);
+      return [];
+    }
+
+  } catch (err) {
+    logger.error(`❌ Erreur Pappers scraping: ${err.message}`);
     return [];
   }
 }
@@ -450,31 +541,44 @@ async function rechercherContactsPappers(nomHotel, commune = null, pappersApiKey
  * Recherche complète pour un hôtel : essaie plusieurs fonctions
  */
 async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null, pappersApiKey = null) {
-  const fonctionsPrioritaires = ['Directeur', 'Directeur Général Adjoint', 'DG', 'Revenue Manager'];
+  const fonctionsPrioritaires = ['Directeur', 'Directeur Général', 'Président', 'Gérant', 'DG'];
 
   const tousContacts = [];
 
-  // 1. D'ABORD chercher dans Pappers (données officielles françaises)
+  // 1. D'ABORD chercher dans Pappers API (données officielles françaises)
   if (pappersApiKey) {
     try {
       const contactsPappers = await rechercherContactsPappers(nomHotel, commune, pappersApiKey);
       if (contactsPappers.length > 0) {
-        logger.info(`📊 Pappers: ${contactsPappers.length} contact(s) trouvé(s)`);
+        logger.info(`📊 Pappers API: ${contactsPappers.length} contact(s) trouvé(s)`);
         tousContacts.push(...contactsPappers);
       }
     } catch (err) {
-      logger.error(`❌ Erreur Pappers: ${err.message}`);
+      logger.error(`❌ Erreur Pappers API: ${err.message}`);
     }
   }
 
-  // 2. ENSUITE chercher sur LinkedIn
+  // 2. Chercher sur Pappers.fr (scraping) en complément
   const useBrave = !!braveApiKey;
+  if (useBrave) {
+    try {
+      const contactsPappersScraping = await rechercherContactsPappersScraping(nomHotel, 'Directeur', braveApiKey, commune);
+      if (contactsPappersScraping.length > 0) {
+        logger.info(`📊 Pappers scraping: ${contactsPappersScraping.length} contact(s) trouvé(s)`);
+        tousContacts.push(...contactsPappersScraping);
+      }
+    } catch (err) {
+      logger.error(`❌ Erreur Pappers scraping: ${err.message}`);
+    }
+  }
+
+  // 3. ENSUITE chercher sur LinkedIn
   const searchMethod = useBrave ? 'Brave API' : 'Google scraping';
   logger.info(`📡 Méthode de recherche LinkedIn: ${searchMethod}`);
 
   for (const fonction of fonctionsPrioritaires) {
     try {
-      logger.info(`🔎 Essai: ${nomHotel}${commune ? ' (' + commune + ')' : ''} + ${fonction}`);
+      logger.info(`🔎 Essai LinkedIn: ${nomHotel}${commune ? ' (' + commune + ')' : ''} + ${fonction}`);
 
       const contacts = useBrave
         ? await rechercherContactsBrave(nomHotel, fonction, braveApiKey, commune)
@@ -484,7 +588,7 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
 
       // Si on a trouvé au moins 1 contact, on arrête (pour économiser les crédits ZB)
       if (contacts.length >= 1) {
-        logger.info(`✅ ${contacts.length} contact(s) trouvé(s), arrêt de la recherche`);
+        logger.info(`✅ ${contacts.length} contact(s) trouvé(s), arrêt de la recherche LinkedIn`);
         break;
       }
 
@@ -655,6 +759,7 @@ module.exports = {
   rechercherContactsGoogle,
   rechercherContactsBrave,
   rechercherContactsPappers,
+  rechercherContactsPappersScraping,
   rechercherContactsHotel,
   trouverEmailAvecZeroBounce,
   extraireNomPrenom,
