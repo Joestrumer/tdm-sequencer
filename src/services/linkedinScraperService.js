@@ -186,6 +186,165 @@ function extraireNomPrenom(nomComplet) {
 }
 
 /**
+ * Recherche via Google Custom Search API (100 requêtes/jour gratuites)
+ * Mêmes résultats que Google.com — bien meilleurs que Brave pour LinkedIn
+ * Setup : https://programmablesearchengine.google.com/ + https://console.developers.google.com/
+ */
+async function rechercherContactsGoogleCSE(nomHotel, apiKey, cseId, commune = null) {
+  const query = construireRequeteBrave(nomHotel, commune); // Même format de requête
+
+  // Cache check (TTL: 1h)
+  const cacheKey = `gcse:${query}`;
+  const cached = requestCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < 3600000) {
+    logger.info(`💾 Cache hit Google CSE`);
+    return cached.data;
+  }
+
+  logger.info(`🔍 Google CSE: "${query.substring(0, 120)}..."`);
+
+  try {
+    const data = await retryWithBackoff(async () => {
+      const params = new URLSearchParams({
+        key: apiKey,
+        cx: cseId,
+        q: query,
+        num: 10, // max 10 par requête Google CSE
+      });
+
+      const response = await fetch(`https://www.googleapis.com/customsearch/v1?${params}`, {
+        headers: { 'User-Agent': USER_AGENT },
+      });
+
+      if (!response.ok) {
+        const errText = await response.text();
+        throw new Error(`Google CSE HTTP ${response.status}: ${errText.substring(0, 100)}`);
+      }
+
+      return await response.json();
+    }, 2, 'Google CSE');
+
+    const contacts = [];
+
+    if (!data.items || data.items.length === 0) {
+      logger.info('ℹ️ Google CSE: aucun résultat');
+      requestCache.set(cacheKey, { data: contacts, timestamp: Date.now() });
+      return contacts;
+    }
+
+    logger.info(`📊 Google CSE: ${data.items.length} résultat(s)`);
+
+    for (const item of data.items) {
+      const url = item.link || '';
+      const titre = item.title || '';
+      const description = item.snippet || '';
+
+      // Filtrer uniquement les profils LinkedIn /in/
+      if (!url.includes('linkedin.com/in/')) continue;
+
+      const texte = titre + ' ' + description;
+
+      // Extraire le nom depuis l'URL LinkedIn
+      let nomExtrait = null;
+      const urlMatch = url.match(/linkedin\.com\/in\/([^/?]+)/);
+      if (urlMatch && urlMatch[1]) {
+        const slug = urlMatch[1]
+          .replace(/-\w{8,}$/, '')
+          .replace(/%C3%A9/g, 'e').replace(/%C3%A8/g, 'e')
+          .replace(/%C3%AA/g, 'e').replace(/%C3%A0/g, 'a')
+          .replace(/%20/g, '-');
+
+        const parts = slug.split('-').filter(p => p.length > 0 && !/^\d+$/.test(p));
+        if (parts.length >= 1) {
+          const nameParts = parts.slice(0, 3);
+          nomExtrait = nameParts.map(p => p.charAt(0).toUpperCase() + p.slice(1).toLowerCase()).join(' ');
+        }
+      }
+
+      // Fallback : nom depuis le titre
+      const nomIncomplet = nomExtrait && nomExtrait.trim().split(/\s+/).length < 2;
+      if (!nomExtrait || nomIncomplet) {
+        // Titre Google CSE typiquement : "Paul Blaes - Dandy Hotel and Kitchen | LinkedIn"
+        const titreMatch = titre.match(/^([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-–—|]/);
+        if (titreMatch) {
+          nomExtrait = titreMatch[1].trim();
+        }
+      }
+
+      if (!nomExtrait || nomExtrait.trim().split(/\s+/).length < 2) {
+        logger.debug(`⚠️ Nom incomplet: "${nomExtrait}" — skip`);
+        continue;
+      }
+
+      if (!estNomValide(nomExtrait, nomHotel)) continue;
+
+      // Détecter la fonction
+      let fonctionDetectee = null;
+      const texteNormalise = texte.toLowerCase();
+      const patternsComplets = [
+        /\b(directeur|directrice|responsable|manager|gérant|gérante)\s+(général(?:e)?|adjoint(?:e)?|des?\s+\w+(?:\s+\w+)?|commercial(?:e)?|marketing|f&b|food\s*&?\s*beverage|revenue|rse|opérations?|opérationnel(?:le)?|communication|hébergement|restauration|spa|exploitation|réservations?|ventes?|événements?|qualité|formation|technique|financier|financière|administratif|administrative|réception|rooms?\s*division|front\s*office)/i,
+        /\b(general\s+manager|revenue\s+manager|gouvernante\s+générale|dg|gm|chef\s+de\s+réception|maître\s+d'hôtel)\b/i,
+      ];
+
+      for (const pattern of patternsComplets) {
+        const match = texte.match(pattern);
+        if (match) {
+          fonctionDetectee = match[0].trim()
+            .split(' ').map(m => m.charAt(0).toUpperCase() + m.slice(1).toLowerCase()).join(' ')
+            .replace(/F&b/i, 'F&B').replace(/Rse/i, 'RSE').replace(/Dg/i, 'DG');
+          break;
+        }
+      }
+
+      if (!fonctionDetectee) {
+        for (const poste of POSTES_CIBLES) {
+          if (new RegExp(`\\b${poste.toLowerCase()}\\b`, 'i').test(texteNormalise)) {
+            fonctionDetectee = poste;
+            break;
+          }
+        }
+      }
+
+      if (!fonctionDetectee) fonctionDetectee = 'Direction'; // Défaut pour Google CSE (résultats déjà filtrés par la requête)
+
+      // Pertinence
+      const normalizeText = (t) => t.toLowerCase().replace(/[,\.;:«»"'&]/g, ' ').replace(/\s+/g, ' ').trim();
+      const nomHotelNorm = normalizeText(nomHotel);
+      const texteNorm = normalizeText(texte);
+      const motsCommuns = ['hotel', 'le', 'la', 'les', 'de', 'du', 'des', 'et', 'restaurant', 'spa', 'arty'];
+      const motsHotel = nomHotelNorm.split(' ').filter(m => m.length >= 3 && !motsCommuns.includes(m));
+      const racinesHotel = motsHotel.map(m => m.length >= 4 ? m.substring(0, 4) : m);
+
+      let hotelMentioned = false;
+      if (racinesHotel.length >= 2) {
+        hotelMentioned = racinesHotel.every(r => texteNorm.includes(r));
+      } else if (racinesHotel.length === 1) {
+        const idxMot = texteNorm.indexOf(racinesHotel[0]);
+        const idxHotel = texteNorm.indexOf('hotel');
+        hotelMentioned = idxMot !== -1 && idxHotel !== -1 && Math.abs(idxMot - idxHotel) < 20;
+      }
+
+      contacts.push({
+        nom_complet: normaliserNom(nomExtrait),
+        fonction: fonctionDetectee,
+        linkedin_url: url,
+        snippet: description.substring(0, 200),
+        pertinence: hotelMentioned ? 'haute' : 'moyenne',
+        source: 'Google CSE',
+      });
+    }
+
+    logger.info(`✅ Google CSE: ${contacts.length} contact(s) LinkedIn trouvé(s)`);
+    requestCache.set(cacheKey, { data: contacts, timestamp: Date.now() });
+    return contacts;
+
+  } catch (err) {
+    logger.error(`❌ Erreur Google CSE: ${err.message}`);
+    return [];
+  }
+}
+
+/**
  * Recherche via Brave Search API (gratuite, 2000 requêtes/mois)
  * @param {string} nomHotel - Nom de l'hôtel (pour matching pertinence)
  * @param {string} queryOrFonction - Requête complète pré-construite OU nom de fonction
@@ -1062,28 +1221,43 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     }
   }
 
-  // 4. UNE SEULE requête Brave optimale (technique X-Ray Search)
-  if (useBrave) {
+  // 4. Google Custom Search API EN PRIORITÉ (mêmes résultats que Google.com)
+  const googleCseKey = process.env.GOOGLE_CSE_API_KEY || null;
+  const googleCseId = process.env.GOOGLE_CSE_ID || null;
+
+  if (googleCseKey && googleCseId) {
+    try {
+      const contacts = await rechercherContactsGoogleCSE(nomHotel, googleCseKey, googleCseId, commune);
+      tousContacts.push(...contacts);
+      logger.info(`✅ Google CSE: ${contacts.length} contact(s)`);
+    } catch (err) {
+      logger.error(`❌ Erreur Google CSE: ${err.message}`);
+    }
+  }
+
+  // 5. Brave Search API en complément (si Google CSE pas dispo ou pas assez de résultats)
+  const nbHauteApresGoogle = tousContacts.filter(c => c.pertinence === 'haute').length;
+  if (useBrave && nbHauteApresGoogle < 2) {
     try {
       const query = construireRequeteBrave(nomHotel, commune);
       const contacts = await rechercherContactsBrave(nomHotel, query, braveApiKey, commune, true);
       tousContacts.push(...contacts);
-      logger.info(`✅ Brave X-Ray: ${contacts.length} contact(s) trouvé(s)`);
+      logger.info(`✅ Brave fallback: ${contacts.length} contact(s)`);
     } catch (err) {
-      logger.error(`❌ Erreur Brave X-Ray: ${err.message}`);
+      logger.error(`❌ Erreur Brave: ${err.message}`);
     }
   }
 
-  // 5. Fallback Google si Brave ne trouve pas assez de résultats pertinents
-  const nbHaute = tousContacts.filter(c => c.pertinence === 'haute').length;
-  if (nbHaute < 2) {
+  // 6. Google scraping direct en dernier recours (risque CAPTCHA)
+  const nbHauteTotal = tousContacts.filter(c => c.pertinence === 'haute').length;
+  if (nbHauteTotal < 2 && !googleCseKey) {
     try {
       const googleContacts = await rechercherContactsGoogle(nomHotel, 'directeur', commune);
       tousContacts.push(...googleContacts);
-      logger.info(`✅ Google fallback: ${googleContacts.length} contact(s) ajouté(s)`);
+      logger.info(`✅ Google scraping: ${googleContacts.length} contact(s)`);
     } catch (err) {
       if (!err.message.includes('CAPTCHA')) {
-        logger.warn(`⚠️ Google fallback: ${err.message}`);
+        logger.warn(`⚠️ Google scraping: ${err.message}`);
       }
     }
   }
@@ -1290,6 +1464,7 @@ module.exports = {
   rechercherContactsPappers,
   rechercherContactsSociete,
   rechercherContactsPappersScraping,
+  rechercherContactsGoogleCSE,
   rechercherContactsHotel,
   trouverEmailAvecZeroBounce,
   extraireNomPrenom,
