@@ -11,10 +11,9 @@ const logger = require('../config/logger');
 // ══════════════════════════════════════════════════════════════════════════════
 
 /**
- * User-Agent conforme aux best practices : identification honnête avec contact
- * Source: https://www.scrapingbee.com/blog/web-scraping-best-practices/
+ * User-Agent : simule un navigateur Chrome standard pour efficacité maximale
  */
-const USER_AGENT = 'TDM-Prospector/1.0 (Business Contact Finder; +https://terredemars.com; contact@terredemars.com)';
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 /**
  * Cache des requêtes pour éviter les recherches dupliquées
@@ -22,16 +21,15 @@ const USER_AGENT = 'TDM-Prospector/1.0 (Business Contact Finder; +https://terred
 const requestCache = new Map();
 
 /**
- * Exponential backoff : augmente progressivement le délai entre tentatives
- * Source: https://www.scrapehero.com/rate-limiting-in-web-scraping/
+ * Exponential backoff rapide pour efficacité maximale
  * @param {number} attempt - Numéro de la tentative (0, 1, 2...)
- * @param {number} baseDelay - Délai de base en ms (défaut: 1000ms)
+ * @param {number} baseDelay - Délai de base en ms (défaut: 500ms)
  * @returns {number} - Délai en ms
  */
-function getExponentialBackoff(attempt, baseDelay = 1000) {
-  const maxDelay = 60000; // 60s max
+function getExponentialBackoff(attempt, baseDelay = 500) {
+  const maxDelay = 10000; // 10s max (au lieu de 60s)
   const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-  const jitter = Math.random() * 0.3 * delay; // +/- 30% aléatoire
+  const jitter = Math.random() * 0.2 * delay; // +/- 20% aléatoire
   return Math.floor(delay + jitter);
 }
 
@@ -64,14 +62,12 @@ async function retryWithBackoff(fn, maxRetries = 3, context = 'API call') {
 }
 
 /**
- * Rate limiting conservatif : délai aléatoire entre requêtes
- * Source: https://use-apify.com/blog/web-scraping-best-practices-2026
+ * Délai minimal entre requêtes pour efficacité maximale
  * @param {number} minMs - Délai minimum
  * @param {number} maxMs - Délai maximum
  */
-async function respectfulDelay(minMs = 2000, maxMs = 5000) {
+async function quickDelay(minMs = 100, maxMs = 300) {
   const delay = minMs + Math.random() * (maxMs - minMs);
-  logger.debug(`⏳ Rate limiting: pause de ${Math.floor(delay)}ms`);
   await new Promise(resolve => setTimeout(resolve, delay));
 }
 
@@ -1010,8 +1006,8 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
         break;
       }
 
-      // Rate limiting respectueux : délai aléatoire 2-5s (best practice: 10-15s conservatif)
-      await respectfulDelay(2000, 5000);
+      // Délai court entre recherches pour rapidité maximale
+      await quickDelay(200, 500);
 
     } catch (err) {
       logger.error(`❌ Erreur recherche ${fonction} pour ${nomHotel}: ${err.message}`);
@@ -1182,8 +1178,8 @@ async function trouverEmailAvecZeroBounce(prenom, nom, domaine, zbKey, patternMe
         return { email, status: 'valid', quality_score: data.quality_score, pattern: type };
       }
 
-      // Rate limit ZeroBounce : 300-500ms entre tests
-      await respectfulDelay(300, 500);
+      // Délai minimal ZeroBounce pour rapidité
+      await quickDelay(100, 200);
 
     } catch (err) {
       logger.warn(`Erreur test email ${email}:`, err.message);

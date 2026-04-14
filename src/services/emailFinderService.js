@@ -1,20 +1,20 @@
 /**
  * emailFinderService.js — Recherche d'emails via Lusha, Lemlist et ZeroBounce
- * Best practices 2026: Retry logic, proper headers, rate limiting
+ * Optimisé pour efficacité maximale
  */
 
 const logger = require('../config/logger');
 
-// User-Agent conforme aux best practices
-const USER_AGENT = 'TDM-Prospector/1.0 (Business Contact Finder; +https://terredemars.com; contact@terredemars.com)';
+// User-Agent : simule Chrome standard
+const USER_AGENT = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/131.0.0.0 Safari/537.36';
 
 /**
- * Exponential backoff pour retry
+ * Exponential backoff rapide
  */
-function getExponentialBackoff(attempt, baseDelay = 1000) {
-  const maxDelay = 60000;
+function getExponentialBackoff(attempt, baseDelay = 500) {
+  const maxDelay = 10000; // 10s max
   const delay = Math.min(baseDelay * Math.pow(2, attempt), maxDelay);
-  const jitter = Math.random() * 0.3 * delay;
+  const jitter = Math.random() * 0.2 * delay;
   return Math.floor(delay + jitter);
 }
 
@@ -162,8 +162,8 @@ async function trouverEmailLemlist(prenom, nom, domaine, lemlistApiKey) {
     if (data._id) {
       logger.info(`🔄 Lemlist: enrichissement lancé (ID: ${data._id})`);
 
-      // Attendre 2 secondes pour que l'enrichissement se termine
-      await new Promise(resolve => setTimeout(resolve, 2000));
+      // Attendre 1 seconde pour l'enrichissement (rapide)
+      await new Promise(resolve => setTimeout(resolve, 1000));
 
       // Récupérer le résultat
       const resultResponse = await fetch(`https://api.lemlist.com/api/enrich/${data._id}`, {

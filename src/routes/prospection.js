@@ -794,7 +794,7 @@ module.exports = (db) => {
               logger.warn(`  ❌ Aucun email trouvé`);
             }
 
-            await new Promise(resolve => setTimeout(resolve, 300));
+            await new Promise(resolve => setTimeout(resolve, 100)); // Délai minimal pour rapidité
           } catch (err) {
             logger.warn(`Erreur recherche email pour ${contact.nom_complet}:`, err.message);
           }
