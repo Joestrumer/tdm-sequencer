@@ -42,6 +42,69 @@ function normaliserNom(nom) {
 }
 
 /**
+ * Valide qu'un nom est bien un nom de personne (pas une entreprise)
+ * @returns {boolean} true si le nom semble valide
+ */
+function estNomValide(nom, nomHotel = '') {
+  if (!nom || nom.length < 3) return false;
+
+  const nomLower = nom.toLowerCase();
+  const hotelLower = nomHotel.toLowerCase();
+
+  // Mots-clés d'entreprise à rejeter
+  const motsEntreprise = [
+    'hotel', 'château', 'chateau', 'resort', 'spa', 'palace', 'domaine',
+    'residence', 'résidence', 'lodge', 'inn', 'suites', 'golf', 'club',
+    'camping', 'village', 'recrutement', 'careers', 'rh', 'vigiers',
+    'management', 'group', 'groupe', 'hospitality', 'international'
+  ];
+
+  // Rejeter si contient un mot-clé d'entreprise
+  for (const mot of motsEntreprise) {
+    if (nomLower.includes(mot)) {
+      logger.warn(`❌ Rejeté (entreprise): "${nom}" contient "${mot}"`);
+      return false;
+    }
+  }
+
+  // Rejeter si trop similaire au nom de l'hôtel
+  if (hotelLower && nomLower.includes(hotelLower.substring(0, 10))) {
+    logger.warn(`❌ Rejeté (nom d'hôtel): "${nom}"`);
+    return false;
+  }
+
+  // Rejeter si contient des caractères mal encodés
+  if (nom.includes('%') || nom.includes('&#')) {
+    logger.warn(`❌ Rejeté (encodage): "${nom}"`);
+    return false;
+  }
+
+  // Rejeter si contient des chiffres (IDs LinkedIn)
+  if (/\d{5,}/.test(nom)) {
+    logger.warn(`❌ Rejeté (ID numérique): "${nom}"`);
+    return false;
+  }
+
+  // Doit contenir au moins 2 parties (prénom + nom)
+  const parties = nom.trim().split(/\s+/);
+  if (parties.length < 2) {
+    logger.warn(`❌ Rejeté (pas de nom complet): "${nom}"`);
+    return false;
+  }
+
+  // Valider que chaque partie commence par une majuscule
+  for (const partie of parties) {
+    if (partie.length > 0 && !/^[A-ZÀ-Ú]/.test(partie)) {
+      logger.warn(`❌ Rejeté (pas de majuscule): "${nom}"`);
+      return false;
+    }
+  }
+
+  logger.info(`✅ Nom valide: "${nom}"`);
+  return true;
+}
+
+/**
  * Extrait le prénom et nom d'un nom complet
  */
 function extraireNomPrenom(nomComplet) {
@@ -141,6 +204,11 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
         if (!nomExtrait) {
           logger.warn(`⚠️ Impossible d'extraire le nom de: "${titre}"`);
           continue;
+        }
+
+        // Valider que le nom est bien un nom de personne (pas une entreprise)
+        if (!estNomValide(nomExtrait, nomHotel)) {
+          continue; // Skip ce contact
         }
 
         // Détecter la fonction depuis le titre/description (plus fiable que le paramètre de recherche)
@@ -341,6 +409,11 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur', commun
         return;
       }
 
+      // Valider que le nom est bien un nom de personne
+      if (!estNomValide(nomExtrait, nomHotel)) {
+        return; // Skip ce contact
+      }
+
       // Détecter la fonction
       let fonctionDetectee = fonction;
       for (const poste of POSTES_CIBLES) {
@@ -509,6 +582,11 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
           if (!nomExtrait) {
             logger.warn(`⚠️ Impossible d'extraire le nom de Pappers: "${titre}"`);
             continue;
+          }
+
+          // Valider que le nom est bien un nom de personne
+          if (!estNomValide(nomExtrait, nomHotel)) {
+            continue; // Skip ce contact
           }
 
           contacts.push({
