@@ -822,7 +822,8 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
  * Recherche complète pour un hôtel : essaie plusieurs fonctions
  */
 async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null, pappersApiKey = null) {
-  const fonctionsPrioritaires = ['Directeur', 'Directeur Général', 'Président', 'Gérant', 'DG'];
+  // Termes de recherche larges (comme un humain chercherait sur Google)
+  const fonctionsPrioritaires = ['direction', 'directeur général', 'responsable'];
 
   const tousContacts = [];
 
@@ -880,9 +881,14 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
 
       tousContacts.push(...contacts);
 
-      // Si on a trouvé au moins 1 contact, on arrête (pour économiser les crédits ZB)
-      if (contacts.length >= 1) {
-        logger.info(`✅ ${contacts.length} contact(s) trouvé(s), arrêt de la recherche LinkedIn`);
+      // Arrêter si on a trouvé des contacts à haute pertinence (nom d'hôtel mentionné)
+      const nbHaute = contacts.filter(c => c.pertinence === 'haute').length;
+      if (nbHaute >= 1) {
+        logger.info(`✅ ${contacts.length} contact(s) trouvé(s) dont ${nbHaute} pertinent(s), arrêt`);
+        break;
+      }
+      if (contacts.length >= 3) {
+        logger.info(`✅ ${contacts.length} contact(s) trouvé(s) (aucun pertinent, mais assez pour sélection manuelle)`);
         break;
       }
 
