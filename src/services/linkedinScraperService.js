@@ -546,10 +546,10 @@ async function rechercherContactsBrave(nomHotel, queryOrFonction = 'Directeur', 
           }
         }
 
-        // 3. Si aucune fonction détectée, utiliser celle de la recherche
+        // 3. Si aucune fonction détectée, utiliser un défaut
         if (!fonctionDetectee) {
-          fonctionDetectee = fonction;
-          logger.warn(`  → Aucune fonction détectée dans le texte, utilisation par défaut: ${fonction}`);
+          fonctionDetectee = isFullQuery ? 'Directeur' : queryOrFonction;
+          logger.warn(`  → Aucune fonction détectée, utilisation par défaut: ${fonctionDetectee}`);
         }
 
         // Matching flexible du nom d'hôtel (ignore ponctuation, espaces, ordre des mots)
@@ -1144,7 +1144,7 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
  */
 function construireRequetesBrave(nomHotel, commune = null) {
   const nom = nomHotel.trim();
-  const communePart = commune ? ` ${commune.split(' ')[0]}` : ''; // juste la ville
+  const communePart = commune ? ` ${commune}` : '';
 
   // Rôles à tester (du plus général au plus spécifique)
   const roles = [
