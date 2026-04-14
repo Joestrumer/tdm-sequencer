@@ -1269,9 +1269,8 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     const fonctionLower = contact.fonction.toLowerCase();
     const snippetLower = (contact.snippet || '').toLowerCase();
 
-    // EXCLURE d'abord (vérifier titre ET snippet pour détecter les faux positifs)
-    const texteComplet = fonctionLower + ' ' + snippetLower;
-    if (titresExclus.some(exclu => texteComplet.includes(exclu))) {
+    // EXCLURE d'abord (vérifier uniquement la fonction, pas le snippet)
+    if (titresExclus.some(exclu => fonctionLower.includes(exclu))) {
       logger.info(`❌ Exclu: ${contact.nom_complet} — "${contact.fonction}" (mot exclu détecté)`);
       return false;
     }
@@ -1299,13 +1298,12 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
   const contactsPertinents = decideurs.filter(c => c.pertinence === 'haute');
 
   if (contactsPertinents.length === 0) {
-    logger.warn(`⚠️ Aucun contact pertinent trouvé - vérifiez le nom de l'hôtel`);
-    // En dernier recours, retourner 2 contacts "moyenne" (probable faux positifs)
-    return decideurs.slice(0, 2);
+    logger.warn(`⚠️ Aucun contact pertinent trouvé - retour des ${Math.min(3, decideurs.length)} meilleurs non-pertinents`);
+    return decideurs.slice(0, 3);
   }
 
-  logger.info(`🎯 ${contactsPertinents.length} contact(s) pertinent(s) - retour des ${Math.min(4, contactsPertinents.length)} meilleurs`);
-  return contactsPertinents.slice(0, 4);
+  logger.info(`🎯 ${contactsPertinents.length} contact(s) pertinent(s) - retour des ${Math.min(5, contactsPertinents.length)} meilleurs`);
+  return contactsPertinents.slice(0, 5);
 }
 
 /**
