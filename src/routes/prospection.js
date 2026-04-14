@@ -690,8 +690,8 @@ module.exports = (db) => {
 
         let emailResult = null;
 
-        // Chercher email uniquement pour contacts à haute pertinence
-        if (contact.pertinence === 'haute' && prenom && nom) {
+        // Chercher email pour tous les contacts (l'utilisateur sélectionnera ensuite)
+        if (prenom && nom) {
           logger.info(`  → Prénom: "${prenom}", Nom: "${nom}"`);
 
           try {
@@ -726,8 +726,6 @@ module.exports = (db) => {
           } catch (err) {
             logger.warn(`Erreur recherche email pour ${contact.nom_complet}:`, err.message);
           }
-        } else if (contact.pertinence !== 'haute') {
-          logger.info(`  ⏭️ Skip recherche email (pertinence moyenne)`);
         } else {
           logger.warn(`⚠️ Nom incomplet pour ${contact.nom_complet}`);
         }

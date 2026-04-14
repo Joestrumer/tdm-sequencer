@@ -180,35 +180,43 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
           }
         }
 
-        // Si pas de nom depuis URL, essayer depuis le texte/titre
-        if (!nomExtrait) {
-          // Debug: afficher titre et description pour URL problématiques
-          if (url.includes('/etienne') || url.includes('/passes')) {
-            logger.info(`🔍 DEBUG URL ${url}:`);
+        // Si pas de nom depuis URL OU nom incomplet (1 seul mot), essayer titre/description
+        const nomIncomplet = nomExtrait && nomExtrait.trim().split(/\s+/).length < 2;
+        if (!nomExtrait || nomIncomplet) {
+          if (nomIncomplet) {
+            logger.info(`🔄 Nom URL incomplet "${nomExtrait}", recherche dans titre/description...`);
             logger.info(`   Titre: "${titre.substring(0, 150)}"`);
             logger.info(`   Desc: "${description.substring(0, 150)}"`);
           }
 
           const patterns = [
             // "Etienne Berthier - General Manager" (avec tiret)
-            /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-–—]\s*(?:General|Directeur|Director|Manager)/i,
+            /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-–—]\s*(?:General|Directeur|Director|Manager|Responsable|Gérant)/i,
             // "Etienne Berthier General Manager" (sans tiret, en début)
-            /^([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s+(?:General|Directeur|Director|Manager)/i,
+            /^([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s+(?:General|Directeur|Director|Manager|Responsable|Gérant)/i,
             // Au début du titre avec séparateur
             /^([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-|·]/,
             // "View Etienne Berthier" ou "Connect Etienne Berthier"
-            /(?:View|Connect)\s+<strong>([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})<\/strong>/,
-            /(?:View|Connect)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s*'/,
+            /(?:View|Connect)\s+<strong>([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})<\/strong>/i,
+            /(?:View|Connect)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s*'/i,
             // Format LinkedIn courant: "Prénom Nom" au tout début
             /^([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+)/,
+            // <strong>Prénom Nom</strong> (Brave met parfois en gras)
+            /<strong>([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})<\/strong>/i,
+            // "Prénom Nom" suivi de followers/connections
+            /([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+)(?:\s+\d+\s*(?:followers|connections|relations))/i,
           ];
 
           for (const pattern of patterns) {
             const match = titre.match(pattern) || description.match(pattern);
             if (match && match[1]) {
-              nomExtrait = match[1].replace(/<\/?strong>/g, '').trim();
-              logger.info(`📝 Nom extrait du titre/description: ${nomExtrait}`);
-              break;
+              const candidat = match[1].replace(/<\/?strong>/g, '').trim();
+              // Vérifier que le candidat a au moins 2 mots
+              if (candidat.split(/\s+/).length >= 2) {
+                nomExtrait = candidat;
+                logger.info(`📝 Nom extrait du titre/description: ${nomExtrait}`);
+                break;
+              }
             }
           }
         }
@@ -229,8 +237,8 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
 
         // Patterns pour extraire le titre complet (ex: "Responsable F&B", "Directeur Commercial")
         const patternsComplets = [
-          /\b(directeur|directrice|responsable|manager|gérant|gérante)\s+(général|générale|adjoint|adjointe|des?\s+\w+|commercial|marketing|f&b|revenue|rse|opérations|communication|[\w\s&]+)/i,
-          /\b(revenue\s+manager|gouvernante\s+générale|dg)\b/i,
+          /\b(directeur|directrice|responsable|manager|gérant|gérante)\s+(général(?:e)?|adjoint(?:e)?|des?\s+\w+(?:\s+\w+)?|commercial(?:e)?|marketing|f&b|food\s*&?\s*beverage|revenue|rse|opérations|communication|hébergement|restauration|spa|exploitation|réservations?|ventes?|événements?|qualité|formation|technique|financier|financière|administratif|administrative|réception|rooms?\s*division|front\s*office)/i,
+          /\b(general\s+manager|revenue\s+manager|gouvernante\s+générale|dg|gm|chef\s+de\s+réception|maître\s+d'hôtel)\b/i,
         ];
 
         // 1. Essayer d'abord d'extraire un titre complet
