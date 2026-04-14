@@ -615,9 +615,12 @@ async function rechercherContactsBrave(nomHotel, queryOrFonction = 'Directeur', 
  * Recherche Google pour trouver des contacts LinkedIn (fallback)
  */
 async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur', commune = null) {
-  // Utiliser la même requête X-Ray optimisée que pour Brave/Google CSE
-  const query = construireRequeteBrave(nomHotel, commune);
-  const url = `https://www.google.fr/search?q=${encodeURIComponent(query)}&num=15&hl=fr&gl=fr&lr=lang_fr`;
+  // Requête simple comme l'utilisateur taperait dans Google
+  const nomClean = nomHotel.replace(/'/g, "'").replace(/\s+/g, ' ').trim();
+  const communePart = commune ? ` ${commune.split(' ')[0]}` : '';
+  const query = `${nomClean}${communePart} direction linkedin`;
+  // gbv=1 force le mode HTML basique (pas de JavaScript requis)
+  const url = `https://www.google.fr/search?q=${encodeURIComponent(query)}&num=15&hl=fr&gl=fr&gbv=1`;
 
   logger.info(`🔍 Recherche Google scraping: "${query}"`);
 
@@ -629,17 +632,10 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur', commun
       signal: controller.signal,
       headers: {
         'User-Agent': USER_AGENT,
-        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,image/apng,*/*;q=0.8',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
         'Accept-Language': 'fr-FR,fr;q=0.9,en-US;q=0.8,en;q=0.7',
-        'Accept-Encoding': 'gzip, deflate, br',
         'Referer': 'https://www.google.fr/',
-        'Cookie': 'CONSENT=YES+cb; NID=1234567890',
-        'Sec-Ch-Ua': '"Chromium";v="131", "Not_A Brand";v="24"',
-        'Sec-Ch-Ua-Mobile': '?0',
-        'Sec-Ch-Ua-Platform': '"macOS"',
-        'Sec-Fetch-Dest': 'document',
-        'Sec-Fetch-Mode': 'navigate',
-        'Sec-Fetch-Site': 'same-origin',
+        'Cookie': 'CONSENT=YES+cb.20210720-14-p0.fr+FX+478',
         'Sec-Fetch-User': '?1',
         'Upgrade-Insecure-Requests': '1',
         'Cache-Control': 'max-age=0',
@@ -1234,22 +1230,16 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     }
   }
 
-  // 4. Google CSE API EN PRIORITÉ (mêmes résultats que Google.com, 100 req/jour gratuites)
-  // Note: Google scraping direct ne fonctionne pas (Google exige JavaScript côté serveur)
-  const googleCseKey = process.env.GOOGLE_CSE_API_KEY || null;
-  const googleCseId = process.env.GOOGLE_CSE_ID || null;
-
-  if (googleCseKey && googleCseId) {
-    try {
-      const contacts = await rechercherContactsGoogleCSE(nomHotel, googleCseKey, googleCseId, commune);
-      tousContacts.push(...contacts);
-      logger.info(`✅ Google CSE: ${contacts.length} contact(s)`);
-    } catch (err) {
-      logger.error(`❌ Erreur Google CSE: ${err.message}`);
-    }
+  // 4. Google scraping direct EN PRIORITÉ (gbv=1 = mode HTML, même résultats que Google.com)
+  try {
+    const googleContacts = await rechercherContactsGoogle(nomHotel, 'directeur', commune);
+    tousContacts.push(...googleContacts);
+    logger.info(`✅ Google scraping: ${googleContacts.length} contact(s)`);
+  } catch (err) {
+    logger.warn(`⚠️ Google scraping: ${err.message}`);
   }
 
-  // 5. Brave Search API en fallback
+  // 5. Brave Search API en fallback (si Google scraping insuffisant)
   const nbHauteTotal = tousContacts.filter(c => c.pertinence === 'haute').length;
   if (useBrave && nbHauteTotal < 2) {
     try {
