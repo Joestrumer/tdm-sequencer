@@ -182,6 +182,13 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
 
         // Si pas de nom depuis URL, essayer depuis le texte/titre
         if (!nomExtrait) {
+          // Debug: afficher titre et description pour URL problématiques
+          if (url.includes('/etienne') || url.includes('/passes')) {
+            logger.info(`🔍 DEBUG URL ${url}:`);
+            logger.info(`   Titre: "${titre.substring(0, 150)}"`);
+            logger.info(`   Desc: "${description.substring(0, 150)}"`);
+          }
+
           const patterns = [
             // "Etienne Berthier - General Manager" (avec tiret)
             /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-–—]\s*(?:General|Directeur|Director|Manager)/i,
@@ -910,13 +917,21 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     return titresDecideurs.some(titre => fonctionLower.includes(titre));
   });
 
-  // NE GARDER QUE les contacts avec pertinence HAUTE (employeur confirmé)
-  const pertinents = decideurs.filter(contact => contact.pertinence === 'haute');
+  // Retourner TOUS les décideurs (user sélectionne manuellement)
+  // Tri par pertinence : haute en premier, puis moyenne
+  decideurs.sort((a, b) => {
+    if (a.pertinence === 'haute' && b.pertinence !== 'haute') return -1;
+    if (a.pertinence !== 'haute' && b.pertinence === 'haute') return 1;
+    return 0;
+  });
+
+  const hautePertin = decideurs.filter(c => c.pertinence === 'haute').length;
+  const moyennePertin = decideurs.filter(c => c.pertinence === 'moyenne').length;
 
   logger.info(`🎯 ${decideurs.length} décideur(s) sur ${unique.length} contact(s)`);
-  logger.info(`✅ ${pertinents.length} contact(s) pertinent(s) (haute pertinence uniquement)`);
+  logger.info(`✅ Pertinence: ${hautePertin} haute, ${moyennePertin} moyenne (sélection manuelle)`);
 
-  return pertinents.slice(0, 5); // Max 5 décideurs pertinents
+  return decideurs.slice(0, 10); // Max 10 décideurs (user sélectionne)
 }
 
 /**
