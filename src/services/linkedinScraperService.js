@@ -180,22 +180,27 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
           }
         }
 
-        // Si pas de nom depuis URL, essayer depuis le texte
+        // Si pas de nom depuis URL, essayer depuis le texte/titre
         if (!nomExtrait) {
           const patterns = [
-            // "Vito Santoro - Directeur"
-            /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-–—]\s*(?:Directeur|Director|Manager)/i,
-            // Au début du titre
-            /^([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-|]/,
-            // "View Vito Santoro" ou "Connect Vito Santoro"
+            // "Etienne Berthier - General Manager" (avec tiret)
+            /([A-ZÀ-Ú][a-zà-ú]+(?:[-\s][A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-–—]\s*(?:General|Directeur|Director|Manager)/i,
+            // "Etienne Berthier General Manager" (sans tiret, en début)
+            /^([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s+(?:General|Directeur|Director|Manager)/i,
+            // Au début du titre avec séparateur
+            /^([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s*[-|·]/,
+            // "View Etienne Berthier" ou "Connect Etienne Berthier"
             /(?:View|Connect)\s+<strong>([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})<\/strong>/,
             /(?:View|Connect)\s+([A-ZÀ-Ú][a-zà-ú]+(?:\s+[A-ZÀ-Ú][a-zà-ú]+){1,2})\s*'/,
+            // Format LinkedIn courant: "Prénom Nom" au tout début
+            /^([A-ZÀ-Ú][a-zà-ú]+\s+[A-ZÀ-Ú][a-zà-ú]+)/,
           ];
 
           for (const pattern of patterns) {
-            const match = texte.match(pattern);
+            const match = titre.match(pattern) || description.match(pattern);
             if (match && match[1]) {
               nomExtrait = match[1].replace(/<\/?strong>/g, '').trim();
+              logger.info(`📝 Nom extrait du titre/description: ${nomExtrait}`);
               break;
             }
           }
@@ -258,7 +263,17 @@ async function rechercherContactsBrave(nomHotel, fonction = 'Directeur', apiKey,
           logger.warn(`  → Aucune fonction détectée dans le texte, utilisation par défaut: ${fonction}`);
         }
 
-        const hotelMentioned = texte.toLowerCase().includes(nomHotel.toLowerCase().substring(0, 15));
+        // Matching flexible du nom d'hôtel (ignore ponctuation et espaces multiples)
+        const normalizeText = (text) => text.toLowerCase()
+          .replace(/[,\.;:«»"']/g, ' ')  // Remplacer ponctuation par espace
+          .replace(/\s+/g, ' ')  // Normaliser espaces multiples
+          .trim();
+
+        const nomHotelNorm = normalizeText(nomHotel);
+        const texteNorm = normalizeText(texte);
+
+        // Chercher les 12 premiers caractères du nom normalisé (ex: "elsa hotel pa")
+        const hotelMentioned = texteNorm.includes(nomHotelNorm.substring(0, Math.min(12, nomHotelNorm.length)));
 
         contacts.push({
           nom_complet: normaliserNom(nomExtrait),
@@ -476,8 +491,15 @@ async function rechercherContactsGoogle(nomHotel, fonction = 'Directeur', commun
         }
       }
 
-      // Vérifier que le nom de l'hôtel apparaît dans le contexte
-      const hotelMentioned = texte.toLowerCase().includes(nomHotel.toLowerCase().substring(0, 15));
+      // Matching flexible du nom d'hôtel (ignore ponctuation et espaces)
+      const normalizeText = (text) => text.toLowerCase()
+        .replace(/[,\.;:«»"']/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+
+      const nomHotelNorm = normalizeText(nomHotel);
+      const texteNorm = normalizeText(texte);
+      const hotelMentioned = texteNorm.includes(nomHotelNorm.substring(0, Math.min(12, nomHotelNorm.length)));
 
       contacts.push({
         nom_complet: normaliserNom(nomExtrait),
