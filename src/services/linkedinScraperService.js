@@ -1131,57 +1131,30 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
  * Ex: "ELSA HOTEL PARIS" OR "elsa hôtel paris" directeur OR manager OR
  *     "general manager" OR "directeur général" site:linkedin.com/in/
  */
-function construireRequeteBrave(nomHotel, commune = null) {
-  // 1. Générer variations du nom d'hôtel entre guillemets
-  const variations = new Set();
+/**
+ * Construit les requêtes Brave pour LinkedIn X-Ray search
+ * Format testé qui marche : site:www.linkedin.com/in/* NOM_HOTEL COMMUNE role
+ * Retourne un tableau de requêtes à tester
+ */
+function construireRequetesBrave(nomHotel, commune = null) {
   const nom = nomHotel.trim();
+  const communePart = commune ? ` ${commune.split(' ')[0]}` : ''; // juste la ville
 
-  // Version originale (remplacer & par "and" pour compatibilité recherche)
-  variations.add(nom);
-  if (nom.includes('&')) {
-    variations.add(nom.replace(/&/g, 'and'));
-  }
+  // Rôles à tester (du plus général au plus spécifique)
+  const roles = [
+    'direction',
+    'Directeur Directrice',
+    'General Manager',
+    'Responsable achats',
+    'Gouvernante générale housekeeping manager',
+  ];
 
-  // Sans accents
-  const sansAccents = nom.normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-  if (sansAccents !== nom) variations.add(sansAccents);
+  const requetes = roles.map(role =>
+    `site:www.linkedin.com/in/* ${nom}${communePart} ${role}`
+  );
 
-  // Sans "HÔTEL", "RESTAURANT", "ET" si le reste est distinctif
-  // NE PAS retirer & car ça fait partie du nom (ex: "DANDY HÔTEL & KITCHEN")
-  const sansMotsCommuns = nom
-    .replace(/\b(HÔTEL|HOTEL|RESTAURANT|SPA|ARTY)\b/gi, ' ')
-    .replace(/\s+/g, ' ')
-    .trim();
-  if (sansMotsCommuns.length >= 4 && sansMotsCommuns !== nom) {
-    variations.add(sansMotsCommuns);
-  }
-
-  // Avec apostrophe (DRIPS → DRIP'S)
-  const avecApostrophe = nom.replace(/(\w)S\b/gi, "$1'S");
-  if (avecApostrophe !== nom) variations.add(avecApostrophe);
-
-  // Sans apostrophe (DRIP'S → DRIPS)
-  if (nom.includes("'")) {
-    variations.add(nom.replace(/'/g, ''));
-  }
-
-  // Construire la partie hotel avec OR et guillemets
-  const hotelPart = Array.from(variations)
-    .slice(0, 4) // Max 4 variations
-    .map(v => `"${v}"`)
-    .join(' OR ');
-
-  // 2. Tous les titres de direction en un seul OR
-  const titres = 'directeur OR directrice OR "directeur général" OR "general manager" OR gérant OR "revenue manager" OR "housekeeping manager"';
-
-  // 3. Commune si disponible (améliore la précision géographique)
-  const geo = commune ? ` ${commune}` : '';
-
-  // 4. Assembler la requête finale
-  const query = `${hotelPart}${geo} ${titres} site:linkedin.com/in/`;
-
-  logger.info(`🔍 Requête X-Ray: ${query}`);
-  return query;
+  logger.info(`🔍 ${requetes.length} requêtes Brave préparées pour "${nom}"`);
+  return requetes;
 }
 
 /**
@@ -1230,25 +1203,23 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     }
   }
 
-  // 4. Google scraping direct EN PRIORITÉ (gbv=1 = mode HTML, même résultats que Google.com)
-  try {
-    const googleContacts = await rechercherContactsGoogle(nomHotel, 'directeur', commune);
-    tousContacts.push(...googleContacts);
-    logger.info(`✅ Google scraping: ${googleContacts.length} contact(s)`);
-  } catch (err) {
-    logger.warn(`⚠️ Google scraping: ${err.message}`);
-  }
+  // 4. Brave Search API — SOURCE PRINCIPALE pour LinkedIn
+  // Format testé : site:www.linkedin.com/in/* NOM_HOTEL COMMUNE role
+  // Plusieurs requêtes simples avec différents rôles
+  if (useBrave) {
+    const requetes = construireRequetesBrave(nomHotel, commune);
+    for (const query of requetes) {
+      // Arrêter si on a déjà assez de contacts pertinents
+      const nbHaute = tousContacts.filter(c => c.pertinence === 'haute').length;
+      if (nbHaute >= 4) break;
 
-  // 5. Brave Search API en fallback (si Google scraping insuffisant)
-  const nbHauteTotal = tousContacts.filter(c => c.pertinence === 'haute').length;
-  if (useBrave && nbHauteTotal < 2) {
-    try {
-      const query = construireRequeteBrave(nomHotel, commune);
-      const contacts = await rechercherContactsBrave(nomHotel, query, braveApiKey, commune, true);
-      tousContacts.push(...contacts);
-      logger.info(`✅ Brave fallback: ${contacts.length} contact(s)`);
-    } catch (err) {
-      logger.error(`❌ Erreur Brave: ${err.message}`);
+      try {
+        const contacts = await rechercherContactsBrave(nomHotel, query, braveApiKey, commune, true);
+        tousContacts.push(...contacts);
+        logger.info(`✅ Brave: ${contacts.length} contact(s) pour "${query.substring(0, 80)}..."`);
+      } catch (err) {
+        logger.error(`❌ Erreur Brave: ${err.message}`);
+      }
     }
   }
 
