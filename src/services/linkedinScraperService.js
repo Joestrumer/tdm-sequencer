@@ -191,7 +191,11 @@ function extraireNomPrenom(nomComplet) {
  * Setup : https://programmablesearchengine.google.com/ + https://console.developers.google.com/
  */
 async function rechercherContactsGoogleCSE(nomHotel, apiKey, cseId, commune = null) {
-  const query = construireRequeteBrave(nomHotel, commune); // Même format de requête
+  // Requête simplifiée pour Google CSE (pas besoin de site:linkedin.com car le CSE est déjà restreint)
+  // Google CSE n'aime pas les requêtes trop longues avec beaucoup de OR
+  const nomClean = nomHotel.replace(/&/g, 'and').replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
+  const geo = commune ? ` ${commune.split(' ')[0]}` : ''; // juste la ville, pas l'arrondissement
+  const query = `"${nomClean}"${geo} directeur OR manager OR gérant`;
 
   // Cache check (TTL: 1h)
   const cacheKey = `gcse:${query}`;
@@ -1230,25 +1234,12 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     }
   }
 
-  // 4. Google scraping direct EN PRIORITÉ (gratuit, illimité, mêmes résultats que Google.com)
-  try {
-    const googleContacts = await rechercherContactsGoogle(nomHotel, 'directeur', commune);
-    tousContacts.push(...googleContacts);
-    logger.info(`✅ Google scraping: ${googleContacts.length} contact(s)`);
-  } catch (err) {
-    if (err.message.includes('CAPTCHA')) {
-      logger.warn(`⚠️ Google CAPTCHA détecté, passage aux APIs`);
-    } else {
-      logger.warn(`⚠️ Google scraping: ${err.message}`);
-    }
-  }
-
-  // 5. Google CSE API en fallback (si scraping bloqué ou pas assez de résultats)
+  // 4. Google CSE API EN PRIORITÉ (mêmes résultats que Google.com, 100 req/jour gratuites)
+  // Note: Google scraping direct ne fonctionne pas (Google exige JavaScript côté serveur)
   const googleCseKey = process.env.GOOGLE_CSE_API_KEY || null;
   const googleCseId = process.env.GOOGLE_CSE_ID || null;
-  const nbHauteApresGoogle = tousContacts.filter(c => c.pertinence === 'haute').length;
 
-  if (googleCseKey && googleCseId && nbHauteApresGoogle < 2) {
+  if (googleCseKey && googleCseId) {
     try {
       const contacts = await rechercherContactsGoogleCSE(nomHotel, googleCseKey, googleCseId, commune);
       tousContacts.push(...contacts);
@@ -1258,7 +1249,7 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
     }
   }
 
-  // 6. Brave Search API en dernier recours
+  // 5. Brave Search API en fallback
   const nbHauteTotal = tousContacts.filter(c => c.pertinence === 'haute').length;
   if (useBrave && nbHauteTotal < 2) {
     try {
