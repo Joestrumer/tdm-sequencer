@@ -144,12 +144,15 @@ module.exports = (db) => {
         return res.status(400).json({ error: 'Aucun fichier uploadé' });
       }
 
-      const { sourceName, scrapingEnabled, scrapingConfig } = req.body;
+      const { sourceName, scrapingEnabled, scrapingConfig, columnMapping } = req.body;
 
       if (!sourceName) {
         fs.unlinkSync(req.file.path);
         return res.status(400).json({ error: 'Nom de source requis' });
       }
+
+      // Parser le columnMapping
+      const mapping = columnMapping ? JSON.parse(columnMapping) : {};
 
       // Lire et détecter encoding
       const rawData = fs.readFileSync(req.file.path);
@@ -176,12 +179,12 @@ module.exports = (db) => {
       // Détecter colonnes
       const colonnes = Object.keys(records[0]);
 
-      // Détecter colonne email
-      const emailColumn = colonnes.find(c =>
+      // Utiliser le mapping fourni ou auto-détecter
+      const emailColumn = mapping.email || colonnes.find(c =>
         /^(email|e-mail|mail|contact_email|adresse_email)$/i.test(c)
       );
 
-      // Créer source
+      // Créer source avec mapping
       const sourceId = randomUUID();
       const scrapingConfigParsed = scrapingConfig ? JSON.parse(scrapingConfig) : null;
 
@@ -193,7 +196,7 @@ module.exports = (db) => {
       `).run(
         sourceId,
         sourceName,
-        JSON.stringify(colonnes),
+        JSON.stringify({ columns: colonnes, mapping }), // Stocker colonnes + mapping
         scrapingEnabled === 'true' ? 1 : 0,
         scrapingConfigParsed ? JSON.stringify(scrapingConfigParsed) : null,
         records.length
@@ -223,12 +226,28 @@ module.exports = (db) => {
           invalidEmails++;
         }
 
+        // Extraire les champs mappés pour accès rapide
+        const mappedFields = {
+          nom: mapping.nom ? record[mapping.nom] : null,
+          email: validEmail,
+          site_web: mapping.site_web ? record[mapping.site_web] : null,
+          ville: mapping.ville ? record[mapping.ville] : null,
+          telephone: mapping.telephone ? record[mapping.telephone] : null,
+          adresse: mapping.adresse ? record[mapping.adresse] : null,
+        };
+
+        // Stocker avec champs mappés + données brutes
+        const dataToStore = {
+          _mapped: mappedFields,  // Champs mappés pour accès rapide
+          _raw: record,            // Données brutes complètes
+        };
+
         // Insérer prospect
         stmtInsert.run(
           prospectId,
           sourceId,
           validEmail,
-          JSON.stringify(record),
+          JSON.stringify(dataToStore),
           batchId,
           scrapingEnabled === 'true' ? 'pending' : 'skipped'
         );

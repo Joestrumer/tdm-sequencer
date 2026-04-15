@@ -4732,8 +4732,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Données</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Informations</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Historique</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Statut</th>
                 </tr>
               </thead>
@@ -4754,6 +4754,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                   prospects.map(prospect => {
                     const emailSources = prospect.email_sources || [];
                     const prospectData = prospect.data || {};
+                    const mapped = prospectData._mapped || {};
 
                     return (
                       <tr key={prospect.id} className="hover:bg-slate-50 transition-colors">
@@ -4772,12 +4773,21 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="text-xs text-slate-600 space-y-0.5 max-w-md">
-                            {prospectData && Object.entries(prospectData).slice(0, 3).map(([key, val]) => (
-                              <div key={key}>
-                                <span className="font-medium">{key}:</span> {String(val).substring(0, 50)}
-                              </div>
-                            ))}
+                          <div className="space-y-1">
+                            {mapped.nom && (
+                              <div className="font-medium text-slate-900 text-sm">{mapped.nom}</div>
+                            )}
+                            {mapped.ville && (
+                              <div className="text-xs text-slate-500">📍 {mapped.ville}</div>
+                            )}
+                            {mapped.site_web && (
+                              <a href={mapped.site_web} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline block truncate max-w-xs">
+                                🌐 {mapped.site_web}
+                              </a>
+                            )}
+                            {mapped.telephone && (
+                              <div className="text-xs text-slate-600">☎️ {mapped.telephone}</div>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
