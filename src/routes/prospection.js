@@ -454,6 +454,7 @@ module.exports = (db) => {
 
       let created = 0;
       let errors = [];
+      const leadIds = []; // Collecter les IDs des leads créés
 
       const transaction = db.transaction((hotelsToConvert) => {
         for (const hotel of hotelsToConvert) {
@@ -488,6 +489,7 @@ module.exports = (db) => {
             // Marquer l'hôtel comme converti
             markHotel.run(leadId, hotel.id);
 
+            leadIds.push(leadId); // Ajouter l'ID au tableau
             created++;
           } catch (err) {
             // Ignorer les erreurs de doublons (email déjà existant)
@@ -508,6 +510,7 @@ module.exports = (db) => {
         success: true,
         created,
         total: hotels.length,
+        lead_ids: leadIds, // Retourner les IDs des leads créés
         errors: errors.length > 0 ? errors : undefined,
       });
 
@@ -561,7 +564,8 @@ module.exports = (db) => {
 
       let query = `
         SELECT id, nom_commercial, commune, code_postal, site_internet,
-               contact_email, scraping_date, classement, capacite_accueil
+               contact_email, scraping_date, classement, capacite_accueil,
+               imported_as_lead, lead_id
         FROM hotels_france
         WHERE contact_email IS NOT NULL
           AND contact_email != ''

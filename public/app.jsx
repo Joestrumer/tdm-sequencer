@@ -4602,10 +4602,17 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                           />
                         </td>
                         <td className="px-4 py-3">
-                          <p className="text-sm font-medium text-slate-900">{email.nom_commercial}</p>
-                          {email.scraping_date && (
-                            <p className="text-xs text-slate-500">Scrapé le {new Date(email.scraping_date).toLocaleDateString('fr-FR')}</p>
-                          )}
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <p className="text-sm font-medium text-slate-900">{email.nom_commercial}</p>
+                              {email.scraping_date && (
+                                <p className="text-xs text-slate-500">Scrapé le {new Date(email.scraping_date).toLocaleDateString('fr-FR')}</p>
+                              )}
+                            </div>
+                            {email.imported_as_lead === 1 && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 whitespace-nowrap">✓ Lead créé</span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-3">
                           <a
