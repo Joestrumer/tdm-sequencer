@@ -3680,7 +3680,23 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     setProspectsLoading(true);
     try {
       const res = await api.get(`/imports/sources/${sourceId}/prospects?limit=100&offset=0`);
-      setProspects(res.prospects || []);
+
+      // Parser les champs JSON
+      const prospectsWithParsedData = (res.prospects || []).map(p => {
+        try {
+          return {
+            ...p,
+            data: p.data && typeof p.data === 'string' ? JSON.parse(p.data) : p.data,
+            scraped_data: p.scraped_data && typeof p.scraped_data === 'string' ? JSON.parse(p.scraped_data) : p.scraped_data,
+            email_sources: p.email_sources && typeof p.email_sources === 'string' ? JSON.parse(p.email_sources) : p.email_sources,
+          };
+        } catch (e) {
+          console.error('Erreur parsing prospect:', e);
+          return p;
+        }
+      });
+
+      setProspects(prospectsWithParsedData);
       setProspectsTotal(res.total || 0);
     } catch (err) {
       showToast('Erreur chargement prospects: ' + err.message, 'error');
@@ -4553,69 +4569,74 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                     </td>
                   </tr>
                 ) : (
-                  prospects.map(prospect => (
-                    <tr key={prospect.id} className="hover:bg-slate-50 transition-colors">
-                      <td className="px-4 py-3">
-                        <div className="text-sm font-medium text-slate-900">{prospect.email || '-'}</div>
-                        <div className="flex gap-2 mt-1">
-                          {prospect.email_type && (
-                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                              prospect.email_type === 'personal'
-                                ? 'bg-purple-50 text-purple-700'
-                                : 'bg-slate-100 text-slate-600'
-                            }`}>
-                              {prospect.email_type === 'personal' ? '👤 Personnel' : '📧 Générique'}
+                  prospects.map(prospect => {
+                    const emailSources = prospect.email_sources || [];
+                    const prospectData = prospect.data || {};
+
+                    return (
+                      <tr key={prospect.id} className="hover:bg-slate-50 transition-colors">
+                        <td className="px-4 py-3">
+                          <div className="text-sm font-medium text-slate-900">{prospect.email || '-'}</div>
+                          <div className="flex gap-2 mt-1">
+                            {prospect.email_type && (
+                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                                prospect.email_type === 'personal'
+                                  ? 'bg-purple-50 text-purple-700'
+                                  : 'bg-slate-100 text-slate-600'
+                              }`}>
+                                {prospect.email_type === 'personal' ? '👤 Personnel' : '📧 Générique'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="text-xs text-slate-600 space-y-0.5 max-w-md">
+                            {prospectData && Object.entries(prospectData).slice(0, 3).map(([key, val]) => (
+                              <div key={key}>
+                                <span className="font-medium">{key}:</span> {String(val).substring(0, 50)}
+                              </div>
+                            ))}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {!prospect.last_sequence_date && !prospect.last_campaign_date && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                              🆕 Nouveau
                             </span>
                           )}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="text-xs text-slate-600 space-y-0.5 max-w-md">
-                          {prospect.data && Object.entries(prospect.data).slice(0, 3).map(([key, val]) => (
-                            <div key={key}>
-                              <span className="font-medium">{key}:</span> {String(val).substring(0, 50)}
-                            </div>
-                          ))}
-                        </div>
-                      </td>
-                      <td className="px-4 py-3">
-                        {!prospect.last_sequence_date && !prospect.last_campaign_date && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                            🆕 Nouveau
-                          </span>
-                        )}
-                        {prospect.last_sequence_date && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                            📧 Séquence {new Date(prospect.last_sequence_date).toLocaleDateString('fr-FR')}
-                          </span>
-                        )}
-                        {prospect.last_campaign_date && (
-                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
-                            📢 Campagne {new Date(prospect.last_campaign_date).toLocaleDateString('fr-FR')}
-                          </span>
-                        )}
-                      </td>
-                      <td className="px-4 py-3">
-                        <div className="flex flex-wrap gap-1">
-                          {prospect.is_lead === 1 && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
-                              👤 Lead
+                          {prospect.last_sequence_date && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                              📧 Séquence {new Date(prospect.last_sequence_date).toLocaleDateString('fr-FR')}
                             </span>
                           )}
-                          {prospect.is_unsubscribed === 1 && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
-                              🚫 Désabonné
+                          {prospect.last_campaign_date && (
+                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                              📢 Campagne {new Date(prospect.last_campaign_date).toLocaleDateString('fr-FR')}
                             </span>
                           )}
-                          {prospect.email_sources && JSON.parse(prospect.email_sources).length > 1 && (
-                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
-                              ⚠️ Doublon ({JSON.parse(prospect.email_sources).length} sources)
-                            </span>
-                          )}
-                        </div>
-                      </td>
-                    </tr>
-                  ))
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
+                            {prospect.is_lead === 1 && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                                👤 Lead
+                              </span>
+                            )}
+                            {prospect.is_unsubscribed === 1 && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
+                                🚫 Désabonné
+                              </span>
+                            )}
+                            {Array.isArray(emailSources) && emailSources.length > 1 && (
+                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
+                                ⚠️ Doublon ({emailSources.length} sources)
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>
