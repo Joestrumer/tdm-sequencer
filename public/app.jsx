@@ -3445,31 +3445,86 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 };
 
 const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
+  const [step, setStep] = useState(1); // 1: Upload, 2: Mapping
   const [uploading, setUploading] = useState(false);
   const [sourceName, setSourceName] = useState('');
   const [scrapingEnabled, setScrapingEnabled] = useState(false);
+  const [detectedColumns, setDetectedColumns] = useState([]);
+  const [columnMapping, setColumnMapping] = useState({
+    nom: '',
+    email: '',
+    site_web: '',
+    ville: '',
+    telephone: '',
+    adresse: '',
+  });
+  const [fileData, setFileData] = useState(null);
   const fileInputRef = useRef(null);
 
-  const handleSubmit = async (e) => {
-    e.preventDefault();
+  const handleFileSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
 
+    setFileData(file);
+
+    // Parser le CSV côté client pour détecter les colonnes
+    try {
+      const text = await file.text();
+      const lines = text.split(/\r?\n/);
+      if (lines.length === 0) return;
+
+      // Détecter le séparateur (virgule ou point-virgule)
+      const firstLine = lines[0];
+      const separator = firstLine.includes(';') ? ';' : ',';
+
+      // Extraire les colonnes
+      const columns = firstLine.split(separator).map(c => c.trim().replace(/^"(.*)"$/, '$1'));
+      setDetectedColumns(columns);
+
+      // Auto-mapping intelligent
+      const autoMapping = { ...columnMapping };
+      columns.forEach(col => {
+        const colLower = col.toLowerCase();
+        if (/nom|raison|entreprise|etablissement|commercial/i.test(col)) autoMapping.nom = col;
+        if (/e-?mail|courriel|contact_email/i.test(col)) autoMapping.email = col;
+        if (/site|web|url|internet/i.test(col)) autoMapping.site_web = col;
+        if (/ville|commune|city/i.test(col)) autoMapping.ville = col;
+        if (/tel|phone|telephone/i.test(col)) autoMapping.telephone = col;
+        if (/adresse|address|rue/i.test(col)) autoMapping.adresse = col;
+      });
+      setColumnMapping(autoMapping);
+    } catch (err) {
+      console.error('Erreur parsing CSV:', err);
+      showToast('Erreur lecture CSV: ' + err.message, 'error');
+    }
+  };
+
+  const handleNext = () => {
     if (!sourceName.trim()) {
       showToast('Veuillez saisir un nom pour cette source', 'error');
       return;
     }
-
-    const file = fileInputRef.current?.files?.[0];
-    if (!file) {
+    if (!fileData) {
       showToast('Veuillez sélectionner un fichier CSV', 'error');
       return;
     }
+    if (detectedColumns.length === 0) {
+      showToast('Impossible de détecter les colonnes du CSV', 'error');
+      return;
+    }
+    setStep(2);
+  };
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
 
     setUploading(true);
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('file', fileData);
       formData.append('sourceName', sourceName);
       formData.append('scrapingEnabled', scrapingEnabled ? 'true' : 'false');
+      formData.append('columnMapping', JSON.stringify(columnMapping));
 
       const token = sessionStorage.getItem('tdm_token') || '';
       const res = await fetch('/api/imports/upload', {
@@ -3492,78 +3547,205 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
 
   return (
     <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
-      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
-        <form onSubmit={handleSubmit}>
-          {/* Header */}
-          <div className="flex items-center justify-between p-6 border-b border-slate-200">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[90vh] flex flex-col">
+        {/* Header */}
+        <div className="flex items-center justify-between p-6 border-b border-slate-200 flex-shrink-0">
+          <div>
             <h2 className="text-xl font-bold text-slate-900">📥 Importer CSV</h2>
-            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+            <p className="text-sm text-slate-500 mt-1">
+              {step === 1 ? 'Étape 1/2 : Sélection du fichier' : 'Étape 2/2 : Mapping des colonnes'}
+            </p>
           </div>
+          <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+        </div>
 
-          {/* Body */}
-          <div className="p-6 space-y-4">
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Nom de la source</label>
-              <input
-                type="text"
-                value={sourceName}
-                onChange={(e) => setSourceName(e.target.value)}
-                placeholder="Ex: Relais & Châteaux, Base Booking..."
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                required
-              />
-            </div>
+        {/* Body */}
+        <div className="p-6 space-y-4 overflow-y-auto flex-1">
+          {step === 1 ? (
+            <>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Nom de la source</label>
+                <input
+                  type="text"
+                  value={sourceName}
+                  onChange={(e) => setSourceName(e.target.value)}
+                  placeholder="Ex: Hôtels 5 étoiles Paris, Base Booking..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                />
+              </div>
 
-            <div>
-              <label className="block text-sm font-medium text-slate-700 mb-2">Fichier CSV</label>
-              <input
-                ref={fileInputRef}
-                type="file"
-                accept=".csv"
-                className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
-                required
-              />
-            </div>
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-2">Fichier CSV</label>
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".csv"
+                  onChange={handleFileSelect}
+                  className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                />
+                {detectedColumns.length > 0 && (
+                  <p className="text-xs text-emerald-600 mt-2">✓ {detectedColumns.length} colonnes détectées</p>
+                )}
+              </div>
 
-            <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-lg">
-              <input
-                type="checkbox"
-                id="scraping"
-                checked={scrapingEnabled}
-                onChange={(e) => setScrapingEnabled(e.target.checked)}
-                className="mt-1"
-              />
-              <div className="flex-1">
-                <label htmlFor="scraping" className="text-sm font-medium text-slate-700 cursor-pointer">
-                  Activer le scraping automatique
-                </label>
-                <p className="text-xs text-slate-500 mt-1">
-                  Extrait automatiquement les emails génériques depuis les sites web et cherche les contacts LinkedIn
+              <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-lg">
+                <input
+                  type="checkbox"
+                  id="scraping"
+                  checked={scrapingEnabled}
+                  onChange={(e) => setScrapingEnabled(e.target.checked)}
+                  className="mt-1"
+                />
+                <div className="flex-1">
+                  <label htmlFor="scraping" className="text-sm font-medium text-slate-700 cursor-pointer">
+                    Activer le scraping automatique
+                  </label>
+                  <p className="text-xs text-slate-500 mt-1">
+                    Extrait emails génériques + contacts LinkedIn depuis la colonne "Site web"
+                  </p>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <p className="text-sm text-blue-900">
+                  <strong>Mappez les colonnes importantes</strong> pour un affichage optimisé.
+                  Les colonnes non mappées restent disponibles dans les données brutes.
                 </p>
               </div>
-            </div>
-          </div>
 
-          {/* Footer */}
-          <div className="flex gap-3 justify-end p-6 border-t border-slate-200">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">
+                    Nom / Raison sociale <span className="text-red-500">*</span>
+                  </label>
+                  <select
+                    value={columnMapping.nom}
+                    onChange={(e) => setColumnMapping(m => ({ ...m, nom: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Non mappé --</option>
+                    {detectedColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
+                  <select
+                    value={columnMapping.email}
+                    onChange={(e) => setColumnMapping(m => ({ ...m, email: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Non mappé --</option>
+                    {detectedColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Site web</label>
+                  <select
+                    value={columnMapping.site_web}
+                    onChange={(e) => setColumnMapping(m => ({ ...m, site_web: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Non mappé --</option>
+                    {detectedColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Ville</label>
+                  <select
+                    value={columnMapping.ville}
+                    onChange={(e) => setColumnMapping(m => ({ ...m, ville: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Non mappé --</option>
+                    {detectedColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Téléphone</label>
+                  <select
+                    value={columnMapping.telephone}
+                    onChange={(e) => setColumnMapping(m => ({ ...m, telephone: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Non mappé --</option>
+                    {detectedColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+
+                <div>
+                  <label className="block text-sm font-medium text-slate-700 mb-2">Adresse</label>
+                  <select
+                    value={columnMapping.adresse}
+                    onChange={(e) => setColumnMapping(m => ({ ...m, adresse: e.target.value }))}
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
+                  >
+                    <option value="">-- Non mappé --</option>
+                    {detectedColumns.map(col => (
+                      <option key={col} value={col}>{col}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            </>
+          )}
+        </div>
+
+        {/* Footer */}
+        <div className="flex gap-3 justify-end p-6 border-t border-slate-200 flex-shrink-0">
+          {step === 2 && (
             <button
               type="button"
-              onClick={onClose}
+              onClick={() => setStep(1)}
               className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
               disabled={uploading}
             >
-              Annuler
+              ← Retour
             </button>
+          )}
+          <button
+            type="button"
+            onClick={onClose}
+            className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+            disabled={uploading}
+          >
+            Annuler
+          </button>
+          {step === 1 ? (
             <button
-              type="submit"
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
-              disabled={uploading}
+              type="button"
+              onClick={handleNext}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+            >
+              Suivant →
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={handleSubmit}
+              className="px-4 py-2 rounded-lg bg-emerald-600 text-white hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              disabled={uploading || !columnMapping.nom}
             >
               {uploading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
-              {uploading ? 'Import en cours...' : 'Importer'}
+              {uploading ? 'Import en cours...' : '✓ Importer'}
             </button>
-          </div>
-        </form>
+          )}
+        </div>
       </div>
     </div>
   );
