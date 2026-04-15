@@ -3444,6 +3444,131 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   );
 };
 
+const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
+  const [uploading, setUploading] = useState(false);
+  const [sourceName, setSourceName] = useState('');
+  const [scrapingEnabled, setScrapingEnabled] = useState(false);
+  const fileInputRef = useRef(null);
+
+  const handleSubmit = async (e) => {
+    e.preventDefault();
+
+    if (!sourceName.trim()) {
+      showToast('Veuillez saisir un nom pour cette source', 'error');
+      return;
+    }
+
+    const file = fileInputRef.current?.files?.[0];
+    if (!file) {
+      showToast('Veuillez sélectionner un fichier CSV', 'error');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const formData = new FormData();
+      formData.append('file', file);
+      formData.append('sourceName', sourceName);
+      formData.append('scrapingEnabled', scrapingEnabled ? 'true' : 'false');
+
+      const token = sessionStorage.getItem('tdm_token') || '';
+      const res = await fetch('/api/imports/upload', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token },
+        body: formData,
+      });
+
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error || 'Erreur upload');
+
+      showToast(`✅ Import réussi : ${data.total_records} prospects importés (${data.valid_emails} emails valides, ${data.duplicates} doublons)`, 'success');
+      onSuccess();
+      onClose();
+    } catch (err) {
+      showToast('Erreur import : ' + err.message, 'error');
+    }
+    setUploading(false);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+      <div className="bg-white rounded-xl shadow-2xl w-full max-w-lg">
+        <form onSubmit={handleSubmit}>
+          {/* Header */}
+          <div className="flex items-center justify-between p-6 border-b border-slate-200">
+            <h2 className="text-xl font-bold text-slate-900">📥 Importer CSV</h2>
+            <button type="button" onClick={onClose} className="text-slate-400 hover:text-slate-600 text-2xl leading-none">&times;</button>
+          </div>
+
+          {/* Body */}
+          <div className="p-6 space-y-4">
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Nom de la source</label>
+              <input
+                type="text"
+                value={sourceName}
+                onChange={(e) => setSourceName(e.target.value)}
+                placeholder="Ex: Relais & Châteaux, Base Booking..."
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                required
+              />
+            </div>
+
+            <div>
+              <label className="block text-sm font-medium text-slate-700 mb-2">Fichier CSV</label>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept=".csv"
+                className="w-full text-sm text-slate-500 file:mr-4 file:py-2 file:px-4 file:rounded-lg file:border-0 file:text-sm file:font-medium file:bg-blue-50 file:text-blue-700 hover:file:bg-blue-100"
+                required
+              />
+            </div>
+
+            <div className="flex items-start gap-3 p-4 bg-slate-50 rounded-lg">
+              <input
+                type="checkbox"
+                id="scraping"
+                checked={scrapingEnabled}
+                onChange={(e) => setScrapingEnabled(e.target.checked)}
+                className="mt-1"
+              />
+              <div className="flex-1">
+                <label htmlFor="scraping" className="text-sm font-medium text-slate-700 cursor-pointer">
+                  Activer le scraping automatique
+                </label>
+                <p className="text-xs text-slate-500 mt-1">
+                  Extrait automatiquement les emails génériques depuis les sites web et cherche les contacts LinkedIn
+                </p>
+              </div>
+            </div>
+          </div>
+
+          {/* Footer */}
+          <div className="flex gap-3 justify-end p-6 border-t border-slate-200">
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-4 py-2 rounded-lg border border-slate-300 text-slate-700 hover:bg-slate-50"
+              disabled={uploading}
+            >
+              Annuler
+            </button>
+            <button
+              type="submit"
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              disabled={uploading}
+            >
+              {uploading && <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />}
+              {uploading ? 'Import en cours...' : 'Importer'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+};
+
 const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [activeTab, setActiveTab] = useState('hotels'); // 'hotels', 'contacts' ou 'emails-generiques'
 
@@ -5092,6 +5217,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
           </div>
         </div>
       )}
+
+      {/* Modal Import CSV */}
+      {showImportModal && <ModalImportCSV onClose={() => setShowImportModal(false)} onSuccess={() => { chargerSources(); showToast('✅ Import réussi', 'success'); }} showToast={showToast} />}
     </div>
   );
 };
