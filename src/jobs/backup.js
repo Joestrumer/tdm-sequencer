@@ -16,7 +16,8 @@ const BACKUP_BRANCH = 'backups';
 const TABLES = [
   'leads', 'sequences', 'etapes', 'inscriptions',
   'emails', 'events', 'email_blocklist', 'email_templates',
-  'envoi_quota', 'config'
+  'envoi_quota', 'config',
+  'hotels_france', 'import_sources', 'imported_prospects', 'email_registry'
 ];
 
 function exporterDonnees(db) {
