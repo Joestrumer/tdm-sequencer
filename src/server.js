@@ -99,6 +99,7 @@ app.use('/api/dashboard',     requireAccessAuto('dashboard'), require('./routes/
 app.use('/api/stats',         requireAccessAuto('ventes'), require('./routes/stats')(db));
 app.use('/api/leads',         requireAccessAuto('leads'), require('./routes/leads')(db));
 app.use('/api/prospection',   requireAccessAuto('leads'), require('./routes/prospection')(db));
+app.use('/api/imports',       requireAccessAuto('leads'), require('./routes/imports')(db));
 app.use('/api/hubspot',       requireAccessAuto('leads'), require('./routes/hubspot')(db));
 app.use('/api/sequences',     requireAccessAuto('campagnes'), require('./routes/sequences')(db));
 app.use('/api/email-templates', requireAccessAuto('campagnes'), require('./routes/emailTemplates')(db));

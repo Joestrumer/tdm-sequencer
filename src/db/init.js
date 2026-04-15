@@ -483,6 +483,59 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_hotels_france_capacite ON hotels_france(capacite_accueil);
   CREATE INDEX IF NOT EXISTS idx_hotels_france_chambres ON hotels_france(nombre_chambres);
   CREATE UNIQUE INDEX IF NOT EXISTS idx_hotels_france_unique ON hotels_france(nom_commercial, code_postal);
+
+  -- ─── Tables Import Multi-Sources (Architecture Flexible) ──────────────────────
+
+  CREATE TABLE IF NOT EXISTS import_sources (
+    id TEXT PRIMARY KEY,
+    nom TEXT UNIQUE NOT NULL,
+    type TEXT NOT NULL CHECK(type IN ('csv_import', 'scraping', 'manual')),
+    colonnes TEXT DEFAULT '[]',
+    scraping_enabled INTEGER DEFAULT 0,
+    scraping_config TEXT,
+    scraping_status TEXT,
+    total_records INTEGER DEFAULT 0,
+    scraped_records INTEGER DEFAULT 0,
+    import_date TEXT DEFAULT (datetime('now')),
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS imported_prospects (
+    id TEXT PRIMARY KEY,
+    source_id TEXT NOT NULL REFERENCES import_sources(id) ON DELETE CASCADE,
+    email TEXT,
+    data TEXT NOT NULL,
+    scraping_status TEXT DEFAULT 'pending',
+    scraping_date TEXT,
+    scraping_error TEXT,
+    scraped_data TEXT,
+    import_batch TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS email_registry (
+    email TEXT PRIMARY KEY,
+    email_type TEXT NOT NULL CHECK(email_type IN ('generic', 'personal')),
+    sources TEXT DEFAULT '[]',
+    last_sequence_date TEXT,
+    last_sequence_id TEXT,
+    last_campaign_date TEXT,
+    last_campaign_id TEXT,
+    total_emails_sent INTEGER DEFAULT 0,
+    is_lead INTEGER DEFAULT 0,
+    lead_id TEXT,
+    is_unsubscribed INTEGER DEFAULT 0,
+    first_seen_date TEXT DEFAULT (datetime('now')),
+    last_updated TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_import_sources_type ON import_sources(type);
+  CREATE INDEX IF NOT EXISTS idx_imported_prospects_source ON imported_prospects(source_id);
+  CREATE INDEX IF NOT EXISTS idx_imported_prospects_email ON imported_prospects(email);
+  CREATE INDEX IF NOT EXISTS idx_imported_prospects_scraping ON imported_prospects(scraping_status);
+  CREATE INDEX IF NOT EXISTS idx_email_registry_type ON email_registry(email_type);
+  CREATE INDEX IF NOT EXISTS idx_email_registry_lead ON email_registry(is_lead);
+  CREATE INDEX IF NOT EXISTS idx_email_registry_updated ON email_registry(last_updated);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
