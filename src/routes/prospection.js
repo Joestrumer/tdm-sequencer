@@ -35,22 +35,14 @@ module.exports = (db) => {
     let firstRow = null;
 
     try {
-      // Détection encodage et séparateur
-      // Essayer UTF-8 puis ISO-8859-1 (Latin-1, courant pour CSV français)
-      let rawData;
-      let encoding = 'utf8';
-
-      try {
-        rawData = fs.readFileSync(req.file.path, 'utf8');
-        // Vérifier si des caractères invalides (signe que ce n'est pas UTF-8)
-        if (rawData.includes('�') || /[\x80-\xFF]/.test(rawData)) {
-          encoding = 'latin1';
-          rawData = fs.readFileSync(req.file.path, 'latin1');
-        }
-      } catch (err) {
-        encoding = 'latin1';
-        rawData = fs.readFileSync(req.file.path, 'latin1');
-      }
+      // Détection encodage avec chardet (fiable pour CSV français)
+      const chardet = require('chardet');
+      const rawBuffer = fs.readFileSync(req.file.path);
+      const detected = chardet.detect(rawBuffer);
+      const isLatin = detected && (detected.includes('ISO-8859') || detected.includes('windows') || detected.includes('Windows'));
+      const encoding = isLatin ? 'latin1' : 'utf8';
+      let rawData = rawBuffer.toString(encoding);
+      logger.info(`📄 Encodage détecté: ${detected} → utilisation ${encoding}`);
 
       // Analyser les retours à la ligne
       const hasLF = rawData.includes('\n');
