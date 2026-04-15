@@ -37,32 +37,56 @@ module.exports = (db) => {
     try {
       // Détection encodage et séparateur
       // Essayer UTF-8 puis ISO-8859-1 (Latin-1, courant pour CSV français)
-      let sampleData;
+      let rawData;
       let encoding = 'utf8';
 
       try {
-        sampleData = fs.readFileSync(req.file.path, 'utf8').slice(0, 1000);
+        rawData = fs.readFileSync(req.file.path, 'utf8');
         // Vérifier si des caractères invalides (signe que ce n'est pas UTF-8)
-        if (sampleData.includes('�') || /[\x80-\xFF]/.test(sampleData)) {
+        if (rawData.includes('�') || /[\x80-\xFF]/.test(rawData)) {
           encoding = 'latin1';
-          sampleData = fs.readFileSync(req.file.path, 'latin1').slice(0, 1000);
+          rawData = fs.readFileSync(req.file.path, 'latin1');
         }
       } catch (err) {
         encoding = 'latin1';
-        sampleData = fs.readFileSync(req.file.path, 'latin1').slice(0, 1000);
+        rawData = fs.readFileSync(req.file.path, 'latin1');
       }
 
+      // Analyser les retours à la ligne
+      const hasLF = rawData.includes('\n');
+      const hasCR = rawData.includes('\r');
+      const linebreakType = hasLF && hasCR ? 'CRLF' : hasLF ? 'LF' : hasCR ? 'CR' : 'NONE';
+
+      logger.info(`📄 Analyse fichier CSV: encodage=${encoding}, retours à la ligne=${linebreakType}`);
+
+      // Normaliser les retours à la ligne (CR seul → LF, CRLF → LF)
+      let normalizedData = rawData.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      // Détecter le séparateur
+      const sampleData = normalizedData.slice(0, 2000);
       const separator = sampleData.includes(';') && sampleData.split(';').length > sampleData.split(',').length ? ';' : ',';
 
-      logger.info(`Import CSV: encodage=${encoding}, séparateur="${separator}"`);
+      // Compter les lignes attendues
+      const lines = normalizedData.split('\n').filter(l => l.trim().length > 0);
+      logger.info(`Import CSV: séparateur="${separator}", ${lines.length} ligne(s) détectée(s)`);
 
-      // Lecture et parsing du CSV
+      // Si moins de 5 lignes, c'est probablement un problème
+      if (lines.length < 5) {
+        logger.warn(`⚠️ Fichier CSV suspect: seulement ${lines.length} ligne(s). Vérifiez le format du fichier.`);
+      }
+
+      // Sauvegarder le fichier normalisé temporairement
+      const normalizedPath = req.file.path + '.normalized';
+      fs.writeFileSync(normalizedPath, normalizedData, 'utf8');
+
+      // Lecture et parsing du CSV (utiliser le fichier normalisé)
       await new Promise((resolve, reject) => {
-        fs.createReadStream(req.file.path, { encoding })
+        fs.createReadStream(normalizedPath, { encoding: 'utf8' })
           .pipe(csv({
             separator,
             skipEmptyLines: true,
-            trim: true
+            trim: true,
+            strict: false // Mode permissif pour gérer les CSV malformés
           }))
           .on('data', (row) => {
             lineNumber++;
@@ -114,8 +138,11 @@ module.exports = (db) => {
           .on('error', reject);
       });
 
-      // Suppression du fichier temporaire
+      // Suppression des fichiers temporaires
       fs.unlinkSync(req.file.path);
+      if (fs.existsSync(normalizedPath)) {
+        fs.unlinkSync(normalizedPath);
+      }
 
       if (results.length === 0) {
         return res.status(400).json({
@@ -180,9 +207,13 @@ module.exports = (db) => {
 
     } catch (err) {
       logger.error('Erreur import CSV:', err);
-      // Nettoyage du fichier temporaire en cas d'erreur
+      // Nettoyage des fichiers temporaires en cas d'erreur
       if (req.file && fs.existsSync(req.file.path)) {
         fs.unlinkSync(req.file.path);
+      }
+      const normalizedPath = req.file?.path + '.normalized';
+      if (normalizedPath && fs.existsSync(normalizedPath)) {
+        fs.unlinkSync(normalizedPath);
       }
       res.status(500).json({ error: 'Erreur lors de l\'import du CSV', details: err.message });
     }
