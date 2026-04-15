@@ -4397,7 +4397,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
         </div>
       </div>
 
-      {/* Tableau */}
+      {/* Tableau Hotels France */}
+      {activeSource === 'hotels_france' && (
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full">
@@ -4523,6 +4524,104 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
           </div>
         )}
       </div>
+      )}
+
+      {/* Tableau Prospects (sources importées) */}
+      {activeSource !== 'hotels_france' && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+          <div className="overflow-x-auto">
+            <table className="w-full">
+              <thead className="bg-slate-50 border-b border-slate-200">
+                <tr>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Email</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Données</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Type</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Statut</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {prospectsLoading ? (
+                  <tr>
+                    <td colSpan="4" className="px-4 py-12 text-center text-sm text-slate-400">
+                      Chargement...
+                    </td>
+                  </tr>
+                ) : prospects.length === 0 ? (
+                  <tr>
+                    <td colSpan="4" className="px-4 py-12 text-center text-sm text-slate-400">
+                      Aucun prospect trouvé.
+                    </td>
+                  </tr>
+                ) : (
+                  prospects.map(prospect => (
+                    <tr key={prospect.id} className="hover:bg-slate-50 transition-colors">
+                      <td className="px-4 py-3">
+                        <div className="text-sm font-medium text-slate-900">{prospect.email || '-'}</div>
+                        <div className="flex gap-2 mt-1">
+                          {prospect.email_type && (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
+                              prospect.email_type === 'personal'
+                                ? 'bg-purple-50 text-purple-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {prospect.email_type === 'personal' ? '👤 Personnel' : '📧 Générique'}
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="text-xs text-slate-600 space-y-0.5 max-w-md">
+                          {prospect.data && Object.entries(prospect.data).slice(0, 3).map(([key, val]) => (
+                            <div key={key}>
+                              <span className="font-medium">{key}:</span> {String(val).substring(0, 50)}
+                            </div>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-4 py-3">
+                        {!prospect.last_sequence_date && !prospect.last_campaign_date && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
+                            🆕 Nouveau
+                          </span>
+                        )}
+                        {prospect.last_sequence_date && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
+                            📧 Séquence {new Date(prospect.last_sequence_date).toLocaleDateString('fr-FR')}
+                          </span>
+                        )}
+                        {prospect.last_campaign_date && (
+                          <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
+                            📢 Campagne {new Date(prospect.last_campaign_date).toLocaleDateString('fr-FR')}
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex flex-wrap gap-1">
+                          {prospect.is_lead === 1 && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
+                              👤 Lead
+                            </span>
+                          )}
+                          {prospect.is_unsubscribed === 1 && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
+                              🚫 Désabonné
+                            </span>
+                          )}
+                          {prospect.email_sources && JSON.parse(prospect.email_sources).length > 1 && (
+                            <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
+                              ⚠️ Doublon ({JSON.parse(prospect.email_sources).length} sources)
+                            </span>
+                          )}
+                        </div>
+                      </td>
+                    </tr>
+                  ))
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
         </>
       )}
 
