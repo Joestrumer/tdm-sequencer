@@ -3463,6 +3463,7 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
     adresse: '',
     classement: '',
   });
+  const [customColumns, setCustomColumns] = useState([]); // [{label: 'RANG', csvColumn: 'RANG'}]
   const [fileData, setFileData] = useState(null);
   const fileInputRef = useRef(null);
 
@@ -3535,7 +3536,8 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
       formData.append('file', fileData);
       formData.append('sourceName', sourceName);
       formData.append('scrapingEnabled', scrapingEnabled ? 'true' : 'false');
-      formData.append('columnMapping', JSON.stringify(columnMapping));
+      const fullMapping = { ...columnMapping, _custom: customColumns };
+      formData.append('columnMapping', JSON.stringify(fullMapping));
 
       const token = sessionStorage.getItem('tdm_token') || '';
       const res = await fetch('/api/imports/upload', {
@@ -3626,6 +3628,7 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
                 </p>
               </div>
 
+              <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Champs standards</p>
               <div className="grid grid-cols-2 gap-3">
                 {[
                   { key: 'nom', label: 'Nom / Raison sociale', required: true },
@@ -3657,6 +3660,54 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
                   </div>
                 ))}
               </div>
+
+              {/* Colonnes personnalisées */}
+              {(() => {
+                const mappedCols = new Set(Object.values(columnMapping).filter(Boolean));
+                customColumns.forEach(c => mappedCols.add(c.csvColumn));
+                const unmappedCols = detectedColumns.filter(c => !mappedCols.has(c));
+
+                return (
+                  <div className="mt-4 pt-4 border-t border-slate-200">
+                    <div className="flex items-center justify-between mb-3">
+                      <p className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Colonnes supplémentaires</p>
+                      <span className="text-xs text-slate-400">{unmappedCols.length} colonne(s) non mappée(s)</span>
+                    </div>
+
+                    {customColumns.length > 0 && (
+                      <div className="grid grid-cols-2 gap-2 mb-3">
+                        {customColumns.map((cc, idx) => (
+                          <div key={idx} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-1.5">
+                            <span className="text-xs font-medium text-slate-700 flex-1 truncate">{cc.csvColumn}</span>
+                            <button
+                              type="button"
+                              onClick={() => setCustomColumns(prev => prev.filter((_, i) => i !== idx))}
+                              className="text-slate-400 hover:text-red-500 text-xs"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {unmappedCols.length > 0 && (
+                      <div className="flex flex-wrap gap-2">
+                        {unmappedCols.map(col => (
+                          <button
+                            key={col}
+                            type="button"
+                            onClick={() => setCustomColumns(prev => [...prev, { label: col, csvColumn: col }])}
+                            className="px-2.5 py-1 rounded-lg border border-dashed border-slate-300 text-xs text-slate-600 hover:border-blue-400 hover:text-blue-600 hover:bg-blue-50 transition-colors"
+                          >
+                            + {col}
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })()}
             </>
           )}
         </div>
@@ -3717,6 +3768,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [prospectsTotal, setProspectsTotal] = useState(0);
   const [prospectsLoading, setProspectsLoading] = useState(false);
   const [selectedProspects, setSelectedProspects] = useState(new Set());
+  const [prospectsSearch, setProspectsSearch] = useState('');
+  const [prospectsFilterCol, setProspectsFilterCol] = useState(''); // colonne filtrée
+  const [prospectsFilterVal, setProspectsFilterVal] = useState(''); // valeur filtre
 
   // States Hotels France (ancien système - toujours utilisé)
   const [hotels, setHotels] = useState([]);
@@ -3816,7 +3870,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
     setProspectsLoading(true);
     try {
-      const res = await api.get(`/imports/sources/${sourceId}/prospects?limit=100&offset=0`);
+      const searchParam = prospectsSearch ? `&search=${encodeURIComponent(prospectsSearch)}` : '';
+      const res = await api.get(`/imports/sources/${sourceId}/prospects?limit=200&offset=0${searchParam}`);
 
       // Parser les champs JSON
       const prospectsWithParsedData = (res.prospects || []).map(p => {
@@ -3849,7 +3904,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     if (activeTab === 'hotels' && activeSource && activeSource !== 'hotels_france') {
       chargerProspects(activeSource);
     }
-  }, [activeSource, activeTab]);
+  }, [activeSource, activeTab, prospectsSearch]);
 
   const handleImport = async (e) => {
     const file = e.target.files?.[0];
@@ -4181,17 +4236,13 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       });
 
       if (res.created > 0) {
-        showToast(`✅ ${res.created} lead(s) créé(s)`, 'success');
-        setCreatedLeadIds(res.lead_ids || []);
+        showToast(`${res.created} lead(s) créé(s)`, 'success');
         setSelectedEmails(new Set());
-        setShowEmailsSequenceModal(true);
         chargerEmailsGeneriques();
+      } else if (res.errors?.length > 0) {
+        showToast(`Aucun nouveau lead créé (${res.errors.length} déjà existant(s))`, 'info');
       } else {
         showToast('Aucun email éligible pour conversion', 'info');
-      }
-
-      if (res.errors && res.errors.length > 0) {
-        console.warn('Erreurs de conversion:', res.errors);
       }
     } catch (err) {
       showToast('Erreur conversion: ' + err.message, 'error');
@@ -4556,68 +4607,139 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       )}
 
       {/* Actions pour sources importées */}
-      {activeSource !== 'hotels_france' && (
-      <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
-        <div className="flex flex-wrap items-center gap-3">
-          <div className="flex-1">
-            <p className="text-sm font-medium text-slate-900">
-              {importSources.find(s => s.id === activeSource)?.nom || 'Source'}
-            </p>
-            <p className="text-xs text-slate-500">
-              {prospectsTotal} prospect(s) importé(s)
-              {selectedProspects.size > 0 && ` — ${selectedProspects.size} sélectionné(s)`}
-            </p>
+      {activeSource !== 'hotels_france' && (() => {
+        // Détecter les colonnes disponibles pour les filtres
+        const sourceInfo = importSources.find(s => s.id === activeSource);
+        const sourceColonnes = sourceInfo?.colonnes ? JSON.parse(sourceInfo.colonnes) : {};
+        const mappingInfo = sourceColonnes.mapping || {};
+        const customCols = Array.isArray(mappingInfo._custom) ? mappingInfo._custom : [];
+        // Colonnes filtrables = colonnes mappées + custom
+        const filterableCols = [
+          mappingInfo.nom && { key: 'nom', label: 'Nom', col: mappingInfo.nom },
+          mappingInfo.ville && { key: 'ville', label: 'Ville', col: mappingInfo.ville },
+          mappingInfo.code_postal && { key: 'code_postal', label: 'Code postal', col: mappingInfo.code_postal },
+          mappingInfo.classement && { key: 'classement', label: 'Classement', col: mappingInfo.classement },
+          ...customCols.map(c => ({ key: `custom_${c.csvColumn}`, label: c.csvColumn, col: c.csvColumn, isCustom: true })),
+        ].filter(Boolean);
+
+        // Valeurs uniques pour le filtre sélectionné
+        const filterValues = prospectsFilterCol ? [...new Set(prospects.map(p => {
+          const mapped = p.data?._mapped || {};
+          if (prospectsFilterCol.startsWith('custom_')) {
+            return mapped._custom?.[prospectsFilterCol.replace('custom_', '')] || '';
+          }
+          return mapped[prospectsFilterCol] || '';
+        }).filter(Boolean))].sort() : [];
+
+        return (
+        <>
+        <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+          <div className="flex flex-wrap items-center gap-3 mb-3">
+            <div className="flex-1">
+              <p className="text-sm font-medium text-slate-900">
+                {sourceInfo?.nom || 'Source'}
+              </p>
+              <p className="text-xs text-slate-500">
+                {prospectsTotal} prospect(s) importé(s)
+                {selectedProspects.size > 0 && ` — ${selectedProspects.size} sélectionné(s)`}
+              </p>
+            </div>
+
+            {selectedProspects.size > 0 && !readOnly && (
+              <button
+                onClick={async () => {
+                  const selected = prospects.filter(p => selectedProspects.has(p.id));
+                  const withEmail = selected.filter(p => p.email);
+                  if (withEmail.length === 0) {
+                    showToast('Aucun prospect sélectionné avec email', 'error');
+                    return;
+                  }
+                  if (!confirm(`Convertir ${withEmail.length} prospect(s) en leads ?\n${selected.length - withEmail.length > 0 ? `(${selected.length - withEmail.length} ignoré(s) sans email)` : ''}`)) return;
+                  try {
+                    const res = await api.post('/imports/prospects-to-leads', {
+                      prospect_ids: withEmail.map(p => p.id),
+                    });
+                    showToast(`${res.created} lead(s) créé(s)${res.errors?.length ? `, ${res.errors.length} erreur(s)` : ''}`, 'success');
+                    setSelectedProspects(new Set());
+                    chargerProspects(activeSource);
+                  } catch (err) {
+                    showToast('Erreur conversion: ' + err.message, 'error');
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 flex items-center gap-2"
+              >
+                Convertir en leads ({selectedProspects.size})
+              </button>
+            )}
+
+            {!readOnly && (
+              <button
+                onClick={async () => {
+                  if (!confirm(`Supprimer la source "${sourceInfo?.nom}" et tous ses ${prospectsTotal} prospects ?\n\nCette action est irréversible.`)) return;
+                  try {
+                    await api.delete(`/imports/sources/${activeSource}`);
+                    showToast('Source supprimée', 'success');
+                    setActiveSource('hotels_france');
+                    chargerSources();
+                  } catch (err) {
+                    showToast('Erreur suppression: ' + err.message, 'error');
+                  }
+                }}
+                className="px-4 py-2 rounded-lg border border-red-300 text-red-600 text-sm font-medium hover:bg-red-50 flex items-center gap-2"
+              >
+                Supprimer cette source
+              </button>
+            )}
           </div>
 
-          {selectedProspects.size > 0 && !readOnly && (
-            <button
-              onClick={async () => {
-                const selected = prospects.filter(p => selectedProspects.has(p.id));
-                const withEmail = selected.filter(p => p.email);
-                if (withEmail.length === 0) {
-                  showToast('Aucun prospect sélectionné avec email', 'error');
-                  return;
-                }
-                if (!confirm(`Convertir ${withEmail.length} prospect(s) en leads ?\n${selected.length - withEmail.length > 0 ? `(${selected.length - withEmail.length} ignoré(s) sans email)` : ''}`)) return;
-                try {
-                  const res = await api.post('/imports/prospects-to-leads', {
-                    prospect_ids: withEmail.map(p => p.id),
-                  });
-                  showToast(`✅ ${res.created} lead(s) créé(s)${res.errors?.length ? `, ${res.errors.length} erreur(s)` : ''}`, 'success');
-                  setSelectedProspects(new Set());
-                  chargerProspects(activeSource);
-                } catch (err) {
-                  showToast('Erreur conversion: ' + err.message, 'error');
-                }
-              }}
-              className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 flex items-center gap-2"
-            >
-              → Convertir en leads ({selectedProspects.size})
-            </button>
-          )}
-
-          {!readOnly && (
-            <button
-              onClick={async () => {
-                const source = importSources.find(s => s.id === activeSource);
-                if (!confirm(`Supprimer la source "${source?.nom}" et tous ses ${prospectsTotal} prospects ?\n\nCette action est irréversible.`)) return;
-                try {
-                  await api.delete(`/imports/sources/${activeSource}`);
-                  showToast('Source supprimée', 'success');
-                  setActiveSource('hotels_france');
-                  chargerSources();
-                } catch (err) {
-                  showToast('Erreur suppression: ' + err.message, 'error');
-                }
-              }}
-              className="px-4 py-2 rounded-lg border border-red-300 text-red-600 text-sm font-medium hover:bg-red-50 flex items-center gap-2"
-            >
-              Supprimer cette source
-            </button>
-          )}
+          {/* Filtres */}
+          <div className="flex flex-wrap items-center gap-2 pt-3 border-t border-slate-100">
+            <input
+              type="text"
+              placeholder="Rechercher..."
+              value={prospectsSearch}
+              onChange={(e) => setProspectsSearch(e.target.value)}
+              className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm w-48"
+            />
+            {filterableCols.length > 0 && (
+              <>
+                <select
+                  value={prospectsFilterCol}
+                  onChange={(e) => { setProspectsFilterCol(e.target.value); setProspectsFilterVal(''); }}
+                  className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm"
+                >
+                  <option value="">Filtrer par...</option>
+                  {filterableCols.map(fc => (
+                    <option key={fc.key} value={fc.key}>{fc.label}</option>
+                  ))}
+                </select>
+                {prospectsFilterCol && filterValues.length > 0 && (
+                  <select
+                    value={prospectsFilterVal}
+                    onChange={(e) => setProspectsFilterVal(e.target.value)}
+                    className="px-3 py-1.5 rounded-lg border border-slate-300 text-sm"
+                  >
+                    <option value="">Toutes les valeurs</option>
+                    {filterValues.map(v => (
+                      <option key={v} value={v}>{v}</option>
+                    ))}
+                  </select>
+                )}
+              </>
+            )}
+            {(prospectsSearch || prospectsFilterVal) && (
+              <button
+                onClick={() => { setProspectsSearch(''); setProspectsFilterCol(''); setProspectsFilterVal(''); }}
+                className="px-3 py-1.5 rounded-lg text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100"
+              >
+                Effacer filtres
+              </button>
+            )}
+          </div>
         </div>
-      </div>
-      )}
+        </>
+        );
+      })()}
 
       {/* Tableau Hotels France */}
       {activeSource === 'hotels_france' && (
@@ -4749,7 +4871,28 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       )}
 
       {/* Tableau Prospects (sources importées) */}
-      {activeSource !== 'hotels_france' && (
+      {activeSource !== 'hotels_france' && (() => {
+        // Déterminer les colonnes custom de la source
+        const srcInfo = importSources.find(s => s.id === activeSource);
+        const srcColonnes = srcInfo?.colonnes ? JSON.parse(srcInfo.colonnes) : {};
+        const srcMapping = srcColonnes.mapping || {};
+        const srcCustomCols = Array.isArray(srcMapping._custom) ? srcMapping._custom : [];
+        const colSpanCount = 6 + srcCustomCols.length;
+
+        // Filtrage client
+        const filteredProspects = prospects.filter(p => {
+          if (!prospectsFilterCol || !prospectsFilterVal) return true;
+          const mapped = p.data?._mapped || {};
+          let val;
+          if (prospectsFilterCol.startsWith('custom_')) {
+            val = mapped._custom?.[prospectsFilterCol.replace('custom_', '')] || '';
+          } else {
+            val = mapped[prospectsFilterCol] || '';
+          }
+          return val === prospectsFilterVal;
+        });
+
+        return (
         <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <div className="overflow-x-auto">
             <table className="w-full">
@@ -4758,12 +4901,12 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                   <th className="w-8 px-4 py-3">
                     <input
                       type="checkbox"
-                      checked={prospects.length > 0 && selectedProspects.size === prospects.length}
+                      checked={filteredProspects.length > 0 && selectedProspects.size === filteredProspects.length}
                       onChange={() => {
-                        if (selectedProspects.size === prospects.length) {
+                        if (selectedProspects.size === filteredProspects.length) {
                           setSelectedProspects(new Set());
                         } else {
-                          setSelectedProspects(new Set(prospects.map(p => p.id)));
+                          setSelectedProspects(new Set(filteredProspects.map(p => p.id)));
                         }
                       }}
                       className="w-4 h-4"
@@ -4772,6 +4915,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Contact</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Établissement</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Email</th>
+                  {srcCustomCols.map(cc => (
+                    <th key={cc.csvColumn} className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">{cc.csvColumn}</th>
+                  ))}
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Historique</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Statut</th>
                 </tr>
@@ -4779,18 +4925,18 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
               <tbody className="divide-y divide-slate-100">
                 {prospectsLoading ? (
                   <tr>
-                    <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan={colSpanCount} className="px-4 py-12 text-center text-sm text-slate-400">
                       Chargement...
                     </td>
                   </tr>
-                ) : prospects.length === 0 ? (
+                ) : filteredProspects.length === 0 ? (
                   <tr>
-                    <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan={colSpanCount} className="px-4 py-12 text-center text-sm text-slate-400">
                       Aucun prospect trouvé.
                     </td>
                   </tr>
                 ) : (
-                  prospects.map(prospect => {
+                  filteredProspects.map(prospect => {
                     const prospectData = prospect.data || {};
                     const mapped = prospectData._mapped || {};
 
@@ -4851,6 +4997,11 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                             </span>
                           )}
                         </td>
+                        {srcCustomCols.map(cc => (
+                          <td key={cc.csvColumn} className="px-4 py-3 text-sm text-slate-700">
+                            {mapped._custom?.[cc.csvColumn] || '-'}
+                          </td>
+                        ))}
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
                             {!prospect.last_sequence_date && !prospect.last_campaign_date && prospect.email && (
@@ -4893,15 +5044,16 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
           </div>
 
           {/* Pagination prospects */}
-          {prospectsTotal > 100 && (
+          {prospectsTotal > 200 && (
             <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-between">
               <p className="text-sm text-slate-600">
-                {prospects.length} sur {prospectsTotal}
+                {filteredProspects.length} affichés sur {prospectsTotal}
               </p>
             </div>
           )}
         </div>
-      )}
+        );
+      })()}
         </>
       )}
 

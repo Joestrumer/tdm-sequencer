@@ -248,6 +248,16 @@ module.exports = (db) => {
           classement: mapping.classement ? record[mapping.classement] : null,
         };
 
+        // Colonnes personnalisées
+        if (Array.isArray(mapping._custom)) {
+          mappedFields._custom = {};
+          for (const cc of mapping._custom) {
+            if (cc.csvColumn && record[cc.csvColumn] !== undefined) {
+              mappedFields._custom[cc.csvColumn] = record[cc.csvColumn];
+            }
+          }
+        }
+
         // Stocker avec champs mappés + données brutes
         const dataToStore = {
           _mapped: mappedFields,  // Champs mappés pour accès rapide
