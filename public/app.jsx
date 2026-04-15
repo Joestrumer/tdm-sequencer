@@ -3477,6 +3477,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [emailsTotal, setEmailsTotal] = useState(0);
   const [emailsFilter, setEmailsFilter] = useState({ search: '' });
   const [emailsPagination, setEmailsPagination] = useState({ limit: 100, offset: 0 });
+  const [selectedEmails, setSelectedEmails] = useState(new Set());
+  const [showEmailsSequenceModal, setShowEmailsSequenceModal] = useState(false);
+  const [convertingEmails, setConvertingEmails] = useState(false);
   const [filters, setFilters] = useState({
     classement: '',
     type_hebergement: '',
@@ -3811,6 +3814,57 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, emailsFilter.search, emailsPagination]);
+
+  const toggleSelectEmail = (id) => {
+    setSelectedEmails(prev => {
+      const newSet = new Set(prev);
+      if (newSet.has(id)) {
+        newSet.delete(id);
+      } else {
+        newSet.add(id);
+      }
+      return newSet;
+    });
+  };
+
+  const toggleSelectAllEmails = () => {
+    if (selectedEmails.size === emailsGeneriques.length) {
+      setSelectedEmails(new Set());
+    } else {
+      setSelectedEmails(new Set(emailsGeneriques.map(e => e.id)));
+    }
+  };
+
+  const handleConvertEmailsToLeads = async () => {
+    if (selectedEmails.size === 0) {
+      showToast('Aucun email sélectionné', 'error');
+      return;
+    }
+
+    setConvertingEmails(true);
+    try {
+      const res = await api.post('/prospection/create-leads', {
+        hotel_ids: Array.from(selectedEmails),
+      });
+
+      if (res.created > 0) {
+        showToast(`✅ ${res.created} lead(s) créé(s)`, 'success');
+        setCreatedLeadIds(res.lead_ids || []);
+        setSelectedEmails(new Set());
+        setShowEmailsSequenceModal(true);
+        chargerEmailsGeneriques();
+      } else {
+        showToast('Aucun email éligible pour conversion', 'info');
+      }
+
+      if (res.errors && res.errors.length > 0) {
+        console.warn('Erreurs de conversion:', res.errors);
+      }
+    } catch (err) {
+      showToast('Erreur conversion: ' + err.message, 'error');
+    }
+    setConvertingEmails(false);
+  };
 
   const toggleSelectContact = (index) => {
     setSelectedContacts(prev => {
@@ -4446,12 +4500,45 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
             </div>
           </div>
 
+          {/* Actions pour sélection */}
+          {selectedEmails.size > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
+              <div className="flex items-center justify-between flex-wrap gap-3">
+                <p className="text-sm font-medium text-blue-900">{selectedEmails.size} email(s) sélectionné(s)</p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={handleConvertEmailsToLeads}
+                    disabled={convertingEmails || readOnly}
+                    className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    {convertingEmails ? '⏳ Conversion...' : '👤 Créer des leads'}
+                  </button>
+                  <button
+                    onClick={() => showToast('🚧 Ajout aux campagnes marketing en cours de développement', 'info')}
+                    disabled={readOnly}
+                    className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+                  >
+                    📢 Ajouter à une campagne
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
+
           {/* Tableau des emails */}
           <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
             <div className="overflow-x-auto">
               <table className="w-full">
                 <thead className="bg-slate-50 border-b border-slate-200">
                   <tr>
+                    <th className="w-8 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedEmails.size === emailsGeneriques.length && emailsGeneriques.length > 0}
+                        onChange={toggleSelectAllEmails}
+                        className="w-4 h-4"
+                      />
+                    </th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Hôtel</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Email</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Localisation</th>
@@ -4463,19 +4550,27 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                 <tbody className="divide-y divide-slate-200">
                   {loading ? (
                     <tr>
-                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
+                      <td colSpan="7" className="px-4 py-12 text-center text-sm text-slate-500">
                         <div className="flex justify-center"><div className="w-6 h-6 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" /></div>
                       </td>
                     </tr>
                   ) : emailsGeneriques.length === 0 ? (
                     <tr>
-                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
+                      <td colSpan="7" className="px-4 py-12 text-center text-sm text-slate-500">
                         Aucun email générique trouvé. Utilisez le bouton "🔍 Scraper" pour extraire les emails des sites web.
                       </td>
                     </tr>
                   ) : (
                     emailsGeneriques.map((email) => (
                       <tr key={email.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedEmails.has(email.id)}
+                            onChange={() => toggleSelectEmail(email.id)}
+                            className="w-4 h-4"
+                          />
+                        </td>
                         <td className="px-4 py-3">
                           <p className="text-sm font-medium text-slate-900">{email.nom_commercial}</p>
                           {email.scraping_date && (
@@ -4549,6 +4644,32 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
             )}
           </div>
         </>
+      )}
+
+      {/* Modal choix séquence après création leads depuis emails génériques */}
+      {showEmailsSequenceModal && createdLeadIds.length > 0 && (
+        <ModalBulkLaunch
+          count={createdLeadIds.length}
+          sequences={sequences}
+          onClose={() => {
+            setShowEmailsSequenceModal(false);
+            setCreatedLeadIds([]);
+          }}
+          onLaunch={async (seqId, sendNow, taskRelance) => {
+            try {
+              const res = await api.post(`/sequences/${seqId}/inscrire-batch`, {
+                lead_ids: createdLeadIds,
+                send_now: sendNow,
+                task_relance_mois: taskRelance,
+              });
+              showToast(`✅ ${res.inscribed || createdLeadIds.length} lead(s) inscrit(s) en séquence`, 'success');
+              setCreatedLeadIds([]);
+              chargerEmailsGeneriques();
+            } catch (err) {
+              throw new Error(err.message || 'Erreur inscription');
+            }
+          }}
+        />
       )}
 
       {/* Modal Contacts LinkedIn */}
