@@ -3445,7 +3445,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 };
 
 const VueProspection = ({ showToast, readOnly, sequences }) => {
-  const [activeTab, setActiveTab] = useState('hotels'); // 'hotels' ou 'contacts'
+  const [activeTab, setActiveTab] = useState('hotels'); // 'hotels', 'contacts' ou 'emails-generiques'
   const [hotels, setHotels] = useState([]);
   const [stats, setStats] = useState(null);
   const [total, setTotal] = useState(0);
@@ -3470,6 +3470,13 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [selectedContacts, setSelectedContacts] = useState(new Set());
   const [contactsFilter, setContactsFilter] = useState({ search: '', avec_email: '', fonction: '' });
   const [showConvertModal, setShowConvertModal] = useState(false);
+
+  // States pour vue emails génériques
+  const [emailsGeneriques, setEmailsGeneriques] = useState([]);
+  const [emailsStats, setEmailsStats] = useState(null);
+  const [emailsTotal, setEmailsTotal] = useState(0);
+  const [emailsFilter, setEmailsFilter] = useState({ search: '' });
+  const [emailsPagination, setEmailsPagination] = useState({ limit: 100, offset: 0 });
   const [filters, setFilters] = useState({
     classement: '',
     type_hebergement: '',
@@ -3778,6 +3785,33 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, contactsFilter.search, contactsFilter.avec_email, contactsFilter.fonction]);
 
+  // Charger emails génériques
+  const chargerEmailsGeneriques = async () => {
+    setLoading(true);
+    try {
+      const params = new URLSearchParams({
+        ...emailsFilter,
+        limit: emailsPagination.limit,
+        offset: emailsPagination.offset,
+      });
+      Object.keys(params).forEach(key => params.get(key) === '' && params.delete(key));
+      const res = await api.get(`/prospection/emails-generiques?${params}`);
+      setEmailsGeneriques(res.emails || []);
+      setEmailsTotal(res.total || 0);
+      setEmailsStats(res.stats || null);
+    } catch (err) {
+      showToast('Erreur chargement emails: ' + err.message, 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => {
+    if (activeTab === 'emails-generiques') {
+      chargerEmailsGeneriques();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeTab, emailsFilter.search, emailsPagination]);
+
   const toggleSelectContact = (index) => {
     setSelectedContacts(prev => {
       const newSet = new Set(prev);
@@ -3870,6 +3904,21 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
           {contactsStats && contactsStats.avec_email > 0 && (
             <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 font-medium">
               {contactsStats.avec_email}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => setActiveTab('emails-generiques')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'emails-generiques'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          📧 Emails génériques
+          {emailsStats && emailsStats.total_emails > 0 && (
+            <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium">
+              {emailsStats.total_emails}
             </span>
           )}
         </button>
@@ -4336,6 +4385,168 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                 </tbody>
               </table>
             </div>
+          </div>
+        </>
+      )}
+
+      {/* Contenu onglet Emails génériques */}
+      {activeTab === 'emails-generiques' && (
+        <>
+          {/* Stats */}
+          {emailsStats && (
+            <div className="grid grid-cols-2 gap-3 mb-6">
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total emails</p>
+                <p className="text-2xl font-bold text-slate-900">{emailsStats.total_emails?.toLocaleString()}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-blue-200 p-4">
+                <p className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Hôtels avec email</p>
+                <p className="text-2xl font-bold text-blue-700">{emailsStats.total_hotels?.toLocaleString()}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Filtres et actions */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+            <div className="flex flex-wrap items-center gap-3">
+              <input
+                type="text"
+                placeholder="Rechercher par nom, ville, email..."
+                value={emailsFilter.search}
+                onChange={(e) => setEmailsFilter({ search: e.target.value })}
+                className="flex-1 min-w-[300px] px-3 py-2 rounded-lg border border-slate-300 text-sm"
+              />
+              <button
+                onClick={() => {
+                  const csv = [
+                    ['Nom commercial', 'Email', 'Commune', 'Code postal', 'Site web', 'Classement', 'Capacité'].join(';'),
+                    ...emailsGeneriques.map(e => [
+                      e.nom_commercial,
+                      e.contact_email,
+                      e.commune || '',
+                      e.code_postal || '',
+                      e.site_internet || '',
+                      e.classement || '',
+                      e.capacite_accueil || ''
+                    ].join(';'))
+                  ].join('\n');
+                  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+                  const url = URL.createObjectURL(blob);
+                  const a = document.createElement('a');
+                  a.href = url;
+                  a.download = `emails-generiques-${new Date().toISOString().split('T')[0]}.csv`;
+                  a.click();
+                  URL.revokeObjectURL(url);
+                  showToast('✅ Export CSV réussi', 'success');
+                }}
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 flex items-center gap-2"
+              >
+                📥 Exporter CSV
+              </button>
+            </div>
+          </div>
+
+          {/* Tableau des emails */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Hôtel</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Email</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Localisation</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Site web</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Classement</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Capacité</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
+                        <div className="flex justify-center"><div className="w-6 h-6 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" /></div>
+                      </td>
+                    </tr>
+                  ) : emailsGeneriques.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
+                        Aucun email générique trouvé. Utilisez le bouton "🔍 Scraper" pour extraire les emails des sites web.
+                      </td>
+                    </tr>
+                  ) : (
+                    emailsGeneriques.map((email) => (
+                      <tr key={email.id} className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <p className="text-sm font-medium text-slate-900">{email.nom_commercial}</p>
+                          {email.scraping_date && (
+                            <p className="text-xs text-slate-500">Scrapé le {new Date(email.scraping_date).toLocaleDateString('fr-FR')}</p>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <a
+                            href={`mailto:${email.contact_email}`}
+                            className="text-sm font-mono text-blue-600 hover:underline"
+                          >
+                            {email.contact_email}
+                          </a>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="text-sm text-slate-900">{email.commune}</p>
+                            <p className="text-xs text-slate-500">{email.code_postal}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {email.site_internet ? (
+                            <a
+                              href={email.site_internet}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:underline"
+                            >
+                              🔗 Visiter
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-slate-700">{email.classement || '-'}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-slate-700">{email.capacite_accueil ? `${email.capacite_accueil} pers.` : '-'}</span>
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+
+            {/* Pagination */}
+            {emailsTotal > emailsPagination.limit && (
+              <div className="border-t border-slate-200 p-4 flex items-center justify-between">
+                <p className="text-sm text-slate-600">
+                  {emailsPagination.offset + 1} - {Math.min(emailsPagination.offset + emailsPagination.limit, emailsTotal)} sur {emailsTotal}
+                </p>
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setEmailsPagination(prev => ({ ...prev, offset: Math.max(0, prev.offset - prev.limit) }))}
+                    disabled={emailsPagination.offset === 0}
+                    className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Précédent
+                  </button>
+                  <button
+                    onClick={() => setEmailsPagination(prev => ({ ...prev, offset: prev.offset + prev.limit }))}
+                    disabled={emailsPagination.offset + emailsPagination.limit >= emailsTotal}
+                    className="px-3 py-1 rounded-lg bg-slate-100 text-slate-700 text-sm font-medium hover:bg-slate-200 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Suivant
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
         </>
       )}

@@ -554,6 +554,51 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/prospection/emails-generiques — Liste des emails génériques scrappés
+  router.get('/emails-generiques', (req, res) => {
+    try {
+      const { search, limit = 100, offset = 0 } = req.query;
+
+      let query = `
+        SELECT id, nom_commercial, commune, code_postal, site_internet,
+               contact_email, scraping_date, classement, capacite_accueil
+        FROM hotels_france
+        WHERE contact_email IS NOT NULL
+          AND contact_email != ''
+      `;
+      const params = [];
+
+      if (search) {
+        query += ' AND (nom_commercial LIKE ? OR commune LIKE ? OR contact_email LIKE ?)';
+        const s = `%${search}%`;
+        params.push(s, s, s);
+      }
+
+      // Comptage total
+      const countQuery = query.replace(/SELECT .* FROM/, 'SELECT COUNT(*) as total FROM');
+      const total = db.prepare(countQuery).get(...params).total;
+
+      // Pagination
+      query += ' ORDER BY scraping_date DESC LIMIT ? OFFSET ?';
+      params.push(parseInt(limit), parseInt(offset));
+
+      const emails = db.prepare(query).all(...params);
+
+      res.json({
+        emails,
+        total,
+        stats: {
+          total_emails: total,
+          total_hotels: db.prepare('SELECT COUNT(*) as count FROM hotels_france WHERE contact_email IS NOT NULL AND contact_email != \'\'').get().count
+        }
+      });
+
+    } catch (err) {
+      logger.error('Erreur GET /emails-generiques:', err);
+      res.status(500).json({ error: 'Erreur lors de la récupération des emails génériques' });
+    }
+  });
+
   // GET /api/prospection/contacts — Liste de tous les contacts LinkedIn trouvés
   router.get('/contacts', (req, res) => {
     try {
