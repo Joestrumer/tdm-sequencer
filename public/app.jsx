@@ -4455,7 +4455,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
         </div>
       )}
 
-      {/* Actions et filtres */}
+      {/* Actions et filtres Hotels France */}
+      {activeSource === 'hotels_france' && (
       <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
         <div className="flex flex-wrap items-center gap-3 mb-4">
           <input
@@ -4594,6 +4595,43 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
           </select>
         </div>
       </div>
+      )}
+
+      {/* Actions pour sources importées */}
+      {activeSource !== 'hotels_france' && (
+      <div className="bg-white rounded-xl border border-slate-200 p-5 mb-6">
+        <div className="flex flex-wrap items-center gap-3">
+          <div className="flex-1">
+            <p className="text-sm font-medium text-slate-900">
+              {importSources.find(s => s.id === activeSource)?.nom || 'Source'}
+            </p>
+            <p className="text-xs text-slate-500">
+              {prospectsTotal} prospect(s) importé(s)
+            </p>
+          </div>
+
+          {!readOnly && (
+            <button
+              onClick={async () => {
+                const source = importSources.find(s => s.id === activeSource);
+                if (!confirm(`⚠️ Supprimer la source "${source?.nom}" et tous ses ${prospectsTotal} prospects ?\n\nCette action est irréversible.`)) return;
+                try {
+                  await api.delete(`/imports/sources/${activeSource}`);
+                  showToast('✅ Source supprimée', 'success');
+                  setActiveSource('hotels_france');
+                  chargerSources();
+                } catch (err) {
+                  showToast('Erreur suppression: ' + err.message, 'error');
+                }
+              }}
+              className="px-4 py-2 rounded-lg border border-red-300 text-red-600 text-sm font-medium hover:bg-red-50 flex items-center gap-2"
+            >
+              🗑️ Supprimer cette source
+            </button>
+          )}
+        </div>
+      </div>
+      )}
 
       {/* Tableau Hotels France */}
       {activeSource === 'hotels_france' && (

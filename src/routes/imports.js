@@ -157,11 +157,17 @@ module.exports = (db) => {
       // Lire et détecter encoding
       const rawData = fs.readFileSync(req.file.path);
       const encoding = chardet.detect(rawData);
-      logger.info(`Upload CSV: encodage=${encoding}`);
+      const isLatin = encoding && (encoding.includes('ISO-8859') || encoding.includes('windows-1252') || encoding.includes('Windows'));
+      logger.info(`Upload CSV: encodage détecté=${encoding}, latin=${isLatin}`);
 
       // Normaliser retours à la ligne
-      let content = rawData.toString(encoding === 'ISO-8859-1' ? 'latin1' : 'utf8');
+      let content = rawData.toString(isLatin ? 'latin1' : 'utf8');
       content = content.replace(/\r\n/g, '\n').replace(/\r/g, '\n');
+
+      // Détecter le séparateur (virgule ou point-virgule)
+      const firstLine = content.split('\n')[0] || '';
+      const separator = firstLine.includes(';') ? ';' : ',';
+      logger.info(`Upload CSV: séparateur détecté = "${separator}"`);
 
       // Parser CSV
       const records = csv.parse(content, {
@@ -169,6 +175,7 @@ module.exports = (db) => {
         skip_empty_lines: true,
         trim: true,
         bom: true,
+        delimiter: separator,
       });
 
       if (records.length === 0) {
@@ -375,15 +382,28 @@ module.exports = (db) => {
     }
   });
 
-  // DELETE /api/imports/sources/:id - Supprimer une source
+  // DELETE /api/imports/sources/:id - Supprimer une source et ses prospects
   router.delete('/sources/:id', (req, res) => {
     try {
       const { id } = req.params;
 
-      // Cascade delete via foreign key
+      // Vérifier que la source existe
+      const source = db.prepare('SELECT nom FROM import_sources WHERE id = ?').get(id);
+      if (!source) {
+        return res.status(404).json({ error: 'Source non trouvée' });
+      }
+
+      // Compter les prospects avant suppression
+      const count = db.prepare('SELECT COUNT(*) as n FROM imported_prospects WHERE source_id = ?').get(id).n;
+
+      // Supprimer les prospects d'abord (au cas où CASCADE ne fonctionne pas)
+      db.prepare('DELETE FROM imported_prospects WHERE source_id = ?').run(id);
+
+      // Supprimer la source
       db.prepare('DELETE FROM import_sources WHERE id = ?').run(id);
 
-      res.json({ success: true });
+      logger.info(`Source "${source.nom}" supprimée (${count} prospects)`);
+      res.json({ success: true, deleted: count, source_name: source.nom });
     } catch (err) {
       logger.error('Erreur suppression source:', err);
       res.status(500).json({ error: err.message });
