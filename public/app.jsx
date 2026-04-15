@@ -3446,6 +3446,17 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 
 const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [activeTab, setActiveTab] = useState('hotels'); // 'hotels', 'contacts' ou 'emails-generiques'
+
+  // States sources multi-CSV (nouveau système)
+  const [importSources, setImportSources] = useState([]); // Liste des sources CSV importées
+  const [activeSource, setActiveSource] = useState('hotels_france'); // Source active ('hotels_france' ou source_id)
+  const [showImportModal, setShowImportModal] = useState(false);
+  const [prospects, setProspects] = useState([]); // Prospects de la source active
+  const [prospectsTotal, setProspectsTotal] = useState(0);
+  const [prospectsLoading, setProspectsLoading] = useState(false);
+  const [selectedProspects, setSelectedProspects] = useState(new Set());
+
+  // States Hotels France (ancien système - toujours utilisé)
   const [hotels, setHotels] = useState([]);
   const [stats, setStats] = useState(null);
   const [total, setTotal] = useState(0);
@@ -3520,8 +3531,47 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   };
 
   useEffect(() => {
-    chargerHotels();
-  }, [filters, pagination]);
+    if (activeSource === 'hotels_france') {
+      chargerHotels();
+    }
+  }, [filters, pagination, activeSource]);
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Fonctions sources multi-CSV
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const chargerSources = async () => {
+    try {
+      const res = await api.get('/imports/sources');
+      setImportSources(res.sources || []);
+    } catch (err) {
+      console.error('Erreur chargement sources:', err);
+    }
+  };
+
+  const chargerProspects = async (sourceId) => {
+    if (!sourceId || sourceId === 'hotels_france') return;
+
+    setProspectsLoading(true);
+    try {
+      const res = await api.get(`/imports/sources/${sourceId}/prospects?limit=100&offset=0`);
+      setProspects(res.prospects || []);
+      setProspectsTotal(res.total || 0);
+    } catch (err) {
+      showToast('Erreur chargement prospects: ' + err.message, 'error');
+    }
+    setProspectsLoading(false);
+  };
+
+  useEffect(() => {
+    chargerSources();
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'hotels' && activeSource && activeSource !== 'hotels_france') {
+      chargerProspects(activeSource);
+    }
+  }, [activeSource, activeTab]);
 
   const handleImport = async (e) => {
     const file = e.target.files?.[0];
@@ -4011,8 +4061,53 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       {/* Contenu onglet Hôtels */}
       {activeTab === 'hotels' && (
         <>
-          {/* Header avec stats */}
-          {stats && (
+          {/* Sous-onglets sources */}
+          <div className="flex gap-2 mb-6 overflow-x-auto pb-2">
+            <button
+              onClick={() => setActiveSource('hotels_france')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                activeSource === 'hotels_france'
+                  ? 'bg-blue-600 text-white'
+                  : 'bg-white border border-slate-200 text-slate-700 hover:border-blue-300'
+              }`}
+            >
+              🏨 Hotels France
+              {stats?.total > 0 && (
+                <span className={`ml-2 ${activeSource === 'hotels_france' ? 'text-blue-100' : 'text-slate-500'}`}>
+                  ({stats.total.toLocaleString()})
+                </span>
+              )}
+            </button>
+
+            {importSources.map(source => (
+              <button
+                key={source.id}
+                onClick={() => setActiveSource(source.id)}
+                className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors whitespace-nowrap ${
+                  activeSource === source.id
+                    ? 'bg-blue-600 text-white'
+                    : 'bg-white border border-slate-200 text-slate-700 hover:border-blue-300'
+                }`}
+              >
+                📁 {source.nom}
+                {source.prospects_count > 0 && (
+                  <span className={`ml-2 ${activeSource === source.id ? 'text-blue-100' : 'text-slate-500'}`}>
+                    ({source.prospects_count.toLocaleString()})
+                  </span>
+                )}
+              </button>
+            ))}
+
+            <button
+              onClick={() => setShowImportModal(true)}
+              className="px-4 py-2 rounded-lg text-sm font-medium bg-emerald-600 text-white hover:bg-emerald-700 transition-colors whitespace-nowrap"
+            >
+              + Importer CSV
+            </button>
+          </div>
+
+          {/* Header avec stats (Hotels France uniquement) */}
+          {activeSource === 'hotels_france' && stats && (
             <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-6">
           <div className="bg-white rounded-xl border border-slate-200 p-4">
             <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total hôtels</p>
