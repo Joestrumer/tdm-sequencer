@@ -512,13 +512,40 @@ module.exports = (db) => {
     }
   });
 
-  // DELETE /api/prospection/reset — Vide la table hotels_france
+  // DELETE /api/prospection/reset — Vide les données CSV de hotels_france
+  // PROTÈGE les contacts LinkedIn et emails scrapés
   router.delete('/reset', (req, res) => {
     try {
-      const count = db.prepare('SELECT COUNT(*) as total FROM hotels_france').get().total;
-      db.prepare('DELETE FROM hotels_france').run();
-      logger.info(`🗑️ Table hotels_france vidée (${count} lignes supprimées)`);
-      res.json({ success: true, deleted: count });
+      // Compter les lignes avec et sans données de scraping
+      const totalCount = db.prepare('SELECT COUNT(*) as n FROM hotels_france').get().n;
+      const withScraping = db.prepare(`
+        SELECT COUNT(*) as n FROM hotels_france
+        WHERE (contact_email IS NOT NULL AND contact_email != '')
+           OR (linkedin_contacts IS NOT NULL AND linkedin_contacts != '[]' AND linkedin_contacts != '')
+           OR scraping_status = 'completed'
+      `).get().n;
+      const withoutScraping = totalCount - withScraping;
+
+      // Ne supprimer que les lignes SANS données de scraping
+      const result = db.prepare(`
+        DELETE FROM hotels_france
+        WHERE (contact_email IS NULL OR contact_email = '')
+          AND (linkedin_contacts IS NULL OR linkedin_contacts = '[]' OR linkedin_contacts = '')
+          AND scraping_status != 'completed'
+      `).run();
+
+      // Pour les lignes avec scraping : reset les données CSV mais GARDER le scraping
+      // (On ne fait PAS ça pour l'instant, on garde tout)
+
+      logger.info(`🗑️ Reset hotels_france: ${result.changes} lignes supprimées, ${withScraping} lignes protégées (scraping)`);
+      res.json({
+        success: true,
+        deleted: result.changes,
+        protected: withScraping,
+        message: withScraping > 0
+          ? `${result.changes} hôtels supprimés. ${withScraping} hôtels avec contacts/emails conservés.`
+          : `${result.changes} hôtels supprimés.`
+      });
     } catch (err) {
       logger.error('Erreur DELETE /reset:', err);
       res.status(500).json({ error: 'Erreur lors de la suppression' });
@@ -910,6 +937,45 @@ module.exports = (db) => {
     } catch (err) {
       logger.error('Erreur POST /find-emails:', err);
       res.status(500).json({ error: 'Erreur recherche emails', details: err.message });
+    }
+  });
+
+  // PATCH /api/prospection/contacts/:hotelId/email — Met à jour l'email d'un contact LinkedIn
+  router.patch('/contacts/:hotelId/email', (req, res) => {
+    const { hotelId } = req.params;
+    const { linkedin_url, nom_complet, email } = req.body;
+
+    if (!email) {
+      return res.status(400).json({ error: 'Email requis' });
+    }
+
+    try {
+      const hotel = db.prepare('SELECT linkedin_contacts FROM hotels_france WHERE id = ?').get(hotelId);
+      if (!hotel) {
+        return res.status(404).json({ error: 'Hôtel non trouvé' });
+      }
+
+      const contacts = JSON.parse(hotel.linkedin_contacts || '[]');
+      const idx = contacts.findIndex(c =>
+        (linkedin_url && c.linkedin_url === linkedin_url) ||
+        (nom_complet && c.nom_complet === nom_complet)
+      );
+
+      if (idx === -1) {
+        return res.status(404).json({ error: 'Contact non trouvé' });
+      }
+
+      contacts[idx].email = email.trim().toLowerCase();
+      contacts[idx].email_source = 'manual';
+
+      db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
+        .run(JSON.stringify(contacts), hotelId);
+
+      logger.info(`Email manuel ajouté: ${email} pour ${contacts[idx].nom_complet}`);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('Erreur PATCH contacts/:hotelId/email:', err);
+      res.status(500).json({ error: err.message });
     }
   });
 

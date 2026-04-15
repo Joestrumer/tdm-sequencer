@@ -3453,10 +3453,15 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
   const [columnMapping, setColumnMapping] = useState({
     nom: '',
     email: '',
+    civilite: '',
+    prenom: '',
+    nom_contact: '',
     site_web: '',
     ville: '',
+    code_postal: '',
     telephone: '',
     adresse: '',
+    classement: '',
   });
   const [fileData, setFileData] = useState(null);
   const fileInputRef = useRef(null);
@@ -3485,12 +3490,18 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
       const autoMapping = { ...columnMapping };
       columns.forEach(col => {
         const colLower = col.toLowerCase();
-        if (/nom|raison|entreprise|etablissement|commercial/i.test(col)) autoMapping.nom = col;
-        if (/e-?mail|courriel|contact_email/i.test(col)) autoMapping.email = col;
-        if (/site|web|url|internet/i.test(col)) autoMapping.site_web = col;
-        if (/ville|commune|city/i.test(col)) autoMapping.ville = col;
-        if (/tel|phone|telephone/i.test(col)) autoMapping.telephone = col;
-        if (/adresse|address|rue/i.test(col)) autoMapping.adresse = col;
+        if (/raison|entreprise|etablissement|commercial|societe|enseigne/i.test(col) && !autoMapping.nom) autoMapping.nom = col;
+        if (/e-?mail|courriel|contact_email/i.test(col) && !autoMapping.email) autoMapping.email = col;
+        if (/civilit/i.test(col) && !autoMapping.civilite) autoMapping.civilite = col;
+        if (/prenom|prénom|first.?name/i.test(col) && !autoMapping.prenom) autoMapping.prenom = col;
+        if (/nom_contact|nom_complet|lastname|family/i.test(col) && !autoMapping.nom_contact) autoMapping.nom_contact = col;
+        if (/^nom$/i.test(col.replace(/_cle$/i, '')) && !autoMapping.nom_contact) autoMapping.nom_contact = col;
+        if (/site|web|url|internet/i.test(col) && !autoMapping.site_web) autoMapping.site_web = col;
+        if (/ville|commune|city/i.test(col) && !autoMapping.ville) autoMapping.ville = col;
+        if (/code.?post|postal|zip/i.test(col) && !autoMapping.code_postal) autoMapping.code_postal = col;
+        if (/tel|phone|telephone/i.test(col) && !autoMapping.telephone) autoMapping.telephone = col;
+        if (/adresse|address|rue/i.test(col) && !autoMapping.adresse) autoMapping.adresse = col;
+        if (/class|etoil|stars|categor/i.test(col) && !autoMapping.classement) autoMapping.classement = col;
       });
       setColumnMapping(autoMapping);
     } catch (err) {
@@ -3615,92 +3626,36 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
                 </p>
               </div>
 
-              <div className="grid grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">
-                    Nom / Raison sociale <span className="text-red-500">*</span>
-                  </label>
-                  <select
-                    value={columnMapping.nom}
-                    onChange={(e) => setColumnMapping(m => ({ ...m, nom: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">-- Non mappé --</option>
-                    {detectedColumns.map(col => (
-                      <option key={col} value={col}>{col}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Email</label>
-                  <select
-                    value={columnMapping.email}
-                    onChange={(e) => setColumnMapping(m => ({ ...m, email: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">-- Non mappé --</option>
-                    {detectedColumns.map(col => (
-                      <option key={col} value={col}>{col}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Site web</label>
-                  <select
-                    value={columnMapping.site_web}
-                    onChange={(e) => setColumnMapping(m => ({ ...m, site_web: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">-- Non mappé --</option>
-                    {detectedColumns.map(col => (
-                      <option key={col} value={col}>{col}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Ville</label>
-                  <select
-                    value={columnMapping.ville}
-                    onChange={(e) => setColumnMapping(m => ({ ...m, ville: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">-- Non mappé --</option>
-                    {detectedColumns.map(col => (
-                      <option key={col} value={col}>{col}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Téléphone</label>
-                  <select
-                    value={columnMapping.telephone}
-                    onChange={(e) => setColumnMapping(m => ({ ...m, telephone: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">-- Non mappé --</option>
-                    {detectedColumns.map(col => (
-                      <option key={col} value={col}>{col}</option>
-                    ))}
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-sm font-medium text-slate-700 mb-2">Adresse</label>
-                  <select
-                    value={columnMapping.adresse}
-                    onChange={(e) => setColumnMapping(m => ({ ...m, adresse: e.target.value }))}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500"
-                  >
-                    <option value="">-- Non mappé --</option>
-                    {detectedColumns.map(col => (
-                      <option key={col} value={col}>{col}</option>
-                    ))}
-                  </select>
-                </div>
+              <div className="grid grid-cols-2 gap-3">
+                {[
+                  { key: 'nom', label: 'Nom / Raison sociale', required: true },
+                  { key: 'email', label: 'Email' },
+                  { key: 'civilite', label: 'Civilité' },
+                  { key: 'prenom', label: 'Prénom contact' },
+                  { key: 'nom_contact', label: 'Nom contact' },
+                  { key: 'site_web', label: 'Site web' },
+                  { key: 'ville', label: 'Ville' },
+                  { key: 'code_postal', label: 'Code postal' },
+                  { key: 'telephone', label: 'Téléphone' },
+                  { key: 'adresse', label: 'Adresse' },
+                  { key: 'classement', label: 'Classement / Étoiles' },
+                ].map(field => (
+                  <div key={field.key}>
+                    <label className="block text-xs font-medium text-slate-700 mb-1">
+                      {field.label} {field.required && <span className="text-red-500">*</span>}
+                    </label>
+                    <select
+                      value={columnMapping[field.key]}
+                      onChange={(e) => setColumnMapping(m => ({ ...m, [field.key]: e.target.value }))}
+                      className="w-full px-3 py-1.5 border border-slate-300 rounded-lg focus:ring-2 focus:ring-blue-500 text-sm"
+                    >
+                      <option value="">-- Non mappé --</option>
+                      {detectedColumns.map(col => (
+                        <option key={col} value={col}>{col}</option>
+                      ))}
+                    </select>
+                  </div>
+                ))}
               </div>
             </>
           )}
@@ -4038,13 +3993,16 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   };
 
   const handleReset = async () => {
-    if (!confirm('⚠️ Êtes-vous sûr de vouloir supprimer TOUS les hôtels de la base ? Cette action est irréversible.')) {
+    if (!confirm('⚠️ Supprimer les hôtels sans données de scraping ?\n\nLes hôtels avec contacts LinkedIn ou emails scrapés seront CONSERVÉS.')) {
       return;
     }
 
     try {
       const res = await api.delete('/prospection/reset');
-      showToast(`🗑️ ${res.deleted} hôtel(s) supprimé(s)`, 'success');
+      const msg = res.protected > 0
+        ? `🗑️ ${res.deleted} hôtel(s) supprimé(s). ${res.protected} hôtel(s) avec contacts/emails conservés.`
+        : `🗑️ ${res.deleted} hôtel(s) supprimé(s)`;
+      showToast(msg, 'success');
       chargerHotels();
     } catch (err) {
       showToast('Erreur suppression: ' + err.message, 'error');
@@ -4607,17 +4565,45 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
             </p>
             <p className="text-xs text-slate-500">
               {prospectsTotal} prospect(s) importé(s)
+              {selectedProspects.size > 0 && ` — ${selectedProspects.size} sélectionné(s)`}
             </p>
           </div>
+
+          {selectedProspects.size > 0 && !readOnly && (
+            <button
+              onClick={async () => {
+                const selected = prospects.filter(p => selectedProspects.has(p.id));
+                const withEmail = selected.filter(p => p.email);
+                if (withEmail.length === 0) {
+                  showToast('Aucun prospect sélectionné avec email', 'error');
+                  return;
+                }
+                if (!confirm(`Convertir ${withEmail.length} prospect(s) en leads ?\n${selected.length - withEmail.length > 0 ? `(${selected.length - withEmail.length} ignoré(s) sans email)` : ''}`)) return;
+                try {
+                  const res = await api.post('/imports/prospects-to-leads', {
+                    prospect_ids: withEmail.map(p => p.id),
+                  });
+                  showToast(`✅ ${res.created} lead(s) créé(s)${res.errors?.length ? `, ${res.errors.length} erreur(s)` : ''}`, 'success');
+                  setSelectedProspects(new Set());
+                  chargerProspects(activeSource);
+                } catch (err) {
+                  showToast('Erreur conversion: ' + err.message, 'error');
+                }
+              }}
+              className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 flex items-center gap-2"
+            >
+              → Convertir en leads ({selectedProspects.size})
+            </button>
+          )}
 
           {!readOnly && (
             <button
               onClick={async () => {
                 const source = importSources.find(s => s.id === activeSource);
-                if (!confirm(`⚠️ Supprimer la source "${source?.nom}" et tous ses ${prospectsTotal} prospects ?\n\nCette action est irréversible.`)) return;
+                if (!confirm(`Supprimer la source "${source?.nom}" et tous ses ${prospectsTotal} prospects ?\n\nCette action est irréversible.`)) return;
                 try {
                   await api.delete(`/imports/sources/${activeSource}`);
-                  showToast('✅ Source supprimée', 'success');
+                  showToast('Source supprimée', 'success');
                   setActiveSource('hotels_france');
                   chargerSources();
                 } catch (err) {
@@ -4626,7 +4612,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
               }}
               className="px-4 py-2 rounded-lg border border-red-300 text-red-600 text-sm font-medium hover:bg-red-50 flex items-center gap-2"
             >
-              🗑️ Supprimer cette source
+              Supprimer cette source
             </button>
           )}
         </div>
@@ -4769,8 +4755,23 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-200">
                 <tr>
+                  <th className="w-8 px-4 py-3">
+                    <input
+                      type="checkbox"
+                      checked={prospects.length > 0 && selectedProspects.size === prospects.length}
+                      onChange={() => {
+                        if (selectedProspects.size === prospects.length) {
+                          setSelectedProspects(new Set());
+                        } else {
+                          setSelectedProspects(new Set(prospects.map(p => p.id)));
+                        }
+                      }}
+                      className="w-4 h-4"
+                    />
+                  </th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Contact</th>
+                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Établissement</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Email</th>
-                  <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Informations</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Historique</th>
                   <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase tracking-wide">Statut</th>
                 </tr>
@@ -4778,88 +4779,107 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
               <tbody className="divide-y divide-slate-100">
                 {prospectsLoading ? (
                   <tr>
-                    <td colSpan="4" className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-400">
                       Chargement...
                     </td>
                   </tr>
                 ) : prospects.length === 0 ? (
                   <tr>
-                    <td colSpan="4" className="px-4 py-12 text-center text-sm text-slate-400">
+                    <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-400">
                       Aucun prospect trouvé.
                     </td>
                   </tr>
                 ) : (
                   prospects.map(prospect => {
-                    const emailSources = prospect.email_sources || [];
                     const prospectData = prospect.data || {};
                     const mapped = prospectData._mapped || {};
 
                     return (
-                      <tr key={prospect.id} className="hover:bg-slate-50 transition-colors">
+                      <tr key={prospect.id} className={`hover:bg-slate-50 transition-colors ${selectedProspects.has(prospect.id) ? 'bg-blue-50' : ''}`}>
                         <td className="px-4 py-3">
-                          <div className="text-sm font-medium text-slate-900">{prospect.email || '-'}</div>
-                          <div className="flex gap-2 mt-1">
-                            {prospect.email_type && (
-                              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${
-                                prospect.email_type === 'personal'
-                                  ? 'bg-purple-50 text-purple-700'
-                                  : 'bg-slate-100 text-slate-600'
-                              }`}>
-                                {prospect.email_type === 'personal' ? '👤 Personnel' : '📧 Générique'}
-                              </span>
+                          <input
+                            type="checkbox"
+                            checked={selectedProspects.has(prospect.id)}
+                            onChange={() => {
+                              const next = new Set(selectedProspects);
+                              next.has(prospect.id) ? next.delete(prospect.id) : next.add(prospect.id);
+                              setSelectedProspects(next);
+                            }}
+                            className="w-4 h-4"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="space-y-0.5">
+                            {(mapped.prenom || mapped.nom_contact) ? (
+                              <div className="text-sm font-medium text-slate-900">
+                                {mapped.civilite && <span className="text-slate-500">{mapped.civilite} </span>}
+                                {mapped.prenom} {mapped.nom_contact}
+                              </div>
+                            ) : null}
+                            {mapped.telephone && (
+                              <div className="text-xs text-slate-500">{mapped.telephone}</div>
                             )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          <div className="space-y-1">
+                          <div className="space-y-0.5">
                             {mapped.nom && (
                               <div className="font-medium text-slate-900 text-sm">{mapped.nom}</div>
                             )}
-                            {mapped.ville && (
-                              <div className="text-xs text-slate-500">📍 {mapped.ville}</div>
+                            {(mapped.ville || mapped.code_postal) && (
+                              <div className="text-xs text-slate-500">{[mapped.code_postal, mapped.ville].filter(Boolean).join(' ')}</div>
+                            )}
+                            {mapped.classement && (
+                              <div className="text-xs text-slate-400">{mapped.classement}</div>
                             )}
                             {mapped.site_web && (
-                              <a href={mapped.site_web} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline block truncate max-w-xs">
-                                🌐 {mapped.site_web}
+                              <a href={mapped.site_web.startsWith('http') ? mapped.site_web : 'https://' + mapped.site_web} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline block truncate max-w-[200px]">
+                                {mapped.site_web}
                               </a>
-                            )}
-                            {mapped.telephone && (
-                              <div className="text-xs text-slate-600">☎️ {mapped.telephone}</div>
                             )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
-                          {!prospect.last_sequence_date && !prospect.last_campaign_date && (
-                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-emerald-50 text-emerald-700">
-                              🆕 Nouveau
-                            </span>
-                          )}
-                          {prospect.last_sequence_date && (
-                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-blue-50 text-blue-700">
-                              📧 Séquence {new Date(prospect.last_sequence_date).toLocaleDateString('fr-FR')}
-                            </span>
-                          )}
-                          {prospect.last_campaign_date && (
-                            <span className="px-2 py-1 rounded-full text-xs font-medium bg-amber-50 text-amber-700">
-                              📢 Campagne {new Date(prospect.last_campaign_date).toLocaleDateString('fr-FR')}
+                          <div className="text-sm font-medium text-slate-900">{prospect.email || <span className="text-slate-400">-</span>}</div>
+                          {prospect.email_type && (
+                            <span className={`inline-block mt-1 px-2 py-0.5 rounded-full text-[10px] font-medium ${
+                              prospect.email_type === 'personal'
+                                ? 'bg-purple-50 text-purple-700'
+                                : 'bg-slate-100 text-slate-600'
+                            }`}>
+                              {prospect.email_type === 'personal' ? 'Personnel' : 'Générique'}
                             </span>
                           )}
                         </td>
                         <td className="px-4 py-3">
                           <div className="flex flex-wrap gap-1">
+                            {!prospect.last_sequence_date && !prospect.last_campaign_date && prospect.email && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">
+                                Nouveau
+                              </span>
+                            )}
+                            {prospect.last_sequence_date && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">
+                                Séquence {new Date(prospect.last_sequence_date).toLocaleDateString('fr-FR')}
+                              </span>
+                            )}
+                            {prospect.last_campaign_date && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-50 text-amber-700">
+                                Campagne {new Date(prospect.last_campaign_date).toLocaleDateString('fr-FR')}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-wrap gap-1">
                             {prospect.is_lead === 1 && (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-green-50 text-green-700">
-                                👤 Lead
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-green-50 text-green-700">
+                                Lead
                               </span>
                             )}
                             {prospect.is_unsubscribed === 1 && (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-red-50 text-red-700">
-                                🚫 Désabonné
-                              </span>
-                            )}
-                            {Array.isArray(emailSources) && emailSources.length > 1 && (
-                              <span className="px-2 py-0.5 rounded-full text-xs font-medium bg-orange-50 text-orange-700">
-                                ⚠️ Doublon ({emailSources.length} sources)
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-red-50 text-red-700">
+                                Désabonné
                               </span>
                             )}
                           </div>
@@ -4871,6 +4891,15 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
               </tbody>
             </table>
           </div>
+
+          {/* Pagination prospects */}
+          {prospectsTotal > 100 && (
+            <div className="px-5 py-4 border-t border-slate-200 flex items-center justify-between">
+              <p className="text-sm text-slate-600">
+                {prospects.length} sur {prospectsTotal}
+              </p>
+            </div>
+          )}
         </div>
       )}
         </>
@@ -5017,7 +5046,34 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                               <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓</span>
                             </div>
                           ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-orange-50 text-orange-700">⚠️ Sans email</span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="email"
+                                placeholder="Saisir email..."
+                                className="px-2 py-1 text-sm border border-slate-300 rounded-lg w-48 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                onKeyDown={async (e) => {
+                                  if (e.key === 'Enter' && e.target.value.trim()) {
+                                    const email = e.target.value.trim().toLowerCase();
+                                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                                      showToast('Email invalide', 'error');
+                                      return;
+                                    }
+                                    try {
+                                      await api.patch(`/prospection/contacts/${contact.hotel_id}/email`, {
+                                        linkedin_url: contact.linkedin_url,
+                                        nom_complet: contact.nom_complet,
+                                        email,
+                                      });
+                                      showToast('Email ajouté', 'success');
+                                      chargerContacts();
+                                    } catch (err) {
+                                      showToast('Erreur: ' + err.message, 'error');
+                                    }
+                                  }
+                                }}
+                              />
+                              <span className="text-[10px] text-slate-400">Entrée pour valider</span>
+                            </div>
                           )}
                         </td>
                         <td className="px-4 py-3">

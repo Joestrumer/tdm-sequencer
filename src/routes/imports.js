@@ -237,10 +237,15 @@ module.exports = (db) => {
         const mappedFields = {
           nom: mapping.nom ? record[mapping.nom] : null,
           email: validEmail,
+          civilite: mapping.civilite ? record[mapping.civilite] : null,
+          prenom: mapping.prenom ? record[mapping.prenom] : null,
+          nom_contact: mapping.nom_contact ? record[mapping.nom_contact] : null,
           site_web: mapping.site_web ? record[mapping.site_web] : null,
           ville: mapping.ville ? record[mapping.ville] : null,
+          code_postal: mapping.code_postal ? record[mapping.code_postal] : null,
           telephone: mapping.telephone ? record[mapping.telephone] : null,
           adresse: mapping.adresse ? record[mapping.adresse] : null,
+          classement: mapping.classement ? record[mapping.classement] : null,
         };
 
         // Stocker avec champs mappés + données brutes
@@ -378,6 +383,84 @@ module.exports = (db) => {
       res.json({ results });
     } catch (err) {
       logger.error('Erreur validation emails:', err);
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // POST /api/imports/prospects-to-leads - Convertir des prospects importés en leads
+  router.post('/prospects-to-leads', (req, res) => {
+    try {
+      const { prospect_ids } = req.body;
+
+      if (!Array.isArray(prospect_ids) || prospect_ids.length === 0) {
+        return res.status(400).json({ error: 'prospect_ids requis (array)' });
+      }
+
+      const createLead = db.prepare(`
+        INSERT OR IGNORE INTO leads (
+          id, prenom, nom, email, hotel, ville, segment,
+          langue, source, statut, comment, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+      `);
+
+      let created = 0;
+      const errors = [];
+
+      const transaction = db.transaction(() => {
+        for (const prospectId of prospect_ids) {
+          try {
+            const prospect = db.prepare('SELECT * FROM imported_prospects WHERE id = ?').get(prospectId);
+            if (!prospect) {
+              errors.push({ id: prospectId, error: 'Prospect non trouvé' });
+              continue;
+            }
+            if (!prospect.email) {
+              errors.push({ id: prospectId, error: 'Email manquant' });
+              continue;
+            }
+
+            const data = JSON.parse(prospect.data || '{}');
+            const mapped = data._mapped || {};
+            const source = db.prepare('SELECT nom FROM import_sources WHERE id = ?').get(prospect.source_id);
+
+            const leadId = randomUUID();
+            createLead.run(
+              leadId,
+              mapped.prenom || '',
+              mapped.nom_contact || '',
+              prospect.email,
+              mapped.nom || '',
+              mapped.ville || '',
+              mapped.classement || '',
+              'fr',
+              `Import CSV: ${source?.nom || 'Inconnu'}`,
+              'Nouveau',
+              [mapped.civilite, mapped.telephone, mapped.adresse, mapped.code_postal].filter(Boolean).join(' | ') || null,
+              // created_at and updated_at are datetime('now')
+            );
+
+            // Mettre à jour email_registry
+            db.prepare(`
+              UPDATE email_registry SET is_lead = 1, lead_id = ? WHERE email = ?
+            `).run(leadId, prospect.email);
+
+            created++;
+          } catch (err) {
+            if (err.message.includes('UNIQUE constraint')) {
+              errors.push({ id: prospectId, error: 'Email déjà existant dans les leads' });
+            } else {
+              errors.push({ id: prospectId, error: err.message });
+            }
+          }
+        }
+      });
+
+      transaction();
+
+      logger.info(`${created} prospect(s) converti(s) en leads`);
+      res.json({ success: true, created, errors });
+    } catch (err) {
+      logger.error('Erreur conversion prospects en leads:', err);
       res.status(500).json({ error: err.message });
     }
   });
