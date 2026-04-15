@@ -3479,7 +3479,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [emailsPagination, setEmailsPagination] = useState({ limit: 100, offset: 0 });
   const [selectedEmails, setSelectedEmails] = useState(new Set());
   const [showEmailsSequenceModal, setShowEmailsSequenceModal] = useState(false);
+  const [showEmailsCampaignModal, setShowEmailsCampaignModal] = useState(false);
   const [convertingEmails, setConvertingEmails] = useState(false);
+  const [campaigns, setCampaigns] = useState([]);
   const [filters, setFilters] = useState({
     classement: '',
     type_hebergement: '',
@@ -3862,6 +3864,34 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       }
     } catch (err) {
       showToast('Erreur conversion: ' + err.message, 'error');
+    }
+    setConvertingEmails(false);
+  };
+
+  const handleAddToCampaign = async () => {
+    if (selectedEmails.size === 0) {
+      showToast('Aucun email sélectionné', 'error');
+      return;
+    }
+
+    // D'abord créer les leads
+    setConvertingEmails(true);
+    try {
+      const res = await api.post('/prospection/create-leads', {
+        hotel_ids: Array.from(selectedEmails),
+      });
+
+      if (res.created > 0 || res.lead_ids?.length > 0) {
+        setCreatedLeadIds(res.lead_ids || []);
+        // Charger les campagnes brouillon
+        const campaignsData = await api.get('/campaigns?statut=brouillon');
+        setCampaigns(Array.isArray(campaignsData) ? campaignsData : []);
+        setShowEmailsCampaignModal(true);
+      } else {
+        showToast('Aucun email éligible', 'info');
+      }
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
     }
     setConvertingEmails(false);
   };
@@ -4514,11 +4544,11 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                     {convertingEmails ? '⏳ Conversion...' : '👤 Créer des leads'}
                   </button>
                   <button
-                    onClick={() => showToast('🚧 Ajout aux campagnes marketing en cours de développement', 'info')}
-                    disabled={readOnly}
+                    onClick={handleAddToCampaign}
+                    disabled={convertingEmails || readOnly}
                     className="px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
                   >
-                    📢 Ajouter à une campagne
+                    {convertingEmails ? '⏳ Préparation...' : '📢 Ajouter à une campagne'}
                   </button>
                 </div>
               </div>
@@ -4670,6 +4700,79 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
             }
           }}
         />
+      )}
+
+      {/* Modal choix campagne après création leads depuis emails génériques */}
+      {showEmailsCampaignModal && createdLeadIds.length > 0 && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowEmailsCampaignModal(false)}>
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+              <h3 className="text-base font-semibold text-slate-900">Ajouter à une campagne</h3>
+              <button onClick={() => setShowEmailsCampaignModal(false)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+            </div>
+            <div className="p-6 overflow-y-auto flex-1">
+              <p className="text-sm text-slate-500 mb-4">
+                <span className="font-semibold text-slate-800">{createdLeadIds.length} leads</span> seront ajoutés à la campagne sélectionnée.
+              </p>
+              {campaigns.length === 0 ? (
+                <div className="text-center py-8">
+                  <p className="text-sm text-slate-500 mb-4">Aucune campagne brouillon disponible.</p>
+                  <button
+                    onClick={() => {
+                      setShowEmailsCampaignModal(false);
+                      showToast('Créez une campagne dans l\'onglet "Email Marketing"', 'info');
+                    }}
+                    className="px-4 py-2 bg-purple-600 text-white text-sm font-medium rounded-lg hover:bg-purple-700"
+                  >
+                    Créer une campagne
+                  </button>
+                </div>
+              ) : (
+                <div className="space-y-2">
+                  {campaigns.map(campaign => (
+                    <button
+                      key={campaign.id}
+                      onClick={async () => {
+                        try {
+                          const res = await api.post(`/campaigns/${campaign.id}/recipients`, {
+                            mode: 'filter',
+                            filters: { lead_ids: createdLeadIds }
+                          });
+                          showToast(`✅ ${res.added} lead(s) ajouté(s) à "${campaign.nom}"`, 'success');
+                          setShowEmailsCampaignModal(false);
+                          setCreatedLeadIds([]);
+                          setSelectedEmails(new Set());
+                          chargerEmailsGeneriques();
+                        } catch (err) {
+                          showToast('Erreur: ' + err.message, 'error');
+                        }
+                      }}
+                      className="w-full flex items-center justify-between p-4 rounded-xl border border-slate-200 hover:border-purple-300 hover:bg-purple-50 transition-colors text-left"
+                    >
+                      <div>
+                        <div className="text-sm font-medium text-slate-900">{campaign.nom}</div>
+                        <div className="text-xs text-slate-500 mt-1">
+                          {campaign.total_recipients || 0} destinataires · {campaign.sujet}
+                        </div>
+                      </div>
+                      <svg className="w-5 h-5 text-slate-400" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                      </svg>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex-shrink-0">
+              <button
+                onClick={() => setShowEmailsCampaignModal(false)}
+                className="w-full py-2.5 text-sm font-medium bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50"
+              >
+                Annuler
+              </button>
+            </div>
+          </div>
+        </div>
       )}
 
       {/* Modal Contacts LinkedIn */}
