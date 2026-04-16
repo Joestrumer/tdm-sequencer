@@ -5258,6 +5258,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                                 </a>
                               )}
                             </div>
+                            {contact.is_lead && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 whitespace-nowrap">✓ Lead</span>
+                            )}
                           </div>
                         </td>
                         <td className="px-4 py-3">
@@ -5459,8 +5462,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                                 <p className="text-xs text-slate-500">Scrapé le {new Date(email.scraping_date).toLocaleDateString('fr-FR')}</p>
                               )}
                             </div>
-                            {email.imported_as_lead === 1 && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 whitespace-nowrap">✓ Lead créé</span>
+                            {(email.imported_as_lead === 1 || email.registry_is_lead === 1) && (
+                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 whitespace-nowrap">✓ Lead</span>
                             )}
                           </div>
                         </td>

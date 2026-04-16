@@ -193,9 +193,17 @@ module.exports = (db) => {
         /^(email|e-mail|mail|contact_email|adresse_email)$/i.test(c)
       );
 
-      // Créer source avec mapping
+      // Créer source avec mapping (gérer nom unique)
       const sourceId = randomUUID();
       const scrapingConfigParsed = scrapingConfig ? JSON.parse(scrapingConfig) : null;
+
+      // Vérifier si nom existe déjà et ajouter timestamp si besoin
+      let finalSourceName = sourceName;
+      const existing = db.prepare('SELECT id FROM import_sources WHERE nom = ?').get(sourceName);
+      if (existing) {
+        const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '');
+        finalSourceName = `${sourceName} (${timestamp})`;
+      }
 
       db.prepare(`
         INSERT INTO import_sources (
@@ -204,7 +212,7 @@ module.exports = (db) => {
         ) VALUES (?, ?, 'csv_import', ?, ?, ?, 'pending', ?, datetime('now'))
       `).run(
         sourceId,
-        sourceName,
+        finalSourceName,
         JSON.stringify({ columns: colonnes, mapping }), // Stocker colonnes + mapping
         scrapingEnabled === 'true' ? 1 : 0,
         scrapingConfigParsed ? JSON.stringify(scrapingConfigParsed) : null,
