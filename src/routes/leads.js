@@ -199,9 +199,6 @@ module.exports = (db) => {
         // Nettoyer la référence dans hotels_france (foreign key constraint)
         db.prepare('UPDATE hotels_france SET lead_id = NULL, imported_as_lead = 0 WHERE lead_id = ?').run(req.params.id);
 
-        // Nettoyer la référence dans imported_prospects si besoin
-        db.prepare('UPDATE imported_prospects SET lead_id = NULL WHERE lead_id = ?').run(req.params.id);
-
         // Enfin supprimer le lead
         const result = db.prepare('DELETE FROM leads WHERE id = ?').run(req.params.id);
         if (!result.changes) throw new Error('Lead introuvable');
