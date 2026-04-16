@@ -642,31 +642,34 @@ module.exports = (db) => {
     try {
       const { search, limit = 100, offset = 0 } = req.query;
 
+      // Condition WHERE commune à la base query et count query
+      let whereClause = 'WHERE h.contact_email IS NOT NULL AND h.contact_email != \'\'';
+      const params = [];
+
+      if (search) {
+        whereClause += ' AND (h.nom_commercial LIKE ? OR h.commune LIKE ? OR h.contact_email LIKE ?)';
+        const s = `%${search}%`;
+        params.push(s, s, s);
+      }
+
+      // Comptage total (requête simple sans JOIN)
+      const total = db.prepare(`SELECT COUNT(*) as total FROM hotels_france h ${whereClause}`).get(...params).total;
+
       let query = `
         SELECT h.id, h.nom_commercial, h.commune, h.code_postal, h.site_internet,
                h.contact_email, h.scraping_date, h.classement, h.capacite_accueil,
                h.imported_as_lead, h.lead_id,
                r.is_lead as registry_is_lead,
-               r.lead_id as registry_lead_id
+               r.lead_id as registry_lead_id,
+               l.statut as lead_statut
         FROM hotels_france h
         LEFT JOIN email_registry r ON r.email = h.contact_email
-        WHERE h.contact_email IS NOT NULL
-          AND h.contact_email != ''
+        LEFT JOIN leads l ON l.email = h.contact_email
+        ${whereClause}
       `;
-      const params = [];
-
-      if (search) {
-        query += ' AND (h.nom_commercial LIKE ? OR h.commune LIKE ? OR h.contact_email LIKE ?)';
-        const s = `%${search}%`;
-        params.push(s, s, s);
-      }
-
-      // Comptage total
-      const countQuery = query.replace(/SELECT .* FROM/, 'SELECT COUNT(*) as total FROM').replace(/LEFT JOIN.*ON.*/, '');
-      const total = db.prepare(countQuery).get(...params).total;
 
       // Pagination
-      query += ' ORDER BY scraping_date DESC LIMIT ? OFFSET ?';
+      query += ' ORDER BY h.scraping_date DESC LIMIT ? OFFSET ?';
       params.push(parseInt(limit), parseInt(offset));
 
       const emails = db.prepare(query).all(...params);
@@ -722,14 +725,16 @@ module.exports = (db) => {
             if (avec_email === 'true' && !contact.email) continue;
             if (fonction && !contact.fonction.toLowerCase().includes(fonction.toLowerCase())) continue;
 
-            // Vérifier si l'email est dans email_registry
+            // Vérifier si l'email est déjà un lead (via table leads directement)
             let isLead = false;
             let leadId = null;
+            let leadStatut = null;
             if (contact.email) {
-              const registry = db.prepare('SELECT is_lead, lead_id FROM email_registry WHERE email = ?').get(contact.email);
-              if (registry) {
-                isLead = registry.is_lead === 1;
-                leadId = registry.lead_id;
+              const lead = db.prepare('SELECT id, statut FROM leads WHERE email = ?').get(contact.email);
+              if (lead) {
+                isLead = true;
+                leadId = lead.id;
+                leadStatut = lead.statut;
               }
             }
 
@@ -742,6 +747,7 @@ module.exports = (db) => {
               search_date: hotel.linkedin_search_date,
               is_lead: isLead,
               lead_id: leadId,
+              lead_statut: leadStatut,
             });
           }
         } catch (err) {

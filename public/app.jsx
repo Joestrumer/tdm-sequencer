@@ -4661,9 +4661,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       {/* Actions pour sources importées */}
       {activeSource !== 'hotels_france' && (() => {
-        if (!sourceMapping) return null;
-
-        const { mapping: mappingInfo, customCols } = sourceMapping;
+        const mappingInfo = sourceMapping?.mapping || {};
+        const customCols = sourceMapping?.customCols || [];
         // Colonnes filtrables = colonnes mappées + custom
         const filterableCols = [
           mappingInfo.nom && { key: 'nom', label: 'Nom', col: mappingInfo.nom },
@@ -4926,9 +4925,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       {/* Tableau Prospects (sources importées) */}
       {activeSource !== 'hotels_france' && (() => {
-        if (!sourceMapping) return null;
-
-        const { mapping: srcMapping, customCols: srcCustomCols } = sourceMapping;
+        const srcMapping = sourceMapping?.mapping || {};
+        const srcCustomCols = sourceMapping?.customCols || [];
         const colSpanCount = 6 + srcCustomCols.length;
 
         // Filtrage client
@@ -5259,7 +5257,14 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                               )}
                             </div>
                             {contact.is_lead && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 whitespace-nowrap">✓ Lead</span>
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap ${
+                                contact.lead_statut === 'En séquence' ? 'bg-blue-50 text-blue-700' :
+                                contact.lead_statut === 'Répondu' ? 'bg-emerald-50 text-emerald-700' :
+                                contact.lead_statut === 'Converti' ? 'bg-amber-50 text-amber-700' :
+                                'bg-emerald-50 text-emerald-700'
+                              }`}>
+                                {contact.lead_statut ? `✓ ${contact.lead_statut}` : '✓ Lead'}
+                              </span>
                             )}
                           </div>
                         </td>
@@ -5462,8 +5467,15 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                                 <p className="text-xs text-slate-500">Scrapé le {new Date(email.scraping_date).toLocaleDateString('fr-FR')}</p>
                               )}
                             </div>
-                            {(email.imported_as_lead === 1 || email.registry_is_lead === 1) && (
-                              <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700 whitespace-nowrap">✓ Lead</span>
+                            {(email.imported_as_lead === 1 || email.registry_is_lead === 1 || email.lead_statut) && (
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap ${
+                                email.lead_statut === 'En séquence' ? 'bg-blue-50 text-blue-700' :
+                                email.lead_statut === 'Répondu' ? 'bg-emerald-50 text-emerald-700' :
+                                email.lead_statut === 'Converti' ? 'bg-amber-50 text-amber-700' :
+                                'bg-emerald-50 text-emerald-700'
+                              }`}>
+                                {email.lead_statut ? `✓ ${email.lead_statut}` : '✓ Lead'}
+                              </span>
                             )}
                           </div>
                         </td>
