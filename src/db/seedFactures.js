@@ -649,5 +649,41 @@ for (const [ref, moq] of Object.entries(moqData)) {
 }
 console.log(`  ✅ MOQ : ${moqCount} produits mis à jour`);
 
-console.log('🌱 Seed terminé !');
-process.exit(0);
+// ─── Correction noms produits sur VosFactures (API) ─────────────────────────
+const VF_BASE_URL = process.env.VF_BASE_URL || 'https://terredemars.vosfactures.fr';
+const vfToken = (() => {
+  const row = db.prepare("SELECT valeur FROM config WHERE cle = 'vf_api_token'").get();
+  return (row?.valeur || process.env.VF_API_TOKEN || '').trim();
+})();
+
+const VF_NAME_FIXES = [
+  { vf_id: '108668036', nom: 'Après Shampoing Elégance 500ml' },
+  { vf_id: '108668037', nom: 'Après Shampoing Elégance Recharge 5 L' },
+];
+
+if (vfToken) {
+  (async () => {
+    for (const fix of VF_NAME_FIXES) {
+      try {
+        const url = `${VF_BASE_URL}/products/${fix.vf_id}.json?api_token=${vfToken}`;
+        const res = await fetch(url, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ product: { name: fix.nom } }),
+        });
+        if (res.ok) {
+          console.log(`  ✅ VF produit ${fix.vf_id} → "${fix.nom}"`);
+        } else {
+          console.warn(`  ⚠️ VF produit ${fix.vf_id} : ${res.status}`);
+        }
+      } catch (e) {
+        console.warn(`  ⚠️ VF produit ${fix.vf_id} : ${e.message}`);
+      }
+    }
+    console.log('🌱 Seed terminé !');
+    process.exit(0);
+  })();
+} else {
+  console.log('🌱 Seed terminé !');
+  process.exit(0);
+}
