@@ -150,7 +150,7 @@ module.exports = (db) => {
         UPDATE leads SET statut = 'Fin de séquence', updated_at = datetime('now')
         WHERE statut = 'Répondu'
           AND hubspot_id IS NOT NULL
-          AND id NOT IN (SELECT DISTINCT lead_id FROM events WHERE type IN ('réponse', 'clic'))
+          AND id NOT IN (SELECT DISTINCT lead_id FROM events WHERE type IN ('ouverture', 'clic'))
           AND id NOT IN (SELECT DISTINCT lead_id FROM inscriptions WHERE statut = 'actif')
           AND id IN (SELECT DISTINCT lead_id FROM inscriptions WHERE statut = 'terminé')
       `).run();
@@ -160,7 +160,7 @@ module.exports = (db) => {
         UPDATE leads SET statut = 'Nouveau', updated_at = datetime('now')
         WHERE statut = 'Répondu'
           AND hubspot_id IS NOT NULL
-          AND id NOT IN (SELECT DISTINCT lead_id FROM events WHERE type IN ('réponse', 'clic'))
+          AND id NOT IN (SELECT DISTINCT lead_id FROM events WHERE type IN ('ouverture', 'clic'))
           AND id NOT IN (SELECT DISTINCT lead_id FROM inscriptions WHERE statut = 'actif')
           AND id NOT IN (SELECT DISTINCT lead_id FROM inscriptions WHERE statut = 'terminé')
       `).run();

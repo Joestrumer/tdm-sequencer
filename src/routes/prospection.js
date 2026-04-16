@@ -96,8 +96,8 @@ module.exports = (db) => {
       // Détection encodage avec chardet (fiable pour CSV français)
       const chardet = require('chardet');
       const rawBuffer = fs.readFileSync(req.file.path);
-      const detected = chardet.detect(rawBuffer);
-      const isLatin = detected && (detected.includes('ISO-8859') || detected.includes('windows') || detected.includes('Windows'));
+      const detected = chardet.detect(rawBuffer) || 'utf-8';
+      const isLatin = detected.includes('ISO-8859') || detected.includes('windows') || detected.includes('Windows');
       const encoding = isLatin ? 'latin1' : 'utf8';
       let rawData = rawBuffer.toString(encoding);
       logger.info(`📄 Encodage détecté: ${detected} → utilisation ${encoding}`);
@@ -345,9 +345,11 @@ module.exports = (db) => {
       const countQuery = query.replace('SELECT *', 'SELECT COUNT(*) as total');
       const total = db.prepare(countQuery).get(...params).total;
 
-      // Pagination
+      // Pagination (validée)
+      const safeLim = Math.min(Math.max(parseInt(limit) || 100, 1), 1000);
+      const safeOff = Math.max(parseInt(offset) || 0, 0);
       query += ' ORDER BY created_at DESC LIMIT ? OFFSET ?';
-      params.push(parseInt(limit), parseInt(offset));
+      params.push(safeLim, safeOff);
 
       const hotels = db.prepare(query).all(...params);
 
@@ -723,7 +725,7 @@ module.exports = (db) => {
           for (const contact of contacts) {
             // Filtrer si nécessaire
             if (avec_email === 'true' && !contact.email) continue;
-            if (fonction && !contact.fonction.toLowerCase().includes(fonction.toLowerCase())) continue;
+            if (fonction && !(contact.fonction || '').toLowerCase().includes(fonction.toLowerCase())) continue;
 
             // Vérifier si l'email est déjà un lead (via table leads directement)
             let isLead = false;

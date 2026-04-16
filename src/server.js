@@ -1,6 +1,9 @@
 require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
+const helmet = require('helmet');
+const compression = require('compression');
+const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
 const logger = require('./config/logger');
@@ -50,28 +53,40 @@ veilleScraper.initialiser(db);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
-app.use(cors({ origin: '*' }));
+// Sécurité : CORS whitelist, headers, compression
+const allowedOrigins = process.env.ALLOWED_ORIGINS
+  ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
+  : null;
+app.use(cors({
+  origin: allowedOrigins || '*',
+  credentials: !!allowedOrigins,
+}));
+app.use(helmet({ contentSecurityPolicy: false, crossOriginEmbedderPolicy: false }));
+app.use(compression());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
 
 // Santé AVANT auth
 app.get('/api/health', (req, res) => {
-  res.json({
-    statut: 'ok',
-    port: PORT,
-    brevo: process.env.BREVO_API_KEY ? 'configuré' : 'non configuré',
-    hubspot: process.env.HUBSPOT_API_KEY ? 'configuré' : 'non configuré',
-    zerobounce: process.env.ZEROBOUNCE_API_KEY ? 'configuré' : 'non configuré',
-  });
+  res.json({ statut: 'ok' });
 });
 
 // Auth middleware (JWT + fallback AUTH_SECRET)
 const authMiddleware = require('./middleware/auth');
 const { requireAccessAuto, requireAdmin } = require('./middleware/permissions');
 
+// Rate limiting sur login (anti brute-force)
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000, // 15 minutes
+  max: 10, // 10 tentatives max
+  message: { erreur: 'Trop de tentatives de connexion, réessayez dans 15 minutes' },
+  standardHeaders: true,
+  legacyHeaders: false,
+});
+
 // Route login PUBLIQUE (avant auth middleware)
 const authRoutes = require('./routes/auth')(db);
-app.post('/api/auth/login', (req, res, next) => {
+app.post('/api/auth/login', loginLimiter, (req, res, next) => {
   // Forward vers le routeur auth
   req.url = '/login';
   authRoutes(req, res, next);

@@ -88,7 +88,7 @@ async function avancerInscription(inscription, etapesParsed, lead) {
 
       const hasResponse = db.prepare(`
         SELECT COUNT(*) as count FROM events
-        WHERE lead_id = ? AND type IN ('réponse', 'clic')
+        WHERE lead_id = ? AND type IN ('ouverture', 'clic')
       `).get(lead.id);
 
       if (hasResponse.count === 0) {
