@@ -193,6 +193,9 @@ module.exports = (db) => {
         // Les inscriptions ont CASCADE, mais on les supprime explicitement pour être sûr
         db.prepare('DELETE FROM inscriptions WHERE lead_id = ?').run(req.params.id);
 
+        // Mettre à jour email_registry (retirer is_lead et lead_id)
+        db.prepare('UPDATE email_registry SET is_lead = 0, lead_id = NULL WHERE lead_id = ?').run(req.params.id);
+
         // Enfin supprimer le lead
         const result = db.prepare('DELETE FROM leads WHERE id = ?').run(req.params.id);
         if (!result.changes) throw new Error('Lead introuvable');
