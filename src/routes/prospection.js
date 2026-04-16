@@ -463,16 +463,19 @@ module.exports = (db) => {
               else if (hotel.classement.includes('1')) segment = '1*';
             }
 
+            // Déterminer si c'est un email personnel ou générique
+            const isGeneric = /^(contact|info|reservation|booking|mail|admin|support|service|communication|accueil|reception|hotel)@/i.test(hotel.contact_email);
+
             // Créer le lead
             createLead.run(
               leadId,
-              hotel.contact_prenom || 'Contact',
-              hotel.contact_nom || hotel.nom_commercial,
+              isGeneric ? '' : (hotel.contact_prenom || ''),
+              isGeneric ? hotel.nom_commercial : (hotel.contact_nom || hotel.nom_commercial),
               hotel.contact_email,
               hotel.nom_commercial,
               hotel.commune,
               segment,
-              hotel.contact_fonction || null,
+              isGeneric ? null : (hotel.contact_fonction || null),
               'fr',
               'Prospection automatique',
               'Nouveau'

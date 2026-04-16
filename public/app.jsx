@@ -3489,20 +3489,33 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
 
       // Auto-mapping intelligent
       const autoMapping = { ...columnMapping };
+      // Normaliser le nom de colonne pour le matching (retirer _CLE, _CLÉ, etc.)
+      const norm = (c) => c.replace(/[_-]CLE$/i, '').replace(/[_-]CLÉ$/i, '').toLowerCase().trim();
+
       columns.forEach(col => {
-        const colLower = col.toLowerCase();
-        if (/raison|entreprise|etablissement|commercial|societe|enseigne/i.test(col) && !autoMapping.nom) autoMapping.nom = col;
-        if (/e-?mail|courriel|contact_email/i.test(col) && !autoMapping.email) autoMapping.email = col;
-        if (/civilit/i.test(col) && !autoMapping.civilite) autoMapping.civilite = col;
-        if (/prenom|prénom|first.?name/i.test(col) && !autoMapping.prenom) autoMapping.prenom = col;
-        if (/nom_contact|nom_complet|lastname|family/i.test(col) && !autoMapping.nom_contact) autoMapping.nom_contact = col;
-        if (/^nom$/i.test(col.replace(/_cle$/i, '')) && !autoMapping.nom_contact) autoMapping.nom_contact = col;
-        if (/site|web|url|internet/i.test(col) && !autoMapping.site_web) autoMapping.site_web = col;
-        if (/ville|commune|city/i.test(col) && !autoMapping.ville) autoMapping.ville = col;
-        if (/code.?post|postal|zip/i.test(col) && !autoMapping.code_postal) autoMapping.code_postal = col;
-        if (/tel|phone|telephone/i.test(col) && !autoMapping.telephone) autoMapping.telephone = col;
-        if (/adresse|address|rue/i.test(col) && !autoMapping.adresse) autoMapping.adresse = col;
-        if (/class|etoil|stars|categor/i.test(col) && !autoMapping.classement) autoMapping.classement = col;
+        const n = norm(col);
+        // Raison sociale / Établissement → nom
+        if (/raison|entreprise|etablissement|commercial|societe|enseigne/.test(n) && !autoMapping.nom) autoMapping.nom = col;
+        // Email
+        if (/^e-?mail$|^courriel$|^contact.?email$/.test(n) && !autoMapping.email) autoMapping.email = col;
+        // Civilité
+        if (/^civilit/.test(n) && !autoMapping.civilite) autoMapping.civilite = col;
+        // Prénom — doit contenir "prenom" mais PAS "nom_contact"
+        if (/prenom|prénom|first.?name/.test(n) && !/nom_contact/.test(n) && !autoMapping.prenom) autoMapping.prenom = col;
+        // Nom contact — doit être "nom" seul, "nom_contact", "lastname", "family" (pas "prenom")
+        if ((/^nom$|^nom.?contact$|^nom.?complet$|^lastname$|^family/.test(n)) && !/prenom|prénom/.test(n) && !autoMapping.nom_contact) autoMapping.nom_contact = col;
+        // Site web
+        if (/site|web|url|internet/.test(n) && !autoMapping.site_web) autoMapping.site_web = col;
+        // Ville
+        if (/^ville$|^commune$|^city$/.test(n) && !autoMapping.ville) autoMapping.ville = col;
+        // Code postal
+        if (/code.?post|^postal$|^zip/.test(n) && !autoMapping.code_postal) autoMapping.code_postal = col;
+        // Téléphone
+        if (/tel|phone/.test(n) && !autoMapping.telephone) autoMapping.telephone = col;
+        // Adresse
+        if (/adresse|address|^rue$/.test(n) && !autoMapping.adresse) autoMapping.adresse = col;
+        // Classement
+        if (/class|etoil|stars|categor/.test(n) && !autoMapping.classement) autoMapping.classement = col;
       });
       setColumnMapping(autoMapping);
     } catch (err) {
