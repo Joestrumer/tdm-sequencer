@@ -1061,12 +1061,20 @@ module.exports = (db) => {
           (nom_complet && c.nom_complet === nom_complet)
         );
 
+        let contactIdx = idx;
         if (idx === -1) {
-          throw new Error('Contact non trouvé');
+          // Contact pas encore dans linkedin_contacts — l'ajouter
+          contacts.push({
+            nom_complet: nom_complet || 'Inconnu',
+            linkedin_url: linkedin_url || null,
+            email: null,
+            email_source: null,
+          });
+          contactIdx = contacts.length - 1;
         }
 
-        contacts[idx].email = email.trim().toLowerCase();
-        contacts[idx].email_source = 'manual';
+        contacts[contactIdx].email = email.trim().toLowerCase();
+        contacts[contactIdx].email_source = 'manual';
 
         db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
           .run(JSON.stringify(contacts), hotelId);
@@ -1075,13 +1083,13 @@ module.exports = (db) => {
         upsertLinkedInEmailRegistry(email.trim().toLowerCase(), {
           type: 'linkedin',
           hotel_id: hotelId,
-          linkedin_url: contacts[idx].linkedin_url,
-          nom_complet: contacts[idx].nom_complet,
+          linkedin_url: contacts[contactIdx].linkedin_url,
+          nom_complet: contacts[contactIdx].nom_complet,
           found_date: new Date().toISOString(),
           source: 'manual',
         });
 
-        logger.info(`Email manuel ajouté: ${email} pour ${contacts[idx].nom_complet}`);
+        logger.info(`Email manuel ajouté: ${email} pour ${contacts[contactIdx].nom_complet}`);
         return { success: true };
       });
 
@@ -1090,9 +1098,6 @@ module.exports = (db) => {
     } catch (err) {
       logger.error('Erreur PATCH contacts/:hotelId/email:', err);
       if (err.message === 'Hôtel non trouvé') {
-        return res.status(404).json({ error: err.message });
-      }
-      if (err.message === 'Contact non trouvé') {
         return res.status(404).json({ error: err.message });
       }
       res.status(500).json({ error: err.message });

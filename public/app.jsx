@@ -4192,6 +4192,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       setSelectedModalContacts(new Set());
       showToast(`✅ ${res.avec_email}/${res.total} email(s) trouvé(s)`, res.avec_email > 0 ? 'success' : 'warning');
+
+      // Rafraîchir l'onglet Contacts LinkedIn
+      chargerContacts();
     } catch (err) {
       showToast('Erreur recherche emails: ' + err.message, 'error');
     }
@@ -5753,7 +5756,37 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                                 {contact.email_source || 'Valid'}
                               </span>
                             </div>
-                          ) : null}
+                          ) : (
+                            <div className="flex items-center gap-2 mb-1" onClick={e => e.stopPropagation()}>
+                              <input
+                                type="email"
+                                placeholder="Saisir l'email manuellement..."
+                                className="text-xs border border-slate-300 rounded px-2 py-1 w-48 focus:outline-none focus:border-blue-400"
+                                onKeyDown={async (e) => {
+                                  if (e.key === 'Enter' && e.target.value.trim()) {
+                                    const emailVal = e.target.value.trim();
+                                    try {
+                                      await api.patch(`/prospection/contacts/${contactsHotel.id}/email`, {
+                                        linkedin_url: contact.linkedin_url,
+                                        nom_complet: contact.nom_complet,
+                                        email: emailVal,
+                                      });
+                                      const updated = [...contactsResults.contacts];
+                                      updated[i] = { ...updated[i], email: emailVal, email_source: 'manual' };
+                                      const newResults = { ...contactsResults, contacts: updated, avec_email: updated.filter(c => c.email).length };
+                                      setContactsResults(newResults);
+                                      setContactsCache(prev => ({ ...prev, [contactsHotel.id]: newResults }));
+                                      chargerContacts();
+                                      showToast(`Email sauvegardé pour ${contact.nom_complet}`, 'success');
+                                    } catch (err) {
+                                      showToast('Erreur: ' + err.message, 'error');
+                                    }
+                                  }
+                                }}
+                              />
+                              <span className="text-[10px] text-slate-400">Entrer pour sauver</span>
+                            </div>
+                          )}
 
                           {contact.linkedin_url && (
                             <a href={contact.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-600 hover:underline inline-flex items-center gap-1" onClick={e => e.stopPropagation()}>
