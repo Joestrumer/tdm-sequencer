@@ -164,6 +164,13 @@ module.exports = (db, userToken = null) => ({
     }, db, userToken);
   },
 
+  async updateProduct(id, data) {
+    return vfFetch(`/products/${id}.json`, {
+      method: 'PUT',
+      body: { product: data },
+    }, db, userToken);
+  },
+
   async envoyerRelance(id, opts = {}) {
     try {
       return await vfFetch(`/invoices/${id}/send_reminder.json`, {

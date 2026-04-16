@@ -168,6 +168,31 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Sync noms produits vers VosFactures ───────────────────────────────────
+
+  router.post('/produits/sync-names', async (req, res) => {
+    try {
+      const catalog = getCatalogMap();
+      const updated = [];
+      const errors = [];
+
+      for (const [ref, entry] of Object.entries(catalog)) {
+        if (!entry.vf_product_id) continue;
+        try {
+          await req.vfService.updateProduct(entry.vf_product_id, { name: entry.nom });
+          updated.push({ ref, vf_id: entry.vf_product_id, nom: entry.nom });
+        } catch (e) {
+          errors.push({ ref, vf_id: entry.vf_product_id, erreur: e.message });
+        }
+      }
+
+      logger.info(`Sync noms VF : ${updated.length} mis à jour, ${errors.length} erreurs`);
+      res.json({ ok: true, updated: updated.length, errors });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Matching produits ──────────────────────────────────────────────────────
 
   router.post('/match-products', (req, res) => {
