@@ -5290,17 +5290,22 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                                 className="px-2 py-1 text-sm border border-slate-300 rounded-lg w-48 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
                                 onKeyDown={async (e) => {
                                   if (e.key === 'Enter' && e.target.value.trim()) {
+                                    e.preventDefault();
                                     const email = e.target.value.trim().toLowerCase();
                                     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
                                       showToast('Email invalide', 'error');
                                       return;
                                     }
                                     try {
-                                      await api.patch(`/prospection/contacts/${contact.hotel_id}/email`, {
+                                      const res = await api.patch(`/prospection/contacts/${contact.hotel_id}/email`, {
                                         linkedin_url: contact.linkedin_url,
                                         nom_complet: contact.nom_complet,
                                         email,
                                       });
+                                      if (res.error) {
+                                        showToast('Erreur: ' + res.error, 'error');
+                                        return;
+                                      }
                                       showToast('Email ajouté', 'success');
                                       chargerContacts();
                                     } catch (err) {
@@ -5764,13 +5769,18 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                                 className="text-xs border border-slate-300 rounded px-2 py-1 w-48 focus:outline-none focus:border-blue-400"
                                 onKeyDown={async (e) => {
                                   if (e.key === 'Enter' && e.target.value.trim()) {
+                                    e.preventDefault();
                                     const emailVal = e.target.value.trim();
                                     try {
-                                      await api.patch(`/prospection/contacts/${contactsHotel.id}/email`, {
+                                      const res = await api.patch(`/prospection/contacts/${contactsHotel.id}/email`, {
                                         linkedin_url: contact.linkedin_url,
                                         nom_complet: contact.nom_complet,
                                         email: emailVal,
                                       });
+                                      if (res.error) {
+                                        showToast('Erreur: ' + res.error, 'error');
+                                        return;
+                                      }
                                       const updated = [...contactsResults.contacts];
                                       updated[i] = { ...updated[i], email: emailVal, email_source: 'manual' };
                                       const newResults = { ...contactsResults, contacts: updated, avec_email: updated.filter(c => c.email).length };
