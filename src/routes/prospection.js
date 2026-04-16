@@ -860,17 +860,15 @@ module.exports = (db) => {
 
       logger.info(`✅ ${results.length} contact(s) trouvé(s) (emails non recherchés - en attente de sélection utilisateur)`);
 
-      // Sauvegarder les contacts dans la table hotels_france
+      // Mettre à jour la date de recherche (sans sauvegarder les contacts — seuls ceux sélectionnés pour recherche email seront sauvegardés)
       try {
         db.prepare(`
           UPDATE hotels_france
-          SET linkedin_contacts = ?,
-              linkedin_search_date = datetime('now')
+          SET linkedin_search_date = datetime('now')
           WHERE id = ?
-        `).run(JSON.stringify(results), hotel.id);
-        logger.info(`💾 Contacts sauvegardés pour ${hotel.nom_commercial}`);
+        `).run(hotel.id);
       } catch (err) {
-        logger.warn(`Erreur sauvegarde contacts:`, err.message);
+        logger.warn(`Erreur mise à jour date recherche:`, err.message);
       }
 
       // Trier par pertinence
@@ -995,26 +993,33 @@ module.exports = (db) => {
 
       logger.info(`✅ Recherche terminée: ${results.filter(r => r.email).length}/${results.length} emails trouvés`);
 
-      // Mettre à jour les contacts sauvegardés (transaction pour éviter race condition)
+      // Sauvegarder uniquement les contacts sélectionnés dans linkedin_contacts (transaction pour éviter race condition)
       try {
         const updateContacts = db.transaction(() => {
           const currentHotel = db.prepare('SELECT linkedin_contacts FROM hotels_france WHERE id = ?').get(hotel.id);
           const savedContacts = JSON.parse(currentHotel?.linkedin_contacts || '[]');
           for (const result of results) {
-            const idx = savedContacts.findIndex(c => c.linkedin_url === result.linkedin_url);
+            const idx = savedContacts.findIndex(c =>
+              (result.linkedin_url && c.linkedin_url === result.linkedin_url) ||
+              (result.nom_complet && c.nom_complet === result.nom_complet)
+            );
             if (idx !== -1) {
+              // Mettre à jour le contact existant
               savedContacts[idx] = { ...savedContacts[idx], ...result };
+            } else {
+              // Ajouter le nouveau contact sélectionné
+              savedContacts.push(result);
+            }
 
-              // Ajouter l'email à email_registry si trouvé
-              if (result.email) {
-                upsertLinkedInEmailRegistry(result.email, {
-                  type: 'linkedin',
-                  hotel_id: hotel.id,
-                  linkedin_url: result.linkedin_url,
-                  nom_complet: result.nom_complet,
-                  found_date: new Date().toISOString(),
-                });
-              }
+            // Ajouter l'email à email_registry si trouvé
+            if (result.email) {
+              upsertLinkedInEmailRegistry(result.email, {
+                type: 'linkedin',
+                hotel_id: hotel.id,
+                linkedin_url: result.linkedin_url,
+                nom_complet: result.nom_complet,
+                found_date: new Date().toISOString(),
+              });
             }
           }
           db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
