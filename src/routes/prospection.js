@@ -525,7 +525,7 @@ module.exports = (db) => {
         SELECT COUNT(*) as n FROM hotels_france
         WHERE (contact_email IS NOT NULL AND contact_email != '')
            OR (linkedin_contacts IS NOT NULL AND linkedin_contacts != '[]' AND linkedin_contacts != '')
-           OR scraping_status = 'completed'
+           OR scraping_status IN ('success', 'completed')
       `).get().n;
       const withoutScraping = totalCount - withScraping;
 
@@ -534,7 +534,7 @@ module.exports = (db) => {
         DELETE FROM hotels_france
         WHERE (contact_email IS NULL OR contact_email = '')
           AND (linkedin_contacts IS NULL OR linkedin_contacts = '[]' OR linkedin_contacts = '')
-          AND scraping_status != 'completed'
+          AND scraping_status NOT IN ('success', 'completed')
       `).run();
 
       // Pour les lignes avec scraping : reset les données CSV mais GARDER le scraping

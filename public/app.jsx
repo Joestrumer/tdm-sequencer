@@ -3445,6 +3445,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 };
 
 const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
+  useEscapeClose(onClose);
   const [step, setStep] = useState(1); // 1: Upload, 2: Mapping
   const [uploading, setUploading] = useState(false);
   const [sourceName, setSourceName] = useState('');
@@ -3749,7 +3750,8 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
             <button
               type="button"
               onClick={handleNext}
-              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700"
+              disabled={!fileData || !sourceName.trim()}
+              className="px-4 py-2 rounded-lg bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               Suivant →
             </button>
@@ -3771,6 +3773,7 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
 };
 
 const VueProspection = ({ showToast, readOnly, sequences }) => {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [activeTab, setActiveTab] = useState('hotels'); // 'hotels', 'contacts' ou 'emails-generiques'
 
   // States sources multi-CSV (nouveau système)
@@ -3784,6 +3787,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [prospectsSearch, setProspectsSearch] = useState('');
   const [prospectsFilterCol, setProspectsFilterCol] = useState(''); // colonne filtrée
   const [prospectsFilterVal, setProspectsFilterVal] = useState(''); // valeur filtre
+  const [convertingProspects, setConvertingProspects] = useState(false);
 
   // States Hotels France (ancien système - toujours utilisé)
   const [hotels, setHotels] = useState([]);
@@ -4061,7 +4065,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   };
 
   const handleReset = async () => {
-    if (!confirm('⚠️ Supprimer les hôtels sans données de scraping ?\n\nLes hôtels avec contacts LinkedIn ou emails scrapés seront CONSERVÉS.')) {
+    if (!await confirmDialog('⚠️ Supprimer les hôtels sans données de scraping ?\n\nLes hôtels avec contacts LinkedIn ou emails scrapés seront CONSERVÉS.', { danger: true, confirmLabel: 'Supprimer' })) {
       return;
     }
 
@@ -4660,6 +4664,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
             {selectedProspects.size > 0 && !readOnly && (
               <button
+                disabled={convertingProspects}
                 onClick={async () => {
                   const selected = prospects.filter(p => selectedProspects.has(p.id));
                   const withEmail = selected.filter(p => p.email);
@@ -4667,7 +4672,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                     showToast('Aucun prospect sélectionné avec email', 'error');
                     return;
                   }
-                  if (!confirm(`Convertir ${withEmail.length} prospect(s) en leads ?\n${selected.length - withEmail.length > 0 ? `(${selected.length - withEmail.length} ignoré(s) sans email)` : ''}`)) return;
+                  if (!await confirmDialog(`Convertir ${withEmail.length} prospect(s) en leads ?\n${selected.length - withEmail.length > 0 ? `(${selected.length - withEmail.length} ignoré(s) sans email)` : ''}`, { confirmLabel: 'Convertir' })) return;
+                  setConvertingProspects(true);
                   try {
                     const res = await api.post('/imports/prospects-to-leads', {
                       prospect_ids: withEmail.map(p => p.id),
@@ -4678,17 +4684,18 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                   } catch (err) {
                     showToast('Erreur conversion: ' + err.message, 'error');
                   }
+                  setConvertingProspects(false);
                 }}
-                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 flex items-center gap-2"
+                className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                Convertir en leads ({selectedProspects.size})
+                {convertingProspects ? '⏳ Conversion...' : `Convertir en leads (${selectedProspects.size})`}
               </button>
             )}
 
             {!readOnly && (
               <button
                 onClick={async () => {
-                  if (!confirm(`Supprimer la source "${sourceInfo?.nom}" et tous ses ${prospectsTotal} prospects ?\n\nCette action est irréversible.`)) return;
+                  if (!await confirmDialog(`Supprimer la source "${sourceInfo?.nom}" et tous ses ${prospectsTotal} prospects ?\n\nCette action est irréversible.`, { danger: true, confirmLabel: 'Supprimer' })) return;
                   try {
                     await api.delete(`/imports/sources/${activeSource}`);
                     showToast('Source supprimée', 'success');
@@ -5791,6 +5798,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       {/* Modal Import CSV */}
       {showImportModal && <ModalImportCSV onClose={() => setShowImportModal(false)} onSuccess={() => { chargerSources(); showToast('✅ Import réussi', 'success'); }} showToast={showToast} />}
+      {confirmDialogEl}
     </div>
   );
 };

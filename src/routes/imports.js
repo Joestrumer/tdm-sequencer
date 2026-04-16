@@ -76,7 +76,9 @@ module.exports = (db) => {
 
     if (existing) {
       // Ajouter la source si pas déjà présente
-      const sources = JSON.parse(existing.sources || '[]');
+      let sources = [];
+      try { sources = JSON.parse(existing.sources || '[]'); } catch { sources = []; }
+      if (!Array.isArray(sources)) sources = [];
       if (!sources.find(s => s.source_id === sourceInfo.source_id && s.prospect_id === sourceInfo.prospect_id)) {
         sources.push(sourceInfo);
       }
@@ -486,16 +488,39 @@ module.exports = (db) => {
         return res.status(404).json({ error: 'Source non trouvée' });
       }
 
-      // Compter les prospects avant suppression
+      // Récupérer les prospects avec email pour nettoyer email_registry
+      const prospectsWithEmail = db.prepare(
+        'SELECT id, email FROM imported_prospects WHERE source_id = ? AND email IS NOT NULL'
+      ).all(id);
       const count = db.prepare('SELECT COUNT(*) as n FROM imported_prospects WHERE source_id = ?').get(id).n;
 
-      // Supprimer les prospects d'abord (au cas où CASCADE ne fonctionne pas)
-      db.prepare('DELETE FROM imported_prospects WHERE source_id = ?').run(id);
+      const transaction = db.transaction(() => {
+        // Nettoyer email_registry (retirer les références à cette source)
+        for (const p of prospectsWithEmail) {
+          const registry = db.prepare('SELECT sources FROM email_registry WHERE email = ?').get(p.email);
+          if (registry) {
+            let sources = [];
+            try { sources = JSON.parse(registry.sources || '[]'); } catch { sources = []; }
+            const filtered = sources.filter(s => s.prospect_id !== p.id);
+            if (filtered.length === 0) {
+              db.prepare('DELETE FROM email_registry WHERE email = ?').run(p.email);
+            } else {
+              db.prepare('UPDATE email_registry SET sources = ? WHERE email = ?')
+                .run(JSON.stringify(filtered), p.email);
+            }
+          }
+        }
 
-      // Supprimer la source
-      db.prepare('DELETE FROM import_sources WHERE id = ?').run(id);
+        // Supprimer les prospects
+        db.prepare('DELETE FROM imported_prospects WHERE source_id = ?').run(id);
 
-      logger.info(`Source "${source.nom}" supprimée (${count} prospects)`);
+        // Supprimer la source
+        db.prepare('DELETE FROM import_sources WHERE id = ?').run(id);
+      });
+
+      transaction();
+
+      logger.info(`Source "${source.nom}" supprimée (${count} prospects, ${prospectsWithEmail.length} emails nettoyés)`);
       res.json({ success: true, deleted: count, source_name: source.nom });
     } catch (err) {
       logger.error('Erreur suppression source:', err);
