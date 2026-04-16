@@ -4661,6 +4661,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       {/* Actions pour sources importées */}
       {activeSource !== 'hotels_france' && (() => {
+        const sourceInfo = importSources.find(s => s.id === activeSource);
         const mappingInfo = sourceMapping?.mapping || {};
         const customCols = sourceMapping?.customCols || [];
         // Colonnes filtrables = colonnes mappées + custom
@@ -4925,6 +4926,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       {/* Tableau Prospects (sources importées) */}
       {activeSource !== 'hotels_france' && (() => {
+        const sourceInfo = importSources.find(s => s.id === activeSource);
         const srcMapping = sourceMapping?.mapping || {};
         const srcCustomCols = sourceMapping?.customCols || [];
         const colSpanCount = 6 + srcCustomCols.length;
