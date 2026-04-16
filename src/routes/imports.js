@@ -197,12 +197,12 @@ module.exports = (db) => {
       const sourceId = randomUUID();
       const scrapingConfigParsed = scrapingConfig ? JSON.parse(scrapingConfig) : null;
 
-      // Vérifier si nom existe déjà et ajouter timestamp si besoin
+      // Vérifier si nom existe déjà et ajouter suffixe unique
       let finalSourceName = sourceName;
-      const existing = db.prepare('SELECT id FROM import_sources WHERE nom = ?').get(sourceName);
-      if (existing) {
-        const timestamp = new Date().toISOString().split('T')[0].replace(/-/g, '');
-        finalSourceName = `${sourceName} (${timestamp})`;
+      let counter = 0;
+      while (db.prepare('SELECT id FROM import_sources WHERE nom = ?').get(finalSourceName)) {
+        counter++;
+        finalSourceName = `${sourceName} (${counter})`;
       }
 
       db.prepare(`
@@ -226,7 +226,7 @@ module.exports = (db) => {
       let duplicates = 0;
 
       const stmtInsert = db.prepare(`
-        INSERT INTO imported_prospects (id, source_id, email, data, import_batch, scraping_status)
+        INSERT OR IGNORE INTO imported_prospects (id, source_id, email, data, import_batch, scraping_status)
         VALUES (?, ?, ?, ?, ?, ?)
       `);
 
