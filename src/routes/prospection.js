@@ -23,6 +23,64 @@ const upload = multer({
 
 module.exports = (db) => {
 
+  // ──────────────────────────────────────────────────────────────────────────────
+  // Helper : Classification email et gestion email_registry
+  // ──────────────────────────────────────────────────────────────────────────────
+
+  const GENERIC_PATTERNS = [
+    /^contact@/i, /^info@/i, /^reservation@/i, /^booking@/i, /^mail@/i,
+    /^admin@/i, /^support@/i, /^service@/i, /^communication@/i,
+    /^accueil@/i, /^reception@/i, /^hotel@/i, /^manager@/i,
+  ];
+
+  function classifyEmailType(email) {
+    if (!email || typeof email !== 'string') return 'generic';
+
+    for (const pattern of GENERIC_PATTERNS) {
+      if (pattern.test(email)) return 'generic';
+    }
+
+    // Si contient prénom.nom@ ou initiale, probablement personnel
+    if (/^[a-z]+\.[a-z]+@/i.test(email) || /^[a-z]\.[a-z]+@/i.test(email)) {
+      return 'personal';
+    }
+
+    return 'generic';
+  }
+
+  function upsertLinkedInEmailRegistry(email, sourceInfo) {
+    const emailType = classifyEmailType(email);
+    const existing = db.prepare('SELECT * FROM email_registry WHERE email = ?').get(email);
+
+    if (existing) {
+      // Ajouter la source LinkedIn si pas déjà présente
+      let sources = [];
+      try { sources = JSON.parse(existing.sources || '[]'); } catch { sources = []; }
+      if (!Array.isArray(sources)) sources = [];
+
+      const alreadyExists = sources.find(s =>
+        s.type === 'linkedin' &&
+        s.hotel_id === sourceInfo.hotel_id &&
+        s.linkedin_url === sourceInfo.linkedin_url
+      );
+
+      if (!alreadyExists) {
+        sources.push(sourceInfo);
+        db.prepare(`
+          UPDATE email_registry
+          SET sources = ?, last_updated = datetime('now')
+          WHERE email = ?
+        `).run(JSON.stringify(sources), email);
+      }
+    } else {
+      // Créer nouvelle entrée
+      db.prepare(`
+        INSERT INTO email_registry (email, email_type, sources, is_lead, created_at, last_updated)
+        VALUES (?, ?, ?, 0, datetime('now'), datetime('now'))
+      `).run(email, emailType, JSON.stringify([sourceInfo]));
+    }
+  }
+
   // POST /api/prospection/import — Import CSV des hôtels français
   router.post('/import', upload.single('file'), async (req, res) => {
     if (!req.file) {
@@ -924,6 +982,17 @@ module.exports = (db) => {
             const idx = savedContacts.findIndex(c => c.linkedin_url === result.linkedin_url);
             if (idx !== -1) {
               savedContacts[idx] = { ...savedContacts[idx], ...result };
+
+              // Ajouter l'email à email_registry si trouvé
+              if (result.email) {
+                upsertLinkedInEmailRegistry(result.email, {
+                  type: 'linkedin',
+                  hotel_id: hotel.id,
+                  linkedin_url: result.linkedin_url,
+                  nom_complet: result.nom_complet,
+                  found_date: new Date().toISOString(),
+                });
+              }
             }
           }
           db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
@@ -979,6 +1048,16 @@ module.exports = (db) => {
 
         db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
           .run(JSON.stringify(contacts), hotelId);
+
+        // Ajouter l'email à email_registry
+        upsertLinkedInEmailRegistry(email.trim().toLowerCase(), {
+          type: 'linkedin',
+          hotel_id: hotelId,
+          linkedin_url: contacts[idx].linkedin_url,
+          nom_complet: contacts[idx].nom_complet,
+          found_date: new Date().toISOString(),
+          source: 'manual',
+        });
 
         logger.info(`Email manuel ajouté: ${email} pour ${contacts[idx].nom_complet}`);
         return { success: true };
