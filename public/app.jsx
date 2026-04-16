@@ -4953,12 +4953,32 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                   <th className="w-8 px-4 py-3">
                     <input
                       type="checkbox"
-                      checked={filteredProspects.length > 0 && selectedProspects.size === filteredProspects.length}
+                      checked={(() => {
+                        if (filteredProspects.length === 0) return false;
+                        const visibleIds = filteredProspects.map(p => p.id);
+                        return visibleIds.every(id => selectedProspects.has(id));
+                      })()}
+                      ref={(el) => {
+                        if (el && filteredProspects.length > 0) {
+                          const visibleIds = filteredProspects.map(p => p.id);
+                          const selectedVisibleCount = visibleIds.filter(id => selectedProspects.has(id)).length;
+                          el.indeterminate = selectedVisibleCount > 0 && selectedVisibleCount < visibleIds.length;
+                        }
+                      }}
                       onChange={() => {
-                        if (selectedProspects.size === filteredProspects.length) {
-                          setSelectedProspects(new Set());
+                        const visibleIds = new Set(filteredProspects.map(p => p.id));
+                        const selectedVisibleCount = Array.from(selectedProspects).filter(id => visibleIds.has(id)).length;
+
+                        if (selectedVisibleCount === filteredProspects.length && filteredProspects.length > 0) {
+                          // Tous les visibles sont sélectionnés → déselectionner les visibles uniquement
+                          const newSelection = new Set(selectedProspects);
+                          visibleIds.forEach(id => newSelection.delete(id));
+                          setSelectedProspects(newSelection);
                         } else {
-                          setSelectedProspects(new Set(filteredProspects.map(p => p.id)));
+                          // Sélectionner tous les visibles (conserver les autres sélections)
+                          const newSelection = new Set(selectedProspects);
+                          visibleIds.forEach(id => newSelection.add(id));
+                          setSelectedProspects(newSelection);
                         }
                       }}
                       className="w-4 h-4"
