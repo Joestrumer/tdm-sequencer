@@ -915,17 +915,21 @@ module.exports = (db) => {
 
       logger.info(`✅ Recherche terminée: ${results.filter(r => r.email).length}/${results.length} emails trouvés`);
 
-      // Mettre à jour les contacts sauvegardés
+      // Mettre à jour les contacts sauvegardés (transaction pour éviter race condition)
       try {
-        const savedContacts = JSON.parse(hotel.linkedin_contacts || '[]');
-        for (const result of results) {
-          const idx = savedContacts.findIndex(c => c.linkedin_url === result.linkedin_url);
-          if (idx !== -1) {
-            savedContacts[idx] = { ...savedContacts[idx], ...result };
+        const updateContacts = db.transaction(() => {
+          const currentHotel = db.prepare('SELECT linkedin_contacts FROM hotels_france WHERE id = ?').get(hotel.id);
+          const savedContacts = JSON.parse(currentHotel?.linkedin_contacts || '[]');
+          for (const result of results) {
+            const idx = savedContacts.findIndex(c => c.linkedin_url === result.linkedin_url);
+            if (idx !== -1) {
+              savedContacts[idx] = { ...savedContacts[idx], ...result };
+            }
           }
-        }
-        db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
-          .run(JSON.stringify(savedContacts), hotel.id);
+          db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
+            .run(JSON.stringify(savedContacts), hotel.id);
+        });
+        updateContacts();
       } catch (err) {
         logger.warn('Erreur mise à jour contacts:', err.message);
       }
@@ -953,31 +957,43 @@ module.exports = (db) => {
     }
 
     try {
-      const hotel = db.prepare('SELECT linkedin_contacts FROM hotels_france WHERE id = ?').get(hotelId);
-      if (!hotel) {
-        return res.status(404).json({ error: 'Hôtel non trouvé' });
-      }
+      // Transaction pour éviter race condition sur linkedin_contacts
+      const updateEmail = db.transaction(() => {
+        const hotel = db.prepare('SELECT linkedin_contacts FROM hotels_france WHERE id = ?').get(hotelId);
+        if (!hotel) {
+          throw new Error('Hôtel non trouvé');
+        }
 
-      const contacts = JSON.parse(hotel.linkedin_contacts || '[]');
-      const idx = contacts.findIndex(c =>
-        (linkedin_url && c.linkedin_url === linkedin_url) ||
-        (nom_complet && c.nom_complet === nom_complet)
-      );
+        const contacts = JSON.parse(hotel.linkedin_contacts || '[]');
+        const idx = contacts.findIndex(c =>
+          (linkedin_url && c.linkedin_url === linkedin_url) ||
+          (nom_complet && c.nom_complet === nom_complet)
+        );
 
-      if (idx === -1) {
-        return res.status(404).json({ error: 'Contact non trouvé' });
-      }
+        if (idx === -1) {
+          throw new Error('Contact non trouvé');
+        }
 
-      contacts[idx].email = email.trim().toLowerCase();
-      contacts[idx].email_source = 'manual';
+        contacts[idx].email = email.trim().toLowerCase();
+        contacts[idx].email_source = 'manual';
 
-      db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
-        .run(JSON.stringify(contacts), hotelId);
+        db.prepare('UPDATE hotels_france SET linkedin_contacts = ? WHERE id = ?')
+          .run(JSON.stringify(contacts), hotelId);
 
-      logger.info(`Email manuel ajouté: ${email} pour ${contacts[idx].nom_complet}`);
-      res.json({ success: true });
+        logger.info(`Email manuel ajouté: ${email} pour ${contacts[idx].nom_complet}`);
+        return { success: true };
+      });
+
+      const result = updateEmail();
+      res.json(result);
     } catch (err) {
       logger.error('Erreur PATCH contacts/:hotelId/email:', err);
+      if (err.message === 'Hôtel non trouvé') {
+        return res.status(404).json({ error: err.message });
+      }
+      if (err.message === 'Contact non trouvé') {
+        return res.status(404).json({ error: err.message });
+      }
       res.status(500).json({ error: err.message });
     }
   });

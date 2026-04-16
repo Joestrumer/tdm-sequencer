@@ -533,6 +533,7 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_imported_prospects_source ON imported_prospects(source_id);
   CREATE INDEX IF NOT EXISTS idx_imported_prospects_email ON imported_prospects(email);
   CREATE INDEX IF NOT EXISTS idx_imported_prospects_scraping ON imported_prospects(scraping_status);
+  CREATE UNIQUE INDEX IF NOT EXISTS idx_imported_prospects_source_email ON imported_prospects(source_id, email) WHERE email IS NOT NULL;
   CREATE INDEX IF NOT EXISTS idx_email_registry_type ON email_registry(email_type);
   CREATE INDEX IF NOT EXISTS idx_email_registry_lead ON email_registry(is_lead);
   CREATE INDEX IF NOT EXISTS idx_email_registry_updated ON email_registry(last_updated);

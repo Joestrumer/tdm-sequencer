@@ -3807,6 +3807,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [contactsCache, setContactsCache] = useState({}); // Cache des résultats par hotel_id
   const [selectedModalContacts, setSelectedModalContacts] = useState(new Set()); // Contacts sélectionnés dans le modal
   const [emailSearchLoading, setEmailSearchLoading] = useState(false); // Loading recherche emails
+  const [selectingContact, setSelectingContact] = useState(false); // Loading sélection contact
 
   // States pour vue contacts LinkedIn
   const [contacts, setContacts] = useState([]);
@@ -3843,6 +3844,23 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [scrapingProgress, setScrapingProgress] = useState({ processing: 0, watching: false });
   const fileInputRef = useRef(null);
   const pollingIntervalRef = useRef(null);
+
+  // Memo pour parser sourceInfo.colonnes (évite parsing répété à chaque rendu)
+  const sourceMapping = React.useMemo(() => {
+    if (activeSource === 'hotels_france') return null;
+    const sourceInfo = importSources.find(s => s.id === activeSource);
+    if (!sourceInfo?.colonnes) return null;
+    try {
+      const parsed = JSON.parse(sourceInfo.colonnes);
+      return {
+        mapping: parsed.mapping || {},
+        customCols: Array.isArray(parsed.mapping?._custom) ? parsed.mapping._custom : [],
+      };
+    } catch (e) {
+      console.error('Erreur parsing colonnes source:', e);
+      return null;
+    }
+  }, [activeSource, importSources]);
 
   const chargerHotels = async () => {
     setLoading(true);
@@ -3890,19 +3908,24 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       const searchParam = prospectsSearch ? `&search=${encodeURIComponent(prospectsSearch)}` : '';
       const res = await api.get(`/imports/sources/${sourceId}/prospects?limit=200&offset=0${searchParam}`);
 
-      // Parser les champs JSON
+      // Parser les champs JSON avec fallback sécurisé
       const prospectsWithParsedData = (res.prospects || []).map(p => {
-        try {
-          return {
-            ...p,
-            data: p.data && typeof p.data === 'string' ? JSON.parse(p.data) : p.data,
-            scraped_data: p.scraped_data && typeof p.scraped_data === 'string' ? JSON.parse(p.scraped_data) : p.scraped_data,
-            email_sources: p.email_sources && typeof p.email_sources === 'string' ? JSON.parse(p.email_sources) : p.email_sources,
-          };
-        } catch (e) {
-          console.error('Erreur parsing prospect:', e);
-          return p;
-        }
+        const safeParseJson = (str, fallback) => {
+          if (typeof str !== 'string') return str || fallback;
+          try {
+            return JSON.parse(str);
+          } catch (e) {
+            console.error('Erreur parsing JSON:', e, str.substring(0, 100));
+            return fallback;
+          }
+        };
+
+        return {
+          ...p,
+          data: safeParseJson(p.data, {}),
+          scraped_data: safeParseJson(p.scraped_data, null),
+          email_sources: safeParseJson(p.email_sources, null),
+        };
       });
 
       setProspects(prospectsWithParsedData);
@@ -4110,8 +4133,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   };
 
   const handleSelectContact = async (contact) => {
-    if (!contactsHotel) return;
+    if (!contactsHotel || selectingContact) return;
 
+    setSelectingContact(true);
     try {
       await api.patch(`/prospection/hotels/${contactsHotel.id}/contact`, {
         contact_prenom: contact.prenom,
@@ -4126,6 +4150,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       chargerHotels();
     } catch (err) {
       showToast('Erreur sauvegarde: ' + err.message, 'error');
+    } finally {
+      setSelectingContact(false);
     }
   };
 
@@ -4219,6 +4245,16 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, emailsFilter.search, emailsPagination]);
+
+  // Fermer modal campagne avec Escape
+  useEffect(() => {
+    if (!showEmailsCampaignModal) return;
+    const handleEscape = (e) => {
+      if (e.key === 'Escape') setShowEmailsCampaignModal(false);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [showEmailsCampaignModal]);
 
   const toggleSelectEmail = (id) => {
     setSelectedEmails(prev => {
@@ -4625,11 +4661,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       {/* Actions pour sources importées */}
       {activeSource !== 'hotels_france' && (() => {
-        // Détecter les colonnes disponibles pour les filtres
-        const sourceInfo = importSources.find(s => s.id === activeSource);
-        const sourceColonnes = sourceInfo?.colonnes ? JSON.parse(sourceInfo.colonnes) : {};
-        const mappingInfo = sourceColonnes.mapping || {};
-        const customCols = Array.isArray(mappingInfo._custom) ? mappingInfo._custom : [];
+        if (!sourceMapping) return null;
+
+        const { mapping: mappingInfo, customCols } = sourceMapping;
         // Colonnes filtrables = colonnes mappées + custom
         const filterableCols = [
           mappingInfo.nom && { key: 'nom', label: 'Nom', col: mappingInfo.nom },
@@ -4892,11 +4926,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       {/* Tableau Prospects (sources importées) */}
       {activeSource !== 'hotels_france' && (() => {
-        // Déterminer les colonnes custom de la source
-        const srcInfo = importSources.find(s => s.id === activeSource);
-        const srcColonnes = srcInfo?.colonnes ? JSON.parse(srcInfo.colonnes) : {};
-        const srcMapping = srcColonnes.mapping || {};
-        const srcCustomCols = Array.isArray(srcMapping._custom) ? srcMapping._custom : [];
+        if (!sourceMapping) return null;
+
+        const { mapping: srcMapping, customCols: srcCustomCols } = sourceMapping;
         const colSpanCount = 6 + srcCustomCols.length;
 
         // Filtrage client
@@ -5700,9 +5732,10 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                         {contact.email && (
                           <button
                             onClick={(e) => { e.stopPropagation(); handleSelectContact(contact); }}
-                            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 flex-shrink-0"
+                            disabled={selectingContact}
+                            className="px-3 py-1.5 rounded-lg bg-blue-600 text-white text-xs font-medium hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed flex-shrink-0"
                           >
-                            Sélectionner
+                            {selectingContact ? '⏳ Sauvegarde...' : 'Sélectionner'}
                           </button>
                         )}
                       </div>
