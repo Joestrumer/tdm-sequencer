@@ -1046,10 +1046,14 @@ module.exports = (db) => {
   // PATCH /api/prospection/contacts/:hotelId/email — Met à jour l'email d'un contact LinkedIn
   router.patch('/contacts/:hotelId/email', (req, res) => {
     const { hotelId } = req.params;
-    const { linkedin_url, nom_complet, email } = req.body;
+    const { linkedin_url, nom_complet, email, fonction } = req.body;
 
     if (!email) {
       return res.status(400).json({ error: 'Email requis' });
+    }
+
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
+      return res.status(400).json({ error: 'Format email invalide' });
     }
 
     try {
@@ -1072,6 +1076,7 @@ module.exports = (db) => {
           contacts.push({
             nom_complet: nom_complet || 'Inconnu',
             linkedin_url: linkedin_url || null,
+            fonction: fonction || null,
             email: null,
             email_source: null,
           });

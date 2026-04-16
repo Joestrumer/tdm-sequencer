@@ -4137,15 +4137,19 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
     setSelectingContact(true);
     try {
-      await api.patch(`/prospection/hotels/${contactsHotel.id}/contact`, {
+      const res = await api.patch(`/prospection/hotels/${contactsHotel.id}/contact`, {
         contact_prenom: contact.prenom,
         contact_nom: contact.nom,
         contact_email: contact.email,
         contact_fonction: contact.fonction,
         scraping_status: 'success',
       });
+      if (res.error) {
+        showToast('Erreur: ' + res.error, 'error');
+        return;
+      }
 
-      showToast(`✅ Contact "${contact.prenom} ${contact.nom}" sauvegardé`, 'success');
+      showToast(`Contact "${contact.prenom} ${contact.nom}" sauvegardé`, 'success');
       setShowContactsModal(false);
       chargerHotels();
     } catch (err) {
@@ -4176,11 +4180,20 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
         contacts: selectedList,
       });
 
+      if (res.error) {
+        showToast('Erreur: ' + res.error, 'error');
+        setEmailSearchLoading(false);
+        return;
+      }
+
       // Mettre à jour les contacts dans les résultats
       if (res.contacts) {
         const updated = [...contactsResults.contacts];
         for (const result of res.contacts) {
-          const idx = updated.findIndex(c => c.linkedin_url === result.linkedin_url);
+          const idx = updated.findIndex(c =>
+            (result.linkedin_url && c.linkedin_url === result.linkedin_url) ||
+            (result.nom_complet && c.nom_complet === result.nom_complet)
+          );
           if (idx !== -1) {
             updated[idx] = { ...updated[idx], ...result };
           }
@@ -4191,7 +4204,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       }
 
       setSelectedModalContacts(new Set());
-      showToast(`✅ ${res.avec_email}/${res.total} email(s) trouvé(s)`, res.avec_email > 0 ? 'success' : 'warning');
+      showToast(`${res.avec_email || 0}/${res.total || 0} email(s) trouvé(s)`, (res.avec_email || 0) > 0 ? 'success' : 'warning');
 
       // Rafraîchir l'onglet Contacts LinkedIn
       chargerContacts();
@@ -5767,14 +5780,20 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                                 type="email"
                                 placeholder="Saisir l'email manuellement..."
                                 className="text-xs border border-slate-300 rounded px-2 py-1 w-48 focus:outline-none focus:border-blue-400"
+                                onClick={e => e.stopPropagation()}
                                 onKeyDown={async (e) => {
                                   if (e.key === 'Enter' && e.target.value.trim()) {
                                     e.preventDefault();
-                                    const emailVal = e.target.value.trim();
+                                    const emailVal = e.target.value.trim().toLowerCase();
+                                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(emailVal)) {
+                                      showToast('Email invalide', 'error');
+                                      return;
+                                    }
                                     try {
                                       const res = await api.patch(`/prospection/contacts/${contactsHotel.id}/email`, {
                                         linkedin_url: contact.linkedin_url,
                                         nom_complet: contact.nom_complet,
+                                        fonction: contact.fonction,
                                         email: emailVal,
                                       });
                                       if (res.error) {
@@ -5786,6 +5805,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                                       const newResults = { ...contactsResults, contacts: updated, avec_email: updated.filter(c => c.email).length };
                                       setContactsResults(newResults);
                                       setContactsCache(prev => ({ ...prev, [contactsHotel.id]: newResults }));
+                                      setSelectedModalContacts(prev => { const s = new Set(prev); s.delete(i); return s; });
                                       chargerContacts();
                                       showToast(`Email sauvegardé pour ${contact.nom_complet}`, 'success');
                                     } catch (err) {
