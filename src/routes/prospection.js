@@ -84,7 +84,7 @@ module.exports = (db) => {
   // POST /api/prospection/import — Import CSV des hôtels français
   router.post('/import', upload.single('file'), async (req, res) => {
     if (!req.file) {
-      return res.status(400).json({ error: 'Aucun fichier fourni' });
+      return res.status(400).json({ erreur: 'Aucun fichier fourni' });
     }
 
     const results = [];
@@ -265,7 +265,7 @@ module.exports = (db) => {
       if (normalizedPath && fs.existsSync(normalizedPath)) {
         fs.unlinkSync(normalizedPath);
       }
-      res.status(500).json({ error: 'Erreur lors de l\'import du CSV', details: err.message });
+      res.status(500).json({ erreur: 'Erreur lors de l\'import du CSV', details: err.message });
     }
   });
 
@@ -367,7 +367,7 @@ module.exports = (db) => {
       res.json({ hotels, total, stats });
     } catch (err) {
       logger.error('Erreur GET /hotels:', err);
-      res.status(500).json({ error: 'Erreur lors de la récupération des hôtels' });
+      res.status(500).json({ erreur: 'Erreur lors de la récupération des hôtels' });
     }
   });
 
@@ -407,7 +407,7 @@ module.exports = (db) => {
       res.json({ stats, byClassement, byType });
     } catch (err) {
       logger.error('Erreur GET /stats:', err);
-      res.status(500).json({ error: 'Erreur lors de la récupération des statistiques' });
+      res.status(500).json({ erreur: 'Erreur lors de la récupération des statistiques' });
     }
   });
 
@@ -416,7 +416,7 @@ module.exports = (db) => {
     const { hotel_ids } = req.body;
 
     if (!hotel_ids || !Array.isArray(hotel_ids) || hotel_ids.length === 0) {
-      return res.status(400).json({ error: 'hotel_ids requis (array)' });
+      return res.status(400).json({ erreur: 'hotel_ids requis (array)' });
     }
 
     logger.info(`🔍 Lancement scraping pour ${hotel_ids.length} hôtels`);
@@ -436,7 +436,7 @@ module.exports = (db) => {
 
     } catch (err) {
       logger.error('Erreur POST /scrape:', err);
-      res.status(500).json({ error: 'Erreur lors du lancement du scraping' });
+      res.status(500).json({ erreur: 'Erreur lors du lancement du scraping' });
     }
   });
 
@@ -461,7 +461,7 @@ module.exports = (db) => {
       });
     } catch (err) {
       logger.error('Erreur GET /scrape-status:', err);
-      res.status(500).json({ error: 'Erreur lors de la récupération du statut' });
+      res.status(500).json({ erreur: 'Erreur lors de la récupération du statut' });
     }
   });
 
@@ -470,7 +470,7 @@ module.exports = (db) => {
     const { hotel_ids } = req.body;
 
     if (!hotel_ids || !Array.isArray(hotel_ids) || hotel_ids.length === 0) {
-      return res.status(400).json({ error: 'hotel_ids requis (array)' });
+      return res.status(400).json({ erreur: 'hotel_ids requis (array)' });
     }
 
     try {
@@ -571,7 +571,7 @@ module.exports = (db) => {
 
     } catch (err) {
       logger.error('Erreur POST /create-leads:', err);
-      res.status(500).json({ error: 'Erreur lors de la création des leads' });
+      res.status(500).json({ erreur: 'Erreur lors de la création des leads' });
     }
   });
 
@@ -611,7 +611,7 @@ module.exports = (db) => {
       });
     } catch (err) {
       logger.error('Erreur DELETE /reset:', err);
-      res.status(500).json({ error: 'Erreur lors de la suppression' });
+      res.status(500).json({ erreur: 'Erreur lors de la suppression' });
     }
   });
 
@@ -632,10 +632,10 @@ module.exports = (db) => {
         WHERE id = ?
       `).run(contact_prenom, contact_nom, contact_email, contact_fonction, scraping_status || 'success', id);
 
-      res.json({ success: true });
+      res.json({ ok: true });
     } catch (err) {
       logger.error('Erreur PATCH /hotels/:id/contact:', err);
-      res.status(500).json({ error: 'Erreur lors de la mise à jour' });
+      res.status(500).json({ erreur: 'Erreur lors de la mise à jour' });
     }
   });
 
@@ -687,7 +687,7 @@ module.exports = (db) => {
 
     } catch (err) {
       logger.error('Erreur GET /emails-generiques:', err);
-      res.status(500).json({ error: 'Erreur lors de la récupération des emails génériques' });
+      res.status(500).json({ erreur: 'Erreur lors de la récupération des emails génériques' });
     }
   });
 
@@ -774,7 +774,7 @@ module.exports = (db) => {
 
     } catch (err) {
       logger.error('Erreur GET /contacts:', err);
-      res.status(500).json({ error: 'Erreur lors de la récupération des contacts' });
+      res.status(500).json({ erreur: 'Erreur lors de la récupération des contacts' });
     }
   });
 
@@ -783,18 +783,18 @@ module.exports = (db) => {
     const { hotel_id } = req.body;
 
     if (!hotel_id) {
-      return res.status(400).json({ error: 'hotel_id requis' });
+      return res.status(400).json({ erreur: 'hotel_id requis' });
     }
 
     try {
       // Récupérer l'hôtel
       const hotel = db.prepare('SELECT * FROM hotels_france WHERE id = ?').get(hotel_id);
       if (!hotel) {
-        return res.status(404).json({ error: 'Hôtel non trouvé' });
+        return res.status(404).json({ erreur: 'Hôtel non trouvé' });
       }
 
       if (!hotel.site_internet && !hotel.contact_email) {
-        return res.json({ error: 'Pas de site internet ni email', contacts: [] });
+        return res.json({ erreur: 'Pas de site internet ni email', contacts: [] });
       }
 
       // Extraire le domaine : priorité à l'email scrapé (plus fiable), sinon site web
@@ -824,7 +824,7 @@ module.exports = (db) => {
       }
 
       if (!domaine) {
-        return res.json({ error: 'Impossible d\'extraire un domaine valide', contacts: [] });
+        return res.json({ erreur: 'Impossible d\'extraire un domaine valide', contacts: [] });
       }
 
       logger.info(`🔍 Recherche contacts LinkedIn pour ${hotel.nom_commercial}${hotel.commune ? ' (' + hotel.commune + ')' : ''}`);
@@ -893,7 +893,7 @@ module.exports = (db) => {
 
     } catch (err) {
       logger.error('Erreur POST /find-contacts:', err);
-      res.status(500).json({ error: 'Erreur lors de la recherche de contacts', details: err.message });
+      res.status(500).json({ erreur: 'Erreur lors de la recherche de contacts', details: err.message });
     }
   });
 
@@ -902,13 +902,13 @@ module.exports = (db) => {
     const { hotel_id, contacts } = req.body;
 
     if (!hotel_id || !contacts || !Array.isArray(contacts) || contacts.length === 0) {
-      return res.status(400).json({ error: 'hotel_id et contacts[] requis' });
+      return res.status(400).json({ erreur: 'hotel_id et contacts[] requis' });
     }
 
     try {
       const hotel = db.prepare('SELECT * FROM hotels_france WHERE id = ?').get(hotel_id);
       if (!hotel) {
-        return res.status(404).json({ error: 'Hôtel non trouvé' });
+        return res.status(404).json({ erreur: 'Hôtel non trouvé' });
       }
 
       // Extraire le domaine
@@ -1041,7 +1041,7 @@ module.exports = (db) => {
 
     } catch (err) {
       logger.error('Erreur POST /find-emails:', err);
-      res.status(500).json({ error: 'Erreur recherche emails', details: err.message });
+      res.status(500).json({ erreur: 'Erreur recherche emails', details: err.message });
     }
   });
 
@@ -1051,11 +1051,11 @@ module.exports = (db) => {
     const { linkedin_url, nom_complet, email, fonction } = req.body;
 
     if (!email) {
-      return res.status(400).json({ error: 'Email requis' });
+      return res.status(400).json({ erreur: 'Email requis' });
     }
 
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim())) {
-      return res.status(400).json({ error: 'Format email invalide' });
+      return res.status(400).json({ erreur: 'Format email invalide' });
     }
 
     try {
@@ -1110,9 +1110,9 @@ module.exports = (db) => {
     } catch (err) {
       logger.error('Erreur PATCH contacts/:hotelId/email:', err);
       if (err.message === 'Hôtel non trouvé') {
-        return res.status(404).json({ error: err.message });
+        return res.status(404).json({ erreur: err.message });
       }
-      res.status(500).json({ error: err.message });
+      res.status(500).json({ erreur: err.message });
     }
   });
 
@@ -1121,7 +1121,7 @@ module.exports = (db) => {
     const { contacts, sequence_id } = req.body;
 
     if (!contacts || !Array.isArray(contacts) || contacts.length === 0) {
-      return res.status(400).json({ error: 'contacts requis (array)' });
+      return res.status(400).json({ erreur: 'contacts requis (array)' });
     }
 
     try {
@@ -1205,7 +1205,7 @@ module.exports = (db) => {
 
     } catch (err) {
       logger.error('Erreur POST /contacts-to-leads:', err);
-      res.status(500).json({ error: 'Erreur lors de la conversion des contacts' });
+      res.status(500).json({ erreur: 'Erreur lors de la conversion des contacts' });
     }
   });
 

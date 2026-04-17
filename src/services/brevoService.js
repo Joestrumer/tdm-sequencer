@@ -304,7 +304,7 @@ async function avecRetry(fn, maxTentatives = 3, delaiMs = 1000) {
 // ─── Vérifier blocklist ─────────────────────────────────────────────────────
 function verifierBlocklist(db, email) {
   const emailLower = email.toLowerCase().trim();
-  const domain = emailLower.split('@')[1];
+  const domain = emailLower.includes('@') ? emailLower.split('@')[1] : null;
 
   // Vérifier email exact
   const emailBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = ? AND value = ?').get('email', emailLower);

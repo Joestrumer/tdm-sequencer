@@ -107,13 +107,13 @@ module.exports = (db) => {
       }
 
       const hash = bcrypt.hashSync(new_password, 10);
-      db.prepare('UPDATE users SET password_hash = ?, updated_at = datetime(?) WHERE id = ?').run(hash, new Date().toISOString(), req.user.id);
+      db.prepare("UPDATE users SET password_hash = ?, updated_at = datetime('now') WHERE id = ?").run(hash, req.user.id);
     }
 
     // Changer la clé VF
     if (vf_api_token !== undefined) {
-      db.prepare('UPDATE users SET vf_api_token = ?, updated_at = datetime(?) WHERE id = ?').run(
-        vf_api_token || null, new Date().toISOString(), req.user.id
+      db.prepare("UPDATE users SET vf_api_token = ?, updated_at = datetime('now') WHERE id = ?").run(
+        vf_api_token || null, req.user.id
       );
     }
 

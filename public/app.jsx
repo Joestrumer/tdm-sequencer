@@ -335,7 +335,7 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
             api.post(`/sequences/${sequenceId}/inscrire-batch`, {
               lead_ids: result.crees.map(l => l.id),
               task_relance_mois: taskRelance
-            }).catch(e => console.warn('Erreur inscription batch séquence:', e));
+            }).catch(e => { console.warn('Erreur inscription batch séquence:', e); window.showToast?.('Erreur inscription séquence: ' + (e.message || ''), 'error'); });
           }
         }
         // Si tout a été créé sans erreur, fermer après un délai
@@ -356,7 +356,7 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
           api.post(`/sequences/${sequenceId}/inscrire`, {
             lead_id: lead.id,
             task_relance_mois: taskRelance
-          }).catch(e => console.warn('Erreur inscription séquence:', e));
+          }).catch(e => { console.warn('Erreur inscription séquence:', e); window.showToast?.('Erreur inscription séquence: ' + (e.message || ''), 'error'); });
         }
         onClose();
       }
@@ -2201,7 +2201,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     if (detailTab === 'hubspot' && selectedLead?.hubspot_id && !hsDetails && !loadingHs) {
       chargerHubspot(selectedLead);
     }
-  }, [detailTab]);
+  }, [detailTab, selectedLead?.id]);
 
   // ── Render ──────────────────────────────────────────────────────────────
   return (
@@ -2210,11 +2210,15 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
       {showLaunch && <ModalLaunchSequence lead={showLaunch} sequences={sequences} onClose={() => setShowLaunch(null)} onLaunch={onLaunch} />}
       {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow, taskRelance) => {
         const ids = Array.from(selectedIds);
-        await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids, task_relance_mois: taskRelance || 0 });
-        if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(e => console.error(e));
-        showToast(`${ids.length} lead(s) inscrits à la séquence`, 'success');
-        setSelectedIds(new Set());
-        if (onRefresh) onRefresh();
+        try {
+          await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids, task_relance_mois: taskRelance || 0 });
+          if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(e => console.error(e));
+          showToast(`${ids.length} lead(s) inscrits à la séquence`, 'success');
+          setSelectedIds(new Set());
+          if (onRefresh) onRefresh();
+        } catch (e) {
+          showToast(e.message || 'Erreur inscription batch', 'error');
+        }
       }} />}
       {editLead && <ModalEditLead lead={editLead} onClose={() => setEditLead(null)} onSave={() => { setEditLead(null); if(onRefresh) onRefresh(); }} campaigns={campaigns.filter(c => c !== "Tous")} sequences={sequences} />}
 
