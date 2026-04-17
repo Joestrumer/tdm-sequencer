@@ -21,16 +21,11 @@ RUN npm install --build-from-source
 # Copier le reste du projet
 COPY . .
 
-# Créer le dossier data et utilisateur non-root
-RUN mkdir -p /app/data && \
-    groupadd -r appuser && useradd -r -g appuser -d /app appuser && \
-    chown -R appuser:appuser /app
+# Créer le dossier data
+RUN mkdir -p /app/data
 
-# Initialiser la DB
+# Initialiser la DB (le seed factures se lance automatiquement au démarrage si nécessaire)
 RUN node src/db/init.js
-
-# Passer en utilisateur non-root
-USER appuser
 
 # Port exposé
 EXPOSE 3001
