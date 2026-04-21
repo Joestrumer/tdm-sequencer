@@ -5946,6 +5946,7 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
   const [testEmail, setTestEmail] = useState("");
   const [testLoading, setTestLoading] = useState(false);
   const [expandedSeqs, setExpandedSeqs] = useState(new Set());
+  const [actionLoading, setActionLoading] = useState(null);
 
   const toggleSeq = (id) => {
     setExpandedSeqs(prev => {
@@ -5957,6 +5958,7 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
 
   const supprimerSequence = async (seq) => {
     if (!await confirmDialog(`Supprimer la séquence "${seq.nom}" ? Cette action est irréversible.`, { danger: true, confirmLabel: 'Supprimer' })) return;
+    setActionLoading(`del-${seq.id}`);
     try {
       await api.delete(`/sequences/${seq.id}`);
       showToast('Séquence supprimée', 'success');
@@ -5964,9 +5966,11 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
     } catch (err) {
       showToast('Erreur: ' + (err.message || 'impossible de supprimer'), 'error');
     }
+    setActionLoading(null);
   };
 
   const dupliquerSequence = async (seq) => {
+    setActionLoading(`dup-${seq.id}`);
     try {
       const res = await api.post(`/sequences/${seq.id}/duplicate`);
       showToast(`Séquence "${res.nom}" créée`, 'success');
@@ -5974,6 +5978,7 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
     } catch (err) {
       showToast('Erreur duplication : ' + err.message, 'error');
     }
+    setActionLoading(null);
   };
 
   const envoyerTest = async (seqId) => {
@@ -6033,11 +6038,11 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
               <button onClick={() => onEdit(seq)} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
                 Modifier
               </button>
-              <button onClick={() => dupliquerSequence(seq)} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
-                Dupliquer
+              <button onClick={() => dupliquerSequence(seq)} disabled={!!actionLoading} className={`px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors ${actionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                {actionLoading === `dup-${seq.id}` ? '...' : 'Dupliquer'}
               </button>
-              <button onClick={() => supprimerSequence(seq)} className="px-3 py-1.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors">
-                Supprimer
+              <button onClick={() => supprimerSequence(seq)} disabled={!!actionLoading} className={`px-3 py-1.5 text-xs border border-red-200 text-red-500 rounded-lg hover:bg-red-50 transition-colors ${actionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                {actionLoading === `del-${seq.id}` ? '...' : 'Supprimer'}
               </button>
             </div>
           </div>
@@ -12619,6 +12624,7 @@ const VueTemplates = ({ showToast }) => {
   const [loading, setLoading] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [editingTemplate, setEditingTemplate] = useState(null);
+  const [deletingId, setDeletingId] = useState(null);
 
   const loadTemplates = async () => {
     setLoading(true);
@@ -12640,6 +12646,7 @@ const VueTemplates = ({ showToast }) => {
 
   const deleteTemplate = async (id) => {
     if (!await confirmDialog('Supprimer ce template ?', { danger: true, confirmLabel: 'Supprimer' })) return;
+    setDeletingId(id);
     try {
       await api.delete('/email-templates/' + id);
       showToast('Template supprimé', 'success');
@@ -12647,6 +12654,7 @@ const VueTemplates = ({ showToast }) => {
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
     }
+    setDeletingId(null);
   };
 
   return (
@@ -12728,9 +12736,10 @@ const VueTemplates = ({ showToast }) => {
                 </button>
                 <button
                   onClick={() => deleteTemplate(template.id)}
-                  className="px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors"
+                  disabled={deletingId === template.id}
+                  className={`px-3 py-1.5 border border-red-200 text-red-600 rounded-lg text-xs font-medium hover:bg-red-50 transition-colors ${deletingId === template.id ? 'opacity-50 cursor-not-allowed' : ''}`}
                 >
-                  🗑
+                  {deletingId === template.id ? '...' : '🗑'}
                 </button>
               </div>
 
@@ -12943,6 +12952,7 @@ const VueCampagnes = ({ showToast, readOnly }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [expandedStats, setExpandedStats] = useState(null);
   const [expandedRecipients, setExpandedRecipients] = useState(null);
+  const [campActionLoading, setCampActionLoading] = useState(null);
   const [recipientPage, setRecipientPage] = useState(1);
   const [recipientFilter, setRecipientFilter] = useState('tous');
   const [recipientSearch, setRecipientSearch] = useState('');
@@ -12968,22 +12978,34 @@ const VueCampagnes = ({ showToast, readOnly }) => {
 
   const supprimer = async (c) => {
     if (!await confirmDialog(`Supprimer la campagne "${c.nom}" ?`)) return;
-    await api.delete(`/campaigns/${c.id}`);
-    showToast('Campagne supprimée');
-    charger();
+    setCampActionLoading(`del-${c.id}`);
+    try {
+      await api.delete(`/campaigns/${c.id}`);
+      showToast('Campagne supprimée');
+      charger();
+    } catch (err) { showToast('Erreur: ' + err.message, 'error'); }
+    setCampActionLoading(null);
   };
 
   const annuler = async (c) => {
     if (!await confirmDialog(`Annuler la campagne "${c.nom}" ?`)) return;
-    await api.post(`/campaigns/${c.id}/cancel`);
-    showToast('Campagne annulée');
-    charger();
+    setCampActionLoading(`cancel-${c.id}`);
+    try {
+      await api.post(`/campaigns/${c.id}/cancel`);
+      showToast('Campagne annulée');
+      charger();
+    } catch (err) { showToast('Erreur: ' + err.message, 'error'); }
+    setCampActionLoading(null);
   };
 
   const dupliquer = async (c) => {
-    await api.post(`/campaigns/${c.id}/duplicate`);
-    showToast('Campagne dupliquée');
-    charger();
+    setCampActionLoading(`dup-${c.id}`);
+    try {
+      await api.post(`/campaigns/${c.id}/duplicate`);
+      showToast('Campagne dupliquée');
+      charger();
+    } catch (err) { showToast('Erreur: ' + err.message, 'error'); }
+    setCampActionLoading(null);
   };
 
   const loadRecipients = async (campaignId, page = 1, filter = 'tous', search = '') => {
@@ -13162,13 +13184,13 @@ const VueCampagnes = ({ showToast, readOnly }) => {
                     <button onClick={(e) => { e.stopPropagation(); setEditCampaign(c); setShowEditor(true); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-800 text-white hover:bg-slate-700">Modifier</button>
                   )}
                   {!readOnly && (
-                    <button onClick={(e) => { e.stopPropagation(); dupliquer(c); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200">Dupliquer</button>
+                    <button onClick={(e) => { e.stopPropagation(); dupliquer(c); }} disabled={!!campActionLoading} className={`px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-100 text-slate-700 hover:bg-slate-200 ${campActionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>{campActionLoading === `dup-${c.id}` ? '...' : 'Dupliquer'}</button>
                   )}
                   {(c.statut === 'en_cours' || c.statut === 'programmée') && !readOnly && (
-                    <button onClick={(e) => { e.stopPropagation(); annuler(c); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100">Annuler</button>
+                    <button onClick={(e) => { e.stopPropagation(); annuler(c); }} disabled={!!campActionLoading} className={`px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 ${campActionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>{campActionLoading === `cancel-${c.id}` ? '...' : 'Annuler'}</button>
                   )}
                   {(c.statut === 'brouillon' || c.statut === 'terminée' || c.statut === 'annulée') && !readOnly && (
-                    <button onClick={(e) => { e.stopPropagation(); supprimer(c); }} className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100">Supprimer</button>
+                    <button onClick={(e) => { e.stopPropagation(); supprimer(c); }} disabled={!!campActionLoading} className={`px-3 py-1.5 rounded-lg text-xs font-medium bg-red-50 text-red-600 hover:bg-red-100 ${campActionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>{campActionLoading === `del-${c.id}` ? '...' : 'Supprimer'}</button>
                   )}
                 </div>
               </div>
