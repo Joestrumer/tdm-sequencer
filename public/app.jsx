@@ -674,7 +674,7 @@ let _signatureHtmlCache = SIGNATURE_HTML_DEFAULT;
 (function loadSignature() {
   api.get('/config/signature').then(data => {
     if (data?.signature) _signatureHtmlCache = data.signature;
-  }).catch(() => {});
+  }).catch(e => console.warn('Chargement signature:', e.message));
 })();
 // Getter pour accéder à la signature courante
 function getSignatureHtml() { return _signatureHtmlCache; }
@@ -11286,7 +11286,7 @@ const VueCompteEmail = () => {
   useEffect(() => {
     api.get('/health').then(h => {
       if (h.brevo === 'configuré') setBrevoConfigured(true);
-    }).catch(() => {});
+    }).catch(e => console.warn('Health check:', e.message));
     api.get('/config').then(cfg => {
       if (cfg.brevo_api_key_configured) setBrevoConfigured(true);
       if (cfg.smtp_host) setSmtp(s => ({ ...s, host: cfg.smtp_host }));
@@ -11299,12 +11299,12 @@ const VueCompteEmail = () => {
       if (cfg.imap_user) setImap(s => ({ ...s, user: cfg.imap_user }));
       if (cfg.imap_secure) setImap(s => ({ ...s, secure: cfg.imap_secure === 'true' }));
       if (cfg.imap_password_configured) setImapConfigured(true);
-    }).catch(() => {});
+    }).catch(e => console.warn('Config load:', e.message));
     api.get('/config/signature').then(data => {
       setSignatureHtml(data.signature || '');
       setSignatureDefault(data.signature || '');
       if (data.is_default) setSignatureDefault(data.signature);
-    }).catch(() => {});
+    }).catch(e => console.warn('Signature load:', e.message));
   }, []);
 
   const sauvegarder = async () => {
@@ -11611,7 +11611,7 @@ const VueParametres = () => {
   useEffect(() => {
     api.get('/reference/catalog').then(data => {
       if (Array.isArray(data) && data.length > 0) setHasProducts(true);
-    }).catch(() => {});
+    }).catch(e => console.warn('Catalog check:', e.message));
   }, []);
 
   const onglets = [
@@ -11787,7 +11787,7 @@ const VueSegmentsConfig = () => {
   };
 
   const supprimer = async (id) => {
-    if (!window.confirm('Supprimer ce segment ?')) return;
+    if (!await confirmDialog('Supprimer ce segment ?', { danger: true, confirmLabel: 'Supprimer' })) return;
     try {
       const res = await api.delete('/segments/' + id);
       if (res?.erreur) { setMsg(res.erreur); } else {
@@ -11869,7 +11869,7 @@ const VueBraveSearchConfig = () => {
   useEffect(() => {
     api.get('/config').then(cfg => {
       if (cfg.brave_search_api_key_configured) setConfigured(true);
-    }).catch(() => {});
+    }).catch(e => console.warn('Brave config:', e.message));
   }, []);
 
   const sauvegarder = async () => {
@@ -11960,7 +11960,7 @@ const VuePappersConfig = () => {
   useEffect(() => {
     api.get('/config').then(cfg => {
       if (cfg.pappers_api_key_configured) setConfigured(true);
-    }).catch(() => {});
+    }).catch(e => console.warn('Pappers config:', e.message));
   }, []);
 
   const sauvegarder = async () => {
@@ -12020,7 +12020,7 @@ const VueLushaConfig = () => {
   useEffect(() => {
     api.get('/config').then(cfg => {
       if (cfg.lusha_api_key_configured) setConfigured(true);
-    }).catch(() => {});
+    }).catch(e => console.warn('Lusha config:', e.message));
   }, []);
 
   const sauvegarder = async () => {
@@ -12080,7 +12080,7 @@ const VueLemlistConfig = () => {
   useEffect(() => {
     api.get('/config').then(cfg => {
       if (cfg.lemlist_api_key_configured) setConfigured(true);
-    }).catch(() => {});
+    }).catch(e => console.warn('Lemlist config:', e.message));
   }, []);
 
   const sauvegarder = async () => {
@@ -12142,7 +12142,7 @@ const VueGooglePlacesConfig = () => {
   useEffect(() => {
     api.get('/config').then(cfg => {
       if (cfg.google_places_api_key_configured) setConfigured(true);
-    }).catch(() => {});
+    }).catch(e => console.warn('Google Places config:', e.message));
   }, []);
 
   const sauvegarder = async () => {
@@ -13265,7 +13265,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
   useEffect(() => {
     api.get('/email-templates').then(data => {
       if (Array.isArray(data)) setTemplates(data);
-    }).catch(() => {});
+    }).catch(e => console.warn('Templates load:', e.message));
   }, []);
 
   // Initialiser TinyMCE (réinitialise quand on revient au step 1)
@@ -13319,14 +13319,14 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
 
   const [templatePreview, setTemplatePreview] = useState(null);
 
-  const applyTemplate = (tplId) => {
+  const applyTemplate = async (tplId) => {
     setSelectedTemplate(tplId);
     const tpl = templates.find(t => t.id === tplId);
     if (!tpl) return;
 
     // Si le sujet existe déjà, demander confirmation
     if (sujet && tpl.sujet && sujet !== tpl.sujet) {
-      if (!window.confirm(`Remplacer l'objet actuel "${sujet}" par "${tpl.sujet}" ?`)) {
+      if (!await confirmDialog(`Remplacer l'objet actuel "${sujet}" par "${tpl.sujet}" ?`, { confirmLabel: 'Remplacer' })) {
         // Appliquer seulement le corps
         if (tpl.corps_html && tinymceRef.current) {
           tinymceRef.current.setContent(tpl.corps_html);
@@ -13435,7 +13435,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
     api.get('/leads?limit=0').then(data => {
       const srcs = [...new Set((data.leads || []).map(l => l.source).filter(Boolean))].sort();
       setAvailableSources(srcs);
-    }).catch(() => {});
+    }).catch(e => console.warn('Sources load:', e.message));
   }, []);
 
   // Prévisualiser les leads correspondants
@@ -15608,10 +15608,10 @@ const VueVeille = ({ showToast }) => {
       setOppTotal(res.total || 0);
       setOppPages(res.pages || 0);
       setOppPage(p);
-    } catch (_) {}
+    } catch (e) { showToast?.('Erreur chargement opportunités', 'error'); }
   };
 
-  const loadOppDashboard = async () => { try { setOppDashboard(await api.get('/veille/opportunities/dashboard')); } catch (_) {} };
+  const loadOppDashboard = async () => { try { setOppDashboard(await api.get('/veille/opportunities/dashboard')); } catch (e) { console.warn('Opp dashboard:', e.message); } };
 
   const loadArticles = async (p = 1) => {
     try {
@@ -15628,13 +15628,13 @@ const VueVeille = ({ showToast }) => {
       setArtTotal(res.total || 0);
       setArtPages(res.pages || 0);
       setArtPage(p);
-    } catch (_) {}
+    } catch (e) { showToast?.('Erreur chargement articles', 'error'); }
   };
 
-  const loadStats = async () => { try { setStats(await api.get('/veille/articles/stats')); } catch (_) {} };
-  const loadSources = async () => { try { setSources(await api.get('/veille/sources') || []); } catch (_) {} };
-  const loadSourceHealth = async () => { try { setSourceHealth(await api.get('/veille/sources/health')); } catch (_) {} };
-  const loadRecentRuns = async () => { try { setRecentRuns(await api.get('/veille/runs?limit=20') || []); } catch (_) {} };
+  const loadStats = async () => { try { setStats(await api.get('/veille/articles/stats')); } catch (e) { console.warn('Stats:', e.message); } };
+  const loadSources = async () => { try { setSources(await api.get('/veille/sources') || []); } catch (e) { console.warn('Sources:', e.message); } };
+  const loadSourceHealth = async () => { try { setSourceHealth(await api.get('/veille/sources/health')); } catch (e) { console.warn('Source health:', e.message); } };
+  const loadRecentRuns = async () => { try { setRecentRuns(await api.get('/veille/runs?limit=20') || []); } catch (e) { console.warn('Runs:', e.message); } };
 
   const charger = async () => {
     setLoading(true);
@@ -15642,7 +15642,7 @@ const VueVeille = ({ showToast }) => {
     setLoading(false);
   };
 
-  useEffect(() => { charger(); api.get('/veille/scan-fermetures/regions').then(setRegions).catch(() => {}); }, []);
+  useEffect(() => { charger(); api.get('/veille/scan-fermetures/regions').then(setRegions).catch(e => console.warn('Régions:', e.message)); }, []);
   useEffect(() => { if (tab === 'articles') { loadArticles(1); } }, [filtre, prioFiltre, sourceFiltre, searchDebounced]);
   useEffect(() => { if (tab === 'opportunities') { loadOpportunities(1); } }, [oppSignalFilter, oppStrengthFilter, oppSearchDebounced]);
   useEffect(() => { if (tab === 'health') { loadSourceHealth(); loadRecentRuns(); } }, [tab]);
@@ -15807,13 +15807,13 @@ const VueVeille = ({ showToast }) => {
   };
 
   const toggleLu = async (a) => {
-    try { await api.patch(`/veille/articles/${a.id}`, { lu: !a.lu }); setArticles(p => p.map(x => x.id === a.id ? { ...x, lu: x.lu ? 0 : 1 } : x)); loadStats(); } catch (_) {}
+    try { await api.patch(`/veille/articles/${a.id}`, { lu: !a.lu }); setArticles(p => p.map(x => x.id === a.id ? { ...x, lu: x.lu ? 0 : 1 } : x)); loadStats(); } catch (e) { showToast?.('Erreur: ' + e.message, 'error'); }
   };
   const toggleFavori = async (a) => {
-    try { await api.patch(`/veille/articles/${a.id}`, { favori: !a.favori }); setArticles(p => p.map(x => x.id === a.id ? { ...x, favori: x.favori ? 0 : 1 } : x)); loadStats(); } catch (_) {}
+    try { await api.patch(`/veille/articles/${a.id}`, { favori: !a.favori }); setArticles(p => p.map(x => x.id === a.id ? { ...x, favori: x.favori ? 0 : 1 } : x)); loadStats(); } catch (e) { showToast?.('Erreur: ' + e.message, 'error'); }
   };
   const archiver = async (a) => {
-    try { await api.patch(`/veille/articles/${a.id}`, { archived: true, lu: true }); setArticles(p => p.filter(x => x.id !== a.id)); loadStats(); } catch (_) {}
+    try { await api.patch(`/veille/articles/${a.id}`, { archived: true, lu: true }); setArticles(p => p.filter(x => x.id !== a.id)); loadStats(); } catch (e) { showToast?.('Erreur: ' + e.message, 'error'); }
   };
 
   const saveSource = async () => {
@@ -15826,7 +15826,7 @@ const VueVeille = ({ showToast }) => {
   };
 
   const deleteSource = async (id) => {
-    if (!confirm('Supprimer cette source et tous ses articles ?')) return;
+    if (!await confirmDialog('Supprimer cette source et tous ses articles ?', { danger: true, confirmLabel: 'Supprimer' })) return;
     try { await api.delete(`/veille/sources/${id}`); showToast?.('Source supprimée', 'success'); await charger(); } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
   };
 
@@ -16110,7 +16110,7 @@ const VueVeille = ({ showToast }) => {
                         <div className="flex items-center gap-2 mb-1">
                           {!article.lu && <span className="w-1.5 h-1.5 rounded-full bg-blue-500 flex-shrink-0" />}
                           <a href={article.url} target="_blank" rel="noopener noreferrer"
-                            onClick={() => { if (!article.lu) { api.patch(`/veille/articles/${article.id}`, { lu: true }).then(() => { setArticles(p => p.map(x => x.id === article.id ? { ...x, lu: 1 } : x)); loadStats(); }).catch(() => {}); } }}
+                            onClick={() => { if (!article.lu) { api.patch(`/veille/articles/${article.id}`, { lu: true }).then(() => { setArticles(p => p.map(x => x.id === article.id ? { ...x, lu: 1 } : x)); loadStats(); }).catch(e => console.warn('Mark read:', e.message)); } }}
                             className={`text-sm font-semibold hover:text-blue-600 transition-colors ${article.lu ? 'text-slate-600' : 'text-slate-900'}`}>
                             {article.titre}
                           </a>
@@ -16513,7 +16513,7 @@ function App() {
       if (Array.isArray(data) && data.length > 0) {
         _segmentsCache = data.map(s => s.nom);
       }
-    }).catch(() => {});
+    }).catch(e => console.warn('Segments load:', e.message));
   }, []);
 
   // Charger les données au démarrage (résilient aux permissions)
