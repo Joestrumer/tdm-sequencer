@@ -7219,7 +7219,7 @@ const FacturesAnalytics = ({ showToast }) => {
 // ─── Analytics Spreadsheet (Dashboard Commercial Professionnel) ──────────────
 const AnalyticsSpreadsheet = ({ showToast }) => {
   // State management
-  const [viewMode, setViewMode] = useState('global'); // 'global' | 'client' | 'comparison'
+  const [viewMode, setViewMode] = useState('global'); // 'global' | 'client' | 'comparison' | 'commissions' | 'forecast'
   const [analytics, setAnalytics] = useState(null);
   const [loading, setLoading] = useState(false);
   const [year, setYear] = useState(new Date().getFullYear());
@@ -7239,6 +7239,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
   const clientMonthlyChartRef = useRef(null);
   const comparisonChartRef = useRef(null);
   const commissionsChartRef = useRef(null);
+  const forecastChartRef = useRef(null);
 
   // Chart instances
   const monthlyChartInstance = useRef(null);
@@ -7246,6 +7247,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
   const clientMonthlyChartInstance = useRef(null);
   const comparisonChartInstance = useRef(null);
   const commissionsChartInstance = useRef(null);
+  const forecastChartInstance = useRef(null);
 
   // Load global analytics
   const loadAnalytics = async () => {
@@ -7298,6 +7300,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
       if (clientMonthlyChartInstance.current) clientMonthlyChartInstance.current.destroy();
       if (comparisonChartInstance.current) comparisonChartInstance.current.destroy();
       if (commissionsChartInstance.current) commissionsChartInstance.current.destroy();
+      if (forecastChartInstance.current) forecastChartInstance.current.destroy();
     };
   }, []);
 
@@ -7615,6 +7618,97 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     return () => { if (comparisonChartInstance.current) { comparisonChartInstance.current.destroy(); comparisonChartInstance.current = null; } };
   }, [yearsComparison, selectedYears, viewMode]);
 
+  // Create forecast chart
+  useEffect(() => {
+    if (!forecastChartRef.current || !analytics || viewMode !== 'forecast') return;
+
+    if (forecastChartInstance.current) {
+      forecastChartInstance.current.destroy();
+    }
+
+    const forecast = calculateDetailedForecast();
+    if (!forecast) return;
+
+    const monthLabels = forecast.monthlyForecast.map(m => m.label);
+    const actualData = forecast.monthlyForecast.map(m => m.actual);
+    const projectedData = forecast.monthlyForecast.map(m => {
+      if (m.isProjection) return m.projected;
+      // Add junction point: last actual month also appears in projected line
+      const nextMonth = forecast.monthlyForecast[m.month];
+      if (nextMonth && nextMonth.isProjection) return m.actual;
+      return null;
+    });
+
+    const ctx = forecastChartRef.current.getContext('2d');
+    forecastChartInstance.current = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: monthLabels,
+        datasets: [
+          {
+            label: 'CA HT Réel',
+            data: actualData,
+            borderColor: 'rgb(16, 185, 129)',
+            backgroundColor: 'rgba(16, 185, 129, 0.1)',
+            tension: 0.4,
+            fill: true,
+            borderWidth: 3,
+            pointRadius: 5,
+            pointBackgroundColor: 'rgb(16, 185, 129)',
+            spanGaps: false
+          },
+          {
+            label: 'CA HT Projeté',
+            data: projectedData,
+            borderColor: 'rgb(59, 130, 246)',
+            backgroundColor: 'rgba(59, 130, 246, 0.05)',
+            tension: 0.4,
+            fill: true,
+            borderWidth: 3,
+            borderDash: [8, 4],
+            pointRadius: 5,
+            pointBackgroundColor: 'rgb(59, 130, 246)',
+            pointStyle: 'triangle',
+            spanGaps: false
+          }
+        ]
+      },
+      options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: {
+          mode: 'index',
+          intersect: false
+        },
+        plugins: {
+          legend: {
+            display: true,
+            position: 'top'
+          },
+          tooltip: {
+            callbacks: {
+              label: (context) => {
+                const label = context.dataset.label || '';
+                const value = context.parsed.y;
+                if (value === null) return null;
+                return `${label}: ${Math.round(value).toLocaleString('fr-FR')}€`;
+              }
+            }
+          }
+        },
+        scales: {
+          y: {
+            beginAtZero: true,
+            ticks: {
+              callback: (value) => `${value.toLocaleString('fr-FR')}€`
+            }
+          }
+        }
+      }
+    });
+    return () => { if (forecastChartInstance.current) { forecastChartInstance.current.destroy(); forecastChartInstance.current = null; } };
+  }, [analytics, yearsComparison, viewMode, year]);
+
   // Calculate YTD and comparison
   const calculateYTD = () => {
     if (!analytics?.byMonth) return { current: 0, previous: 0, growth: 0 };
@@ -7686,6 +7780,93 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     return forecast;
   };
 
+  // Detailed forecast with monthly projections
+  const calculateDetailedForecast = () => {
+    if (!analytics?.byMonth) return null;
+
+    const monthNames = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Jun', 'Jul', 'Aoû', 'Sep', 'Oct', 'Nov', 'Déc'];
+    const currentYear = year;
+    const now = new Date();
+    const lastActualMonth = (currentYear === now.getFullYear()) ? now.getMonth() + 1 : 12;
+
+    // Build actual data per month (1-12)
+    const actuals = {};
+    Object.entries(analytics.byMonth).forEach(([key, data]) => {
+      const parts = key.split('-');
+      const m = parseInt(parts[1] || parts[0]);
+      actuals[m] = data.ca_ht || 0;
+    });
+
+    // Regression on actual months
+    const points = [];
+    for (let m = 1; m <= lastActualMonth; m++) {
+      if (actuals[m] !== undefined) {
+        points.push({ x: m, y: actuals[m] });
+      }
+    }
+
+    let slope = 0, intercept = 0;
+    if (points.length >= 2) {
+      const n = points.length;
+      const sumX = points.reduce((s, p) => s + p.x, 0);
+      const sumY = points.reduce((s, p) => s + p.y, 0);
+      const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
+      const sumX2 = points.reduce((s, p) => s + p.x * p.x, 0);
+      const denom = n * sumX2 - sumX * sumX;
+      if (denom !== 0) {
+        slope = (n * sumXY - sumX * sumY) / denom;
+        intercept = (sumY - slope * sumX) / n;
+      }
+    } else if (points.length === 1) {
+      intercept = points[0].y;
+    }
+
+    // Build 12-month forecast
+    let cumulActual = 0;
+    let cumulProjected = 0;
+    const monthlyForecast = [];
+
+    for (let m = 1; m <= 12; m++) {
+      const isActual = m <= lastActualMonth && actuals[m] !== undefined;
+      const actual = isActual ? actuals[m] : null;
+      const projected = (!isActual && points.length >= 2) ? Math.max(0, slope * m + intercept) : null;
+
+      const value = actual !== null ? actual : (projected !== null ? projected : 0);
+      cumulActual += (actual || 0);
+      cumulProjected += value;
+
+      monthlyForecast.push({
+        month: m,
+        label: monthNames[m - 1],
+        actual,
+        projected,
+        isProjection: !isActual,
+        cumulative: cumulProjected
+      });
+    }
+
+    // N-1 total
+    let n1Total = 0;
+    if (yearsComparison?.years) {
+      const prevYear = yearsComparison.years.find(y => y.year === currentYear - 1);
+      if (prevYear) {
+        n1Total = prevYear.total_ht || 0;
+      }
+    }
+
+    const annualProjected = cumulProjected;
+    const growthVsN1 = n1Total > 0 ? ((annualProjected - n1Total) / n1Total * 100) : 0;
+
+    return {
+      monthlyForecast,
+      caRealise: cumulActual,
+      annualProjected,
+      n1Total,
+      growthVsN1,
+      hasEnoughData: points.length >= 2
+    };
+  };
+
   // Available years for comparison
   const availableYears = yearsComparison?.years?.map(y => y.year) || [];
 
@@ -7746,9 +7927,19 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
             >
               Commissions
             </button>
+            <button
+              onClick={() => setViewMode('forecast')}
+              className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors ${
+                viewMode === 'forecast'
+                  ? 'bg-slate-900 text-white'
+                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+              }`}
+            >
+              Prévisions
+            </button>
           </div>
           <div className="flex items-center gap-3">
-            {viewMode === 'global' && (
+            {(viewMode === 'global' || viewMode === 'forecast') && (
               <>
                 <label className="text-sm font-medium text-slate-700">Année:</label>
                 <select
@@ -8319,6 +8510,132 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
           </div>
         </div>
       )}
+
+      {/* Prévisions / Forecast */}
+      {viewMode === 'forecast' && analytics && (() => {
+        const forecast = calculateDetailedForecast();
+        if (!forecast) return (
+          <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
+            <p className="text-slate-500">Données insuffisantes pour générer des prévisions.</p>
+          </div>
+        );
+
+        return (
+          <div className="space-y-6">
+            {/* KPIs */}
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
+                <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">CA Réalisé YTD</div>
+                <div className="text-3xl font-bold text-emerald-900">
+                  {Math.round(forecast.caRealise).toLocaleString('fr-FR')}€
+                </div>
+                <div className="text-sm text-emerald-700 mt-2">HT - Mois écoulés {year}</div>
+              </div>
+
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+                <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">CA Projeté Annuel</div>
+                <div className="text-3xl font-bold text-blue-900">
+                  {Math.round(forecast.annualProjected).toLocaleString('fr-FR')}€
+                </div>
+                <div className="text-sm text-blue-700 mt-2">
+                  {forecast.hasEnoughData ? 'Projection par régression linéaire' : 'Données insuffisantes pour projection'}
+                </div>
+              </div>
+
+              <div className={`bg-gradient-to-br rounded-xl p-6 border ${
+                forecast.growthVsN1 >= 0
+                  ? 'from-amber-50 to-amber-100 border-amber-200'
+                  : 'from-red-50 to-red-100 border-red-200'
+              }`}>
+                <div className={`text-xs font-medium mb-2 uppercase tracking-wide ${
+                  forecast.growthVsN1 >= 0 ? 'text-amber-600' : 'text-red-600'
+                }`}>Croissance vs {year - 1}</div>
+                <div className={`text-3xl font-bold ${
+                  forecast.growthVsN1 >= 0 ? 'text-amber-900' : 'text-red-900'
+                }`}>
+                  {forecast.growthVsN1 >= 0 ? '+' : ''}{forecast.growthVsN1.toFixed(1)}%
+                </div>
+                <div className={`text-sm mt-2 ${
+                  forecast.growthVsN1 >= 0 ? 'text-amber-700' : 'text-red-700'
+                }`}>
+                  N-1 : {Math.round(forecast.n1Total).toLocaleString('fr-FR')}€ HT
+                </div>
+              </div>
+            </div>
+
+            {/* Chart */}
+            <div className="bg-white rounded-xl border border-slate-100 p-6">
+              <h3 className="text-sm font-semibold text-slate-800 mb-4">CA HT : Réel et Prévisions {year}</h3>
+              <div className="h-80">
+                <canvas ref={forecastChartRef}></canvas>
+              </div>
+            </div>
+
+            {/* Tableau mensuel détaillé */}
+            <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+              <div className="p-6 border-b border-slate-100">
+                <h3 className="text-sm font-semibold text-slate-800">Détail mensuel des prévisions {year}</h3>
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Mois</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA Réel</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA Projeté</th>
+                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Cumulé</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {forecast.monthlyForecast.map((m) => (
+                      <tr key={m.month} className={`hover:bg-slate-50 ${m.isProjection ? 'bg-blue-50/30' : ''}`}>
+                        <td className="px-6 py-3 text-sm font-medium text-slate-900">
+                          {m.label}
+                          {m.isProjection && (
+                            <span className="ml-2 text-xs text-blue-500 font-normal">(projection)</span>
+                          )}
+                        </td>
+                        <td className="px-6 py-3 text-sm text-right text-emerald-700 font-medium">
+                          {m.actual !== null ? `${Math.round(m.actual).toLocaleString('fr-FR')}€` : '-'}
+                        </td>
+                        <td className="px-6 py-3 text-sm text-right text-blue-600 font-medium">
+                          {m.projected !== null ? `${Math.round(m.projected).toLocaleString('fr-FR')}€` : '-'}
+                        </td>
+                        <td className="px-6 py-3 text-sm text-right text-slate-700">
+                          {Math.round(m.cumulative).toLocaleString('fr-FR')}€
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot className="bg-slate-50 border-t-2 border-slate-200">
+                    <tr>
+                      <td className="px-6 py-3 text-sm font-bold text-slate-900">TOTAL</td>
+                      <td className="px-6 py-3 text-sm text-right font-bold text-emerald-700">
+                        {Math.round(forecast.caRealise).toLocaleString('fr-FR')}€
+                      </td>
+                      <td className="px-6 py-3 text-sm text-right font-bold text-blue-600">
+                        {Math.round(forecast.annualProjected - forecast.caRealise).toLocaleString('fr-FR')}€
+                      </td>
+                      <td className="px-6 py-3 text-sm text-right font-bold text-slate-900">
+                        {Math.round(forecast.annualProjected).toLocaleString('fr-FR')}€
+                      </td>
+                    </tr>
+                  </tfoot>
+                </table>
+              </div>
+            </div>
+
+            {/* Méthodologie */}
+            {!forecast.hasEnoughData && (
+              <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
+                <p className="text-sm text-amber-800">
+                  Les projections nécessitent au moins 2 mois de données. Les mois futurs afficheront des projections une fois suffisamment de données disponibles.
+                </p>
+              </div>
+            )}
+          </div>
+        );
+      })()}
     </div>
   );
 };
