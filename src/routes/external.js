@@ -5,6 +5,7 @@
 
 const express = require('express');
 const router = express.Router();
+const crypto = require('crypto');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
 const hubspot = require('../services/hubspotService');
@@ -12,14 +13,19 @@ const { inscrireLead } = require('../jobs/sequenceScheduler');
 
 module.exports = (db) => {
 
-  // Middleware auth par API key
+  // Middleware auth par API key (timing-safe)
   router.use((req, res, next) => {
     const apiKey = req.headers['x-api-key'];
     if (!apiKey) return res.status(401).json({ erreur: 'Header X-API-Key requis' });
 
     const cfg = db.prepare("SELECT valeur FROM config WHERE cle = 'external_api_key'").get();
     if (!cfg || !cfg.valeur) return res.status(503).json({ erreur: 'API externe non configurée (clé manquante dans config)' });
-    if (apiKey !== cfg.valeur) return res.status(403).json({ erreur: 'API key invalide' });
+
+    const a = Buffer.from(apiKey);
+    const b = Buffer.from(cfg.valeur);
+    if (a.length !== b.length || !crypto.timingSafeEqual(a, b)) {
+      return res.status(403).json({ erreur: 'API key invalide' });
+    }
 
     next();
   });

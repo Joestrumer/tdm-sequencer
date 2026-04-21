@@ -8,28 +8,6 @@ const wmsService = require('../services/wmsService');
 module.exports = (db) => {
   const router = express.Router();
 
-  // ─── MIGRATION : Créer la table shipments (à exécuter une seule fois) ───────
-  router.post('/migrate', (req, res) => {
-    try {
-      const fs = require('fs');
-      const path = require('path');
-      const sqlPath = path.join(__dirname, '../db/migration_shipments.sql');
-      const sql = fs.readFileSync(sqlPath, 'utf-8');
-
-      const statements = sql.split(';').filter(s => s.trim());
-      for (const stmt of statements) {
-        if (stmt.trim()) {
-          db.exec(stmt);
-        }
-      }
-
-      const count = db.prepare('SELECT COUNT(*) as count FROM shipments').get();
-      res.json({ ok: true, message: 'Table shipments créée', count: count.count });
-    } catch (e) {
-      res.status(500).json({ erreur: e.message });
-    }
-  });
-
   // ─── Liste tous les envois ──────────────────────────────────────────────────
   router.get('/', (req, res) => {
     try {

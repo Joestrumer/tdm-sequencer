@@ -152,8 +152,19 @@ module.exports = (db) => {
       res.json({
         ok: true,
         password: plainPassword,
-        message: `Mot de passe généré pour ${partner.nom}. Copiez-le maintenant, il ne sera plus affiché.`,
+        message: `Mot de passe généré pour ${partner.nom}.`,
       });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Voir le mot de passe en clair d'un partenaire (admin uniquement)
+  router.get('/partners/:id/password', (req, res) => {
+    try {
+      const partner = db.prepare('SELECT id, nom, password_plain FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+      res.json({ ok: true, nom: partner.nom, password: partner.password_plain || null });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }

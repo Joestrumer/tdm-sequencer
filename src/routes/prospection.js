@@ -719,42 +719,44 @@ module.exports = (db) => {
 
       // Parser et aplatir les contacts + enrichir avec email_registry
       const allContacts = [];
+      // Collecter tous les emails d'abord pour un batch lookup (évite N+1)
+      const allEmails = [];
+      const tempContacts = [];
       for (const hotel of hotels) {
         try {
           const contacts = JSON.parse(hotel.linkedin_contacts || '[]');
           for (const contact of contacts) {
-            // Filtrer si nécessaire
             if (avec_email === 'true' && !contact.email) continue;
             if (fonction && !(contact.fonction || '').toLowerCase().includes(fonction.toLowerCase())) continue;
-
-            // Vérifier si l'email est déjà un lead (via table leads directement)
-            let isLead = false;
-            let leadId = null;
-            let leadStatut = null;
-            if (contact.email) {
-              const lead = db.prepare('SELECT id, statut FROM leads WHERE email = ?').get(contact.email);
-              if (lead) {
-                isLead = true;
-                leadId = lead.id;
-                leadStatut = lead.statut;
-              }
-            }
-
-            allContacts.push({
-              hotel_id: hotel.id,
-              hotel_nom: hotel.nom_commercial,
-              hotel_commune: hotel.commune,
-              email_generique: hotel.email_generique,
-              ...contact,
-              search_date: hotel.linkedin_search_date,
-              is_lead: isLead,
-              lead_id: leadId,
-              lead_statut: leadStatut,
-            });
+            tempContacts.push({ hotel, contact });
+            if (contact.email) allEmails.push(contact.email);
           }
         } catch (err) {
           logger.warn(`Erreur parse contacts pour ${hotel.nom_commercial}:`, err.message);
         }
+      }
+
+      // Batch lookup leads par email (1 requête au lieu de N)
+      const leadMap = new Map();
+      if (allEmails.length > 0) {
+        const placeholders = allEmails.map(() => '?').join(',');
+        const leads = db.prepare(`SELECT id, email, statut FROM leads WHERE email IN (${placeholders})`).all(...allEmails);
+        for (const l of leads) leadMap.set(l.email, l);
+      }
+
+      for (const { hotel, contact } of tempContacts) {
+        const lead = contact.email ? leadMap.get(contact.email) : null;
+        allContacts.push({
+          hotel_id: hotel.id,
+          hotel_nom: hotel.nom_commercial,
+          hotel_commune: hotel.commune,
+          email_generique: hotel.email_generique,
+          ...contact,
+          search_date: hotel.linkedin_search_date,
+          is_lead: !!lead,
+          lead_id: lead?.id || null,
+          lead_statut: lead?.statut || null,
+        });
       }
 
       // Stats
