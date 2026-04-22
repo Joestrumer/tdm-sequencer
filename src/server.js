@@ -68,8 +68,10 @@ app.use(express.urlencoded({ extended: true }));
 
 // Santé AVANT auth
 app.get('/api/health', (req, res) => {
-  const zbKey = process.env.ZEROBOUNCE_API_KEY ||
-    db.prepare("SELECT valeur FROM config WHERE cle = 'zerobounce_api_key'").get()?.valeur || null;
+  let zbKey = process.env.ZEROBOUNCE_API_KEY || null;
+  try {
+    if (!zbKey) zbKey = db.prepare("SELECT valeur FROM config WHERE cle = 'zerobounce_api_key'").get()?.valeur || null;
+  } catch (_) {}
   res.json({
     statut: 'ok',
     zerobounce: zbKey ? 'configuré' : 'non configuré',
