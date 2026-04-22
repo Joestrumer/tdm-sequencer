@@ -7630,46 +7630,85 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     if (!forecast) return;
 
     const monthLabels = forecast.monthlyForecast.map(m => m.label);
-    const actualData = forecast.monthlyForecast.map(m => m.actual);
-    const projectedData = forecast.monthlyForecast.map(m => {
-      if (m.isProjection) return m.projected;
-      // Add junction point: last actual month also appears in projected line
-      const nextMonth = forecast.monthlyForecast[m.month];
-      if (nextMonth && nextMonth.isProjection) return m.actual;
+
+    // Réappro réel (barres vertes)
+    const reapproActualData = forecast.monthlyForecast.map(m => m.isProjection ? null : m.actualReappro);
+    // Réappro projeté (barres vertes pointillées)
+    const reapproProjectedData = forecast.monthlyForecast.map((m, i) => {
+      if (m.isProjection) return m.projReappro;
+      // Point de jonction
+      const next = forecast.monthlyForecast[i + 1];
+      if (next && next.isProjection) return m.actualReappro;
       return null;
     });
+    // Implantations réel (barres bleues)
+    const implantActualData = forecast.monthlyForecast.map(m => m.isProjection ? null : m.actualImplant);
+    // Implantations projeté (barres bleues pointillées)
+    const implantProjectedData = forecast.monthlyForecast.map((m, i) => {
+      if (m.isProjection) return m.projImplant;
+      const next = forecast.monthlyForecast[i + 1];
+      if (next && next.isProjection) return m.actualImplant;
+      return null;
+    });
+    // Ligne cumulée totale
+    const cumulativeData = forecast.monthlyForecast.map(m => m.cumulative);
 
     const ctx = forecastChartRef.current.getContext('2d');
     forecastChartInstance.current = new Chart(ctx, {
-      type: 'line',
+      type: 'bar',
       data: {
         labels: monthLabels,
         datasets: [
           {
-            label: 'CA HT Réel',
-            data: actualData,
+            label: 'Réappro réel',
+            data: reapproActualData,
+            backgroundColor: 'rgba(16, 185, 129, 0.7)',
             borderColor: 'rgb(16, 185, 129)',
-            backgroundColor: 'rgba(16, 185, 129, 0.1)',
-            tension: 0.4,
-            fill: true,
-            borderWidth: 3,
-            pointRadius: 5,
-            pointBackgroundColor: 'rgb(16, 185, 129)',
-            spanGaps: false
+            borderWidth: 1,
+            stack: 'actual',
+            order: 2,
           },
           {
-            label: 'CA HT Projeté',
-            data: projectedData,
+            label: 'Implantations réel',
+            data: implantActualData,
+            backgroundColor: 'rgba(59, 130, 246, 0.7)',
             borderColor: 'rgb(59, 130, 246)',
-            backgroundColor: 'rgba(59, 130, 246, 0.05)',
+            borderWidth: 1,
+            stack: 'actual',
+            order: 2,
+          },
+          {
+            label: 'Réappro projeté',
+            data: reapproProjectedData,
+            backgroundColor: 'rgba(16, 185, 129, 0.25)',
+            borderColor: 'rgb(16, 185, 129)',
+            borderWidth: 1,
+            borderDash: [4, 4],
+            stack: 'projected',
+            order: 2,
+          },
+          {
+            label: 'Implantations projeté',
+            data: implantProjectedData,
+            backgroundColor: 'rgba(59, 130, 246, 0.25)',
+            borderColor: 'rgb(59, 130, 246)',
+            borderWidth: 1,
+            borderDash: [4, 4],
+            stack: 'projected',
+            order: 2,
+          },
+          {
+            label: 'Cumulé total',
+            data: cumulativeData,
+            type: 'line',
+            borderColor: 'rgb(100, 116, 139)',
+            backgroundColor: 'transparent',
             tension: 0.4,
-            fill: true,
-            borderWidth: 3,
-            borderDash: [8, 4],
-            pointRadius: 5,
-            pointBackgroundColor: 'rgb(59, 130, 246)',
-            pointStyle: 'triangle',
-            spanGaps: false
+            borderWidth: 2,
+            pointRadius: 3,
+            pointBackgroundColor: 'rgb(100, 116, 139)',
+            yAxisID: 'y1',
+            order: 1,
           }
         ]
       },
@@ -7683,22 +7722,33 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
         plugins: {
           legend: {
             display: true,
-            position: 'top'
+            position: 'top',
+            labels: { usePointStyle: true, pointStyle: 'rect' }
           },
           tooltip: {
             callbacks: {
               label: (context) => {
                 const label = context.dataset.label || '';
                 const value = context.parsed.y;
-                if (value === null) return null;
+                if (value === null || value === undefined) return null;
                 return `${label}: ${Math.round(value).toLocaleString('fr-FR')}€`;
               }
             }
           }
         },
         scales: {
+          x: { stacked: true },
           y: {
+            stacked: true,
             beginAtZero: true,
+            ticks: {
+              callback: (value) => `${value.toLocaleString('fr-FR')}€`
+            }
+          },
+          y1: {
+            position: 'right',
+            beginAtZero: true,
+            grid: { drawOnChartArea: false },
             ticks: {
               callback: (value) => `${value.toLocaleString('fr-FR')}€`
             }
@@ -7780,7 +7830,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     return forecast;
   };
 
-  // Detailed forecast with monthly projections
+  // Detailed forecast with implantation/réappro split
   const calculateDetailedForecast = () => {
     if (!analytics?.byMonth) return null;
 
@@ -7789,73 +7839,156 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
     const now = new Date();
     const lastActualMonth = (currentYear === now.getFullYear()) ? now.getMonth() + 1 : 12;
 
-    // Build actual data per month (1-12)
+    // Build actual data per month (1-12) with split
     const actuals = {};
     Object.entries(analytics.byMonth).forEach(([key, data]) => {
       const parts = key.split('-');
       const m = parseInt(parts[1] || parts[0]);
-      actuals[m] = data.ca_ht || 0;
+      actuals[m] = {
+        total: data.ca_ht || 0,
+        implantation: data.ca_ht_implantation || 0,
+        reappro: data.ca_ht_reappro || 0,
+        nb_implantations: data.nb_implantations || 0,
+        nb_reappros: data.nb_reappros || 0,
+      };
     });
 
-    // Regression on actual months
-    const points = [];
-    for (let m = 1; m <= lastActualMonth; m++) {
-      if (actuals[m] !== undefined) {
-        points.push({ x: m, y: actuals[m] });
+    // N-1 and N-2 data from yearsComparison
+    let n1Data = null, n2Data = null, n1Total = 0;
+    let n1ReapproTotal = 0, n1ImplantTotal = 0;
+    let n1NbImplantations = 0;
+    if (yearsComparison?.years) {
+      n1Data = yearsComparison.years.find(y => String(y.year) === String(currentYear - 1));
+      n2Data = yearsComparison.years.find(y => String(y.year) === String(currentYear - 2));
+      if (n1Data) {
+        n1Total = n1Data.total_ht || 0;
+        n1ReapproTotal = n1Data.total_ht_reappro || 0;
+        n1ImplantTotal = n1Data.total_ht_implantation || 0;
+        n1NbImplantations = n1Data.nb_implantations || 0;
       }
     }
 
-    let slope = 0, intercept = 0;
-    if (points.length >= 2) {
-      const n = points.length;
-      const sumX = points.reduce((s, p) => s + p.x, 0);
-      const sumY = points.reduce((s, p) => s + p.y, 0);
-      const sumXY = points.reduce((s, p) => s + p.x * p.y, 0);
-      const sumX2 = points.reduce((s, p) => s + p.x * p.x, 0);
+    // --- Réappro projection ---
+    // Croissance annuelle réappro N-2 → N-1
+    let reapproGrowthRate = 0;
+    let hasReapproGrowth = false;
+    if (n1Data && n2Data) {
+      const n2Reappro = n2Data.total_ht_reappro || 0;
+      const n1Reappro = n1Data.total_ht_reappro || 0;
+      if (n2Reappro > 0) {
+        reapproGrowthRate = (n1Reappro - n2Reappro) / n2Reappro;
+        hasReapproGrowth = true;
+      }
+    }
+
+    // Pour les mois futurs réappro : on prend le réappro de N-1 même mois * (1 + taux croissance)
+    // Si pas de N-1, fallback régression linéaire sur les mois réels de l'année
+    let reapproSlope = 0, reapproIntercept = 0;
+    const reapproPoints = [];
+    for (let m = 1; m <= lastActualMonth; m++) {
+      if (actuals[m]) {
+        reapproPoints.push({ x: m, y: actuals[m].reappro });
+      }
+    }
+    if (reapproPoints.length >= 2) {
+      const n = reapproPoints.length;
+      const sumX = reapproPoints.reduce((s, p) => s + p.x, 0);
+      const sumY = reapproPoints.reduce((s, p) => s + p.y, 0);
+      const sumXY = reapproPoints.reduce((s, p) => s + p.x * p.y, 0);
+      const sumX2 = reapproPoints.reduce((s, p) => s + p.x * p.x, 0);
       const denom = n * sumX2 - sumX * sumX;
       if (denom !== 0) {
-        slope = (n * sumXY - sumX * sumY) / denom;
-        intercept = (sumY - slope * sumX) / n;
+        reapproSlope = (n * sumXY - sumX * sumY) / denom;
+        reapproIntercept = (sumY - reapproSlope * sumX) / n;
       }
-    } else if (points.length === 1) {
-      intercept = points[0].y;
     }
 
-    // Build 12-month forecast
+    // --- Implantations projection ---
+    // Rythme mensuel moyen d'implantations CA sur les mois écoulés
+    let implantTotalYTD = 0;
+    let implantNbYTD = 0;
+    for (let m = 1; m <= lastActualMonth; m++) {
+      if (actuals[m]) {
+        implantTotalYTD += actuals[m].implantation;
+        implantNbYTD += actuals[m].nb_implantations;
+      }
+    }
+    const avgImplantCA = lastActualMonth > 0 ? implantTotalYTD / lastActualMonth : 0;
+
+    // --- Build 12-month forecast ---
     let cumulActual = 0;
     let cumulProjected = 0;
+    let cumulReappro = 0;
+    let cumulImplant = 0;
     const monthlyForecast = [];
 
     for (let m = 1; m <= 12; m++) {
       const isActual = m <= lastActualMonth && actuals[m] !== undefined;
-      const actual = isActual ? actuals[m] : null;
-      const projected = (!isActual && points.length >= 2) ? Math.max(0, slope * m + intercept) : null;
 
-      const value = actual !== null ? actual : (projected !== null ? projected : 0);
-      cumulActual += (actual || 0);
-      cumulProjected += value;
+      let actualReappro = null, actualImplant = null, actualTotal = null;
+      let projReappro = null, projImplant = null, projTotal = null;
+
+      if (isActual) {
+        actualReappro = actuals[m].reappro;
+        actualImplant = actuals[m].implantation;
+        actualTotal = actuals[m].total;
+      } else {
+        // Projeter réappro
+        if (hasReapproGrowth && n1Data?.byMonth) {
+          const monthKey = String(m).padStart(2, '0');
+          const n1MonthReappro = n1Data.byMonth[monthKey]?.ca_ht_reappro || 0;
+          projReappro = Math.max(0, n1MonthReappro * (1 + reapproGrowthRate));
+        } else if (reapproPoints.length >= 2) {
+          projReappro = Math.max(0, reapproSlope * m + reapproIntercept);
+        } else {
+          projReappro = reapproPoints.length === 1 ? reapproPoints[0].y : 0;
+        }
+
+        // Projeter implantations (rythme moyen mensuel)
+        projImplant = Math.max(0, avgImplantCA);
+
+        projTotal = projReappro + projImplant;
+      }
+
+      const reapproValue = actualReappro !== null ? actualReappro : projReappro;
+      const implantValue = actualImplant !== null ? actualImplant : projImplant;
+      const totalValue = actualTotal !== null ? actualTotal : projTotal;
+
+      cumulActual += (actualTotal || 0);
+      cumulProjected += (totalValue || 0);
+      cumulReappro += (reapproValue || 0);
+      cumulImplant += (implantValue || 0);
 
       monthlyForecast.push({
         month: m,
         label: monthNames[m - 1],
-        actual,
-        projected,
+        actualTotal,
+        actualReappro,
+        actualImplant,
+        projTotal,
+        projReappro,
+        projImplant,
         isProjection: !isActual,
-        cumulative: cumulProjected
+        cumulative: cumulProjected,
+        cumulReappro,
+        cumulImplant,
       });
-    }
-
-    // N-1 total
-    let n1Total = 0;
-    if (yearsComparison?.years) {
-      const prevYear = yearsComparison.years.find(y => y.year === currentYear - 1);
-      if (prevYear) {
-        n1Total = prevYear.total_ht || 0;
-      }
     }
 
     const annualProjected = cumulProjected;
     const growthVsN1 = n1Total > 0 ? ((annualProjected - n1Total) / n1Total * 100) : 0;
+
+    // Réappro YTD
+    let reapproYTD = 0;
+    let n1ReapproYTD = 0;
+    for (let m = 1; m <= lastActualMonth; m++) {
+      if (actuals[m]) reapproYTD += actuals[m].reappro;
+      if (n1Data?.byMonth) {
+        const mk = String(m).padStart(2, '0');
+        n1ReapproYTD += n1Data.byMonth[mk]?.ca_ht_reappro || 0;
+      }
+    }
+    const reapproGrowthYTD = n1ReapproYTD > 0 ? ((reapproYTD - n1ReapproYTD) / n1ReapproYTD * 100) : 0;
 
     return {
       monthlyForecast,
@@ -7863,7 +7996,16 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
       annualProjected,
       n1Total,
       growthVsN1,
-      hasEnoughData: points.length >= 2
+      hasEnoughData: reapproPoints.length >= 2 || hasReapproGrowth,
+      // Nouveaux champs split
+      reapproYTD,
+      n1ReapproYTD,
+      reapproGrowthYTD,
+      implantTotalYTD,
+      implantNbYTD,
+      n1NbImplantations,
+      n1ImplantTotal,
+      reapproGrowthRate: hasReapproGrowth ? reapproGrowthRate * 100 : null,
     };
   };
 
@@ -8523,26 +8665,47 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
         return (
           <div className="space-y-6">
             {/* KPIs */}
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-4">
+              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-5 border border-emerald-200">
                 <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">CA Réalisé YTD</div>
-                <div className="text-3xl font-bold text-emerald-900">
+                <div className="text-2xl font-bold text-emerald-900">
                   {Math.round(forecast.caRealise).toLocaleString('fr-FR')}€
                 </div>
-                <div className="text-sm text-emerald-700 mt-2">HT - Mois écoulés {year}</div>
+                <div className="text-xs text-emerald-700 mt-2">HT - Mois écoulés {year}</div>
               </div>
 
-              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
                 <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">CA Projeté Annuel</div>
-                <div className="text-3xl font-bold text-blue-900">
+                <div className="text-2xl font-bold text-blue-900">
                   {Math.round(forecast.annualProjected).toLocaleString('fr-FR')}€
                 </div>
-                <div className="text-sm text-blue-700 mt-2">
-                  {forecast.hasEnoughData ? 'Projection par régression linéaire' : 'Données insuffisantes pour projection'}
+                <div className="text-xs text-blue-700 mt-2">
+                  {forecast.hasEnoughData ? 'Réappro + Implantations' : 'Données insuffisantes'}
                 </div>
               </div>
 
-              <div className={`bg-gradient-to-br rounded-xl p-6 border ${
+              <div className="bg-gradient-to-br from-green-50 to-green-100 rounded-xl p-5 border border-green-200">
+                <div className="text-xs font-medium text-green-600 mb-2 uppercase tracking-wide">Réappro YTD</div>
+                <div className="text-2xl font-bold text-green-900">
+                  {Math.round(forecast.reapproYTD).toLocaleString('fr-FR')}€
+                </div>
+                <div className={`text-xs mt-2 ${forecast.reapproGrowthYTD >= 0 ? 'text-green-700' : 'text-red-600'}`}>
+                  vs N-1 : {forecast.reapproGrowthYTD >= 0 ? '+' : ''}{forecast.reapproGrowthYTD.toFixed(1)}%
+                </div>
+              </div>
+
+              <div className="bg-gradient-to-br from-indigo-50 to-indigo-100 rounded-xl p-5 border border-indigo-200">
+                <div className="text-xs font-medium text-indigo-600 mb-2 uppercase tracking-wide">Implantations YTD</div>
+                <div className="text-2xl font-bold text-indigo-900">
+                  {forecast.implantNbYTD} client{forecast.implantNbYTD > 1 ? 's' : ''}
+                </div>
+                <div className="text-xs text-indigo-700 mt-2">
+                  {Math.round(forecast.implantTotalYTD).toLocaleString('fr-FR')}€ HT
+                  {forecast.n1NbImplantations > 0 && ` (N-1: ${forecast.n1NbImplantations})`}
+                </div>
+              </div>
+
+              <div className={`bg-gradient-to-br rounded-xl p-5 border ${
                 forecast.growthVsN1 >= 0
                   ? 'from-amber-50 to-amber-100 border-amber-200'
                   : 'from-red-50 to-red-100 border-red-200'
@@ -8550,22 +8713,22 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
                 <div className={`text-xs font-medium mb-2 uppercase tracking-wide ${
                   forecast.growthVsN1 >= 0 ? 'text-amber-600' : 'text-red-600'
                 }`}>Croissance vs {year - 1}</div>
-                <div className={`text-3xl font-bold ${
+                <div className={`text-2xl font-bold ${
                   forecast.growthVsN1 >= 0 ? 'text-amber-900' : 'text-red-900'
                 }`}>
                   {forecast.growthVsN1 >= 0 ? '+' : ''}{forecast.growthVsN1.toFixed(1)}%
                 </div>
-                <div className={`text-sm mt-2 ${
+                <div className={`text-xs mt-2 ${
                   forecast.growthVsN1 >= 0 ? 'text-amber-700' : 'text-red-700'
                 }`}>
-                  N-1 : {Math.round(forecast.n1Total).toLocaleString('fr-FR')}€ HT
+                  N-1 : {Math.round(forecast.n1Total).toLocaleString('fr-FR')}€
                 </div>
               </div>
             </div>
 
             {/* Chart */}
             <div className="bg-white rounded-xl border border-slate-100 p-6">
-              <h3 className="text-sm font-semibold text-slate-800 mb-4">CA HT : Réel et Prévisions {year}</h3>
+              <h3 className="text-sm font-semibold text-slate-800 mb-4">CA HT : Réappro vs Implantations {year}</h3>
               <div className="h-80">
                 <canvas ref={forecastChartRef}></canvas>
               </div>
@@ -8580,43 +8743,55 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
                 <table className="w-full">
                   <thead className="bg-slate-50">
                     <tr>
-                      <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Mois</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA Réel</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA Projeté</th>
-                      <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Cumulé</th>
+                      <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Mois</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-green-600 uppercase">Réappro</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-indigo-600 uppercase">Implantations</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Total</th>
+                      <th className="text-right px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Cumulé</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {forecast.monthlyForecast.map((m) => (
-                      <tr key={m.month} className={`hover:bg-slate-50 ${m.isProjection ? 'bg-blue-50/30' : ''}`}>
-                        <td className="px-6 py-3 text-sm font-medium text-slate-900">
-                          {m.label}
-                          {m.isProjection && (
-                            <span className="ml-2 text-xs text-blue-500 font-normal">(projection)</span>
-                          )}
-                        </td>
-                        <td className="px-6 py-3 text-sm text-right text-emerald-700 font-medium">
-                          {m.actual !== null ? `${Math.round(m.actual).toLocaleString('fr-FR')}€` : '-'}
-                        </td>
-                        <td className="px-6 py-3 text-sm text-right text-blue-600 font-medium">
-                          {m.projected !== null ? `${Math.round(m.projected).toLocaleString('fr-FR')}€` : '-'}
-                        </td>
-                        <td className="px-6 py-3 text-sm text-right text-slate-700">
-                          {Math.round(m.cumulative).toLocaleString('fr-FR')}€
-                        </td>
-                      </tr>
-                    ))}
+                    {forecast.monthlyForecast.map((m) => {
+                      const reappro = m.isProjection ? m.projReappro : m.actualReappro;
+                      const implant = m.isProjection ? m.projImplant : m.actualImplant;
+                      const total = m.isProjection ? m.projTotal : m.actualTotal;
+                      return (
+                        <tr key={m.month} className={`hover:bg-slate-50 ${m.isProjection ? 'bg-blue-50/30' : ''}`}>
+                          <td className="px-4 py-3 text-sm font-medium text-slate-900">
+                            {m.label}
+                            {m.isProjection && (
+                              <span className="ml-2 text-xs text-blue-500 font-normal">(proj.)</span>
+                            )}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-green-700 font-medium">
+                            {reappro !== null ? `${Math.round(reappro).toLocaleString('fr-FR')}€` : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-indigo-600 font-medium">
+                            {implant !== null ? `${Math.round(implant).toLocaleString('fr-FR')}€` : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-800 font-semibold">
+                            {total !== null ? `${Math.round(total).toLocaleString('fr-FR')}€` : '-'}
+                          </td>
+                          <td className="px-4 py-3 text-sm text-right text-slate-600">
+                            {Math.round(m.cumulative).toLocaleString('fr-FR')}€
+                          </td>
+                        </tr>
+                      );
+                    })}
                   </tbody>
                   <tfoot className="bg-slate-50 border-t-2 border-slate-200">
                     <tr>
-                      <td className="px-6 py-3 text-sm font-bold text-slate-900">TOTAL</td>
-                      <td className="px-6 py-3 text-sm text-right font-bold text-emerald-700">
-                        {Math.round(forecast.caRealise).toLocaleString('fr-FR')}€
+                      <td className="px-4 py-3 text-sm font-bold text-slate-900">TOTAL</td>
+                      <td className="px-4 py-3 text-sm text-right font-bold text-green-700">
+                        {Math.round(forecast.monthlyForecast[11]?.cumulReappro || 0).toLocaleString('fr-FR')}€
                       </td>
-                      <td className="px-6 py-3 text-sm text-right font-bold text-blue-600">
-                        {Math.round(forecast.annualProjected - forecast.caRealise).toLocaleString('fr-FR')}€
+                      <td className="px-4 py-3 text-sm text-right font-bold text-indigo-600">
+                        {Math.round(forecast.monthlyForecast[11]?.cumulImplant || 0).toLocaleString('fr-FR')}€
                       </td>
-                      <td className="px-6 py-3 text-sm text-right font-bold text-slate-900">
+                      <td className="px-4 py-3 text-sm text-right font-bold text-slate-900">
+                        {Math.round(forecast.annualProjected).toLocaleString('fr-FR')}€
+                      </td>
+                      <td className="px-4 py-3 text-sm text-right font-bold text-slate-700">
                         {Math.round(forecast.annualProjected).toLocaleString('fr-FR')}€
                       </td>
                     </tr>
@@ -8629,7 +8804,15 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
             {!forecast.hasEnoughData && (
               <div className="bg-amber-50 rounded-xl border border-amber-200 p-4">
                 <p className="text-sm text-amber-800">
-                  Les projections nécessitent au moins 2 mois de données. Les mois futurs afficheront des projections une fois suffisamment de données disponibles.
+                  Projections basées sur les données disponibles. Le réappro utilise la croissance N-2→N-1 quand disponible, sinon une régression linéaire. Les implantations sont projetées au rythme mensuel moyen de l'année en cours.
+                </p>
+              </div>
+            )}
+            {forecast.hasEnoughData && (
+              <div className="bg-slate-50 rounded-xl border border-slate-200 p-4">
+                <p className="text-xs text-slate-500">
+                  Réappro : {forecast.reapproGrowthRate !== null ? `croissance N-2→N-1 de ${forecast.reapproGrowthRate >= 0 ? '+' : ''}${forecast.reapproGrowthRate.toFixed(1)}% appliquée aux mois futurs` : 'régression linéaire sur les mois écoulés'}.
+                  Implantations : rythme moyen de {Math.round(forecast.implantTotalYTD / Math.max(1, (new Date().getMonth() + 1))).toLocaleString('fr-FR')}€/mois.
                 </p>
               </div>
             )}

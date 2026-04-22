@@ -179,6 +179,9 @@ module.exports = (db) => {
           }
         }
 
+        // Lire Order # pour distinguer implantation (0) vs réappro (>=1)
+        const orderNumber = parseInt(row['Order #'] || '0', 10);
+
         // Grouper par numéro de facture
         if (!invoicesMap.has(invoiceNumber)) {
           invoicesMap.set(invoiceNumber, {
@@ -191,6 +194,7 @@ module.exports = (db) => {
             totalTTC: 0,
             totalCommission: 0,
             productCount: 0,
+            orderNumber: orderNumber,
           });
         }
 
@@ -223,6 +227,10 @@ module.exports = (db) => {
           ca_ht: 0,
           ca_ttc: 0,
           commission: 0,
+          ca_ht_implantation: 0,
+          ca_ht_reappro: 0,
+          nb_implantations: 0,
+          nb_reappros: 0,
         },
         byMonth: {},
         byClient: {},
@@ -236,6 +244,15 @@ module.exports = (db) => {
         stats.total.ca_ttc += invoice.totalTTC;
         stats.total.commission += invoice.totalCommission;
 
+        // Split implantation vs réappro
+        if (invoice.orderNumber === 0) {
+          stats.total.ca_ht_implantation += invoice.totalHT;
+          stats.total.nb_implantations++;
+        } else {
+          stats.total.ca_ht_reappro += invoice.totalHT;
+          stats.total.nb_reappros++;
+        }
+
         if (invoice.client) {
           stats.allClients.add(invoice.client);
         }
@@ -244,12 +261,20 @@ module.exports = (db) => {
         if (invoice.year && invoice.month) {
           const monthKey = `${invoice.year}-${String(invoice.month).padStart(2, '0')}`;
           if (!stats.byMonth[monthKey]) {
-            stats.byMonth[monthKey] = { ca_ht: 0, ca_ttc: 0, commission: 0, count: 0 };
+            stats.byMonth[monthKey] = { ca_ht: 0, ca_ttc: 0, commission: 0, count: 0, ca_ht_implantation: 0, ca_ht_reappro: 0, nb_implantations: 0, nb_reappros: 0 };
           }
           stats.byMonth[monthKey].ca_ht += invoice.totalHT;
           stats.byMonth[monthKey].ca_ttc += invoice.totalTTC;
           stats.byMonth[monthKey].commission += invoice.totalCommission;
           stats.byMonth[monthKey].count++;
+
+          if (invoice.orderNumber === 0) {
+            stats.byMonth[monthKey].ca_ht_implantation += invoice.totalHT;
+            stats.byMonth[monthKey].nb_implantations++;
+          } else {
+            stats.byMonth[monthKey].ca_ht_reappro += invoice.totalHT;
+            stats.byMonth[monthKey].nb_reappros++;
+          }
         }
 
         // Par client
@@ -285,6 +310,8 @@ module.exports = (db) => {
       stats.total.ca_ht = Math.round(stats.total.ca_ht * 100) / 100;
       stats.total.ca_ttc = Math.round(stats.total.ca_ttc * 100) / 100;
       stats.total.commission = Math.round(stats.total.commission * 100) / 100;
+      stats.total.ca_ht_implantation = Math.round(stats.total.ca_ht_implantation * 100) / 100;
+      stats.total.ca_ht_reappro = Math.round(stats.total.ca_ht_reappro * 100) / 100;
 
       // Convertir allClients en array trié
       stats.allClients = Array.from(stats.allClients).sort();
@@ -488,11 +515,17 @@ module.exports = (db) => {
       // Grouper par année et mois
       const yearStats = {};
 
-      // Première passe: identifier toutes les factures par année
+      // Première passe: identifier toutes les factures par année + stocker Order #
       const invoicesByYear = {};
+      const invoiceOrderNumbers = {}; // invoiceNumber -> orderNumber
       for (const row of data) {
         const invoiceNumber = (row['Invoice'] || '').trim();
         if (!invoiceNumber) continue;
+
+        // Stocker Order # pour chaque facture (première occurrence)
+        if (!(invoiceNumber in invoiceOrderNumbers)) {
+          invoiceOrderNumbers[invoiceNumber] = parseInt(row['Order #'] || '0', 10);
+        }
 
         const dateFacturation = (row['Date facturation'] || '').trim();
         let invoiceYear = '';
@@ -547,10 +580,16 @@ module.exports = (db) => {
             year: invoiceYear,
             total_ht: 0,
             total_commission: 0,
+            total_ht_implantation: 0,
+            total_ht_reappro: 0,
+            nb_implantations: 0,
+            nb_reappros: 0,
             invoices: new Set(),
             byMonth: {},
           };
         }
+
+        const orderNum = invoiceOrderNumbers[invoiceNumber] || 0;
 
         yearStats[invoiceYear].total_ht += montantHT;
         yearStats[invoiceYear].total_commission += commission;
@@ -564,10 +603,40 @@ module.exports = (db) => {
               commission: 0,
               cumulative_ht: 0,
               cumulative_commission: 0,
+              ca_ht_implantation: 0,
+              ca_ht_reappro: 0,
+              cumulative_ht_implantation: 0,
+              cumulative_ht_reappro: 0,
             };
           }
           yearStats[invoiceYear].byMonth[monthKey].ca_ht += montantHT;
           yearStats[invoiceYear].byMonth[monthKey].commission += commission;
+
+          if (orderNum === 0) {
+            yearStats[invoiceYear].byMonth[monthKey].ca_ht_implantation += montantHT;
+          } else {
+            yearStats[invoiceYear].byMonth[monthKey].ca_ht_reappro += montantHT;
+          }
+        }
+      }
+
+      // Calculer nb_implantations/nb_reappros par année (basé sur factures uniques)
+      for (const year in yearStats) {
+        for (const invoiceNumber of yearStats[year].invoices) {
+          const orderNum = invoiceOrderNumbers[invoiceNumber] || 0;
+          if (orderNum === 0) {
+            yearStats[year].nb_implantations++;
+            yearStats[year].total_ht_implantation += 0; // déjà calculé ligne par ligne
+          } else {
+            yearStats[year].nb_reappros++;
+          }
+        }
+        // Recalculer total_ht_implantation/reappro depuis byMonth (plus fiable)
+        yearStats[year].total_ht_implantation = 0;
+        yearStats[year].total_ht_reappro = 0;
+        for (const monthKey in yearStats[year].byMonth) {
+          yearStats[year].total_ht_implantation += yearStats[year].byMonth[monthKey].ca_ht_implantation || 0;
+          yearStats[year].total_ht_reappro += yearStats[year].byMonth[monthKey].ca_ht_reappro || 0;
         }
       }
 
@@ -575,19 +644,29 @@ module.exports = (db) => {
       for (const year in yearStats) {
         let cumulativeHT = 0;
         let cumulativeCommission = 0;
+        let cumulativeHTImplantation = 0;
+        let cumulativeHTReappro = 0;
         for (let m = 1; m <= 12; m++) {
           const monthKey = String(m).padStart(2, '0');
           if (yearStats[year].byMonth[monthKey]) {
             cumulativeHT += yearStats[year].byMonth[monthKey].ca_ht;
             cumulativeCommission += yearStats[year].byMonth[monthKey].commission;
+            cumulativeHTImplantation += yearStats[year].byMonth[monthKey].ca_ht_implantation || 0;
+            cumulativeHTReappro += yearStats[year].byMonth[monthKey].ca_ht_reappro || 0;
             yearStats[year].byMonth[monthKey].cumulative_ht = Math.round(cumulativeHT * 100) / 100;
             yearStats[year].byMonth[monthKey].cumulative_commission = Math.round(cumulativeCommission * 100) / 100;
+            yearStats[year].byMonth[monthKey].cumulative_ht_implantation = Math.round(cumulativeHTImplantation * 100) / 100;
+            yearStats[year].byMonth[monthKey].cumulative_ht_reappro = Math.round(cumulativeHTReappro * 100) / 100;
           } else {
             yearStats[year].byMonth[monthKey] = {
               ca_ht: 0,
               commission: 0,
               cumulative_ht: Math.round(cumulativeHT * 100) / 100,
               cumulative_commission: Math.round(cumulativeCommission * 100) / 100,
+              ca_ht_implantation: 0,
+              ca_ht_reappro: 0,
+              cumulative_ht_implantation: Math.round(cumulativeHTImplantation * 100) / 100,
+              cumulative_ht_reappro: Math.round(cumulativeHTReappro * 100) / 100,
             };
           }
         }
@@ -598,6 +677,10 @@ module.exports = (db) => {
         year: y.year,
         total_ht: Math.round(y.total_ht * 100) / 100,
         total_commission: Math.round(y.total_commission * 100) / 100,
+        total_ht_implantation: Math.round(y.total_ht_implantation * 100) / 100,
+        total_ht_reappro: Math.round(y.total_ht_reappro * 100) / 100,
+        nb_implantations: y.nb_implantations,
+        nb_reappros: y.nb_reappros,
         invoices: y.invoices.size,
         byMonth: y.byMonth,
       })).sort((a, b) => b.year - a.year);
