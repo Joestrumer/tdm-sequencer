@@ -86,14 +86,14 @@ async function avancerInscription(inscription, etapesParsed, lead) {
       db.prepare(`UPDATE inscriptions SET etape_courante=?, statut='terminé', prochain_envoi=NULL WHERE id=?`)
         .run(prochainIndex, inscription.id);
 
-      const hasResponse = db.prepare(`
-        SELECT COUNT(*) as count FROM events
-        WHERE lead_id = ? AND type IN ('ouverture', 'clic')
-      `).get(lead.id);
-
-      if (hasResponse.count === 0) {
+      // Vérifier si le lead a répondu ou été converti — sinon → "Fin de séquence"
+      const currentLead = db.prepare(`SELECT statut FROM leads WHERE id = ?`).get(lead.id);
+      const preservedStatuses = ['Répondu', 'Converti', 'Désabonné', 'Closed Lost'];
+      if (!preservedStatuses.includes(currentLead?.statut)) {
         db.prepare(`UPDATE leads SET statut='Fin de séquence', updated_at=datetime('now') WHERE id=?`).run(lead.id);
-        logger.info(`📭 Lead ${lead.email} mis en statut "Fin de séquence" (aucune réponse)`);
+        logger.info(`📭 Lead ${lead.email} mis en statut "Fin de séquence" (aucune réponse/conversion)`);
+      } else {
+        logger.info(`📭 Lead ${lead.email} garde son statut "${currentLead.statut}" (séquence terminée)`);
       }
     })();
     logger.info(`📭 Séquence terminée pour ${lead.email}`);

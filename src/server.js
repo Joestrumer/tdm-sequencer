@@ -68,7 +68,12 @@ app.use(express.urlencoded({ extended: true }));
 
 // Santé AVANT auth
 app.get('/api/health', (req, res) => {
-  res.json({ statut: 'ok' });
+  const zbKey = process.env.ZEROBOUNCE_API_KEY ||
+    db.prepare("SELECT valeur FROM config WHERE cle = 'zerobounce_api_key'").get()?.valeur || null;
+  res.json({
+    statut: 'ok',
+    zerobounce: zbKey ? 'configuré' : 'non configuré',
+  });
 });
 
 // Auth middleware (JWT + fallback AUTH_SECRET)
