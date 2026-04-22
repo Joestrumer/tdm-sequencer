@@ -45,12 +45,12 @@ function sauvegarderLocal(data) {
   fs.writeFileSync(filePath, JSON.stringify(data, null, 2));
   logger.info(`✅ Backup local : ${filePath}`);
 
-  // Garder seulement les 7 derniers backups locaux
+  // Garder seulement les 3 derniers backups locaux (les anciens sont sur GitHub)
   const fichiers = fs.readdirSync(BACKUP_DIR)
     .filter(f => f.startsWith('backup-') && f.endsWith('.json'))
     .sort()
     .reverse();
-  for (const f of fichiers.slice(7)) {
+  for (const f of fichiers.slice(3)) {
     fs.unlinkSync(path.join(BACKUP_DIR, f));
     logger.info(`🗑️  Ancien backup supprimé : ${f}`);
   }

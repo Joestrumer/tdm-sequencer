@@ -97,5 +97,122 @@ module.exports = (db) => {
     }
   });
 
+  // ── Diagnostic stockage ──────────────────────────────────────────────────
+  router.get('/storage', (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+
+      // Taille des tables SQLite
+      const tables = db.prepare(`
+        SELECT name FROM sqlite_master WHERE type='table' ORDER BY name
+      `).all();
+
+      const tableSizes = tables.map(t => {
+        const count = db.prepare(`SELECT COUNT(*) as n FROM "${t.name}"`).get().n;
+        return { table: t.name, rows: count };
+      }).sort((a, b) => b.rows - a.rows);
+
+      // Taille du fichier DB
+      const dbPath = process.env.DB_PATH || './data/sequencer.db';
+      const dbStat = fs.existsSync(dbPath) ? fs.statSync(dbPath) : null;
+      const walPath = dbPath + '-wal';
+      const walStat = fs.existsSync(walPath) ? fs.statSync(walPath) : null;
+
+      // Taille des backups
+      const backupDir = path.resolve('./data/backups');
+      let backupSize = 0;
+      let backupCount = 0;
+      if (fs.existsSync(backupDir)) {
+        const files = fs.readdirSync(backupDir);
+        backupCount = files.length;
+        files.forEach(f => {
+          try { backupSize += fs.statSync(path.join(backupDir, f)).size; } catch (_) {}
+        });
+      }
+
+      // Taille des logs
+      const logsDir = path.resolve('./data/logs');
+      let logsSize = 0;
+      let logsCount = 0;
+      if (fs.existsSync(logsDir)) {
+        const files = fs.readdirSync(logsDir);
+        logsCount = files.length;
+        files.forEach(f => {
+          try { logsSize += fs.statSync(path.join(logsDir, f)).size; } catch (_) {}
+        });
+      }
+
+      const formatMB = (bytes) => bytes ? (bytes / 1024 / 1024).toFixed(1) + ' MB' : '0 MB';
+
+      res.json({
+        db: {
+          file: formatMB(dbStat?.size),
+          wal: formatMB(walStat?.size),
+          total: formatMB((dbStat?.size || 0) + (walStat?.size || 0)),
+        },
+        backups: { count: backupCount, size: formatMB(backupSize) },
+        logs: { count: logsCount, size: formatMB(logsSize) },
+        tables: tableSizes,
+      });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ── Purge : VACUUM la DB pour récupérer l'espace ──────────────────────
+  router.post('/storage/vacuum', (req, res) => {
+    try {
+      db.pragma('wal_checkpoint(TRUNCATE)');
+      db.exec('VACUUM');
+      res.json({ ok: true, message: 'VACUUM terminé, WAL tronqué' });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ── Purge events anciens ──────────────────────────────────────────────
+  router.post('/storage/purge-events', (req, res) => {
+    try {
+      const months = parseInt(req.body.months || '3', 10);
+      const before = new Date();
+      before.setMonth(before.getMonth() - months);
+      const dateStr = before.toISOString();
+
+      const result = db.prepare(`DELETE FROM events WHERE date < ?`).run(dateStr);
+      db.pragma('wal_checkpoint(TRUNCATE)');
+
+      res.json({ ok: true, deleted: result.changes, before: dateStr });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ── Purge : supprimer backups locaux ───────────────────────────────────
+  router.post('/storage/purge-backups', (req, res) => {
+    try {
+      const fs = require('fs');
+      const path = require('path');
+      const keep = parseInt(req.body.keep || '2', 10);
+      const backupDir = path.resolve('./data/backups');
+
+      if (!fs.existsSync(backupDir)) return res.json({ ok: true, deleted: 0 });
+
+      const files = fs.readdirSync(backupDir)
+        .filter(f => f.startsWith('backup-') && f.endsWith('.json'))
+        .sort().reverse();
+
+      let deleted = 0;
+      for (const f of files.slice(keep)) {
+        fs.unlinkSync(path.join(backupDir, f));
+        deleted++;
+      }
+
+      res.json({ ok: true, deleted, remaining: Math.min(files.length, keep) });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   return router;
 };
