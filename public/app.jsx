@@ -1879,13 +1879,14 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
 const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [search, setSearch] = useState("");
-  const [filterStatut, setFilterStatut] = useState("Tous");
-  const [filterSegment, setFilterSegment] = useState("Tous");
-  const [filterVille, setFilterVille] = useState("Tous");
-  const [filterLangue, setFilterLangue] = useState("Tous");
-  const [filterCampaign, setFilterCampaign] = useState("Tous");
-  const [filterTag, setFilterTag] = useState("Tous");
-  const [filterSource, setFilterSource] = useState("Tous");
+  const [filterStatut, setFilterStatut] = useState(new Set());
+  const [filterSegment, setFilterSegment] = useState(new Set());
+  const [filterVille, setFilterVille] = useState(new Set());
+  const [filterLangue, setFilterLangue] = useState(new Set());
+  const [filterCampaign, setFilterCampaign] = useState(new Set());
+  const [filterTag, setFilterTag] = useState(new Set());
+  const [filterSource, setFilterSource] = useState(new Set());
+  const [openFilterDropdown, setOpenFilterDropdown] = useState(null);
   const [sortBy, setSortBy] = useState("recent"); // "recent"|"score"|"nom"
   const [sortColumn, setSortColumn] = useState(null); // colonne active pour tri
   const [sortDirection, setSortDirection] = useState("asc"); // "asc"|"desc"
@@ -2047,13 +2048,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 
   const filtered = useMemo(() => leadsNorm.filter(l => {
     const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email} ${l.campaign||""} ${l.source||""} ${l.statut||""} ${l.civilite||""} ${l.poste||""}`.toLowerCase().includes(search.toLowerCase());
-    const matchStatut = filterStatut === "Tous" || l.statut === filterStatut;
-    const matchSegment = filterSegment === "Tous" || l.segment === filterSegment;
-    const matchVille = filterVille === "Tous" || l.ville === filterVille;
-    const matchLangue = filterLangue === "Tous" || l.langue === filterLangue;
-    const matchCampaign = filterCampaign === "Tous" || l.campaign === filterCampaign;
-    const matchTag = filterTag === "Tous" || (l.tags || []).some(t => t.startsWith(filterTag + ':'));
-    const matchSource = filterSource === "Tous" || l.source === filterSource;
+    const matchStatut = filterStatut.size === 0 || filterStatut.has(l.statut);
+    const matchSegment = filterSegment.size === 0 || filterSegment.has(l.segment);
+    const matchVille = filterVille.size === 0 || filterVille.has(l.ville);
+    const matchLangue = filterLangue.size === 0 || filterLangue.has(l.langue);
+    const matchCampaign = filterCampaign.size === 0 || filterCampaign.has(l.campaign);
+    const matchTag = filterTag.size === 0 || (l.tags || []).some(t => { const prefix = t.split(':')[0]?.trim(); return filterTag.has(prefix); });
+    const matchSource = filterSource.size === 0 || filterSource.has(l.source);
     return matchSearch && matchStatut && matchSegment && matchVille && matchLangue && matchCampaign && matchTag && matchSource;
   }).sort((a, b) => {
     // Tri par colonne (prioritaire)
@@ -2225,40 +2226,88 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
       {/* ── Filtres ── */}
       <div className="flex flex-col md:flex-row flex-wrap gap-2 md:items-center bg-white rounded-2xl border border-slate-100 px-4 py-3">
         <div className="flex gap-1 flex-wrap">
-          {statuts.map(s => (
-            <button key={s} onClick={() => setFilterStatut(s)} className={`px-2.5 py-1.5 md:py-1 rounded-lg text-xs font-medium transition-colors ${filterStatut === s ? "bg-slate-900 text-white" : "bg-slate-50 border border-slate-200 text-slate-600 hover:border-slate-300"}`}>{s}</button>
+          {statuts.filter(s => s !== "Tous").map(s => (
+            <button key={s} onClick={() => setFilterStatut(prev => {
+              const next = new Set(prev);
+              next.has(s) ? next.delete(s) : next.add(s);
+              return next;
+            })} className={`px-2.5 py-1.5 md:py-1 rounded-lg text-xs font-medium transition-colors ${filterStatut.has(s) ? "bg-slate-900 text-white" : "bg-slate-50 border border-slate-200 text-slate-600 hover:border-slate-300"}`}>{s}</button>
           ))}
         </div>
         <div className="w-px h-4 bg-slate-200 mx-1 hidden md:block" />
-        <div className="flex gap-2 flex-wrap">
-          <select value={filterSegment} onChange={e => setFilterSegment(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
-            {segments.map(s => <option key={s}>{s}</option>)}
-          </select>
-          <select value={filterVille} onChange={e => setFilterVille(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
-            {villes.map(v => <option key={v}>{v}</option>)}
-          </select>
-          <select value={filterLangue} onChange={e => setFilterLangue(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
-            {langues.map(l => <option key={l} value={l}>{l === "Tous" ? "Toutes langues" : `${langueToFlag(l)} ${l.toUpperCase()}`}</option>)}
-          </select>
-          <select value={filterCampaign} onChange={e => setFilterCampaign(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
-            <option value="Tous">Toutes campaigns</option>
-            {campaigns.filter(c => c !== "Tous").map(c => <option key={c} value={c}>{c}</option>)}
-          </select>
-          {allTags.length > 1 && (
-            <select value={filterTag} onChange={e => setFilterTag(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
-              {allTags.map(t => <option key={t} value={t}>{t === "Tous" ? "Tous tags" : t}</option>)}
-            </select>
-          )}
-          {sources.length > 1 && (
-            <select value={filterSource} onChange={e => setFilterSource(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
-              {sources.map(s => <option key={s} value={s}>{s === "Tous" ? "Toutes sources" : s}</option>)}
-            </select>
-          )}
+        <div className="flex gap-2 flex-wrap items-center">
+          {/* Multi-select dropdowns */}
+          {[
+            { key: 'segment', label: 'Segment', options: segments.filter(s => s !== "Tous"), state: filterSegment, setter: setFilterSegment },
+            { key: 'ville', label: 'Ville', options: villes.filter(v => v !== "Tous"), state: filterVille, setter: setFilterVille },
+            { key: 'langue', label: 'Langue', options: langues.filter(l => l !== "Tous"), state: filterLangue, setter: setFilterLangue, format: v => `${langueToFlag(v)} ${v.toUpperCase()}` },
+            { key: 'campaign', label: 'Campaign', options: campaigns.filter(c => c !== "Tous"), state: filterCampaign, setter: setFilterCampaign },
+            ...(allTags.length > 1 ? [{ key: 'tag', label: 'Tag', options: allTags.filter(t => t !== "Tous"), state: filterTag, setter: setFilterTag }] : []),
+            ...(sources.length > 1 ? [{ key: 'source', label: 'Source', options: sources.filter(s => s !== "Tous"), state: filterSource, setter: setFilterSource }] : []),
+          ].map(({ key, label, options, state, setter, format }) => (
+            <div key={key} className="relative">
+              <button
+                onClick={() => setOpenFilterDropdown(openFilterDropdown === key ? null : key)}
+                className={`border rounded-lg px-2.5 py-1.5 md:py-1 text-xs font-medium transition-colors flex items-center gap-1 ${
+                  state.size > 0 ? "border-blue-400 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 hover:border-slate-300 bg-white"
+                }`}
+              >
+                {state.size > 0 ? `${label} (${state.size})` : label}
+                <svg className="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 9l-7 7-7-7" /></svg>
+              </button>
+              {openFilterDropdown === key && (
+                <>
+                  <div className="fixed inset-0 z-30" onClick={() => setOpenFilterDropdown(null)} />
+                  <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-40 min-w-[180px] max-h-60 overflow-y-auto py-1">
+                    {options.map(opt => (
+                      <label key={opt} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer text-xs text-slate-700">
+                        <input
+                          type="checkbox"
+                          checked={state.has(opt)}
+                          onChange={() => setter(prev => {
+                            const next = new Set(prev);
+                            next.has(opt) ? next.delete(opt) : next.add(opt);
+                            return next;
+                          })}
+                          className="rounded border-slate-300 text-blue-600 focus:ring-blue-500"
+                        />
+                        {format ? format(opt) : opt}
+                      </label>
+                    ))}
+                    {state.size > 0 && (
+                      <button onClick={() => { setter(new Set()); setOpenFilterDropdown(null); }} className="w-full text-left px-3 py-1.5 text-xs text-red-500 hover:bg-red-50 border-t border-slate-100 mt-1">
+                        Effacer
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
           <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
             <option value="recent">Plus récents</option>
             <option value="score">Score ↓</option>
             <option value="nom">Nom A→Z</option>
           </select>
+          {/* Reset all filters */}
+          {(filterStatut.size > 0 || filterSegment.size > 0 || filterVille.size > 0 || filterLangue.size > 0 || filterCampaign.size > 0 || filterTag.size > 0 || filterSource.size > 0 || search) && (
+            <button
+              onClick={() => {
+                setFilterStatut(new Set());
+                setFilterSegment(new Set());
+                setFilterVille(new Set());
+                setFilterLangue(new Set());
+                setFilterCampaign(new Set());
+                setFilterTag(new Set());
+                setFilterSource(new Set());
+                setSearch("");
+                setOpenFilterDropdown(null);
+              }}
+              className="px-2.5 py-1.5 md:py-1 rounded-lg text-xs font-medium text-red-600 bg-red-50 border border-red-200 hover:bg-red-100 transition-colors whitespace-nowrap"
+            >
+              Réinitialiser
+            </button>
+          )}
         </div>
         <span className="md:ml-auto text-xs text-slate-400">{filtered.length} lead{filtered.length !== 1 ? "s" : ""}</span>
       </div>
