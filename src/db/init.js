@@ -539,6 +539,56 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_email_registry_type ON email_registry(email_type);
   CREATE INDEX IF NOT EXISTS idx_email_registry_lead ON email_registry(is_lead);
   CREATE INDEX IF NOT EXISTS idx_email_registry_updated ON email_registry(last_updated);
+
+  -- ─── Tables Account Management ──────────────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS partner_communications (
+    id TEXT PRIMARY KEY,
+    partner_id INTEGER NOT NULL REFERENCES vf_partners(id),
+    type TEXT NOT NULL DEFAULT 'email',
+    sujet TEXT,
+    corps_html TEXT,
+    template_id TEXT,
+    brevo_message_id TEXT,
+    batch_id TEXT,
+    created_by TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_programs (
+    id TEXT PRIMARY KEY,
+    partner_id INTEGER NOT NULL REFERENCES vf_partners(id),
+    tier TEXT NOT NULL DEFAULT 'standard',
+    label TEXT,
+    engagement_volume REAL,
+    engagement_notes TEXT,
+    contreparties TEXT,
+    date_debut TEXT,
+    date_revision TEXT,
+    notes TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_alert_config (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    seuil_jours INTEGER NOT NULL DEFAULT 60,
+    actif INTEGER DEFAULT 1
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_notes (
+    id TEXT PRIMARY KEY,
+    partner_id INTEGER NOT NULL REFERENCES vf_partners(id),
+    type TEXT DEFAULT 'note',
+    contenu TEXT NOT NULL,
+    created_by TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_partner_comms_partner ON partner_communications(partner_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_comms_batch ON partner_communications(batch_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_programs_partner ON partner_programs(partner_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_notes_partner ON partner_notes(partner_id);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
@@ -609,6 +659,9 @@ const migrations = [
   // Prospection — Contacts LinkedIn trouvés
   'ALTER TABLE hotels_france ADD COLUMN linkedin_contacts TEXT DEFAULT \'[]\'',
   'ALTER TABLE hotels_france ADD COLUMN linkedin_search_date TEXT',
+  // Account Management
+  'ALTER TABLE vf_partners ADD COLUMN derniere_commande_at TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN programme_tier TEXT DEFAULT \'standard\'',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
@@ -1120,6 +1173,24 @@ try {
     console.error('⚠️  Erreur seed veille:', e.message);
   }
 }
+
+// ─── Seed config alertes partenaires ─────────────────────────────────────────
+try {
+  const alertConfigExists = db.prepare('SELECT COUNT(*) as n FROM partner_alert_config').get();
+  if (alertConfigExists.n === 0) {
+    db.prepare('INSERT INTO partner_alert_config (seuil_jours, actif) VALUES (60, 1)').run();
+    console.log('🔔 Config alertes partenaires initialisée (seuil: 60 jours)');
+  }
+} catch (e) { /* ignore */ }
+
+// ─── Sync derniere_commande_at depuis partner_orders ────────────────────────
+try {
+  db.prepare(`
+    UPDATE vf_partners SET derniere_commande_at = (
+      SELECT MAX(created_at) FROM partner_orders WHERE partner_orders.partner_id = vf_partners.id AND partner_orders.statut != 'annule'
+    ) WHERE derniere_commande_at IS NULL
+  `).run();
+} catch (e) { /* ignore */ }
 
 console.log('✅ Base de données initialisée :', DB_PATH);
 module.exports = db;

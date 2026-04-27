@@ -16159,6 +16159,576 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
   );
 };
 
+// ─── VUE ACCOUNT MANAGEMENT ─────────────────────────────────────────────────
+
+function VueAccountManagement({ showToast, readOnly }) {
+  const [tab, setTab] = useState('dashboard');
+  const tabs = [
+    { id: 'dashboard', label: 'Dashboard' },
+    { id: 'communications', label: 'Communications' },
+    { id: 'programmes', label: 'Programmes' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+        {tabs.map(t => (
+          <button key={t.id} onClick={() => setTab(t.id)}
+            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+            {t.label}
+          </button>
+        ))}
+      </div>
+      {tab === 'dashboard' && <VueAccountDashboard showToast={showToast} />}
+      {tab === 'communications' && <VueAccountCommunications showToast={showToast} readOnly={readOnly} />}
+      {tab === 'programmes' && <VueAccountPrograms showToast={showToast} readOnly={readOnly} />}
+    </div>
+  );
+}
+
+// ─── ACCOUNT DASHBOARD ──────────────────────────────────────────────────────
+
+function VueAccountDashboard({ showToast }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showRelance, setShowRelance] = useState(null);
+
+  const charger = async () => {
+    try {
+      const r = await api('/account-management/dashboard');
+      setData(r);
+    } catch (e) {
+      showToast('Erreur chargement dashboard: ' + e.message, 'error');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => { charger(); }, []);
+
+  if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
+  if (!data) return <div className="text-center py-12 text-red-400">Erreur de chargement</div>;
+
+  const { kpis, top_partenaires, tendance_ca } = data;
+  const maxCA = Math.max(...tendance_ca.map(t => t.ca), 1);
+
+  return (
+    <div className="space-y-6">
+      {/* KPI Cards */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+        {[
+          { label: 'CA Total', value: `${(kpis.ca_total / 1000).toFixed(1)}k€`, color: 'text-emerald-600' },
+          { label: 'Partenaires actifs', value: `${kpis.partenaires_actifs}/${kpis.partenaires_total}`, color: 'text-blue-600' },
+          { label: 'Panier moyen', value: `${kpis.panier_moyen.toFixed(0)}€`, color: 'text-amber-600' },
+          { label: 'A risque', value: kpis.a_risque, color: kpis.a_risque > 0 ? 'text-red-600' : 'text-emerald-600' },
+        ].map((k, i) => (
+          <div key={i} className="bg-white rounded-xl border border-slate-200 p-4">
+            <div className="text-xs text-slate-500 mb-1">{k.label}</div>
+            <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
+          </div>
+        ))}
+      </div>
+
+      {/* Alertes inactivité */}
+      {kpis.a_risque > 0 && (
+        <AlertesInactivite showToast={showToast} onRelance={(p) => setShowRelance(p)} />
+      )}
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Top partenaires */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-4">Top 10 partenaires</h3>
+          <div className="space-y-2">
+            {top_partenaires.map((p, i) => (
+              <div key={p.id} className="flex items-center justify-between py-1.5">
+                <div className="flex items-center gap-2 min-w-0 flex-1">
+                  <span className="text-xs text-slate-400 w-5">{i + 1}</span>
+                  <span className="text-sm text-slate-800 truncate">{p.nom}</span>
+                  <TierBadge tier={p.programme_tier} />
+                </div>
+                <div className="text-right">
+                  <div className="text-sm font-medium text-slate-900">{p.ca_total.toFixed(0)}€</div>
+                  <div className="text-xs text-slate-400">{p.nb_commandes} cmd</div>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Tendance CA mensuel */}
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-4">CA mensuel</h3>
+          <div className="flex items-end gap-1 h-40">
+            {tendance_ca.map(t => (
+              <div key={t.mois} className="flex-1 flex flex-col items-center justify-end h-full">
+                <div className="text-xs text-slate-500 mb-1">{t.ca > 0 ? `${(t.ca/1000).toFixed(1)}k` : ''}</div>
+                <div className="w-full bg-blue-500 rounded-t" style={{ height: `${(t.ca / maxCA) * 100}%`, minHeight: t.ca > 0 ? '4px' : '0' }}></div>
+                <div className="text-xs text-slate-400 mt-1 truncate w-full text-center">{t.mois.slice(5)}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      {showRelance && <ModalPartnerRelance partner={showRelance} onClose={() => setShowRelance(null)} showToast={showToast} />}
+    </div>
+  );
+}
+
+function TierBadge({ tier }) {
+  const styles = {
+    standard: 'bg-slate-100 text-slate-600',
+    bronze: 'bg-amber-100 text-amber-700',
+    silver: 'bg-gray-200 text-gray-700',
+    gold: 'bg-yellow-100 text-yellow-700',
+  };
+  if (!tier || tier === 'standard') return null;
+  return <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${styles[tier] || styles.standard}`}>{tier}</span>;
+}
+
+function AlertesInactivite({ showToast, onRelance }) {
+  const [alertes, setAlertes] = useState([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const r = await api('/account-management/alerts');
+        setAlertes(r.alertes || []);
+      } catch (e) { showToast('Erreur alertes', 'error'); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  if (loading || alertes.length === 0) return null;
+
+  return (
+    <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+      <h3 className="text-sm font-semibold text-red-800 mb-3">Partenaires inactifs</h3>
+      <div className="space-y-2">
+        {alertes.slice(0, 10).map(a => (
+          <div key={a.id} className="flex items-center justify-between">
+            <div>
+              <span className="text-sm text-red-800">{a.nom}</span>
+              <span className="text-xs text-red-500 ml-2">{a.jours_inactif}j sans commande</span>
+            </div>
+            <button onClick={() => onRelance(a)} className="text-xs bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700">
+              Relancer
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+// ─── MODAL RELANCE PARTENAIRE ───────────────────────────────────────────────
+
+function ModalPartnerRelance({ partner, onClose, showToast }) {
+  const [sujet, setSujet] = useState(`Terre de Mars — Nouvelles de ${partner.nom}`);
+  const [corps, setCorps] = useState(`<p>Bonjour ${partner.contact_nom || ''},</p><p>Nous n'avons pas eu de vos nouvelles depuis un moment. Nous serions ravis de reprendre contact et de vous présenter nos nouveautés.</p><p>N'hésitez pas à nous contacter.</p><p>Cordialement,<br/>L'équipe Terre de Mars</p>`);
+  const [sending, setSending] = useState(false);
+
+  const envoyer = async () => {
+    if (!partner.email) { showToast('Ce partenaire n\'a pas d\'email', 'error'); return; }
+    setSending(true);
+    try {
+      await api('/account-management/communications/send', {
+        method: 'POST',
+        body: JSON.stringify({ partner_ids: [partner.id], sujet, corps_html: corps }),
+      });
+      showToast('Email de relance envoyé', 'success');
+      onClose();
+    } catch (e) {
+      showToast('Erreur envoi: ' + e.message, 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-5 border-b border-slate-100">
+          <h2 className="text-lg font-semibold text-slate-900">Relancer {partner.nom}</h2>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Destinataire</label>
+            <div className="text-sm text-slate-500">{partner.email || 'Aucun email'}</div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Sujet</label>
+            <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Message</label>
+            <textarea value={corps} onChange={e => setCorps(e.target.value)} rows={8} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div className="flex-shrink-0 p-5 border-t border-slate-100 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
+          <button onClick={envoyer} disabled={sending || !partner.email}
+            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
+            {sending ? 'Envoi...' : 'Envoyer la relance'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── ACCOUNT COMMUNICATIONS ─────────────────────────────────────────────────
+
+function VueAccountCommunications({ showToast, readOnly }) {
+  const [partners, setPartners] = useState([]);
+  const [selected, setSelected] = useState([]);
+  const [templates, setTemplates] = useState([]);
+  const [sujet, setSujet] = useState('');
+  const [corps, setCorps] = useState('');
+  const [historique, setHistorique] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [viewPartnerId, setViewPartnerId] = useState(null);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [pData, tData] = await Promise.all([
+          api('/reference/partners'),
+          api('/email-templates'),
+        ]);
+        setPartners(Array.isArray(pData) ? pData : []);
+        setTemplates(Array.isArray(tData) ? tData : []);
+      } catch (e) { showToast('Erreur chargement', 'error'); }
+    })();
+  }, []);
+
+  const chargerHistorique = async (partnerId) => {
+    try {
+      const r = await api(`/account-management/communications/${partnerId}`);
+      setHistorique(r);
+      setViewPartnerId(partnerId);
+    } catch (e) { showToast('Erreur historique', 'error'); }
+  };
+
+  const toggleSelect = (id) => {
+    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  };
+
+  const appliquerTemplate = (t) => {
+    setSujet(t.sujet);
+    setCorps(t.corps_html || '');
+  };
+
+  const insererVariable = (v) => {
+    setCorps(prev => prev + `{{${v}}}`);
+  };
+
+  const envoyer = async () => {
+    if (selected.length === 0 || !sujet || !corps) {
+      showToast('Sélectionnez des partenaires et remplissez le message', 'error'); return;
+    }
+    setSending(true);
+    try {
+      const r = await api('/account-management/communications/send', {
+        method: 'POST',
+        body: JSON.stringify({ partner_ids: selected, sujet, corps_html: corps }),
+      });
+      const envoyés = r.results?.filter(x => x.statut === 'envoyé').length || 0;
+      showToast(`${envoyés} email(s) envoyé(s)`, 'success');
+      setSelected([]);
+      setSujet('');
+      setCorps('');
+    } catch (e) {
+      showToast('Erreur envoi: ' + e.message, 'error');
+    } finally {
+      setSending(false);
+    }
+  };
+
+  const variables = ['nom_partenaire', 'contact_nom', 'derniere_commande', 'ca_total', 'programme_tier'];
+
+  return (
+    <div className="grid lg:grid-cols-2 gap-6">
+      {/* Panneau envoi */}
+      <div className="space-y-4">
+        <div className="bg-white rounded-xl border border-slate-200 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-3">Destinataires</h3>
+          <div className="max-h-48 overflow-y-auto space-y-1">
+            {partners.map(p => (
+              <label key={p.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-slate-50 cursor-pointer">
+                <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)}
+                  className="rounded border-slate-300" />
+                <span className="text-sm text-slate-700 truncate">{p.nom}</span>
+                {p.email && <span className="text-xs text-slate-400 truncate">{p.email}</span>}
+              </label>
+            ))}
+          </div>
+          <div className="text-xs text-slate-400 mt-2">{selected.length} sélectionné(s)</div>
+        </div>
+
+        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+          <h3 className="text-sm font-semibold text-slate-800">Message</h3>
+
+          {/* Template selector */}
+          {templates.length > 0 && (
+            <div>
+              <label className="block text-xs font-medium text-slate-500 mb-1">Template</label>
+              <select onChange={e => { const t = templates.find(x => x.id === e.target.value); if (t) appliquerTemplate(t); }}
+                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue="">
+                <option value="">— Choisir un template —</option>
+                {templates.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+              </select>
+            </div>
+          )}
+
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Sujet</label>
+            <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Sujet de l'email" />
+          </div>
+
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Corps</label>
+            <textarea value={corps} onChange={e => setCorps(e.target.value)} rows={8} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Contenu HTML..." />
+          </div>
+
+          {/* Variables */}
+          <div className="flex flex-wrap gap-1">
+            {variables.map(v => (
+              <button key={v} onClick={() => insererVariable(v)} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200">
+                {`{{${v}}}`}
+              </button>
+            ))}
+          </div>
+
+          {!readOnly && (
+            <button onClick={envoyer} disabled={sending || selected.length === 0}
+              className="w-full bg-blue-600 text-white text-sm py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              {sending ? 'Envoi en cours...' : `Envoyer à ${selected.length} partenaire(s)`}
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* Panneau historique */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <h3 className="text-sm font-semibold text-slate-800 mb-3">Historique des communications</h3>
+        <div className="mb-3">
+          <select onChange={e => { if (e.target.value) chargerHistorique(e.target.value); }}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue="">
+            <option value="">— Sélectionner un partenaire —</option>
+            {partners.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}
+          </select>
+        </div>
+        {viewPartnerId && (
+          <div className="space-y-2 max-h-96 overflow-y-auto">
+            {historique.length === 0 ? (
+              <p className="text-sm text-slate-400 text-center py-4">Aucune communication</p>
+            ) : historique.map(h => (
+              <div key={h.id} className="border border-slate-100 rounded-lg p-3">
+                <div className="flex justify-between items-start">
+                  <div className="text-sm font-medium text-slate-800">{h.sujet}</div>
+                  <span className="text-xs text-slate-400">{new Date(h.created_at).toLocaleDateString('fr-FR')}</span>
+                </div>
+                <div className="text-xs text-slate-500 mt-1">Par {h.created_by || 'system'}</div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+// ─── ACCOUNT PROGRAMS ───────────────────────────────────────────────────────
+
+function VueAccountPrograms({ showToast, readOnly }) {
+  const [partners, setPartners] = useState([]);
+  const [programs, setPrograms] = useState([]);
+  const [editProgram, setEditProgram] = useState(null);
+  const [loading, setLoading] = useState(true);
+
+  const charger = async () => {
+    try {
+      const [pData, prData] = await Promise.all([
+        api('/reference/partners'),
+        api('/account-management/programs'),
+      ]);
+      setPartners(Array.isArray(pData) ? pData : []);
+      setPrograms(prData);
+    } catch (e) { showToast('Erreur chargement', 'error'); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { charger(); }, []);
+
+  if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
+
+  // Enrichir partenaires avec programme
+  const programByPartner = {};
+  programs.forEach(p => { programByPartner[p.partner_id] = p; });
+
+  return (
+    <div className="space-y-4">
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Partenaire</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Tier</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Volume</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Date révision</th>
+              <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {partners.map(p => {
+              const prog = programByPartner[p.id];
+              return (
+                <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50">
+                  <td className="p-3 text-slate-800">{p.nom}</td>
+                  <td className="p-3"><TierBadge tier={p.programme_tier || prog?.tier || 'standard'} />
+                    {(!p.programme_tier || p.programme_tier === 'standard') && !prog && <span className="text-xs text-slate-400">standard</span>}
+                  </td>
+                  <td className="p-3 text-slate-600">{prog?.engagement_volume ? `${prog.engagement_volume}€` : '—'}</td>
+                  <td className="p-3 text-slate-600">{prog?.date_revision ? new Date(prog.date_revision).toLocaleDateString('fr-FR') : '—'}</td>
+                  <td className="p-3 text-right">
+                    {!readOnly && (
+                      <button onClick={() => setEditProgram({ partner_id: p.id, partner_nom: p.nom, ...(prog || {}) })}
+                        className="text-xs text-blue-600 hover:text-blue-800">
+                        {prog ? 'Modifier' : 'Configurer'}
+                      </button>
+                    )}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+
+      {editProgram && (
+        <ModalProgramEditor program={editProgram} onClose={() => setEditProgram(null)}
+          onSave={() => { setEditProgram(null); charger(); }} showToast={showToast} />
+      )}
+    </div>
+  );
+}
+
+// ─── MODAL PROGRAM EDITOR ───────────────────────────────────────────────────
+
+function ModalProgramEditor({ program, onClose, onSave, showToast }) {
+  const [tier, setTier] = useState(program.tier || 'standard');
+  const [label, setLabel] = useState(program.label || '');
+  const [volume, setVolume] = useState(program.engagement_volume || '');
+  const [engNotes, setEngNotes] = useState(program.engagement_notes || '');
+  const [dateDebut, setDateDebut] = useState(program.date_debut || '');
+  const [dateRevision, setDateRevision] = useState(program.date_revision || '');
+  const [notes, setNotes] = useState(program.notes || '');
+  const [contreparties, setContreparties] = useState(() => {
+    try { return typeof program.contreparties === 'string' ? JSON.parse(program.contreparties) : (program.contreparties || {}); }
+    catch { return {}; }
+  });
+  const [saving, setSaving] = useState(false);
+
+  const contrepartiesList = [
+    { key: 'remise_volume', label: 'Remise volume' },
+    { key: 'franco_port', label: 'Franco de port' },
+    { key: 'echantillons', label: 'Echantillons gratuits' },
+    { key: 'priorite_stock', label: 'Priorité stock' },
+    { key: 'support_marketing', label: 'Support marketing' },
+  ];
+
+  const sauvegarder = async () => {
+    setSaving(true);
+    try {
+      const body = { partner_id: program.partner_id, tier, label, engagement_volume: volume || null,
+        engagement_notes: engNotes, contreparties, date_debut: dateDebut || null, date_revision: dateRevision || null, notes };
+
+      if (program.id) {
+        await api(`/account-management/programs/${program.id}`, { method: 'PUT', body: JSON.stringify(body) });
+      } else {
+        await api('/account-management/programs', { method: 'POST', body: JSON.stringify(body) });
+      }
+      showToast('Programme sauvegardé', 'success');
+      onSave();
+    } catch (e) {
+      showToast('Erreur: ' + e.message, 'error');
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-5 border-b border-slate-100">
+          <h2 className="text-lg font-semibold text-slate-900">Programme — {program.partner_nom}</h2>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Tier</label>
+            <select value={tier} onChange={e => setTier(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="standard">Standard</option>
+              <option value="bronze">Bronze</option>
+              <option value="silver">Silver</option>
+              <option value="gold">Gold</option>
+            </select>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Label personnalisé</label>
+            <input value={label} onChange={e => setLabel(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Ex: Programme VIP 2026" />
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Volume engagement (€)</label>
+              <input type="number" value={volume} onChange={e => setVolume(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Notes volume</label>
+              <input value={engNotes} onChange={e => setEngNotes(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-2">Contreparties</label>
+            <div className="space-y-1">
+              {contrepartiesList.map(c => (
+                <label key={c.key} className="flex items-center gap-2 py-1">
+                  <input type="checkbox" checked={!!contreparties[c.key]}
+                    onChange={e => setContreparties(prev => ({ ...prev, [c.key]: e.target.checked }))}
+                    className="rounded border-slate-300" />
+                  <span className="text-sm text-slate-700">{c.label}</span>
+                </label>
+              ))}
+            </div>
+          </div>
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Date début</label>
+              <input type="date" value={dateDebut} onChange={e => setDateDebut(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-slate-600 mb-1">Date révision</label>
+              <input type="date" value={dateRevision} onChange={e => setDateRevision(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            </div>
+          </div>
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
+            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
+        </div>
+        <div className="flex-shrink-0 p-5 border-t border-slate-100 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── APP PRINCIPALE ───────────────────────────────────────────────────────────
 
 // Helper : trouver la première vue accessible pour un user
@@ -17261,6 +17831,7 @@ function App() {
     { id: "portail", icon: "📦", label: "Portail", children: [
       { id: "commandes", label: "Commandes" },
       { id: "partenaires", label: "Partenaires" },
+      { id: "account-mgmt", label: "Gestion Comptes" },
     ]},
     { id: "leads-group", icon: "👥", label: "Leads", children: [
       { id: "leads", label: "Contacts" },
@@ -17284,7 +17855,7 @@ function App() {
   // Helper permission mapping
   const getPermId = (id) => {
     if (id === 'equipe') return 'config';
-    if (id === 'commandes' || id === 'partenaires') return 'portail';
+    if (id === 'commandes' || id === 'partenaires' || id === 'account-mgmt') return 'portail';
     if (id === 'sequences' || id === 'templates' || id === 'email-campaigns') return 'campagnes';
     if (id === 'parametres' || id === 'blocklist') return 'config';
     if (id === 'dashboard' || id === 'dashboard-marketing' || id === 'dashboard-ventes') return 'dashboard';
@@ -17470,6 +18041,7 @@ function App() {
           {vue === "dashboard-ventes" && <AnalyticsSpreadsheet showToast={showToast} />}
           {vue === "commandes" && <VueCommandes showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "partenaires" && <VuePartenaires showToast={showToast} readOnly={!canWrite('portail')} />}
+          {vue === "account-mgmt" && <VueAccountManagement showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}
           {vue === "prospection" && <VueProspection showToast={showToast} readOnly={!canWrite('leads')} sequences={sequencesNorm} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} readOnly={!canWrite('campagnes')} />}
