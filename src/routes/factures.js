@@ -714,6 +714,39 @@ module.exports = (db) => {
     }
   });
 
+  // ─── CSV Logisticien Batch (groupé) ─────────────────────────────────────────
+
+  router.post('/csv-logisticien-batch', (req, res) => {
+    try {
+      const { orders } = req.body;
+      if (!Array.isArray(orders) || orders.length === 0) {
+        return res.status(400).json({ erreur: 'Tableau orders requis' });
+      }
+
+      const shippingNamesMap = getShippingNames();
+      let headerLine = null;
+      const allLines = [];
+
+      for (const order of orders) {
+        const { invoiceData, client, shippingId, deliveryAddress } = order;
+        const csv = genererCSVLogisticien(invoiceData, client, shippingNamesMap, { shippingId, deliveryAddress });
+        const raw = csv.replace(/^\uFEFF/, '');
+        const lines = raw.split('\n');
+        if (!headerLine && lines.length > 0) headerLine = lines[0];
+        for (let i = 1; i < lines.length; i++) {
+          if (lines[i].trim()) allLines.push(lines[i]);
+        }
+      }
+
+      const finalCsv = '\uFEFF' + (headerLine || '') + '\n' + allLines.join('\n');
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="logisticien-batch-${orders.length}-commandes.csv"`);
+      res.send(finalCsv);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Log Google Sheets ──────────────────────────────────────────────────────
 
   router.post('/log-gsheets', async (req, res) => {

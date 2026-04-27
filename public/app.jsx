@@ -10552,6 +10552,64 @@ const FacturesBatch = ({ showToast }) => {
     }
   };
 
+  const downloadPdfBatch = async (r) => {
+    try {
+      const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const res2 = await fetch(`/api/factures/invoices/${r.id}/pdf`, {
+        headers: { 'Authorization': 'Bearer ' + token },
+      });
+      if (!res2.ok) throw new Error('Erreur PDF: ' + res2.status);
+      const blob = await res2.blob();
+      const fileName = `facture-${r.number || r.id}.pdf`;
+      downloadFallback(blob, fileName);
+      showToast('PDF téléchargé', 'success');
+    } catch (err) {
+      showToast('Erreur PDF: ' + err.message, 'error');
+    }
+  };
+
+  const downloadAllCsvGrouped = async () => {
+    try {
+      const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const okResults = results.filter(r => r.ok && !r.logOnly);
+      const batchOrders = okResults.map(r => {
+        const order = orders.find(o => o.id === r.orderId);
+        return {
+          invoiceData: { ...r, products: order?.calculation?.products || order?.products || [], orderNumber: order?.orderNumber || '' },
+          client: order?.client || {},
+          shippingId: order?.shippingId || '1302',
+          deliveryAddress: order?.deliveryAddress || '',
+        };
+      });
+      const res2 = await fetch('/api/factures/csv-logisticien-batch', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: batchOrders }),
+      });
+      if (!res2.ok) {
+        const errData = await res2.json().catch(() => ({}));
+        throw new Error(errData.erreur || 'Erreur CSV: ' + res2.status);
+      }
+      const blob = await res2.blob();
+      const fileName = `logisticien-batch-${okResults.length}-commandes.csv`;
+
+      const dirName = await saveFileWithPicker(blob, fileName);
+      if (dirName) {
+        showToast(`CSV groupé sauvé: ${dirName}/${fileName}`, 'success');
+      } else {
+        downloadFallback(blob, fileName);
+        showToast('CSV groupé téléchargé', 'success');
+      }
+
+      const subject = encodeURIComponent(`Commandes batch — ${okResults.length} commande(s)`);
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV groupé pour ${okResults.length} commande(s).\n\nCordialement`);
+      const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+      window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
+    } catch (err) {
+      showToast('Erreur CSV groupé: ' + err.message, 'error');
+    }
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
@@ -10804,8 +10862,14 @@ const FacturesBatch = ({ showToast }) => {
                   </span>
                   <div className="flex items-center gap-1">
                     {r.ok && !r.logOnly && r.id && (
-                      <a href={`https://terredemars.vosfactures.fr/invoices/${r.id}`} target="_blank" rel="noopener"
+                      <button onClick={() => downloadPdfBatch(r)}
                         className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">
+                        PDF
+                      </button>
+                    )}
+                    {r.ok && !r.logOnly && r.id && (
+                      <a href={`https://terredemars.vosfactures.fr/invoices/${r.id}`} target="_blank" rel="noopener"
+                        className="px-2 py-1 bg-slate-500 text-white text-xs rounded hover:bg-slate-600">
                         VF ↗
                       </a>
                     )}
@@ -10822,6 +10886,12 @@ const FacturesBatch = ({ showToast }) => {
                 )}
               </div>
             ))}
+            {results.filter(r => r.ok && !r.logOnly).length > 1 && (
+              <button onClick={downloadAllCsvGrouped}
+                className="w-full mt-2 py-2 bg-emerald-700 text-white text-sm font-medium rounded-lg hover:bg-emerald-800 transition-colors">
+                CSV groupé ({results.filter(r => r.ok && !r.logOnly).length} commandes) + Email
+              </button>
+            )}
           </div>
         )}
       </div>
