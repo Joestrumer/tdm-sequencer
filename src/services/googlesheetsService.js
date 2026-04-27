@@ -46,14 +46,24 @@ function getAuth(db) {
 
 function resolveCanonicalClientName(db, vfName) {
   if (!vfName) return vfName;
-  const mapping = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
+  const mapping = db.prepare('SELECT file_name, vf_client_id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
   if (mapping && mapping.file_name) return mapping.file_name;
+  // Si file_name est null mais vf_client_id existe, chercher un autre mapping avec le même client_id qui a un file_name
+  if (mapping && !mapping.file_name && mapping.vf_client_id) {
+    const alt = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_client_id = ? AND file_name IS NOT NULL LIMIT 1').get(mapping.vf_client_id);
+    if (alt && alt.file_name) return alt.file_name;
+  }
   // Essayer sans le nom de contact (ex: "Loire Valley Lodges - Anne Caroline FREY" → "Loire Valley Lodges")
   const dashIdx = vfName.indexOf(' - ');
   if (dashIdx > 0) {
     const stripped = vfName.substring(0, dashIdx).trim();
-    const m2 = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(stripped);
+    const m2 = db.prepare('SELECT file_name, vf_client_id FROM vf_client_mappings WHERE vf_name = ?').get(stripped);
     if (m2 && m2.file_name) return m2.file_name;
+    // Même fallback par client_id
+    if (m2 && !m2.file_name && m2.vf_client_id) {
+      const alt2 = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_client_id = ? AND file_name IS NOT NULL LIMIT 1').get(m2.vf_client_id);
+      if (alt2 && alt2.file_name) return alt2.file_name;
+    }
   }
   return vfName;
 }
