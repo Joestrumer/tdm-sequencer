@@ -10683,12 +10683,22 @@ const FacturesBatch = ({ showToast }) => {
               {order.expanded && (
                 <div className="border-t border-slate-100 p-4 space-y-3 bg-slate-50/50">
                   {order.client && (
-                    <div className="flex items-center justify-between">
-                      <div className="text-sm text-slate-700">
-                        <span className="font-medium">{order.client.name}</span>
-                        {order.client.city && <span className="text-xs text-slate-400 ml-2">{order.client.city}</span>}
+                    <div className="space-y-1">
+                      <div className="flex items-center justify-between">
+                        <div className="text-sm text-slate-700">
+                          <span className="font-medium">{order.client.name}</span>
+                          {order.client.city && <span className="text-xs text-slate-400 ml-2">{order.client.city}</span>}
+                        </div>
+                        <button onClick={() => setOrderClient(order.id, null)} className="text-xs text-slate-500 hover:text-slate-700">Changer client</button>
                       </div>
-                      <button onClick={() => setOrderClient(order.id, null)} className="text-xs text-slate-500 hover:text-slate-700">Changer client</button>
+                      {order.deliveryAddress && (
+                        <div className="bg-blue-50 rounded-lg px-3 py-1.5">
+                          <div className="text-[10px] font-medium text-blue-500 uppercase tracking-wide mb-0.5">Livraison</div>
+                          {order.deliveryAddress.split('\n').map((line, i) => (
+                            <div key={i} className={`text-xs ${i === 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>{line}</div>
+                          ))}
+                        </div>
+                      )}
                     </div>
                   )}
 
@@ -10801,6 +10811,15 @@ const FacturesBatch = ({ showToast }) => {
                         {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
+                  </div>
+
+                  {/* Adresse de livraison */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Adresse de livraison</label>
+                    <textarea value={order.deliveryAddress || ''} onChange={e => updateOrderField(order.id, 'deliveryAddress', e.target.value)}
+                      placeholder="Si différente de l'adresse de facturation"
+                      rows={2}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm resize-y min-h-[2.5rem]" />
                   </div>
                 </div>
               )}
