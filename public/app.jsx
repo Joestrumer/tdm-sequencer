@@ -11236,14 +11236,9 @@ const FacturesReminders = ({ showToast }) => {
         let num = item.replace(/.*\/invoices\//, '').replace(/\.json.*/, '').replace(/[^\w-]/g, '');
         let data;
 
-        if (/^\d+$/.test(num)) {
-          // C'est un ID numérique
-          data = await api.get(`/factures/invoices/${num}`);
-        } else {
-          // Chercher par numéro
-          const results = await api.get(`/factures/invoices/search?number=${encodeURIComponent(num)}`);
-          data = Array.isArray(results) ? results[0] : results;
-        }
+        // Toujours chercher par numéro (le numéro de facture != ID interne VF)
+        const results = await api.get(`/factures/invoices/search?number=${encodeURIComponent(num)}`);
+        data = Array.isArray(results) ? results[0] : results;
 
         if (data && data.id) {
           resolved.push({ ...data, sendEmail: true, status: data.payment_to ? 'impayé' : 'ok' });
