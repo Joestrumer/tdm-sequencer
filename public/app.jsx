@@ -8524,11 +8524,12 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
                     {yearsComparison.years
                       .filter(y => selectedYears.includes(y.year))
                       .sort((a, b) => b.year - a.year)
-                      .map((yearData, idx, arr) => {
-                        const prevYear = arr[idx + 1];
-                        const growth = prevYear
+                      .map((yearData) => {
+                        // Toujours comparer avec l'année N-1 réelle
+                        const prevYear = yearsComparison.years.find(y => y.year === yearData.year - 1);
+                        const growth = prevYear && prevYear.total_ht > 0
                           ? ((yearData.total_ht - prevYear.total_ht) / prevYear.total_ht * 100)
-                          : 0;
+                          : null;
                         const forecast = calculateForecast(yearData);
 
                         return (
@@ -8544,9 +8545,9 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
                               {yearData.invoices || 0}
                             </td>
                             <td className={`px-6 py-3 text-sm text-right font-medium ${
-                              growth > 0 ? 'text-emerald-600' : growth < 0 ? 'text-red-600' : 'text-slate-600'
+                              growth !== null && growth > 0 ? 'text-emerald-600' : growth !== null && growth < 0 ? 'text-red-600' : 'text-slate-600'
                             }`}>
-                              {prevYear ? `${growth > 0 ? '+' : ''}${growth.toFixed(1)}%` : '-'}
+                              {growth !== null ? `${growth > 0 ? '+' : ''}${growth.toFixed(1)}%` : '-'}
                             </td>
                             <td className="px-6 py-3 text-sm text-right text-blue-600 font-medium">
                               {forecast > 0 ? `${Math.round(forecast).toLocaleString('fr-FR')}€` : '-'}
