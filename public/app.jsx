@@ -16195,7 +16195,7 @@ function VueAccountDashboard({ showToast }) {
 
   const charger = async () => {
     try {
-      const r = await api('/account-management/dashboard');
+      const r = await api.get('/account-management/dashboard');
       setData(r);
     } catch (e) {
       showToast('Erreur chargement dashboard: ' + e.message, 'error');
@@ -16293,7 +16293,7 @@ function AlertesInactivite({ showToast, onRelance }) {
   useEffect(() => {
     (async () => {
       try {
-        const r = await api('/account-management/alerts');
+        const r = await api.get('/account-management/alerts');
         setAlertes(r.alertes || []);
       } catch (e) { showToast('Erreur alertes', 'error'); }
       finally { setLoading(false); }
@@ -16333,10 +16333,7 @@ function ModalPartnerRelance({ partner, onClose, showToast }) {
     if (!partner.email) { showToast('Ce partenaire n\'a pas d\'email', 'error'); return; }
     setSending(true);
     try {
-      await api('/account-management/communications/send', {
-        method: 'POST',
-        body: JSON.stringify({ partner_ids: [partner.id], sujet, corps_html: corps }),
-      });
+      await api.post('/account-management/communications/send', { partner_ids: [partner.id], sujet, corps_html: corps });
       showToast('Email de relance envoyé', 'success');
       onClose();
     } catch (e) {
@@ -16394,8 +16391,8 @@ function VueAccountCommunications({ showToast, readOnly }) {
     (async () => {
       try {
         const [pData, tData] = await Promise.all([
-          api('/reference/partners'),
-          api('/email-templates'),
+          api.get('/reference/partners'),
+          api.get('/email-templates'),
         ]);
         setPartners(Array.isArray(pData) ? pData : []);
         setTemplates(Array.isArray(tData) ? tData : []);
@@ -16405,7 +16402,7 @@ function VueAccountCommunications({ showToast, readOnly }) {
 
   const chargerHistorique = async (partnerId) => {
     try {
-      const r = await api(`/account-management/communications/${partnerId}`);
+      const r = await api.get(`/account-management/communications/${partnerId}`);
       setHistorique(r);
       setViewPartnerId(partnerId);
     } catch (e) { showToast('Erreur historique', 'error'); }
@@ -16430,10 +16427,7 @@ function VueAccountCommunications({ showToast, readOnly }) {
     }
     setSending(true);
     try {
-      const r = await api('/account-management/communications/send', {
-        method: 'POST',
-        body: JSON.stringify({ partner_ids: selected, sujet, corps_html: corps }),
-      });
+      const r = await api.post('/account-management/communications/send', { partner_ids: selected, sujet, corps_html: corps });
       const envoyés = r.results?.filter(x => x.statut === 'envoyé').length || 0;
       showToast(`${envoyés} email(s) envoyé(s)`, 'success');
       setSelected([]);
@@ -16551,8 +16545,8 @@ function VueAccountPrograms({ showToast, readOnly }) {
   const charger = async () => {
     try {
       const [pData, prData] = await Promise.all([
-        api('/reference/partners'),
-        api('/account-management/programs'),
+        api.get('/reference/partners'),
+        api.get('/account-management/programs'),
       ]);
       setPartners(Array.isArray(pData) ? pData : []);
       setPrograms(prData);
@@ -16646,9 +16640,9 @@ function ModalProgramEditor({ program, onClose, onSave, showToast }) {
         engagement_notes: engNotes, contreparties, date_debut: dateDebut || null, date_revision: dateRevision || null, notes };
 
       if (program.id) {
-        await api(`/account-management/programs/${program.id}`, { method: 'PUT', body: JSON.stringify(body) });
+        await api.put(`/account-management/programs/${program.id}`, body);
       } else {
-        await api('/account-management/programs', { method: 'POST', body: JSON.stringify(body) });
+        await api.post('/account-management/programs', body);
       }
       showToast('Programme sauvegardé', 'success');
       onSave();
