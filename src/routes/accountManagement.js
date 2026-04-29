@@ -225,7 +225,72 @@ module.exports = (db) => {
     }
   });
 
-  // ─── Communications : envoi email groupé ────────────────────────────────────
+  // ─── Communications : envoi email aux contacts HubSpot ─────────────────────
+  router.post('/communications/send-contacts', async (req, res) => {
+    try {
+      const { contact_ids, sujet, corps_html } = req.body;
+      if (!contact_ids?.length || !sujet || !corps_html) {
+        return res.status(400).json({ erreur: 'contact_ids, sujet et corps_html requis' });
+      }
+
+      const batchId = randomUUID();
+      const results = [];
+      const brevoService = require('../services/brevoService');
+
+      for (const contactId of contact_ids) {
+        const contact = db.prepare(`
+          SELECT c.*, p.name as partner_name
+          FROM hubspot_partner_contacts c
+          JOIN hubspot_partners p ON p.hubspot_company_id = c.hubspot_company_id
+          WHERE c.id = ?
+        `).get(contactId);
+        if (!contact?.email) {
+          results.push({ contact_id: contactId, statut: 'skip', raison: 'pas d\'email' });
+          continue;
+        }
+
+        const contactNom = `${contact.firstname || ''} ${contact.lastname || ''}`.trim();
+        let sujetFinal = sujet
+          .replace(/\{\{nom_partenaire\}\}/g, contact.partner_name || '')
+          .replace(/\{\{contact_nom\}\}/g, contactNom)
+          .replace(/\{\{contact_prenom\}\}/g, contact.firstname || '')
+          .replace(/\{\{contact_poste\}\}/g, contact.jobtitle || '');
+        let corpsFinal = corps_html
+          .replace(/\{\{nom_partenaire\}\}/g, contact.partner_name || '')
+          .replace(/\{\{contact_nom\}\}/g, contactNom)
+          .replace(/\{\{contact_prenom\}\}/g, contact.firstname || '')
+          .replace(/\{\{contact_poste\}\}/g, contact.jobtitle || '');
+
+        try {
+          const payload = {
+            sender: brevoService.SENDER,
+            to: [{ email: contact.email, name: contactNom || contact.partner_name }],
+            subject: sujetFinal,
+            htmlContent: corpsFinal,
+            replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
+          };
+
+          let brevoMessageId = null;
+          if (process.env.BREVO_API_KEY) {
+            const result = await brevoService.brevoSendEmail(payload);
+            brevoMessageId = result?.messageId || null;
+          } else {
+            brevoMessageId = `demo-${Date.now()}`;
+          }
+
+          results.push({ contact_id: contactId, statut: 'envoyé', email: contact.email });
+        } catch (sendErr) {
+          results.push({ contact_id: contactId, statut: 'erreur', raison: sendErr.message });
+        }
+      }
+
+      res.json({ ok: true, batch_id: batchId, results });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Communications : envoi email groupé (legacy vf_partners) ─────────────
   router.post('/communications/send', async (req, res) => {
     try {
       const { partner_ids, sujet, corps_html, template_id } = req.body;

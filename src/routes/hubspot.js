@@ -312,6 +312,21 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/hubspot/partners/all-contacts — Tous les contacts de tous les partenaires
+  router.get('/partners/all-contacts', (req, res) => {
+    try {
+      const contacts = db.prepare(`
+        SELECT c.*, p.name as partner_name, p.business_type, p.city as partner_city, p.country as partner_country
+        FROM hubspot_partner_contacts c
+        JOIN hubspot_partners p ON p.hubspot_company_id = c.hubspot_company_id
+        ORDER BY p.name, c.lastname, c.firstname
+      `).all();
+      res.json(contacts);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // GET /api/hubspot/partners/:id/contacts — Contacts d'un partenaire
   router.get('/partners/:id/contacts', (req, res) => {
     try {

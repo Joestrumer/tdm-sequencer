@@ -16456,163 +16456,226 @@ function ModalPartnerRelance({ partner, onClose, showToast }) {
 // ─── ACCOUNT COMMUNICATIONS ─────────────────────────────────────────────────
 
 function VueAccountCommunications({ showToast, readOnly }) {
-  const [partners, setPartners] = useState([]);
-  const [selected, setSelected] = useState([]);
+  const [contacts, setContacts] = useState([]);
+  const [selected, setSelected] = useState(new Set());
   const [templates, setTemplates] = useState([]);
   const [sujet, setSujet] = useState('');
-  const [corps, setCorps] = useState('');
-  const [historique, setHistorique] = useState([]);
+  const [corpsHtml, setCorpsHtml] = useState('');
   const [sending, setSending] = useState(false);
-  const [viewPartnerId, setViewPartnerId] = useState(null);
+  const [search, setSearch] = useState('');
+  const [filterPartner, setFilterPartner] = useState('');
+  const [loading, setLoading] = useState(true);
+  const editorRef = useRef(null);
+  const tinymceRef = useRef(null);
+  const corpsHtmlRef = useRef(corpsHtml);
+  corpsHtmlRef.current = corpsHtml;
 
   useEffect(() => {
     (async () => {
       try {
-        const [hsPartners, tData] = await Promise.all([
-          api.get('/hubspot/partners'),
+        const [cData, tData] = await Promise.all([
+          api.get('/hubspot/partners/all-contacts'),
           api.get('/email-templates'),
         ]);
-        const mapped = (Array.isArray(hsPartners) ? hsPartners : []).map(p => ({
-          id: p.id,
-          nom: p.name,
-          email: p.contact_email || '',
-          contact_nom: `${p.contact_firstname || ''} ${p.contact_lastname || ''}`.trim(),
-          hubspot_company_id: p.hubspot_company_id,
-        }));
-        setPartners(mapped);
+        setContacts(Array.isArray(cData) ? cData : []);
         setTemplates(Array.isArray(tData) ? tData : []);
       } catch (e) { showToast('Erreur chargement', 'error'); }
+      finally { setLoading(false); }
     })();
   }, []);
 
-  const chargerHistorique = async (partnerId) => {
-    try {
-      const r = await api.get(`/account-management/communications/${partnerId}`);
-      setHistorique(r);
-      setViewPartnerId(partnerId);
-    } catch (e) { showToast('Erreur historique', 'error'); }
+  // TinyMCE init
+  useEffect(() => {
+    if (!editorRef.current) return;
+    const timer = setTimeout(() => {
+      if (!editorRef.current) return;
+      const containerId = 'tinymce-acctcomm-editor-' + Date.now();
+      editorRef.current.id = containerId;
+      tinymce.init({
+        selector: '#' + containerId,
+        plugins: 'lists link image table code fullscreen',
+        toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+        font_family_formats: 'Arial=Arial,Helvetica,sans-serif; Helvetica=Helvetica,Arial,sans-serif; Verdana=Verdana,Geneva,sans-serif; Georgia=Georgia,serif; Times New Roman=Times New Roman,Times,serif',
+        font_size_formats: '10px 12px 14px 16px 18px 20px 24px 28px 32px',
+        menubar: false,
+        height: 300,
+        content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
+        branding: false,
+        promotion: false,
+        placeholder: 'Contenu de votre email...',
+        license_key: 'gpl',
+        setup: (editor) => {
+          editor.on('init', () => {
+            tinymceRef.current = editor;
+            if (corpsHtmlRef.current) editor.setContent(corpsHtmlRef.current);
+          });
+          editor.on('input change keyup ExecCommand NodeChange', () => {
+            setCorpsHtml(editor.getContent());
+          });
+        }
+      });
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      if (tinymceRef.current) { tinymceRef.current.remove(); tinymceRef.current = null; }
+    };
+  }, []);
+
+  const insertVariable = (v) => {
+    if (tinymceRef.current) tinymceRef.current.insertContent(`{{${v}}}`);
+  };
+
+  const applyTemplate = (tplId) => {
+    const tpl = templates.find(t => t.id === tplId);
+    if (!tpl) return;
+    if (tpl.sujet) setSujet(tpl.sujet);
+    if (tpl.corps_html && tinymceRef.current) {
+      tinymceRef.current.setContent(tpl.corps_html);
+      setCorpsHtml(tpl.corps_html);
+    }
   };
 
   const toggleSelect = (id) => {
-    setSelected(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+    setSelected(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
   };
 
-  const appliquerTemplate = (t) => {
-    setSujet(t.sujet);
-    setCorps(t.corps_html || '');
-  };
-
-  const insererVariable = (v) => {
-    setCorps(prev => prev + `{{${v}}}`);
+  const toggleAll = () => {
+    if (selected.size === filtered.length) setSelected(new Set());
+    else setSelected(new Set(filtered.map(c => c.id)));
   };
 
   const envoyer = async () => {
-    if (selected.length === 0 || !sujet || !corps) {
-      showToast('Sélectionnez des partenaires et remplissez le message', 'error'); return;
-    }
+    if (selected.size === 0 || !sujet) { showToast('Sélectionnez des contacts et remplissez le sujet', 'error'); return; }
+    const html = tinymceRef.current ? tinymceRef.current.getContent() : corpsHtml;
+    if (!html) { showToast('Le corps du message est vide', 'error'); return; }
     setSending(true);
     try {
-      const r = await api.post('/account-management/communications/send', { partner_ids: selected, sujet, corps_html: corps });
+      const r = await api.post('/account-management/communications/send-contacts', { contact_ids: [...selected], sujet, corps_html: html });
       const envoyés = r.results?.filter(x => x.statut === 'envoyé').length || 0;
       showToast(`${envoyés} email(s) envoyé(s)`, 'success');
-      setSelected([]);
-      setSujet('');
-      setCorps('');
+      setSelected(new Set());
     } catch (e) {
       showToast('Erreur envoi: ' + e.message, 'error');
-    } finally {
-      setSending(false);
-    }
+    } finally { setSending(false); }
   };
 
-  const variables = ['nom_partenaire', 'contact_nom', 'derniere_commande', 'ca_total', 'programme_tier'];
+  // Partner names for filter
+  const partnerNames = [...new Set(contacts.map(c => c.partner_name))].sort();
+
+  const filtered = contacts.filter(c => {
+    if (filterPartner && c.partner_name !== filterPartner) return false;
+    if (search) {
+      const s = search.toLowerCase();
+      return (c.firstname || '').toLowerCase().includes(s) || (c.lastname || '').toLowerCase().includes(s) ||
+        (c.email || '').toLowerCase().includes(s) || (c.partner_name || '').toLowerCase().includes(s);
+    }
+    return true;
+  });
+
+  const variables = ['nom_partenaire', 'contact_nom', 'contact_prenom', 'contact_poste'];
+
+  if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
 
   return (
-    <div className="grid lg:grid-cols-2 gap-6">
-      {/* Panneau envoi */}
-      <div className="space-y-4">
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-3">Destinataires</h3>
-          <div className="max-h-48 overflow-y-auto space-y-1">
-            {partners.map(p => (
-              <label key={p.id} className="flex items-center gap-2 py-1 px-2 rounded hover:bg-slate-50 cursor-pointer">
-                <input type="checkbox" checked={selected.includes(p.id)} onChange={() => toggleSelect(p.id)}
-                  className="rounded border-slate-300" />
-                <span className="text-sm text-slate-700 truncate">{p.nom}</span>
-                {p.email && <span className="text-xs text-slate-400 truncate">{p.email}</span>}
-              </label>
-            ))}
-          </div>
-          <div className="text-xs text-slate-400 mt-2">{selected.length} sélectionné(s)</div>
+    <div className="space-y-4">
+      {/* Destinataires - pleine largeur */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-slate-800">Destinataires</h3>
+          <span className="text-xs text-slate-400">{selected.size} sélectionné(s) / {filtered.length} contacts</span>
         </div>
-
-        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-          <h3 className="text-sm font-semibold text-slate-800">Message</h3>
-
-          {/* Template selector */}
-          {templates.length > 0 && (
-            <div>
-              <label className="block text-xs font-medium text-slate-500 mb-1">Template</label>
-              <select onChange={e => { const t = templates.find(x => x.id === e.target.value); if (t) appliquerTemplate(t); }}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue="">
-                <option value="">— Choisir un template —</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-              </select>
-            </div>
-          )}
-
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Sujet</label>
-            <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Sujet de l'email" />
-          </div>
-
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Corps</label>
-            <textarea value={corps} onChange={e => setCorps(e.target.value)} rows={8} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Contenu HTML..." />
-          </div>
-
-          {/* Variables */}
-          <div className="flex flex-wrap gap-1">
-            {variables.map(v => (
-              <button key={v} onClick={() => insererVariable(v)} className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200">
-                {`{{${v}}}`}
-              </button>
-            ))}
-          </div>
-
-          {!readOnly && (
-            <button onClick={envoyer} disabled={sending || selected.length === 0}
-              className="w-full bg-blue-600 text-white text-sm py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {sending ? 'Envoi en cours...' : `Envoyer à ${selected.length} partenaire(s)`}
-            </button>
-          )}
+        <div className="flex gap-3 mb-3">
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          <select value={filterPartner} onChange={e => setFilterPartner(e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option value="">Tous les partenaires</option>
+            {partnerNames.map(n => <option key={n} value={n}>{n}</option>)}
+          </select>
+        </div>
+        <div className="max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
+          <table className="w-full text-sm">
+            <thead className="sticky top-0 bg-slate-50">
+              <tr className="border-b border-slate-200">
+                <th className="p-2 text-left w-8">
+                  <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0}
+                    onChange={toggleAll} className="rounded border-slate-300" />
+                </th>
+                <th className="p-2 text-left text-xs text-slate-500 font-medium">Nom</th>
+                <th className="p-2 text-left text-xs text-slate-500 font-medium">Prénom</th>
+                <th className="p-2 text-left text-xs text-slate-500 font-medium">Poste</th>
+                <th className="p-2 text-left text-xs text-slate-500 font-medium">Email</th>
+                <th className="p-2 text-left text-xs text-slate-500 font-medium">Partenaire</th>
+              </tr>
+            </thead>
+            <tbody>
+              {filtered.map(c => (
+                <tr key={c.id} className={`border-b border-slate-50 hover:bg-slate-50 cursor-pointer ${selected.has(c.id) ? 'bg-blue-50' : ''}`}
+                  onClick={() => toggleSelect(c.id)}>
+                  <td className="p-2">
+                    <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)}
+                      className="rounded border-slate-300" onClick={e => e.stopPropagation()} />
+                  </td>
+                  <td className="p-2 text-slate-800">{c.lastname || '—'}</td>
+                  <td className="p-2 text-slate-700">{c.firstname || '—'}</td>
+                  <td className="p-2 text-slate-500">{c.jobtitle || '—'}</td>
+                  <td className="p-2 text-slate-500">{c.email || '—'}</td>
+                  <td className="p-2 text-slate-400 text-xs">{c.partner_name}</td>
+                </tr>
+              ))}
+              {filtered.length === 0 && (
+                <tr><td colSpan="6" className="p-4 text-center text-slate-400 text-sm">Aucun contact</td></tr>
+              )}
+            </tbody>
+          </table>
         </div>
       </div>
 
-      {/* Panneau historique */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <h3 className="text-sm font-semibold text-slate-800 mb-3">Historique des communications</h3>
-        <div className="mb-3">
-          <select onChange={e => { if (e.target.value) chargerHistorique(e.target.value); }}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue="">
-            <option value="">— Sélectionner un partenaire —</option>
-            {partners.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}
-          </select>
-        </div>
-        {viewPartnerId && (
-          <div className="space-y-2 max-h-96 overflow-y-auto">
-            {historique.length === 0 ? (
-              <p className="text-sm text-slate-400 text-center py-4">Aucune communication</p>
-            ) : historique.map(h => (
-              <div key={h.id} className="border border-slate-100 rounded-lg p-3">
-                <div className="flex justify-between items-start">
-                  <div className="text-sm font-medium text-slate-800">{h.sujet}</div>
-                  <span className="text-xs text-slate-400">{new Date(h.created_at).toLocaleDateString('fr-FR')}</span>
-                </div>
-                <div className="text-xs text-slate-500 mt-1">Par {h.created_by || 'system'}</div>
-              </div>
-            ))}
+      {/* Editeur email - pleine largeur */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <h3 className="text-sm font-semibold text-slate-800">Message</h3>
+
+        {templates.length > 0 && (
+          <div>
+            <label className="block text-xs font-medium text-slate-500 mb-1">Template</label>
+            <select onChange={e => applyTemplate(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue="">
+              <option value="">— Choisir un template —</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
+            </select>
           </div>
+        )}
+
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Sujet</label>
+          <input value={sujet} onChange={e => setSujet(e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Sujet de l'email" />
+        </div>
+
+        <div>
+          <label className="block text-xs font-medium text-slate-500 mb-1">Corps</label>
+          <div ref={editorRef}></div>
+        </div>
+
+        {/* Variables */}
+        <div className="flex flex-wrap gap-1">
+          {variables.map(v => (
+            <button key={v} onClick={() => insertVariable(v)}
+              className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200">
+              {`{{${v}}}`}
+            </button>
+          ))}
+        </div>
+
+        {!readOnly && (
+          <button onClick={envoyer} disabled={sending || selected.size === 0}
+            className="w-full bg-blue-600 text-white text-sm py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {sending ? 'Envoi en cours...' : `Envoyer à ${selected.size} contact(s)`}
+          </button>
         )}
       </div>
     </div>
