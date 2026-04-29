@@ -403,6 +403,103 @@ async function verifierConnexion() {
   }
 }
 
+// ─── Rechercher les companies de type Partner (avec pagination) ──────────────
+async function rechercherPartnerCompanies() {
+  if (!getApiKey()) return [];
+  const allResults = [];
+  let after = undefined;
+  try {
+    do {
+      const body = {
+        filterGroups: [{
+          filters: [{ propertyName: 'type', operator: 'EQ', value: 'Partner' }]
+        }],
+        properties: ['name', 'domain', 'business_type', 'capacite', 'city', 'zip', 'country'],
+        limit: 100,
+      };
+      if (after) body.after = after;
+
+      const res = await hubspotFetch('/crm/v3/objects/companies/search', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      const results = (res?.results || []).map(c => ({
+        id: c.id,
+        name: c.properties.name || '',
+        domain: c.properties.domain || '',
+        business_type: c.properties.business_type || '',
+        capacite: parseInt(c.properties.capacite) || 0,
+        city: c.properties.city || '',
+        postal_code: c.properties.zip || '',
+        country: c.properties.country || '',
+      }));
+      allResults.push(...results);
+      after = res?.paging?.next?.after || null;
+    } while (after);
+    return allResults;
+  } catch (err) {
+    logger.error('HubSpot rechercherPartnerCompanies', { error: err.message });
+    return allResults;
+  }
+}
+
+// ─── Récupérer les deals close won (avec associations companies) ────────────
+async function getClosedWonDeals() {
+  if (!getApiKey()) return [];
+  const allDeals = [];
+  let after = undefined;
+  try {
+    do {
+      const body = {
+        filterGroups: [{
+          filters: [{ propertyName: 'dealstage', operator: 'EQ', value: 'closedwon' }]
+        }],
+        properties: ['dealname', 'amount', 'closedate', 'dealstage'],
+        limit: 100,
+      };
+      if (after) body.after = after;
+
+      const res = await hubspotFetch('/crm/v3/objects/deals/search', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      });
+      const deals = res?.results || [];
+      after = res?.paging?.next?.after || null;
+
+      // Fetch company associations for each deal in batch
+      const dealIds = deals.map(d => d.id);
+      let assocMap = {};
+      if (dealIds.length > 0) {
+        try {
+          const assocRes = await hubspotFetch('/crm/v4/associations/deals/companies/batch/read', {
+            method: 'POST',
+            body: JSON.stringify({ inputs: dealIds.map(id => ({ id })) }),
+          });
+          for (const r of (assocRes?.results || [])) {
+            const companyIds = (r.to || []).map(t => String(t.toObjectId));
+            if (companyIds.length > 0) assocMap[r.from?.id] = companyIds[0];
+          }
+        } catch (_) { /* ignore association errors */ }
+      }
+
+      for (const d of deals) {
+        allDeals.push({
+          id: d.id,
+          dealname: d.properties.dealname || '',
+          amount: parseFloat(d.properties.amount) || 0,
+          closedate: d.properties.closedate || '',
+          dealstage: d.properties.dealstage || '',
+          hubspot_company_id: assocMap[d.id] || null,
+        });
+      }
+    } while (after);
+    return allDeals;
+  } catch (err) {
+    logger.error('HubSpot getClosedWonDeals', { error: err.message });
+    return allDeals;
+  }
+}
+
 module.exports = {
   syncContact,
   getDealsForContact,
@@ -414,6 +511,8 @@ module.exports = {
   creerTaskRelance,
   verifierConnexion,
   rechercherCompanies,
+  rechercherPartnerCompanies,
+  getClosedWonDeals,
   contactsDeCompany,
   trouverCompanyParDomaine,
 };

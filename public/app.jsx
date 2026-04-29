@@ -16205,8 +16205,20 @@ function VueAccountDashboard({ showToast }) {
   if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
   if (!data) return <div className="text-center py-12 text-red-400">Erreur de chargement</div>;
 
-  const { kpis, top_partenaires, tendance_ca } = data;
+  const [syncing, setSyncing] = useState(false);
+  const { kpis, hubspot_kpis, top_partenaires, tendance_ca } = data;
   const maxCA = Math.max(...tendance_ca.map(t => t.ca), 1);
+  const hk = hubspot_kpis || {};
+
+  const syncHubspot = async () => {
+    setSyncing(true);
+    try {
+      const r = await api.post('/hubspot/sync-partners');
+      showToast(`Sync OK : ${r.partners} partenaires, ${r.contacts} contacts`, 'success');
+      charger();
+    } catch (e) { showToast('Erreur sync: ' + e.message, 'error'); }
+    finally { setSyncing(false); }
+  };
 
   return (
     <div className="space-y-6">
@@ -16223,6 +16235,44 @@ function VueAccountDashboard({ showToast }) {
             <div className={`text-2xl font-bold ${k.color}`}>{k.value}</div>
           </div>
         ))}
+      </div>
+
+      {/* HubSpot Partners KPIs */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <h3 className="text-sm font-semibold text-slate-800">Partenaires HubSpot</h3>
+          <button onClick={syncHubspot} disabled={syncing}
+            className="text-xs bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 disabled:opacity-50">
+            {syncing ? 'Sync...' : 'Sync HubSpot'}
+          </button>
+        </div>
+        <div className="grid grid-cols-3 gap-4 mb-4">
+          <div className="text-center">
+            <div className="text-2xl font-bold text-orange-600">{hk.nb_partenaires || 0}</div>
+            <div className="text-xs text-slate-500">Partenaires</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-blue-600">{hk.points_eau || 0}</div>
+            <div className="text-xs text-slate-500">Points d'eau</div>
+          </div>
+          <div className="text-center">
+            <div className="text-2xl font-bold text-emerald-600">{hk.ca_close_won ? `${(hk.ca_close_won / 1000).toFixed(1)}k€` : '0€'}</div>
+            <div className="text-xs text-slate-500">CA Close Won</div>
+          </div>
+        </div>
+        {hk.par_business_type?.length > 0 && (
+          <div>
+            <h4 className="text-xs font-medium text-slate-500 mb-2">Par type</h4>
+            <div className="space-y-1">
+              {hk.par_business_type.map(bt => (
+                <div key={bt.business_type} className="flex items-center justify-between text-sm">
+                  <span className="text-slate-700">{bt.business_type}</span>
+                  <span className="text-slate-500">{bt.count} partenaires · {bt.capacite_totale} pts d'eau</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Alertes inactivité */}
@@ -16386,11 +16436,28 @@ function VueAccountCommunications({ showToast, readOnly }) {
   useEffect(() => {
     (async () => {
       try {
-        const [pData, tData] = await Promise.all([
-          api.get('/reference/partners'),
+        const [hsPartners, tData] = await Promise.all([
+          api.get('/hubspot/partners'),
           api.get('/email-templates'),
         ]);
-        setPartners(Array.isArray(pData) ? pData : []);
+        // Fetch contacts for each partner to get emails
+        const enriched = [];
+        for (const p of (Array.isArray(hsPartners) ? hsPartners : [])) {
+          try {
+            const contacts = await api.get(`/hubspot/partners/${p.id}/contacts`);
+            const mainContact = contacts?.[0];
+            enriched.push({
+              id: p.id,
+              nom: p.name,
+              email: mainContact?.email || '',
+              contact_nom: mainContact ? `${mainContact.firstname || ''} ${mainContact.lastname || ''}`.trim() : '',
+              hubspot_company_id: p.hubspot_company_id,
+            });
+          } catch (_) {
+            enriched.push({ id: p.id, nom: p.name, email: '', contact_nom: '', hubspot_company_id: p.hubspot_company_id });
+          }
+        }
+        setPartners(enriched);
         setTemplates(Array.isArray(tData) ? tData : []);
       } catch (e) { showToast('Erreur chargement', 'error'); }
     })();
@@ -16540,11 +16607,17 @@ function VueAccountPrograms({ showToast, readOnly }) {
 
   const charger = async () => {
     try {
-      const [pData, prData] = await Promise.all([
-        api.get('/reference/partners'),
+      const [hsPartners, prData] = await Promise.all([
+        api.get('/hubspot/partners'),
         api.get('/account-management/programs'),
       ]);
-      setPartners(Array.isArray(pData) ? pData : []);
+      const mapped = (Array.isArray(hsPartners) ? hsPartners : []).map(p => ({
+        id: p.id,
+        nom: p.name,
+        programme_tier: p.business_type || 'standard',
+        hubspot_company_id: p.hubspot_company_id,
+      }));
+      setPartners(mapped);
       setPrograms(prData);
     } catch (e) { showToast('Erreur chargement', 'error'); }
     finally { setLoading(false); }

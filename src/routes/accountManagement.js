@@ -62,6 +62,37 @@ module.exports = (db) => {
         GROUP BY mois ORDER BY mois
       `).all();
 
+      // HubSpot Partners KPIs
+      let hubspotKpis = { nb_partenaires: 0, points_eau: 0, ca_close_won: 0, par_business_type: [] };
+      try {
+        hubspotKpis.nb_partenaires = db.prepare('SELECT COUNT(*) as n FROM hubspot_partners').get().n;
+        hubspotKpis.points_eau = db.prepare('SELECT COALESCE(SUM(capacite), 0) as n FROM hubspot_partners').get().n;
+        hubspotKpis.par_business_type = db.prepare(`
+          SELECT business_type, COUNT(*) as count, COALESCE(SUM(capacite), 0) as capacite_totale
+          FROM hubspot_partners WHERE business_type IS NOT NULL AND business_type != ''
+          GROUP BY business_type ORDER BY count DESC
+        `).all();
+
+        // Deals close won : rafraîchir le cache si >15min
+        const lastCached = db.prepare('SELECT MAX(cached_at) as t FROM hubspot_deals_cache').get()?.t;
+        const cacheAge = lastCached ? (Date.now() - new Date(lastCached).getTime()) / 60000 : Infinity;
+        if (cacheAge > 15) {
+          try {
+            const hubspotService = require('../services/hubspotService');
+            const deals = await hubspotService.getClosedWonDeals();
+            if (deals.length > 0) {
+              const now = new Date().toISOString();
+              db.prepare('DELETE FROM hubspot_deals_cache').run();
+              const ins = db.prepare(`INSERT INTO hubspot_deals_cache (hubspot_deal_id, hubspot_company_id, dealname, amount, closedate, dealstage, cached_at) VALUES (?, ?, ?, ?, ?, ?, ?)`);
+              for (const d of deals) {
+                ins.run(d.id, d.hubspot_company_id, d.dealname, d.amount, d.closedate, d.dealstage, now);
+              }
+            }
+          } catch (e) { /* ignore cache refresh errors */ }
+        }
+        hubspotKpis.ca_close_won = db.prepare('SELECT COALESCE(SUM(amount), 0) as ca FROM hubspot_deals_cache').get().ca;
+      } catch (_) { /* tables may not exist yet */ }
+
       res.json({
         kpis: {
           ca_total: caStats.ca_total,
@@ -71,6 +102,7 @@ module.exports = (db) => {
           partenaires_total: partenairesTotal,
           a_risque: aRisque,
         },
+        hubspot_kpis: hubspotKpis,
         top_partenaires: topPartenaires,
         tendance_ca: tendanceCA,
         seuil_jours: seuil,

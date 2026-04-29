@@ -233,5 +233,82 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/hubspot/sync-partners — Sync companies Partner + contacts → tables locales
+  router.post('/sync-partners', async (req, res) => {
+    try {
+      // 1. Fetch toutes les companies Partner depuis HubSpot
+      const companies = await hubspot.rechercherPartnerCompanies();
+      if (!companies.length) return res.json({ message: 'Aucun partenaire trouvé', partners: 0, contacts: 0 });
+
+      const now = new Date().toISOString();
+      const upsertPartner = db.prepare(`
+        INSERT INTO hubspot_partners (hubspot_company_id, name, domain, business_type, capacite, city, postal_code, country, synced_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(hubspot_company_id) DO UPDATE SET
+          name = excluded.name, domain = excluded.domain, business_type = excluded.business_type,
+          capacite = excluded.capacite, city = excluded.city, postal_code = excluded.postal_code,
+          country = excluded.country, synced_at = excluded.synced_at
+      `);
+
+      const upsertContact = db.prepare(`
+        INSERT INTO hubspot_partner_contacts (hubspot_contact_id, hubspot_company_id, firstname, lastname, email, jobtitle, synced_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(hubspot_contact_id) DO UPDATE SET
+          hubspot_company_id = excluded.hubspot_company_id, firstname = excluded.firstname,
+          lastname = excluded.lastname, email = excluded.email, jobtitle = excluded.jobtitle,
+          synced_at = excluded.synced_at
+      `);
+
+      let totalContacts = 0;
+      for (const c of companies) {
+        upsertPartner.run(c.id, c.name, c.domain, c.business_type, c.capacite, c.city, c.postal_code, c.country, now);
+
+        // Fetch contacts de cette company
+        try {
+          const contacts = await hubspot.contactsDeCompany(c.id);
+          for (const ct of contacts) {
+            upsertContact.run(ct.hubspot_id, c.id, ct.prenom, ct.nom, ct.email, ct.poste, now);
+            totalContacts++;
+          }
+        } catch (_) { /* continue */ }
+        await new Promise(r => setTimeout(r, 100));
+      }
+
+      logger.info('Sync partenaires HubSpot terminée', { partners: companies.length, contacts: totalContacts });
+      res.json({ message: 'Sync terminée', partners: companies.length, contacts: totalContacts });
+    } catch (err) {
+      logger.error('POST /hubspot/sync-partners erreur', { error: err.message });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // GET /api/hubspot/partners — Liste partenaires depuis table locale
+  router.get('/partners', (req, res) => {
+    try {
+      const { business_type, city, country } = req.query;
+      let sql = 'SELECT * FROM hubspot_partners WHERE 1=1';
+      const params = [];
+      if (business_type) { sql += ' AND business_type = ?'; params.push(business_type); }
+      if (city) { sql += ' AND city LIKE ?'; params.push(`%${city}%`); }
+      if (country) { sql += ' AND country LIKE ?'; params.push(`%${country}%`); }
+      sql += ' ORDER BY name';
+      res.json(db.prepare(sql).all(...params));
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // GET /api/hubspot/partners/:id/contacts — Contacts d'un partenaire
+  router.get('/partners/:id/contacts', (req, res) => {
+    try {
+      const partner = db.prepare('SELECT * FROM hubspot_partners WHERE id = ?').get(req.params.id);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+      const contacts = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? ORDER BY lastname, firstname').all(partner.hubspot_company_id);
+      res.json(contacts);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   return router;
 };

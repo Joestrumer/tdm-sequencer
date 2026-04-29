@@ -589,6 +589,50 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_partner_comms_batch ON partner_communications(batch_id);
   CREATE INDEX IF NOT EXISTS idx_partner_programs_partner ON partner_programs(partner_id);
   CREATE INDEX IF NOT EXISTS idx_partner_notes_partner ON partner_notes(partner_id);
+
+  -- ─── Tables HubSpot Partners ──────────────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS hubspot_partners (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hubspot_company_id TEXT UNIQUE NOT NULL,
+    name TEXT NOT NULL,
+    domain TEXT,
+    business_type TEXT,
+    capacite INTEGER DEFAULT 0,
+    city TEXT,
+    postal_code TEXT,
+    country TEXT,
+    synced_at TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS hubspot_partner_contacts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hubspot_contact_id TEXT UNIQUE NOT NULL,
+    hubspot_company_id TEXT NOT NULL,
+    firstname TEXT,
+    lastname TEXT,
+    email TEXT,
+    jobtitle TEXT,
+    synced_at TEXT,
+    FOREIGN KEY (hubspot_company_id) REFERENCES hubspot_partners(hubspot_company_id)
+  );
+
+  CREATE TABLE IF NOT EXISTS hubspot_deals_cache (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    hubspot_deal_id TEXT UNIQUE NOT NULL,
+    hubspot_company_id TEXT,
+    dealname TEXT,
+    amount REAL DEFAULT 0,
+    closedate TEXT,
+    dealstage TEXT,
+    cached_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_hubspot_partners_type ON hubspot_partners(business_type);
+  CREATE INDEX IF NOT EXISTS idx_hubspot_partner_contacts_company ON hubspot_partner_contacts(hubspot_company_id);
+  CREATE INDEX IF NOT EXISTS idx_hubspot_deals_company ON hubspot_deals_cache(hubspot_company_id);
+  CREATE INDEX IF NOT EXISTS idx_hubspot_deals_stage ON hubspot_deals_cache(dealstage);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
