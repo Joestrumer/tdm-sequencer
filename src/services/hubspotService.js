@@ -412,7 +412,7 @@ async function rechercherPartnerCompanies() {
     do {
       const body = {
         filterGroups: [{
-          filters: [{ propertyName: 'type', operator: 'EQ', value: 'Partner' }]
+          filters: [{ propertyName: 'type', operator: 'EQ', value: 'PARTNER' }]
         }],
         properties: ['name', 'domain', 'business_type', 'capacite', 'city', 'zip', 'country'],
         limit: 100,
