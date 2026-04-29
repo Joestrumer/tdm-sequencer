@@ -16188,6 +16188,7 @@ function VueAccountDashboard({ showToast }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showRelance, setShowRelance] = useState(null);
+  const [syncing, setSyncing] = useState(false);
 
   const charger = async () => {
     try {
@@ -16205,7 +16206,6 @@ function VueAccountDashboard({ showToast }) {
   if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
   if (!data) return <div className="text-center py-12 text-red-400">Erreur de chargement</div>;
 
-  const [syncing, setSyncing] = useState(false);
   const { kpis, hubspot_kpis, top_partenaires, tendance_ca } = data;
   const maxCA = Math.max(...tendance_ca.map(t => t.ca), 1);
   const hk = hubspot_kpis || {};
