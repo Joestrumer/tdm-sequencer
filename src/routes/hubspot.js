@@ -282,7 +282,7 @@ module.exports = (db) => {
     }
   });
 
-  // GET /api/hubspot/partners — Liste partenaires depuis table locale
+  // GET /api/hubspot/partners — Liste partenaires depuis table locale (avec contact principal)
   router.get('/partners', (req, res) => {
     try {
       const { business_type, city, country } = req.query;
@@ -292,7 +292,21 @@ module.exports = (db) => {
       if (city) { sql += ' AND city LIKE ?'; params.push(`%${city}%`); }
       if (country) { sql += ' AND country LIKE ?'; params.push(`%${country}%`); }
       sql += ' ORDER BY name';
-      res.json(db.prepare(sql).all(...params));
+      const partners = db.prepare(sql).all(...params);
+
+      // Enrichir avec le contact principal de chaque partenaire
+      const stmtContact = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? LIMIT 1');
+      const enriched = partners.map(p => {
+        const contact = stmtContact.get(p.hubspot_company_id);
+        return {
+          ...p,
+          contact_firstname: contact?.firstname || '',
+          contact_lastname: contact?.lastname || '',
+          contact_email: contact?.email || '',
+          contact_jobtitle: contact?.jobtitle || '',
+        };
+      });
+      res.json(enriched);
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }

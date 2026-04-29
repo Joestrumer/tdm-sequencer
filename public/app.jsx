@@ -16189,6 +16189,9 @@ function VueAccountDashboard({ showToast }) {
   const [loading, setLoading] = useState(true);
   const [showRelance, setShowRelance] = useState(null);
   const [syncing, setSyncing] = useState(false);
+  const [expandedType, setExpandedType] = useState(null);
+  const [typePartners, setTypePartners] = useState([]);
+  const [loadingType, setLoadingType] = useState(false);
 
   const charger = async () => {
     try {
@@ -16265,9 +16268,38 @@ function VueAccountDashboard({ showToast }) {
             <h4 className="text-xs font-medium text-slate-500 mb-2">Par type</h4>
             <div className="space-y-1">
               {hk.par_business_type.map(bt => (
-                <div key={bt.business_type} className="flex items-center justify-between text-sm">
-                  <span className="text-slate-700">{bt.business_type}</span>
-                  <span className="text-slate-500">{bt.count} partenaires · {bt.capacite_totale} pts d'eau</span>
+                <div key={bt.business_type}>
+                  <button onClick={async () => {
+                    if (expandedType === bt.business_type) { setExpandedType(null); return; }
+                    setExpandedType(bt.business_type);
+                    setLoadingType(true);
+                    try {
+                      const r = await api.get(`/hubspot/partners?business_type=${encodeURIComponent(bt.business_type)}`);
+                      setTypePartners(r);
+                    } catch (_) { setTypePartners([]); }
+                    finally { setLoadingType(false); }
+                  }} className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-slate-50 cursor-pointer">
+                    <span className="text-slate-700 flex items-center gap-1">
+                      <span className={`transition-transform ${expandedType === bt.business_type ? 'rotate-90' : ''}`}>&#9654;</span>
+                      {bt.business_type}
+                    </span>
+                    <span className="text-slate-500">{bt.count} partenaires · {bt.capacite_totale} pts d'eau</span>
+                  </button>
+                  {expandedType === bt.business_type && (
+                    <div className="ml-6 mb-2">
+                      {loadingType ? <div className="text-xs text-slate-400 py-1">Chargement...</div> : (
+                        <div className="space-y-1">
+                          {typePartners.map(p => (
+                            <div key={p.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-50">
+                              <span className="text-slate-700 font-medium">{p.name}</span>
+                              <span className="text-slate-400">{p.capacite || 0} pts · {[p.city, p.country].filter(Boolean).join(', ') || '—'}</span>
+                            </div>
+                          ))}
+                          {typePartners.length === 0 && <div className="text-xs text-slate-400">Aucun partenaire</div>}
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               ))}
             </div>
@@ -16440,24 +16472,14 @@ function VueAccountCommunications({ showToast, readOnly }) {
           api.get('/hubspot/partners'),
           api.get('/email-templates'),
         ]);
-        // Fetch contacts for each partner to get emails
-        const enriched = [];
-        for (const p of (Array.isArray(hsPartners) ? hsPartners : [])) {
-          try {
-            const contacts = await api.get(`/hubspot/partners/${p.id}/contacts`);
-            const mainContact = contacts?.[0];
-            enriched.push({
-              id: p.id,
-              nom: p.name,
-              email: mainContact?.email || '',
-              contact_nom: mainContact ? `${mainContact.firstname || ''} ${mainContact.lastname || ''}`.trim() : '',
-              hubspot_company_id: p.hubspot_company_id,
-            });
-          } catch (_) {
-            enriched.push({ id: p.id, nom: p.name, email: '', contact_nom: '', hubspot_company_id: p.hubspot_company_id });
-          }
-        }
-        setPartners(enriched);
+        const mapped = (Array.isArray(hsPartners) ? hsPartners : []).map(p => ({
+          id: p.id,
+          nom: p.name,
+          email: p.contact_email || '',
+          contact_nom: `${p.contact_firstname || ''} ${p.contact_lastname || ''}`.trim(),
+          hubspot_company_id: p.hubspot_company_id,
+        }));
+        setPartners(mapped);
         setTemplates(Array.isArray(tData) ? tData : []);
       } catch (e) { showToast('Erreur chargement', 'error'); }
     })();
