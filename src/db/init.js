@@ -602,6 +602,7 @@ db.exec(`
     city TEXT,
     postal_code TEXT,
     country TEXT,
+    partner_since TEXT,
     synced_at TEXT,
     created_at TEXT DEFAULT (datetime('now'))
   );
@@ -633,6 +634,28 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_hubspot_partner_contacts_company ON hubspot_partner_contacts(hubspot_company_id);
   CREATE INDEX IF NOT EXISTS idx_hubspot_deals_company ON hubspot_deals_cache(hubspot_company_id);
   CREATE INDEX IF NOT EXISTS idx_hubspot_deals_stage ON hubspot_deals_cache(dealstage);
+
+  -- ─── Listes de contacts partenaires ───────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS partner_contact_lists (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_by TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_contact_list_members (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    list_id TEXT NOT NULL REFERENCES partner_contact_lists(id) ON DELETE CASCADE,
+    contact_id INTEGER NOT NULL REFERENCES hubspot_partner_contacts(id) ON DELETE CASCADE,
+    added_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(list_id, contact_id)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_pcl_members_list ON partner_contact_list_members(list_id);
+  CREATE INDEX IF NOT EXISTS idx_pcl_members_contact ON partner_contact_list_members(contact_id);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
@@ -706,6 +729,8 @@ const migrations = [
   // Account Management
   'ALTER TABLE vf_partners ADD COLUMN derniere_commande_at TEXT',
   'ALTER TABLE vf_partners ADD COLUMN programme_tier TEXT DEFAULT \'standard\'',
+  // HubSpot Partners
+  'ALTER TABLE hubspot_partners ADD COLUMN partner_since TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

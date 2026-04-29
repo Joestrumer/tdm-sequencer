@@ -16464,33 +16464,44 @@ function VueAccountCommunications({ showToast, readOnly }) {
   const [sending, setSending] = useState(false);
   const [search, setSearch] = useState('');
   const [filterPartner, setFilterPartner] = useState('');
+  const [filterBizType, setFilterBizType] = useState('');
   const [loading, setLoading] = useState(true);
+  const [editorReady, setEditorReady] = useState(false);
   const editorRef = useRef(null);
   const tinymceRef = useRef(null);
   const corpsHtmlRef = useRef(corpsHtml);
   corpsHtmlRef.current = corpsHtml;
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [cData, tData] = await Promise.all([
-          api.get('/hubspot/partners/all-contacts'),
-          api.get('/email-templates'),
-        ]);
-        setContacts(Array.isArray(cData) ? cData : []);
-        setTemplates(Array.isArray(tData) ? tData : []);
-      } catch (e) { showToast('Erreur chargement', 'error'); }
-      finally { setLoading(false); }
-    })();
-  }, []);
+  // Listes
+  const [lists, setLists] = useState([]);
+  const [activeList, setActiveList] = useState(null);
+  const [newListName, setNewListName] = useState('');
+  const [showNewList, setShowNewList] = useState(false);
 
-  // TinyMCE init
+  const charger = async () => {
+    try {
+      const [cData, tData, lData] = await Promise.all([
+        api.get('/hubspot/partners/all-contacts'),
+        api.get('/email-templates'),
+        api.get('/account-management/contact-lists'),
+      ]);
+      setContacts(Array.isArray(cData) ? cData : []);
+      setTemplates(Array.isArray(tData) ? tData : []);
+      setLists(Array.isArray(lData) ? lData : []);
+    } catch (e) { showToast('Erreur chargement', 'error'); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { charger(); }, []);
+
+  // TinyMCE init — attendre que le DOM soit prêt après le loading
   useEffect(() => {
-    if (!editorRef.current) return;
+    if (loading || !editorRef.current || editorReady) return;
     const timer = setTimeout(() => {
-      if (!editorRef.current) return;
-      const containerId = 'tinymce-acctcomm-editor-' + Date.now();
+      if (!editorRef.current || tinymceRef.current) return;
+      const containerId = 'tinymce-acctcomm-' + Date.now();
       editorRef.current.id = containerId;
+      if (typeof tinymce === 'undefined') return;
       tinymce.init({
         selector: '#' + containerId,
         plugins: 'lists link image table code fullscreen',
@@ -16507,6 +16518,7 @@ function VueAccountCommunications({ showToast, readOnly }) {
         setup: (editor) => {
           editor.on('init', () => {
             tinymceRef.current = editor;
+            setEditorReady(true);
             if (corpsHtmlRef.current) editor.setContent(corpsHtmlRef.current);
           });
           editor.on('input change keyup ExecCommand NodeChange', () => {
@@ -16514,12 +16526,12 @@ function VueAccountCommunications({ showToast, readOnly }) {
           });
         }
       });
-    }, 50);
+    }, 300);
     return () => {
       clearTimeout(timer);
-      if (tinymceRef.current) { tinymceRef.current.remove(); tinymceRef.current = null; }
+      if (tinymceRef.current) { tinymceRef.current.remove(); tinymceRef.current = null; setEditorReady(false); }
     };
-  }, []);
+  }, [loading]);
 
   const insertVariable = (v) => {
     if (tinymceRef.current) tinymceRef.current.insertContent(`{{${v}}}`);
@@ -16544,7 +16556,7 @@ function VueAccountCommunications({ showToast, readOnly }) {
   };
 
   const toggleAll = () => {
-    if (selected.size === filtered.length) setSelected(new Set());
+    if (selected.size === filtered.length && filtered.length > 0) setSelected(new Set());
     else setSelected(new Set(filtered.map(c => c.id)));
   };
 
@@ -16555,23 +16567,65 @@ function VueAccountCommunications({ showToast, readOnly }) {
     setSending(true);
     try {
       const r = await api.post('/account-management/communications/send-contacts', { contact_ids: [...selected], sujet, corps_html: html });
-      const envoyés = r.results?.filter(x => x.statut === 'envoyé').length || 0;
-      showToast(`${envoyés} email(s) envoyé(s)`, 'success');
+      const nb = r.results?.filter(x => x.statut === 'envoyé').length || 0;
+      showToast(`${nb} email(s) envoyé(s)`, 'success');
       setSelected(new Set());
     } catch (e) {
       showToast('Erreur envoi: ' + e.message, 'error');
     } finally { setSending(false); }
   };
 
-  // Partner names for filter
+  // Listes
+  const creerListe = async () => {
+    if (!newListName.trim() || selected.size === 0) { showToast('Nom et contacts requis', 'error'); return; }
+    try {
+      await api.post('/account-management/contact-lists', { name: newListName, contact_ids: [...selected] });
+      showToast(`Liste "${newListName}" créée (${selected.size} contacts)`, 'success');
+      setNewListName(''); setShowNewList(false);
+      charger();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const ajouterAListe = async (listId) => {
+    if (selected.size === 0) return;
+    try {
+      const r = await api.post(`/account-management/contact-lists/${listId}/add`, { contact_ids: [...selected] });
+      showToast(`${r.added} contact(s) ajouté(s)`, 'success');
+      charger();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const chargerListe = async (listId) => {
+    if (activeList === listId) { setActiveList(null); return; }
+    try {
+      const members = await api.get(`/account-management/contact-lists/${listId}/members`);
+      setActiveList(listId);
+      setSelected(new Set(members.map(m => m.id)));
+      setFilterPartner(''); setFilterBizType(''); setSearch('');
+    } catch (e) { showToast('Erreur chargement liste', 'error'); }
+  };
+
+  const supprimerListe = async (listId) => {
+    try {
+      await api.delete(`/account-management/contact-lists/${listId}`);
+      showToast('Liste supprimée', 'success');
+      if (activeList === listId) setActiveList(null);
+      charger();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  // Filters
+  const businessTypes = [...new Set(contacts.map(c => c.business_type).filter(Boolean))].sort();
   const partnerNames = [...new Set(contacts.map(c => c.partner_name))].sort();
 
   const filtered = contacts.filter(c => {
     if (filterPartner && c.partner_name !== filterPartner) return false;
+    if (filterBizType && c.business_type !== filterBizType) return false;
     if (search) {
       const s = search.toLowerCase();
       return (c.firstname || '').toLowerCase().includes(s) || (c.lastname || '').toLowerCase().includes(s) ||
-        (c.email || '').toLowerCase().includes(s) || (c.partner_name || '').toLowerCase().includes(s);
+        (c.email || '').toLowerCase().includes(s) || (c.partner_name || '').toLowerCase().includes(s) ||
+        (c.jobtitle || '').toLowerCase().includes(s);
     }
     return true;
   });
@@ -16582,24 +16636,73 @@ function VueAccountCommunications({ showToast, readOnly }) {
 
   return (
     <div className="space-y-4">
-      {/* Destinataires - pleine largeur */}
+      {/* Listes de contacts */}
+      <div className="bg-white rounded-xl border border-slate-200 p-4">
+        <div className="flex items-center justify-between mb-3">
+          <h3 className="text-sm font-semibold text-slate-800">Listes de contacts</h3>
+          <button onClick={() => setShowNewList(!showNewList)}
+            className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100">
+            + Nouvelle liste
+          </button>
+        </div>
+        {lists.length > 0 && (
+          <div className="flex flex-wrap gap-2 mb-2">
+            {lists.map(l => (
+              <div key={l.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors ${activeList === l.id ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
+                <span onClick={() => chargerListe(l.id)}>{l.name}</span>
+                <span className="text-xs text-slate-400">({l.member_count})</span>
+                <button onClick={(e) => { e.stopPropagation(); supprimerListe(l.id); }} className="text-slate-300 hover:text-red-500 ml-1 text-xs">&times;</button>
+              </div>
+            ))}
+          </div>
+        )}
+        {lists.length === 0 && !showNewList && <p className="text-xs text-slate-400">Aucune liste. Sélectionnez des contacts puis créez une liste.</p>}
+        {showNewList && (
+          <div className="flex gap-2 mt-2">
+            <input value={newListName} onChange={e => setNewListName(e.target.value)} placeholder="Nom de la liste..."
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            <button onClick={creerListe} disabled={!newListName.trim() || selected.size === 0}
+              className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
+              Créer ({selected.size})
+            </button>
+            <button onClick={() => setShowNewList(false)} className="text-sm text-slate-400 px-2">Annuler</button>
+          </div>
+        )}
+        {selected.size > 0 && lists.length > 0 && !showNewList && (
+          <div className="flex items-center gap-2 mt-2">
+            <span className="text-xs text-slate-500">Ajouter {selected.size} contact(s) à :</span>
+            <select onChange={e => { if (e.target.value) ajouterAListe(e.target.value); e.target.value = ''; }}
+              className="border border-slate-200 rounded-lg px-2 py-1 text-xs" defaultValue="">
+              <option value="">— liste —</option>
+              {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+            </select>
+          </div>
+        )}
+      </div>
+
+      {/* Contacts */}
       <div className="bg-white rounded-xl border border-slate-200 p-5">
         <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-800">Destinataires</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Contacts partenaires</h3>
           <span className="text-xs text-slate-400">{selected.size} sélectionné(s) / {filtered.length} contacts</span>
         </div>
-        <div className="flex gap-3 mb-3">
+        <div className="flex gap-2 mb-3 flex-wrap">
           <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
-            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            className="flex-1 min-w-[180px] border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          <select value={filterBizType} onChange={e => setFilterBizType(e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+            <option value="">Tous les types</option>
+            {businessTypes.map(bt => <option key={bt} value={bt}>{bt}</option>)}
+          </select>
           <select value={filterPartner} onChange={e => setFilterPartner(e.target.value)}
             className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
             <option value="">Tous les partenaires</option>
             {partnerNames.map(n => <option key={n} value={n}>{n}</option>)}
           </select>
         </div>
-        <div className="max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
+        <div className="max-h-72 overflow-y-auto border border-slate-100 rounded-lg">
           <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-slate-50">
+            <thead className="sticky top-0 bg-slate-50 z-10">
               <tr className="border-b border-slate-200">
                 <th className="p-2 text-left w-8">
                   <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0}
@@ -16610,6 +16713,8 @@ function VueAccountCommunications({ showToast, readOnly }) {
                 <th className="p-2 text-left text-xs text-slate-500 font-medium">Poste</th>
                 <th className="p-2 text-left text-xs text-slate-500 font-medium">Email</th>
                 <th className="p-2 text-left text-xs text-slate-500 font-medium">Partenaire</th>
+                <th className="p-2 text-left text-xs text-slate-500 font-medium">Type</th>
+                <th className="p-2 text-left text-xs text-slate-500 font-medium">Partenaire depuis</th>
               </tr>
             </thead>
             <tbody>
@@ -16620,22 +16725,24 @@ function VueAccountCommunications({ showToast, readOnly }) {
                     <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)}
                       className="rounded border-slate-300" onClick={e => e.stopPropagation()} />
                   </td>
-                  <td className="p-2 text-slate-800">{c.lastname || '—'}</td>
+                  <td className="p-2 text-slate-800 font-medium">{c.lastname || '—'}</td>
                   <td className="p-2 text-slate-700">{c.firstname || '—'}</td>
-                  <td className="p-2 text-slate-500">{c.jobtitle || '—'}</td>
-                  <td className="p-2 text-slate-500">{c.email || '—'}</td>
-                  <td className="p-2 text-slate-400 text-xs">{c.partner_name}</td>
+                  <td className="p-2 text-slate-500 text-xs">{c.jobtitle || '—'}</td>
+                  <td className="p-2 text-slate-500 text-xs">{c.email || '—'}</td>
+                  <td className="p-2 text-slate-600 text-xs">{c.partner_name}</td>
+                  <td className="p-2"><span className={`text-xs px-1.5 py-0.5 rounded ${c.business_type ? 'bg-orange-50 text-orange-700' : 'text-slate-300'}`}>{c.business_type || '—'}</span></td>
+                  <td className="p-2 text-xs text-slate-400">{c.partner_since ? new Date(c.partner_since).toLocaleDateString('fr-FR') : '—'}</td>
                 </tr>
               ))}
               {filtered.length === 0 && (
-                <tr><td colSpan="6" className="p-4 text-center text-slate-400 text-sm">Aucun contact</td></tr>
+                <tr><td colSpan="8" className="p-4 text-center text-slate-400 text-sm">Aucun contact</td></tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
-      {/* Editeur email - pleine largeur */}
+      {/* Editeur email */}
       <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
         <h3 className="text-sm font-semibold text-slate-800">Message</h3>
 
@@ -16658,10 +16765,9 @@ function VueAccountCommunications({ showToast, readOnly }) {
 
         <div>
           <label className="block text-xs font-medium text-slate-500 mb-1">Corps</label>
-          <div ref={editorRef}></div>
+          <div ref={editorRef}><textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" rows={10} placeholder="Chargement de l'éditeur..."></textarea></div>
         </div>
 
-        {/* Variables */}
         <div className="flex flex-wrap gap-1">
           {variables.map(v => (
             <button key={v} onClick={() => insertVariable(v)}

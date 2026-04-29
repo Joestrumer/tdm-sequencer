@@ -242,12 +242,12 @@ module.exports = (db) => {
 
       const now = new Date().toISOString();
       const upsertPartner = db.prepare(`
-        INSERT INTO hubspot_partners (hubspot_company_id, name, domain, business_type, capacite, city, postal_code, country, synced_at)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO hubspot_partners (hubspot_company_id, name, domain, business_type, capacite, city, postal_code, country, partner_since, synced_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(hubspot_company_id) DO UPDATE SET
           name = excluded.name, domain = excluded.domain, business_type = excluded.business_type,
           capacite = excluded.capacite, city = excluded.city, postal_code = excluded.postal_code,
-          country = excluded.country, synced_at = excluded.synced_at
+          country = excluded.country, partner_since = excluded.partner_since, synced_at = excluded.synced_at
       `);
 
       const upsertContact = db.prepare(`
@@ -261,7 +261,7 @@ module.exports = (db) => {
 
       let totalContacts = 0;
       for (const c of companies) {
-        upsertPartner.run(c.id, c.name, c.domain, c.business_type, c.capacite, c.city, c.postal_code, c.country, now);
+        upsertPartner.run(c.id, c.name, c.domain, c.business_type, c.capacite, c.city, c.postal_code, c.country, c.partner_since, now);
 
         // Fetch contacts de cette company
         try {
@@ -316,7 +316,8 @@ module.exports = (db) => {
   router.get('/partners/all-contacts', (req, res) => {
     try {
       const contacts = db.prepare(`
-        SELECT c.*, p.name as partner_name, p.business_type, p.city as partner_city, p.country as partner_country
+        SELECT c.*, p.name as partner_name, p.business_type, p.partner_since,
+               p.city as partner_city, p.country as partner_country
         FROM hubspot_partner_contacts c
         JOIN hubspot_partners p ON p.hubspot_company_id = c.hubspot_company_id
         ORDER BY p.name, c.lastname, c.firstname

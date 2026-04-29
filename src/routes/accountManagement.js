@@ -461,5 +461,84 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Listes de contacts partenaires ────────────────────────────────────────
+
+  // GET /api/account-management/contact-lists
+  router.get('/contact-lists', (req, res) => {
+    try {
+      const lists = db.prepare(`
+        SELECT l.*, COUNT(m.id) as member_count
+        FROM partner_contact_lists l
+        LEFT JOIN partner_contact_list_members m ON m.list_id = l.id
+        GROUP BY l.id ORDER BY l.updated_at DESC
+      `).all();
+      res.json(lists);
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // POST /api/account-management/contact-lists
+  router.post('/contact-lists', (req, res) => {
+    try {
+      const { name, description, contact_ids } = req.body;
+      if (!name) return res.status(400).json({ erreur: 'name requis' });
+      const id = randomUUID();
+      db.prepare('INSERT INTO partner_contact_lists (id, name, description, created_by) VALUES (?, ?, ?, ?)').run(id, name, description || null, req.user?.nom || 'system');
+      if (contact_ids?.length) {
+        const ins = db.prepare('INSERT OR IGNORE INTO partner_contact_list_members (list_id, contact_id) VALUES (?, ?)');
+        for (const cid of contact_ids) ins.run(id, cid);
+      }
+      res.json({ ok: true, id });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // GET /api/account-management/contact-lists/:id/members
+  router.get('/contact-lists/:id/members', (req, res) => {
+    try {
+      const members = db.prepare(`
+        SELECT c.*, p.name as partner_name, p.business_type, p.partner_since, p.city as partner_city, p.country as partner_country
+        FROM partner_contact_list_members m
+        JOIN hubspot_partner_contacts c ON c.id = m.contact_id
+        JOIN hubspot_partners p ON p.hubspot_company_id = c.hubspot_company_id
+        WHERE m.list_id = ?
+        ORDER BY p.name, c.lastname
+      `).all(req.params.id);
+      res.json(members);
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // POST /api/account-management/contact-lists/:id/add
+  router.post('/contact-lists/:id/add', (req, res) => {
+    try {
+      const { contact_ids } = req.body;
+      if (!contact_ids?.length) return res.status(400).json({ erreur: 'contact_ids requis' });
+      const ins = db.prepare('INSERT OR IGNORE INTO partner_contact_list_members (list_id, contact_id) VALUES (?, ?)');
+      let added = 0;
+      for (const cid of contact_ids) { const r = ins.run(req.params.id, cid); added += r.changes; }
+      db.prepare('UPDATE partner_contact_lists SET updated_at = datetime(\'now\') WHERE id = ?').run(req.params.id);
+      res.json({ ok: true, added });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // POST /api/account-management/contact-lists/:id/remove
+  router.post('/contact-lists/:id/remove', (req, res) => {
+    try {
+      const { contact_ids } = req.body;
+      if (!contact_ids?.length) return res.status(400).json({ erreur: 'contact_ids requis' });
+      const del = db.prepare('DELETE FROM partner_contact_list_members WHERE list_id = ? AND contact_id = ?');
+      let removed = 0;
+      for (const cid of contact_ids) { const r = del.run(req.params.id, cid); removed += r.changes; }
+      res.json({ ok: true, removed });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // DELETE /api/account-management/contact-lists/:id
+  router.delete('/contact-lists/:id', (req, res) => {
+    try {
+      db.prepare('DELETE FROM partner_contact_list_members WHERE list_id = ?').run(req.params.id);
+      db.prepare('DELETE FROM partner_contact_lists WHERE id = ?').run(req.params.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
   return router;
 };

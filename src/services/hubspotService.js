@@ -414,7 +414,7 @@ async function rechercherPartnerCompanies() {
         filterGroups: [{
           filters: [{ propertyName: 'type', operator: 'EQ', value: 'PARTNER' }]
         }],
-        properties: ['name', 'domain', 'business_type', 'capacite', 'city', 'zip', 'country'],
+        properties: ['name', 'domain', 'business_type', 'capacite', 'city', 'zip', 'country', 'partner_since'],
         limit: 100,
       };
       if (after) body.after = after;
@@ -432,6 +432,7 @@ async function rechercherPartnerCompanies() {
         city: c.properties.city || '',
         postal_code: c.properties.zip || '',
         country: c.properties.country || '',
+        partner_since: c.properties.partner_since || '',
       }));
       allResults.push(...results);
       after = res?.paging?.next?.after || null;
