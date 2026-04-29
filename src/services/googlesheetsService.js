@@ -64,6 +64,8 @@ function resolveCanonicalClientName(db, vfName) {
       const alt2 = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_client_id = ? AND file_name IS NOT NULL LIMIT 1').get(m2.vf_client_id);
       if (alt2 && alt2.file_name) return alt2.file_name;
     }
+    // Pas de mapping DB trouvé, mais retourner la version sans contact
+    return stripped;
   }
   return vfName;
 }
@@ -246,9 +248,9 @@ function mapPartnerNameToCanon(vfName, canonList = []) {
     return bestName;
   }
 
-  // 5) Aucun match sûr -> renvoyer le VF brut
-  logger.debug(`⚠️ Aucun match trouvé pour "${vfName}", utilisation du nom VF brut`);
-  return String(vfName || '').trim();
+  // 5) Aucun match sûr -> renvoyer le nom nettoyé (sans contact/raison sociale)
+  logger.debug(`⚠️ Aucun match trouvé pour "${vfName}", utilisation du nom nettoyé: "${cleanedVfName}"`);
+  return String(cleanedVfName || vfName || '').trim();
 }
 
 /**

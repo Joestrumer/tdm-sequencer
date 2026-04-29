@@ -64,6 +64,8 @@ module.exports = (db) => {
         const alt2 = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_client_id = ? AND file_name IS NOT NULL LIMIT 1').get(m2.vf_client_id);
         if (alt2 && alt2.file_name) return alt2.file_name;
       }
+      // Pas de mapping DB trouvé, mais retourner la version sans contact
+      return stripped;
     }
     return vfName;
   }
