@@ -9,7 +9,7 @@ module.exports = (db) => {
   const router = Router();
 
   // ─── Dashboard KPIs ─────────────────────────────────────────────────────────
-  router.get('/dashboard', (req, res) => {
+  router.get('/dashboard', async (req, res) => {
     try {
       // CA total et nb commandes
       const caStats = db.prepare(`
