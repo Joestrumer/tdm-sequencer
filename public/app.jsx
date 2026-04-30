@@ -16159,6 +16159,8 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
 
 function VuePartnerCenter({ showToast, readOnly }) {
   const [tab, setTab] = useState('dashboard');
+  const [owners, setOwners] = useState([]);
+  const [selectedOwner, setSelectedOwner] = useState('');
   const tabs = [
     { id: 'dashboard', label: 'Dashboard' },
     { id: 'partenaires', label: 'Partenaires' },
@@ -16167,19 +16169,32 @@ function VuePartnerCenter({ showToast, readOnly }) {
     { id: 'programmes', label: 'Programmes & Moments' },
   ];
 
+  useEffect(() => {
+    api.get('/partner-center/owners').then(r => setOwners(Array.isArray(r) ? r : [])).catch(() => {});
+  }, []);
+
   return (
     <div className="space-y-4">
-      <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
-        {tabs.map(t => (
-          <button key={t.id} onClick={() => setTab(t.id)}
-            className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
-            {t.label}
-          </button>
-        ))}
+      <div className="flex items-center gap-4 flex-wrap">
+        <div className="flex gap-1 bg-slate-100 rounded-lg p-1 w-fit">
+          {tabs.map(t => (
+            <button key={t.id} onClick={() => setTab(t.id)}
+              className={`px-4 py-2 rounded-md text-sm font-medium transition-colors ${tab === t.id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
+              {t.label}
+            </button>
+          ))}
+        </div>
+        {owners.length > 0 && (
+          <select value={selectedOwner} onChange={e => setSelectedOwner(e.target.value)}
+            className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+            <option value="">Tous les owners</option>
+            {owners.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          </select>
+        )}
       </div>
-      {tab === 'dashboard' && <VuePartnerDashboard showToast={showToast} />}
-      {tab === 'partenaires' && <VuePartnerList showToast={showToast} />}
-      {tab === 'segments' && <VuePartnerSegments showToast={showToast} readOnly={readOnly} />}
+      {tab === 'dashboard' && <VuePartnerDashboard showToast={showToast} ownerId={selectedOwner} />}
+      {tab === 'partenaires' && <VuePartnerList showToast={showToast} ownerId={selectedOwner} />}
+      {tab === 'segments' && <VuePartnerSegments showToast={showToast} readOnly={readOnly} ownerId={selectedOwner} />}
       {tab === 'communications' && <VuePartnerCampaigns showToast={showToast} readOnly={readOnly} />}
       {tab === 'programmes' && <VuePartnerPrograms showToast={showToast} readOnly={readOnly} />}
     </div>
@@ -16188,7 +16203,7 @@ function VuePartnerCenter({ showToast, readOnly }) {
 
 // ─── PARTNER DASHBOARD ──────────────────────────────────────────────────────
 
-function VuePartnerDashboard({ showToast }) {
+function VuePartnerDashboard({ showToast, ownerId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showRelance, setShowRelance] = useState(null);
@@ -16199,7 +16214,8 @@ function VuePartnerDashboard({ showToast }) {
 
   const charger = async () => {
     try {
-      const r = await api.get('/partner-center/dashboard');
+      const params = ownerId ? `?owner_id=${ownerId}` : '';
+      const r = await api.get('/partner-center/dashboard' + params);
       setData(r);
     } catch (e) {
       showToast('Erreur chargement dashboard: ' + e.message, 'error');
@@ -16208,7 +16224,7 @@ function VuePartnerDashboard({ showToast }) {
     }
   };
 
-  useEffect(() => { charger(); }, []);
+  useEffect(() => { charger(); }, [ownerId]);
 
   if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
   if (!data) return <div className="text-center py-12 text-red-400">Erreur de chargement</div>;
@@ -16260,7 +16276,8 @@ function VuePartnerDashboard({ showToast }) {
                   setExpandedType(bt.business_type);
                   setLoadingType(true);
                   try {
-                    const r = await api.get(`/partner-center/partners?business_type=${encodeURIComponent(bt.business_type)}`);
+                    const ownerParam = ownerId ? `&owner_id=${ownerId}` : '';
+                    const r = await api.get(`/partner-center/partners?business_type=${encodeURIComponent(bt.business_type)}${ownerParam}`);
                     setTypePartners(r);
                   } catch (_) { setTypePartners([]); }
                   finally { setLoadingType(false); }
@@ -16354,7 +16371,7 @@ function VuePartnerDashboard({ showToast }) {
 
 // ─── PARTNER LIST (Tab 2) ───────────────────────────────────────────────────
 
-function VuePartnerList({ showToast }) {
+function VuePartnerList({ showToast, ownerId }) {
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -16368,13 +16385,14 @@ function VuePartnerList({ showToast }) {
       if (filterBizType) params.set('business_type', filterBizType);
       if (filterCity) params.set('city', filterCity);
       if (search) params.set('search', search);
+      if (ownerId) params.set('owner_id', ownerId);
       const r = await api.get('/partner-center/partners?' + params.toString());
       setPartners(Array.isArray(r) ? r : []);
     } catch (e) { showToast('Erreur chargement', 'error'); }
     finally { setLoading(false); }
   };
 
-  useEffect(() => { charger(); }, [filterBizType, filterCity]);
+  useEffect(() => { charger(); }, [filterBizType, filterCity, ownerId]);
 
   const businessTypes = [...new Set(partners.map(p => p.business_type).filter(Boolean))].sort();
   const cities = [...new Set(partners.map(p => p.city).filter(Boolean))].sort();
@@ -16578,11 +16596,14 @@ function ModalPartnerDetail({ partner, onClose, showToast }) {
 
 // ─── PARTNER SEGMENTS (Tab 3) ───────────────────────────────────────────────
 
-function VuePartnerSegments({ showToast, readOnly }) {
+function VuePartnerSegments({ showToast, readOnly, ownerId }) {
   const [segments, setSegments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
   const [editSegment, setEditSegment] = useState(null);
+  const [viewContacts, setViewContacts] = useState(null);
+  const [contacts, setContacts] = useState([]);
+  const [loadingContacts, setLoadingContacts] = useState(false);
 
   const charger = async () => {
     try {
@@ -16628,12 +16649,23 @@ function VuePartnerSegments({ showToast, readOnly }) {
                 <td className="p-3"><span className="text-sm font-medium text-blue-600">{s.member_count}</span></td>
                 <td className="p-3 text-xs text-slate-500">{s.rules?.length || 0} règle(s)</td>
                 <td className="p-3 text-right">
-                  {!readOnly && (
-                    <div className="flex gap-1 justify-end">
-                      <button onClick={() => { setEditSegment(s); setShowBuilder(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
-                      <button onClick={() => supprimer(s.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
-                    </div>
-                  )}
+                  <div className="flex gap-1 justify-end">
+                    <button onClick={async () => {
+                      setViewContacts(s.id); setLoadingContacts(true);
+                      try {
+                        const ownerParam = ownerId ? `?owner_id=${ownerId}` : '';
+                        const r = await api.get(`/partner-center/segments/${s.id}/resolve-contacts${ownerParam}`);
+                        setContacts(r);
+                      } catch (e) { showToast('Erreur: ' + e.message, 'error'); setContacts([]); }
+                      finally { setLoadingContacts(false); }
+                    }} className="text-xs text-slate-600 hover:text-slate-800 px-2 py-1">Voir contacts</button>
+                    {!readOnly && (
+                      <>
+                        <button onClick={() => { setEditSegment(s); setShowBuilder(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
+                        <button onClick={() => supprimer(s.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
+                      </>
+                    )}
+                  </div>
                 </td>
               </tr>
             ))}
@@ -16641,6 +16673,41 @@ function VuePartnerSegments({ showToast, readOnly }) {
           </tbody>
         </table>
       </div>
+      {viewContacts && (
+        <div className="bg-white rounded-xl border border-slate-200 p-4">
+          <div className="flex items-center justify-between mb-3">
+            <h4 className="text-sm font-semibold text-slate-800">
+              Contacts du segment ({loadingContacts ? '...' : contacts.length})
+            </h4>
+            <button onClick={() => { setViewContacts(null); setContacts([]); }} className="text-xs text-slate-400 hover:text-slate-600">&times; Fermer</button>
+          </div>
+          {loadingContacts ? <div className="text-center py-4 text-slate-400 text-sm">Chargement...</div> : (
+            <div className="max-h-64 overflow-y-auto">
+              <table className="w-full text-xs">
+                <thead className="sticky top-0 bg-slate-50">
+                  <tr className="border-b border-slate-200">
+                    <th className="p-2 text-left text-slate-500">Nom</th>
+                    <th className="p-2 text-left text-slate-500">Email</th>
+                    <th className="p-2 text-left text-slate-500">Partenaire</th>
+                    <th className="p-2 text-left text-slate-500">Poste</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {contacts.map(c => (
+                    <tr key={c.id} className="border-b border-slate-50">
+                      <td className="p-2 text-slate-700">{c.firstname} {c.lastname}</td>
+                      <td className="p-2 text-slate-600">{c.email}</td>
+                      <td className="p-2 text-slate-500">{c.partner_name}</td>
+                      <td className="p-2 text-slate-500">{c.jobtitle || '—'}</td>
+                    </tr>
+                  ))}
+                  {contacts.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-slate-400">Aucun contact</td></tr>}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      )}
       {showBuilder && <ModalSegmentBuilder segment={editSegment} onClose={() => setShowBuilder(false)} onSave={() => { setShowBuilder(false); charger(); }} showToast={showToast} />}
     </div>
   );
@@ -16761,6 +16828,7 @@ function ModalSegmentBuilder({ segment, onClose, onSave, showToast }) {
 // ─── PARTNER CAMPAIGNS (Tab 4) ──────────────────────────────────────────────
 
 function VuePartnerCampaigns({ showToast, readOnly }) {
+  const [subTab, setSubTab] = useState('campaigns');
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
@@ -16782,6 +16850,14 @@ function VuePartnerCampaigns({ showToast, readOnly }) {
     catch (e) { showToast('Erreur: ' + e.message, 'error'); }
   };
 
+  const dupliquer = async (id) => {
+    try {
+      await api.post(`/partner-center/campaigns/${id}/duplicate`);
+      charger();
+      showToast('Campagne dupliquée', 'success');
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
   const statutColors = {
     brouillon: 'bg-slate-100 text-slate-600',
     'programmée': 'bg-blue-50 text-blue-700',
@@ -16793,55 +16869,69 @@ function VuePartnerCampaigns({ showToast, readOnly }) {
 
   return (
     <div className="space-y-4">
-      {!readOnly && (
-        <div className="flex justify-end">
+      <div className="flex items-center justify-between">
+        <div className="flex gap-1 bg-slate-50 rounded-lg p-0.5">
+          <button onClick={() => setSubTab('campaigns')} className={`px-3 py-1.5 rounded-md text-xs font-medium ${subTab === 'campaigns' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>Campagnes</button>
+          <button onClick={() => setSubTab('templates')} className={`px-3 py-1.5 rounded-md text-xs font-medium ${subTab === 'templates' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>Templates</button>
+        </div>
+        {subTab === 'campaigns' && !readOnly && (
           <button onClick={() => { setEditCampaign(null); setShowEditor(true); }}
             className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">+ Nouvelle campagne</button>
-        </div>
-      )}
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100 bg-slate-50">
-              <th className="text-left p-3 text-xs text-slate-500 font-medium">Nom</th>
-              <th className="text-left p-3 text-xs text-slate-500 font-medium">Statut</th>
-              <th className="text-left p-3 text-xs text-slate-500 font-medium">Destinataires</th>
-              <th className="text-left p-3 text-xs text-slate-500 font-medium">Envoyés</th>
-              <th className="text-left p-3 text-xs text-slate-500 font-medium">Ouvert</th>
-              <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {campaigns.map(c => (
-              <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50">
-                <td className="p-3">
-                  <div className="text-slate-800 font-medium">{c.nom}</div>
-                  <div className="text-xs text-slate-400">{c.sujet}</div>
-                </td>
-                <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded ${statutColors[c.statut] || 'bg-slate-100 text-slate-600'}`}>{c.statut}</span></td>
-                <td className="p-3 text-slate-600">{c.total_recipients}</td>
-                <td className="p-3 text-slate-600">{c.sent_count}</td>
-                <td className="p-3 text-slate-600">{c.stats?.open_rate || 0}%</td>
-                <td className="p-3 text-right">
-                  <div className="flex gap-1 justify-end">
-                    <button onClick={() => setViewCampaign(c)} className="text-xs text-slate-600 hover:text-slate-800 px-2 py-1">Voir</button>
-                    {!readOnly && c.statut === 'brouillon' && (
-                      <button onClick={() => { setEditCampaign(c); setShowEditor(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
-                    )}
-                    {!readOnly && c.statut !== 'en_cours' && (
-                      <button onClick={() => supprimer(c.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
-                    )}
-                  </div>
-                </td>
-              </tr>
-            ))}
-            {campaigns.length === 0 && <tr><td colSpan="6" className="p-4 text-center text-slate-400">Aucune campagne</td></tr>}
-          </tbody>
-        </table>
+        )}
       </div>
 
-      {showEditor && <ModalPartnerCampaignEditor campaign={editCampaign} onClose={() => setShowEditor(false)} onSave={() => { setShowEditor(false); charger(); }} showToast={showToast} />}
-      {viewCampaign && <ModalPartnerCampaignDetail campaign={viewCampaign} onClose={() => setViewCampaign(null)} showToast={showToast} onRefresh={charger} readOnly={readOnly} />}
+      {subTab === 'templates' && <VuePartnerTemplates showToast={showToast} readOnly={readOnly} />}
+
+      {subTab === 'campaigns' && (
+        <>
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="text-left p-3 text-xs text-slate-500 font-medium">Nom</th>
+                  <th className="text-left p-3 text-xs text-slate-500 font-medium">Statut</th>
+                  <th className="text-left p-3 text-xs text-slate-500 font-medium">Destinataires</th>
+                  <th className="text-left p-3 text-xs text-slate-500 font-medium">Envoyés</th>
+                  <th className="text-left p-3 text-xs text-slate-500 font-medium">Ouvert</th>
+                  <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {campaigns.map(c => (
+                  <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="p-3">
+                      <div className="text-slate-800 font-medium">{c.nom}</div>
+                      <div className="text-xs text-slate-400">{c.sujet}</div>
+                    </td>
+                    <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded ${statutColors[c.statut] || 'bg-slate-100 text-slate-600'}`}>{c.statut}</span></td>
+                    <td className="p-3 text-slate-600">{c.total_recipients}</td>
+                    <td className="p-3 text-slate-600">{c.sent_count}</td>
+                    <td className="p-3 text-slate-600">{c.stats?.open_rate || 0}%</td>
+                    <td className="p-3 text-right">
+                      <div className="flex gap-1 justify-end">
+                        <button onClick={() => setViewCampaign(c)} className="text-xs text-slate-600 hover:text-slate-800 px-2 py-1">Voir</button>
+                        {!readOnly && c.statut === 'brouillon' && (
+                          <button onClick={() => { setEditCampaign(c); setShowEditor(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
+                        )}
+                        {!readOnly && (
+                          <button onClick={() => dupliquer(c.id)} className="text-xs text-purple-600 hover:text-purple-800 px-2 py-1">Dupliquer</button>
+                        )}
+                        {!readOnly && c.statut !== 'en_cours' && (
+                          <button onClick={() => supprimer(c.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {campaigns.length === 0 && <tr><td colSpan="6" className="p-4 text-center text-slate-400">Aucune campagne</td></tr>}
+              </tbody>
+            </table>
+          </div>
+
+          {showEditor && <ModalPartnerCampaignEditor campaign={editCampaign} onClose={() => setShowEditor(false)} onSave={() => { setShowEditor(false); charger(); }} showToast={showToast} />}
+          {viewCampaign && <ModalPartnerCampaignDetail campaign={viewCampaign} onClose={() => setViewCampaign(null)} showToast={showToast} onRefresh={charger} readOnly={readOnly} />}
+        </>
+      )}
     </div>
   );
 }
@@ -16854,6 +16944,7 @@ function ModalPartnerCampaignEditor({ campaign, onClose, onSave, showToast }) {
   const [sourceId, setSourceId] = useState(campaign?.source_id || '');
   const [segments, setSegments] = useState([]);
   const [lists, setLists] = useState([]);
+  const [templates, setTemplates] = useState([]);
   const [saving, setSaving] = useState(false);
   const editorRef = useRef(null);
   const tinymceRef = useRef(null);
@@ -16863,11 +16954,24 @@ function ModalPartnerCampaignEditor({ campaign, onClose, onSave, showToast }) {
   useEffect(() => {
     (async () => {
       try {
-        const [s, l] = await Promise.all([api.get('/partner-center/segments'), api.get('/partner-center/contact-lists')]);
-        setSegments(s); setLists(l);
+        const [s, l, t] = await Promise.all([
+          api.get('/partner-center/segments'),
+          api.get('/partner-center/contact-lists'),
+          api.get('/partner-center/templates'),
+        ]);
+        setSegments(s); setLists(l); setTemplates(Array.isArray(t) ? t : []);
       } catch (_) {}
     })();
   }, []);
+
+  const applyTemplate = (templateId) => {
+    const t = templates.find(tp => tp.id === templateId);
+    if (!t) return;
+    setSujet(t.sujet);
+    setCorpsHtml(t.corps_html || '');
+    if (tinymceRef.current) tinymceRef.current.setContent(t.corps_html || '');
+    showToast(`Template "${t.nom}" appliqué`, 'success');
+  };
 
   useEffect(() => {
     const timer = setTimeout(() => {
@@ -16936,6 +17040,13 @@ function ModalPartnerCampaignEditor({ campaign, onClose, onSave, showToast }) {
               {lists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.member_count})</option>)}
             </select>
           )}
+          {templates.length > 0 && (
+            <div><label className="block text-xs font-medium text-slate-600 mb-1">Appliquer un template</label>
+              <select onChange={e => { if (e.target.value) applyTemplate(e.target.value); e.target.value = ''; }} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                <option value="">— Choisir un template —</option>
+                {templates.map(t => <option key={t.id} value={t.id}>{t.nom} ({t.categorie})</option>)}
+              </select></div>
+          )}
           <div><label className="block text-xs font-medium text-slate-600 mb-1">Sujet</label>
             <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
           <div><label className="block text-xs font-medium text-slate-600 mb-1">Corps</label>
@@ -16964,6 +17075,9 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
   const [loading, setLoading] = useState(true);
   const [testEmail, setTestEmail] = useState('');
   const [sending, setSending] = useState(false);
+  const [previewContacts, setPreviewContacts] = useState(null);
+  const [excludeEmails, setExcludeEmails] = useState(new Set());
+  const [loadingPreview, setLoadingPreview] = useState(false);
 
   useEffect(() => {
     (async () => {
@@ -16978,13 +17092,35 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
     })();
   }, [campaign.id]);
 
-  const addRecipients = async () => {
+  const previewRecipients = async () => {
     if (!campaign.source_type || !campaign.source_id) { showToast('Configurez la source dans l\'éditeur', 'error'); return; }
+    setLoadingPreview(true);
     try {
-      const r = await api.post(`/partner-center/campaigns/${campaign.id}/recipients`, { source_type: campaign.source_type, source_id: campaign.source_id });
+      const r = await api.post(`/partner-center/campaigns/${campaign.id}/recipients/preview`, { source_type: campaign.source_type, source_id: campaign.source_id });
+      setPreviewContacts(r);
+      setExcludeEmails(new Set());
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    finally { setLoadingPreview(false); }
+  };
+
+  const confirmAddRecipients = async () => {
+    try {
+      const r = await api.post(`/partner-center/campaigns/${campaign.id}/recipients`, {
+        source_type: campaign.source_type, source_id: campaign.source_id,
+        exclude_emails: [...excludeEmails],
+      });
       showToast(`${r.added} destinataire(s) ajouté(s)`, 'success');
+      setPreviewContacts(null);
       const recips = await api.get(`/partner-center/campaigns/${campaign.id}/recipients`);
       setRecipients(recips);
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const deleteRecipient = async (recipientId) => {
+    try {
+      await api.delete(`/partner-center/campaigns/${campaign.id}/recipients/${recipientId}`);
+      setRecipients(recipients.filter(r => r.id !== recipientId));
+      showToast('Destinataire supprimé', 'success');
     } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
   };
 
@@ -17047,8 +17183,8 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
               {/* Actions */}
               {!readOnly && campaign.statut === 'brouillon' && (
                 <div className="flex gap-2 flex-wrap">
-                  <button onClick={addRecipients} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100">
-                    Charger destinataires
+                  <button onClick={previewRecipients} disabled={loadingPreview} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-50">
+                    {loadingPreview ? 'Chargement...' : 'Charger destinataires'}
                   </button>
                   <div className="flex gap-1">
                     <input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="Email test..."
@@ -17064,6 +17200,52 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
                 </div>
               )}
 
+              {/* Preview contacts (before adding) */}
+              {previewContacts && (
+                <div className="border border-blue-200 rounded-lg bg-blue-50/50 p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-blue-800">
+                      Preview : {previewContacts.filter(c => !c.already_added && !excludeEmails.has(c.email)).length} contact(s) à ajouter
+                    </span>
+                    <div className="flex gap-2">
+                      <button onClick={() => setPreviewContacts(null)} className="text-xs text-slate-500 hover:text-slate-700">Annuler</button>
+                      <button onClick={confirmAddRecipients} className="text-xs bg-blue-600 text-white px-3 py-1.5 rounded-lg hover:bg-blue-700">Confirmer</button>
+                    </div>
+                  </div>
+                  <div className="max-h-48 overflow-y-auto">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-blue-50">
+                        <tr className="border-b border-blue-200">
+                          <th className="p-1.5 text-left w-8"></th>
+                          <th className="p-1.5 text-left text-slate-500">Email</th>
+                          <th className="p-1.5 text-left text-slate-500">Nom</th>
+                          <th className="p-1.5 text-left text-slate-500">Partenaire</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewContacts.map((c, i) => (
+                          <tr key={i} className={`border-b border-blue-50 ${c.already_added ? 'opacity-40' : ''}`}>
+                            <td className="p-1.5">
+                              {c.already_added ? <span className="text-xs text-slate-400" title="Déjà ajouté">&#10003;</span> : (
+                                <input type="checkbox" checked={!excludeEmails.has(c.email)}
+                                  onChange={e => {
+                                    const next = new Set(excludeEmails);
+                                    e.target.checked ? next.delete(c.email) : next.add(c.email);
+                                    setExcludeEmails(next);
+                                  }} />
+                              )}
+                            </td>
+                            <td className="p-1.5 text-slate-600">{c.email}</td>
+                            <td className="p-1.5 text-slate-700">{c.firstname} {c.lastname}</td>
+                            <td className="p-1.5 text-slate-500">{c.partner_name}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+
               {/* Recipients */}
               <div className="max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
                 <table className="w-full text-xs">
@@ -17073,6 +17255,7 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
                       <th className="p-2 text-left text-slate-500">Nom</th>
                       <th className="p-2 text-left text-slate-500">Partenaire</th>
                       <th className="p-2 text-left text-slate-500">Statut</th>
+                      {!readOnly && campaign.statut === 'brouillon' && <th className="p-2 text-right text-slate-500"></th>}
                     </tr>
                   </thead>
                   <tbody>
@@ -17082,14 +17265,175 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
                         <td className="p-2 text-slate-700">{r.firstname} {r.lastname}</td>
                         <td className="p-2 text-slate-500">{r.partner_name}</td>
                         <td className="p-2"><span className={`px-1.5 py-0.5 rounded ${r.statut === 'envoyé' ? 'bg-emerald-50 text-emerald-600' : r.statut === 'erreur' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-500'}`}>{r.statut}</span></td>
+                        {!readOnly && campaign.statut === 'brouillon' && (
+                          <td className="p-2 text-right">
+                            <button onClick={() => deleteRecipient(r.id)} className="text-xs text-red-400 hover:text-red-600">&times;</button>
+                          </td>
+                        )}
                       </tr>
                     ))}
-                    {recipients.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-slate-400">Aucun destinataire</td></tr>}
+                    {recipients.length === 0 && <tr><td colSpan={!readOnly && campaign.statut === 'brouillon' ? 5 : 4} className="p-4 text-center text-slate-400">Aucun destinataire</td></tr>}
                   </tbody>
                 </table>
               </div>
             </>
           )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PARTNER TEMPLATES ──────────────────────────────────────────────────────
+
+function VuePartnerTemplates({ showToast, readOnly }) {
+  const [templates, setTemplates] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showEditor, setShowEditor] = useState(false);
+  const [editTemplate, setEditTemplate] = useState(null);
+
+  const charger = async () => {
+    try {
+      const r = await api.get('/partner-center/templates');
+      setTemplates(Array.isArray(r) ? r : []);
+    } catch (e) { showToast('Erreur chargement templates', 'error'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { charger(); }, []);
+
+  const supprimer = async (id) => {
+    if (!confirm('Supprimer ce template ?')) return;
+    try { await api.delete(`/partner-center/templates/${id}`); charger(); showToast('Template supprimé', 'success'); }
+    catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  if (loading) return <div className="text-center py-8 text-slate-400 text-sm">Chargement...</div>;
+
+  return (
+    <div className="space-y-4">
+      {!readOnly && (
+        <div className="flex justify-end">
+          <button onClick={() => { setEditTemplate(null); setShowEditor(true); }}
+            className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">+ Nouveau template</button>
+        </div>
+      )}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Nom</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Catégorie</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Sujet</th>
+              <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {templates.map(t => (
+              <tr key={t.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="p-3 text-slate-800 font-medium">{t.nom}</td>
+                <td className="p-3"><span className="text-xs px-2 py-0.5 rounded bg-purple-50 text-purple-700">{t.categorie}</span></td>
+                <td className="p-3 text-slate-500 text-xs truncate max-w-[200px]">{t.sujet}</td>
+                <td className="p-3 text-right">
+                  {!readOnly && (
+                    <div className="flex gap-1 justify-end">
+                      <button onClick={() => { setEditTemplate(t); setShowEditor(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
+                      <button onClick={() => supprimer(t.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {templates.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-slate-400">Aucun template</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {showEditor && <ModalPartnerTemplateEditor template={editTemplate} onClose={() => setShowEditor(false)} onSave={() => { setShowEditor(false); charger(); }} showToast={showToast} />}
+    </div>
+  );
+}
+
+function ModalPartnerTemplateEditor({ template, onClose, onSave, showToast }) {
+  const [nom, setNom] = useState(template?.nom || '');
+  const [categorie, setCategorie] = useState(template?.categorie || 'General');
+  const [sujet, setSujet] = useState(template?.sujet || '');
+  const [corpsHtml, setCorpsHtml] = useState(template?.corps_html || '');
+  const [saving, setSaving] = useState(false);
+  const editorRef = useRef(null);
+  const tinymceRef = useRef(null);
+  const corpsHtmlRef = useRef(corpsHtml);
+  corpsHtmlRef.current = corpsHtml;
+
+  const CATEGORIES = ['General', 'Luxe', 'Boutique', 'Resort', 'SPA', 'Relance', 'Anniversaire', 'Bienvenue'];
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!editorRef.current || tinymceRef.current) return;
+      const containerId = 'tinymce-ptemplate-' + Date.now();
+      editorRef.current.id = containerId;
+      if (typeof tinymce === 'undefined') return;
+      tinymce.init({
+        selector: '#' + containerId, plugins: 'lists link image table code fullscreen',
+        toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | link image table | forecolor | removeformat | fullscreen code',
+        menubar: false, height: 300, content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
+        branding: false, promotion: false, license_key: 'gpl',
+        setup: (editor) => {
+          editor.on('init', () => { tinymceRef.current = editor; if (corpsHtmlRef.current) editor.setContent(corpsHtmlRef.current); });
+          editor.on('input change keyup ExecCommand NodeChange', () => setCorpsHtml(editor.getContent()));
+        }
+      });
+    }, 300);
+    return () => { clearTimeout(timer); if (tinymceRef.current) { tinymceRef.current.remove(); tinymceRef.current = null; } };
+  }, []);
+
+  const variables = ['prenom', 'nom', 'hotel', 'business_type', 'partner_since', 'anniversaire_annees'];
+
+  const sauvegarder = async () => {
+    if (!nom || !sujet) { showToast('Nom et sujet requis', 'error'); return; }
+    setSaving(true);
+    const html = tinymceRef.current ? tinymceRef.current.getContent() : corpsHtml;
+    try {
+      if (template?.id) {
+        await api.put(`/partner-center/templates/${template.id}`, { nom, categorie, sujet, corps_html: html });
+      } else {
+        await api.post('/partner-center/templates', { nom, categorie, sujet, corps_html: html });
+      }
+      showToast('Template sauvegardé', 'success');
+      onSave();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-5 border-b border-slate-100">
+          <h2 className="text-lg font-semibold text-slate-900">{template ? 'Modifier template' : 'Nouveau template'}</h2>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-xs font-medium text-slate-600 mb-1">Nom</label>
+              <input value={nom} onChange={e => setNom(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="block text-xs font-medium text-slate-600 mb-1">Catégorie</label>
+              <select value={categorie} onChange={e => setCategorie(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select></div>
+          </div>
+          <div><label className="block text-xs font-medium text-slate-600 mb-1">Sujet</label>
+            <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
+          <div><label className="block text-xs font-medium text-slate-600 mb-1">Corps</label>
+            <div ref={editorRef}><textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" rows={10} placeholder="Chargement..."></textarea></div></div>
+          <div className="flex flex-wrap gap-1">
+            {variables.map(v => (
+              <button key={v} onClick={() => tinymceRef.current?.insertContent(`{{${v}}}`)}
+                className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200">{`{{${v}}}`}</button>
+            ))}
+          </div>
+        </div>
+        <div className="flex-shrink-0 p-5 border-t border-slate-100 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
+          <button onClick={sauvegarder} disabled={saving} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+          </button>
         </div>
       </div>
     </div>

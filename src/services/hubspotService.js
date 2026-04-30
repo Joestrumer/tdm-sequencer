@@ -414,7 +414,7 @@ async function rechercherPartnerCompanies() {
         filterGroups: [{
           filters: [{ propertyName: 'type', operator: 'EQ', value: 'PARTNER' }]
         }],
-        properties: ['name', 'domain', 'business_type', 'capacite', 'city', 'zip', 'country', 'partner_since'],
+        properties: ['name', 'domain', 'business_type', 'capacite', 'city', 'zip', 'country', 'partner_since', 'hubspot_owner_id'],
         limit: 100,
       };
       if (after) body.after = after;
@@ -433,6 +433,7 @@ async function rechercherPartnerCompanies() {
         postal_code: c.properties.zip || '',
         country: c.properties.country || '',
         partner_since: c.properties.partner_since || '',
+        hubspot_owner_id: c.properties.hubspot_owner_id || '',
       }));
       allResults.push(...results);
       after = res?.paging?.next?.after || null;
@@ -441,6 +442,23 @@ async function rechercherPartnerCompanies() {
   } catch (err) {
     logger.error('HubSpot rechercherPartnerCompanies', { error: err.message });
     return allResults;
+  }
+}
+
+// ─── Fetch HubSpot owners ──────────────────────────────────────────────────
+async function fetchOwners() {
+  if (!getApiKey()) return [];
+  try {
+    const res = await hubspotFetch('/crm/v3/owners');
+    return (res?.results || []).map(o => ({
+      id: o.id,
+      email: o.email || '',
+      firstName: o.firstName || '',
+      lastName: o.lastName || '',
+    }));
+  } catch (err) {
+    logger.error('HubSpot fetchOwners', { error: err.message });
+    return [];
   }
 }
 
@@ -516,6 +534,7 @@ module.exports = {
   getClosedWonDeals,
   contactsDeCompany,
   trouverCompanyParDomaine,
+  fetchOwners,
 };
 
 // ─── Deals d'un contact ───────────────────────────────────────────────────────

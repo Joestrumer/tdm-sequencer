@@ -741,6 +741,16 @@ db.exec(`
     statut TEXT DEFAULT 'envoyé'
   );
 
+  CREATE TABLE IF NOT EXISTS partner_email_templates (
+    id TEXT PRIMARY KEY,
+    nom TEXT NOT NULL,
+    categorie TEXT DEFAULT 'General',
+    sujet TEXT NOT NULL,
+    corps_html TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_partner_email_templates_cat ON partner_email_templates(categorie);
   CREATE INDEX IF NOT EXISTS idx_partner_segments_name ON partner_segments(name);
   CREATE INDEX IF NOT EXISTS idx_partner_segment_rules_seg ON partner_segment_rules(segment_id);
   CREATE INDEX IF NOT EXISTS idx_partner_campaigns_statut ON partner_campaigns(statut);
@@ -830,6 +840,7 @@ const migrations = [
   'ALTER TABLE hubspot_partners ADD COLUMN email TEXT',
   'ALTER TABLE hubspot_partners ADD COLUMN notes TEXT',
   'ALTER TABLE hubspot_partner_contacts ADD COLUMN phone TEXT',
+  'ALTER TABLE hubspot_partners ADD COLUMN hubspot_owner_id TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

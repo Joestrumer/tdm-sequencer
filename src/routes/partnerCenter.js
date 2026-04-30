@@ -9,14 +9,62 @@ module.exports = (db) => {
   const router = Router();
 
   // ═══════════════════════════════════════════════════════════════════════════
+  //  OWNERS (HubSpot Company Owners)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  let ownersCache = null;
+  let ownersCacheAt = 0;
+
+  router.get('/owners', async (req, res) => {
+    try {
+      // Get distinct owner IDs from local DB
+      const ownerIds = db.prepare("SELECT DISTINCT hubspot_owner_id FROM hubspot_partners WHERE hubspot_owner_id IS NOT NULL AND hubspot_owner_id != ''").all().map(r => r.hubspot_owner_id);
+      if (ownerIds.length === 0) return res.json([]);
+
+      // Cache owners from HubSpot API (15 min)
+      if (!ownersCache || Date.now() - ownersCacheAt > 15 * 60 * 1000) {
+        try {
+          const hubspotService = require('../services/hubspotService');
+          const allOwners = await hubspotService.fetchOwners();
+          ownersCache = allOwners;
+          ownersCacheAt = Date.now();
+        } catch (_) {
+          if (!ownersCache) ownersCache = [];
+        }
+      }
+
+      const result = ownerIds.map(oid => {
+        const owner = ownersCache.find(o => o.id === oid);
+        return {
+          id: oid,
+          label: owner ? `${owner.firstName} ${owner.lastName}`.trim() || owner.email : oid,
+          email: owner?.email || '',
+        };
+      }).sort((a, b) => a.label.localeCompare(b.label));
+
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Helper: build owner filter clause
+  function ownerFilter(req) {
+    const ownerId = req.query.owner_id;
+    if (!ownerId) return { ownerWhere: '', ownerParams: [] };
+    return { ownerWhere: ' AND hp.hubspot_owner_id = ?', ownerParams: [ownerId] };
+  }
+
+  // ═══════════════════════════════════════════════════════════════════════════
   //  DASHBOARD
   // ═══════════════════════════════════════════════════════════════════════════
 
   router.get('/dashboard', async (req, res) => {
     try {
-      const nb_partenaires = db.prepare('SELECT COUNT(*) as n FROM hubspot_partners').get().n;
-      const nb_contacts = db.prepare('SELECT COUNT(*) as n FROM hubspot_partner_contacts').get().n;
-      const points_eau = db.prepare('SELECT COALESCE(SUM(capacite), 0) as n FROM hubspot_partners').get().n;
+      const { ownerWhere, ownerParams } = ownerFilter(req);
+      const nb_partenaires = db.prepare(`SELECT COUNT(*) as n FROM hubspot_partners hp WHERE 1=1${ownerWhere}`).get(...ownerParams).n;
+      const nb_contacts = db.prepare(`SELECT COUNT(*) as n FROM hubspot_partner_contacts c JOIN hubspot_partners hp ON hp.hubspot_company_id = c.hubspot_company_id WHERE 1=1${ownerWhere}`).get(...ownerParams).n;
+      const points_eau = db.prepare(`SELECT COALESCE(SUM(capacite), 0) as n FROM hubspot_partners hp WHERE 1=1${ownerWhere}`).get(...ownerParams).n;
 
       // CA close won
       let ca_close_won = 0;
@@ -41,9 +89,9 @@ module.exports = (db) => {
       // Répartition business_type
       const par_business_type = db.prepare(`
         SELECT business_type, COUNT(*) as count, COALESCE(SUM(capacite), 0) as capacite_totale
-        FROM hubspot_partners WHERE business_type IS NOT NULL AND business_type != ''
+        FROM hubspot_partners hp WHERE business_type IS NOT NULL AND business_type != ''${ownerWhere}
         GROUP BY business_type ORDER BY count DESC
-      `).all();
+      `).all(...ownerParams);
 
       // Alertes at-risk (pas de deal depuis 6+ mois)
       const at_risk = db.prepare(`
@@ -51,22 +99,23 @@ module.exports = (db) => {
                MAX(d.closedate) as last_deal_date
         FROM hubspot_partners hp
         LEFT JOIN hubspot_deals_cache d ON d.hubspot_company_id = hp.hubspot_company_id
+        WHERE 1=1${ownerWhere}
         GROUP BY hp.id
         HAVING last_deal_date IS NULL OR last_deal_date < datetime('now', '-6 months')
         ORDER BY last_deal_date ASC NULLS FIRST
         LIMIT 20
-      `).all();
+      `).all(...ownerParams);
 
       // Anniversaires 30j
       const anniversaires = db.prepare(`
-        SELECT id, name, city, business_type, partner_since,
-               CAST((julianday(partner_since) - julianday('now')) % 365.25 AS INTEGER) as days_to_anniversary
-        FROM hubspot_partners
-        WHERE partner_since IS NOT NULL
-        AND ABS(CAST((julianday('now') - julianday(partner_since)) % 365.25 AS INTEGER)) <= 30
+        SELECT hp.id, hp.name, hp.city, hp.business_type, hp.partner_since,
+               CAST((julianday(hp.partner_since) - julianday('now')) % 365.25 AS INTEGER) as days_to_anniversary
+        FROM hubspot_partners hp
+        WHERE hp.partner_since IS NOT NULL
+        AND ABS(CAST((julianday('now') - julianday(hp.partner_since)) % 365.25 AS INTEGER)) <= 30${ownerWhere}
         ORDER BY days_to_anniversary
         LIMIT 20
-      `).all();
+      `).all(...ownerParams);
 
       // Top partenaires CA
       const top_partenaires = db.prepare(`
@@ -74,10 +123,11 @@ module.exports = (db) => {
                COALESCE(SUM(d.amount), 0) as ca_total, COUNT(d.id) as nb_deals
         FROM hubspot_partners hp
         LEFT JOIN hubspot_deals_cache d ON d.hubspot_company_id = hp.hubspot_company_id
+        WHERE 1=1${ownerWhere}
         GROUP BY hp.id
         HAVING ca_total > 0
         ORDER BY ca_total DESC LIMIT 10
-      `).all();
+      `).all(...ownerParams);
 
       res.json({
         kpis: { nb_partenaires, nb_contacts, ca_close_won, points_eau },
@@ -97,9 +147,10 @@ module.exports = (db) => {
 
   router.get('/partners', (req, res) => {
     try {
-      const { business_type, city, country, search } = req.query;
+      const { business_type, city, country, search, owner_id } = req.query;
       let sql = 'SELECT hp.*, (SELECT COUNT(*) FROM hubspot_partner_contacts c WHERE c.hubspot_company_id = hp.hubspot_company_id) as nb_contacts FROM hubspot_partners hp WHERE 1=1';
       const params = [];
+      if (owner_id) { sql += ' AND hp.hubspot_owner_id = ?'; params.push(owner_id); }
       if (business_type) { sql += ' AND hp.business_type = ?'; params.push(business_type); }
       if (city) { sql += ' AND hp.city = ?'; params.push(city); }
       if (country) { sql += ' AND hp.country = ?'; params.push(country); }
@@ -262,8 +313,26 @@ module.exports = (db) => {
   router.get('/segments/:id/resolve', (req, res) => {
     try {
       const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(req.params.id);
-      const partners = resolveSegment(rules);
+      const partners = resolveSegment(rules, req.query.owner_id);
       res.json(partners);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Résoudre les contacts d'un segment
+  router.get('/segments/:id/resolve-contacts', (req, res) => {
+    try {
+      const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(req.params.id);
+      const partners = resolveSegment(rules, req.query.owner_id);
+      const contacts = [];
+      for (const p of partners) {
+        const pContacts = db.prepare("SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''").all(p.hubspot_company_id);
+        for (const c of pContacts) {
+          contacts.push({ ...c, partner_name: p.name, partner_business_type: p.business_type });
+        }
+      }
+      res.json(contacts);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
@@ -319,12 +388,13 @@ module.exports = (db) => {
     return ALLOWED_FIELDS[field] || null;
   }
 
-  function resolveSegment(rules) {
+  function resolveSegment(rules, ownerId) {
     const { where, params } = buildSegmentWhere(rules);
-    return db.prepare(`
-      SELECT hp.*, (SELECT COUNT(*) FROM hubspot_partner_contacts c WHERE c.hubspot_company_id = hp.hubspot_company_id) as nb_contacts
-      FROM hubspot_partners hp WHERE ${where} ORDER BY hp.name
-    `).all(...params);
+    let sql = `SELECT hp.*, (SELECT COUNT(*) FROM hubspot_partner_contacts c WHERE c.hubspot_company_id = hp.hubspot_company_id) as nb_contacts
+      FROM hubspot_partners hp WHERE ${where}`;
+    if (ownerId) { sql += ' AND hp.hubspot_owner_id = ?'; params.push(ownerId); }
+    sql += ' ORDER BY hp.name';
+    return db.prepare(sql).all(...params);
   }
 
   function resolveSegmentCount(rules) {
@@ -398,6 +468,49 @@ module.exports = (db) => {
     }
   });
 
+  // Preview destinataires (sans les ajouter)
+  router.post('/campaigns/:id/recipients/preview', (req, res) => {
+    try {
+      const campaign = db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(req.params.id);
+      if (!campaign) return res.status(404).json({ erreur: 'Campagne introuvable' });
+
+      const { source_type, source_id } = req.body;
+      let contactsToPreview = [];
+
+      if (source_type === 'segment') {
+        const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(source_id);
+        const partners = resolveSegment(rules);
+        for (const p of partners) {
+          const pContacts = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ""').all(p.hubspot_company_id);
+          for (const c of pContacts) {
+            contactsToPreview.push({ contact_id: c.id, email: c.email, firstname: c.firstname, lastname: c.lastname, partner_name: p.name, jobtitle: c.jobtitle });
+          }
+        }
+      } else if (source_type === 'contact_list') {
+        const members = db.prepare(`
+          SELECT c.*, p.name as partner_name FROM partner_contact_list_members m
+          JOIN hubspot_partner_contacts c ON c.id = m.contact_id
+          JOIN hubspot_partners p ON p.hubspot_company_id = c.hubspot_company_id
+          WHERE m.list_id = ? AND c.email IS NOT NULL AND c.email != ''
+        `).all(source_id);
+        contactsToPreview = members.map(m => ({ contact_id: m.id, email: m.email, firstname: m.firstname, lastname: m.lastname, partner_name: m.partner_name, jobtitle: m.jobtitle }));
+      } else {
+        return res.status(400).json({ erreur: 'source_type requis (segment ou contact_list)' });
+      }
+
+      // Mark already_added
+      const existing = new Set(db.prepare('SELECT email FROM partner_campaign_recipients WHERE campaign_id = ?').all(req.params.id).map(r => r.email.toLowerCase()));
+      const result = contactsToPreview.map(c => ({
+        ...c,
+        already_added: existing.has((c.email || '').toLowerCase()),
+      }));
+
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // Ajouter destinataires (depuis segment, liste ou manuel)
   router.post('/campaigns/:id/recipients', (req, res) => {
     try {
@@ -405,7 +518,7 @@ module.exports = (db) => {
       if (!campaign) return res.status(404).json({ erreur: 'Campagne introuvable' });
       if (campaign.statut !== 'brouillon') return res.status(400).json({ erreur: 'Campagne non modifiable' });
 
-      const { source_type, source_id, contacts } = req.body;
+      const { source_type, source_id, contacts, exclude_emails } = req.body;
       let contactsToAdd = [];
 
       if (source_type === 'segment') {
@@ -431,13 +544,14 @@ module.exports = (db) => {
         return res.status(400).json({ erreur: 'source_type invalide (segment, contact_list, manual)' });
       }
 
-      // Dédupliquer
+      // Dédupliquer + exclure
       const existing = new Set(db.prepare('SELECT email FROM partner_campaign_recipients WHERE campaign_id = ?').all(req.params.id).map(r => r.email.toLowerCase()));
+      const excludeSet = new Set((exclude_emails || []).map(e => e.toLowerCase()));
       const ins = db.prepare('INSERT INTO partner_campaign_recipients (id, campaign_id, contact_id, email, firstname, lastname, partner_name, tracking_id) VALUES (?, ?, ?, ?, ?, ?, ?, ?)');
       let added = 0, skipped = 0;
       db.transaction(() => {
         for (const c of contactsToAdd) {
-          if (!c.email || existing.has(c.email.toLowerCase())) { skipped++; continue; }
+          if (!c.email || existing.has(c.email.toLowerCase()) || excludeSet.has(c.email.toLowerCase())) { skipped++; continue; }
           ins.run(randomUUID(), req.params.id, c.contact_id || null, c.email, c.firstname || '', c.lastname || '', c.partner_name || '', randomUUID());
           existing.add(c.email.toLowerCase());
           added++;
@@ -457,6 +571,36 @@ module.exports = (db) => {
     try {
       const recipients = db.prepare('SELECT * FROM partner_campaign_recipients WHERE campaign_id = ? ORDER BY partner_name, lastname').all(req.params.id);
       res.json(recipients);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Supprimer un destinataire
+  router.delete('/campaigns/:id/recipients/:recipientId', (req, res) => {
+    try {
+      const campaign = db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(req.params.id);
+      if (!campaign) return res.status(404).json({ erreur: 'Campagne introuvable' });
+      if (campaign.statut !== 'brouillon') return res.status(400).json({ erreur: 'Campagne non modifiable' });
+      db.prepare('DELETE FROM partner_campaign_recipients WHERE id = ? AND campaign_id = ?').run(req.params.recipientId, req.params.id);
+      const total = db.prepare('SELECT COUNT(*) as n FROM partner_campaign_recipients WHERE campaign_id = ?').get(req.params.id).n;
+      db.prepare('UPDATE partner_campaigns SET total_recipients = ? WHERE id = ?').run(total, req.params.id);
+      res.json({ ok: true, total });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Dupliquer une campagne
+  router.post('/campaigns/:id/duplicate', (req, res) => {
+    try {
+      const c = db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(req.params.id);
+      if (!c) return res.status(404).json({ erreur: 'Campagne introuvable' });
+      const newId = randomUUID();
+      db.prepare('INSERT INTO partner_campaigns (id, nom, sujet, corps_html, source_type, source_id) VALUES (?, ?, ?, ?, ?, ?)').run(
+        newId, c.nom + ' (copie)', c.sujet, c.corps_html, c.source_type, c.source_id
+      );
+      res.json(db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(newId));
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
@@ -733,6 +877,47 @@ module.exports = (db) => {
     try {
       db.prepare('DELETE FROM partner_contact_list_members WHERE list_id = ?').run(req.params.id);
       db.prepare('DELETE FROM partner_contact_lists WHERE id = ?').run(req.params.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  TEMPLATES PARTENAIRES
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  router.get('/templates', (req, res) => {
+    try {
+      const templates = db.prepare('SELECT * FROM partner_email_templates ORDER BY categorie, nom').all();
+      res.json(templates);
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  router.post('/templates', (req, res) => {
+    try {
+      const { nom, categorie, sujet, corps_html } = req.body;
+      if (!nom || !sujet) return res.status(400).json({ erreur: 'nom et sujet requis' });
+      const id = randomUUID();
+      db.prepare('INSERT INTO partner_email_templates (id, nom, categorie, sujet, corps_html) VALUES (?, ?, ?, ?, ?)').run(id, nom, categorie || 'General', sujet, corps_html || '');
+      res.json(db.prepare('SELECT * FROM partner_email_templates WHERE id = ?').get(id));
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  router.put('/templates/:id', (req, res) => {
+    try {
+      const t = db.prepare('SELECT * FROM partner_email_templates WHERE id = ?').get(req.params.id);
+      if (!t) return res.status(404).json({ erreur: 'Template introuvable' });
+      const { nom, categorie, sujet, corps_html } = req.body;
+      db.prepare('UPDATE partner_email_templates SET nom = ?, categorie = ?, sujet = ?, corps_html = ? WHERE id = ?').run(
+        nom || t.nom, categorie !== undefined ? categorie : t.categorie, sujet || t.sujet,
+        corps_html !== undefined ? corps_html : t.corps_html, req.params.id
+      );
+      res.json(db.prepare('SELECT * FROM partner_email_templates WHERE id = ?').get(req.params.id));
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  router.delete('/templates/:id', (req, res) => {
+    try {
+      db.prepare('DELETE FROM partner_email_templates WHERE id = ?').run(req.params.id);
       res.json({ ok: true });
     } catch (e) { res.status(500).json({ erreur: e.message }); }
   });
