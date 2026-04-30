@@ -16155,14 +16155,16 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
   );
 };
 
-// ─── VUE ACCOUNT MANAGEMENT ─────────────────────────────────────────────────
+// ─── VUE PARTNER RELATIONSHIP CENTER ────────────────────────────────────────
 
-function VueAccountManagement({ showToast, readOnly }) {
+function VuePartnerCenter({ showToast, readOnly }) {
   const [tab, setTab] = useState('dashboard');
   const tabs = [
     { id: 'dashboard', label: 'Dashboard' },
+    { id: 'partenaires', label: 'Partenaires' },
+    { id: 'segments', label: 'Segments' },
     { id: 'communications', label: 'Communications' },
-    { id: 'programmes', label: 'Programmes' },
+    { id: 'programmes', label: 'Programmes & Moments' },
   ];
 
   return (
@@ -16175,16 +16177,18 @@ function VueAccountManagement({ showToast, readOnly }) {
           </button>
         ))}
       </div>
-      {tab === 'dashboard' && <VueAccountDashboard showToast={showToast} />}
-      {tab === 'communications' && <VueAccountCommunications showToast={showToast} readOnly={readOnly} />}
-      {tab === 'programmes' && <VueAccountPrograms showToast={showToast} readOnly={readOnly} />}
+      {tab === 'dashboard' && <VuePartnerDashboard showToast={showToast} />}
+      {tab === 'partenaires' && <VuePartnerList showToast={showToast} />}
+      {tab === 'segments' && <VuePartnerSegments showToast={showToast} readOnly={readOnly} />}
+      {tab === 'communications' && <VuePartnerCampaigns showToast={showToast} readOnly={readOnly} />}
+      {tab === 'programmes' && <VuePartnerPrograms showToast={showToast} readOnly={readOnly} />}
     </div>
   );
 }
 
-// ─── ACCOUNT DASHBOARD ──────────────────────────────────────────────────────
+// ─── PARTNER DASHBOARD ──────────────────────────────────────────────────────
 
-function VueAccountDashboard({ showToast }) {
+function VuePartnerDashboard({ showToast }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [showRelance, setShowRelance] = useState(null);
@@ -16195,7 +16199,7 @@ function VueAccountDashboard({ showToast }) {
 
   const charger = async () => {
     try {
-      const r = await api.get('/account-management/dashboard');
+      const r = await api.get('/partner-center/dashboard');
       setData(r);
     } catch (e) {
       showToast('Erreur chargement dashboard: ' + e.message, 'error');
@@ -16209,9 +16213,7 @@ function VueAccountDashboard({ showToast }) {
   if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
   if (!data) return <div className="text-center py-12 text-red-400">Erreur de chargement</div>;
 
-  const { kpis, hubspot_kpis, top_partenaires, tendance_ca } = data;
-  const maxCA = Math.max(...tendance_ca.map(t => t.ca), 1);
-  const hk = hubspot_kpis || {};
+  const { kpis, par_business_type, at_risk, anniversaires, top_partenaires } = data;
 
   const syncHubspot = async () => {
     setSyncing(true);
@@ -16228,10 +16230,10 @@ function VueAccountDashboard({ showToast }) {
       {/* KPI Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         {[
-          { label: 'CA Total', value: `${(kpis.ca_total / 1000).toFixed(1)}k€`, color: 'text-emerald-600' },
-          { label: 'Partenaires actifs', value: `${kpis.partenaires_actifs}/${kpis.partenaires_total}`, color: 'text-blue-600' },
-          { label: 'Panier moyen', value: `${kpis.panier_moyen.toFixed(0)}€`, color: 'text-amber-600' },
-          { label: 'A risque', value: kpis.a_risque, color: kpis.a_risque > 0 ? 'text-red-600' : 'text-emerald-600' },
+          { label: 'Partenaires', value: kpis.nb_partenaires, color: 'text-orange-600' },
+          { label: 'Contacts', value: kpis.nb_contacts, color: 'text-blue-600' },
+          { label: 'CA Close Won', value: kpis.ca_close_won ? `${(kpis.ca_close_won / 1000).toFixed(1)}k€` : '0€', color: 'text-emerald-600' },
+          { label: "Points d'eau", value: kpis.points_eau, color: 'text-amber-600' },
         ].map((k, i) => (
           <div key={i} className="bg-white rounded-xl border border-slate-200 p-4">
             <div className="text-xs text-slate-500 mb-1">{k.label}</div>
@@ -16240,735 +16242,1034 @@ function VueAccountDashboard({ showToast }) {
         ))}
       </div>
 
-      {/* HubSpot Partners KPIs */}
+      {/* Répartition business_type + Sync */}
       <div className="bg-white rounded-xl border border-slate-200 p-5">
         <div className="flex items-center justify-between mb-4">
-          <h3 className="text-sm font-semibold text-slate-800">Partenaires HubSpot</h3>
+          <h3 className="text-sm font-semibold text-slate-800">Répartition par type</h3>
           <button onClick={syncHubspot} disabled={syncing}
             className="text-xs bg-orange-500 text-white px-3 py-1.5 rounded-lg hover:bg-orange-600 disabled:opacity-50">
             {syncing ? 'Sync...' : 'Sync HubSpot'}
           </button>
         </div>
-        <div className="grid grid-cols-3 gap-4 mb-4">
-          <div className="text-center">
-            <div className="text-2xl font-bold text-orange-600">{hk.nb_partenaires || 0}</div>
-            <div className="text-xs text-slate-500">Partenaires</div>
+        {par_business_type?.length > 0 && (
+          <div className="space-y-1">
+            {par_business_type.map(bt => (
+              <div key={bt.business_type}>
+                <button onClick={async () => {
+                  if (expandedType === bt.business_type) { setExpandedType(null); return; }
+                  setExpandedType(bt.business_type);
+                  setLoadingType(true);
+                  try {
+                    const r = await api.get(`/partner-center/partners?business_type=${encodeURIComponent(bt.business_type)}`);
+                    setTypePartners(r);
+                  } catch (_) { setTypePartners([]); }
+                  finally { setLoadingType(false); }
+                }} className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-slate-50 cursor-pointer">
+                  <span className="text-slate-700 flex items-center gap-1">
+                    <span className={`transition-transform ${expandedType === bt.business_type ? 'rotate-90' : ''}`}>&#9654;</span>
+                    {bt.business_type}
+                  </span>
+                  <span className="text-slate-500">{bt.count} partenaires · {bt.capacite_totale} pts d'eau</span>
+                </button>
+                {expandedType === bt.business_type && (
+                  <div className="ml-6 mb-2">
+                    {loadingType ? <div className="text-xs text-slate-400 py-1">Chargement...</div> : (
+                      <div className="space-y-1">
+                        {typePartners.map(p => (
+                          <div key={p.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-50">
+                            <span className="text-slate-700 font-medium">{p.name}</span>
+                            <span className="text-slate-400">{p.capacite || 0} pts · {[p.city, p.country].filter(Boolean).join(', ') || '—'}</span>
+                          </div>
+                        ))}
+                        {typePartners.length === 0 && <div className="text-xs text-slate-400">Aucun partenaire</div>}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            ))}
           </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-blue-600">{hk.points_eau || 0}</div>
-            <div className="text-xs text-slate-500">Points d'eau</div>
-          </div>
-          <div className="text-center">
-            <div className="text-2xl font-bold text-emerald-600">{hk.ca_close_won ? `${(hk.ca_close_won / 1000).toFixed(1)}k€` : '0€'}</div>
-            <div className="text-xs text-slate-500">CA Close Won</div>
-          </div>
-        </div>
-        {hk.par_business_type?.length > 0 && (
-          <div>
-            <h4 className="text-xs font-medium text-slate-500 mb-2">Par type</h4>
-            <div className="space-y-1">
-              {hk.par_business_type.map(bt => (
-                <div key={bt.business_type}>
-                  <button onClick={async () => {
-                    if (expandedType === bt.business_type) { setExpandedType(null); return; }
-                    setExpandedType(bt.business_type);
-                    setLoadingType(true);
-                    try {
-                      const r = await api.get(`/hubspot/partners?business_type=${encodeURIComponent(bt.business_type)}`);
-                      setTypePartners(r);
-                    } catch (_) { setTypePartners([]); }
-                    finally { setLoadingType(false); }
-                  }} className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-slate-50 cursor-pointer">
-                    <span className="text-slate-700 flex items-center gap-1">
-                      <span className={`transition-transform ${expandedType === bt.business_type ? 'rotate-90' : ''}`}>&#9654;</span>
-                      {bt.business_type}
-                    </span>
-                    <span className="text-slate-500">{bt.count} partenaires · {bt.capacite_totale} pts d'eau</span>
-                  </button>
-                  {expandedType === bt.business_type && (
-                    <div className="ml-6 mb-2">
-                      {loadingType ? <div className="text-xs text-slate-400 py-1">Chargement...</div> : (
-                        <div className="space-y-1">
-                          {typePartners.map(p => (
-                            <div key={p.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-50">
-                              <span className="text-slate-700 font-medium">{p.name}</span>
-                              <span className="text-slate-400">{p.capacite || 0} pts · {[p.city, p.country].filter(Boolean).join(', ') || '—'}</span>
-                            </div>
-                          ))}
-                          {typePartners.length === 0 && <div className="text-xs text-slate-400">Aucun partenaire</div>}
-                        </div>
-                      )}
-                    </div>
-                  )}
+        )}
+      </div>
+
+      <div className="grid lg:grid-cols-2 gap-6">
+        {/* Alertes at-risk */}
+        {at_risk?.length > 0 && (
+          <div className="bg-red-50 border border-red-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-red-800 mb-3">At-risk (6+ mois sans deal)</h3>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {at_risk.slice(0, 15).map(p => (
+                <div key={p.id} className="flex items-center justify-between text-sm">
+                  <span className="text-red-800">{p.name}</span>
+                  <span className="text-xs text-red-500">{p.city || '—'}</span>
                 </div>
               ))}
             </div>
           </div>
         )}
+
+        {/* Anniversaires */}
+        {anniversaires?.length > 0 && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+            <h3 className="text-sm font-semibold text-amber-800 mb-3">Anniversaires (30j)</h3>
+            <div className="space-y-2 max-h-60 overflow-y-auto">
+              {anniversaires.map(p => {
+                const years = p.partner_since ? Math.floor((Date.now() - new Date(p.partner_since).getTime()) / (365.25*24*3600*1000)) : '?';
+                return (
+                  <div key={p.id} className="flex items-center justify-between text-sm">
+                    <span className="text-amber-800">{p.name}</span>
+                    <span className="text-xs text-amber-600">{years} an(s)</span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
       </div>
 
-      {/* Alertes inactivité */}
-      {kpis.a_risque > 0 && (
-        <AlertesInactivite showToast={showToast} onRelance={(p) => setShowRelance(p)} />
-      )}
-
-      <div className="grid lg:grid-cols-2 gap-6">
-        {/* Top partenaires */}
+      {/* Top partenaires CA */}
+      {top_partenaires?.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-4">Top 10 partenaires</h3>
+          <h3 className="text-sm font-semibold text-slate-800 mb-4">Top 10 partenaires (CA)</h3>
           <div className="space-y-2">
             {top_partenaires.map((p, i) => (
               <div key={p.id} className="flex items-center justify-between py-1.5">
                 <div className="flex items-center gap-2 min-w-0 flex-1">
                   <span className="text-xs text-slate-400 w-5">{i + 1}</span>
-                  <span className="text-sm text-slate-800 truncate">{p.nom}</span>
-                  <TierBadge tier={p.programme_tier} />
+                  <span className="text-sm text-slate-800 truncate">{p.name}</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">{p.business_type || '—'}</span>
                 </div>
                 <div className="text-right">
                   <div className="text-sm font-medium text-slate-900">{p.ca_total.toFixed(0)}€</div>
-                  <div className="text-xs text-slate-400">{p.nb_commandes} cmd</div>
+                  <div className="text-xs text-slate-400">{p.nb_deals} deals</div>
                 </div>
               </div>
             ))}
           </div>
         </div>
-
-        {/* Tendance CA mensuel */}
-        <div className="bg-white rounded-xl border border-slate-200 p-5">
-          <h3 className="text-sm font-semibold text-slate-800 mb-4">CA mensuel</h3>
-          <div className="flex items-end gap-1 h-40">
-            {tendance_ca.map(t => (
-              <div key={t.mois} className="flex-1 flex flex-col items-center justify-end h-full">
-                <div className="text-xs text-slate-500 mb-1">{t.ca > 0 ? `${(t.ca/1000).toFixed(1)}k` : ''}</div>
-                <div className="w-full bg-blue-500 rounded-t" style={{ height: `${(t.ca / maxCA) * 100}%`, minHeight: t.ca > 0 ? '4px' : '0' }}></div>
-                <div className="text-xs text-slate-400 mt-1 truncate w-full text-center">{t.mois.slice(5)}</div>
-              </div>
-            ))}
-          </div>
-        </div>
-      </div>
-
-      {showRelance && <ModalPartnerRelance partner={showRelance} onClose={() => setShowRelance(null)} showToast={showToast} />}
-    </div>
-  );
-}
-
-function TierBadge({ tier }) {
-  const styles = {
-    standard: 'bg-slate-100 text-slate-600',
-    bronze: 'bg-amber-100 text-amber-700',
-    silver: 'bg-gray-200 text-gray-700',
-    gold: 'bg-yellow-100 text-yellow-700',
-  };
-  if (!tier || tier === 'standard') return null;
-  return <span className={`px-1.5 py-0.5 rounded text-xs font-medium ${styles[tier] || styles.standard}`}>{tier}</span>;
-}
-
-function AlertesInactivite({ showToast, onRelance }) {
-  const [alertes, setAlertes] = useState([]);
-  const [loading, setLoading] = useState(true);
-
-  useEffect(() => {
-    (async () => {
-      try {
-        const r = await api.get('/account-management/alerts');
-        setAlertes(r.alertes || []);
-      } catch (e) { showToast('Erreur alertes', 'error'); }
-      finally { setLoading(false); }
-    })();
-  }, []);
-
-  if (loading || alertes.length === 0) return null;
-
-  return (
-    <div className="bg-red-50 border border-red-200 rounded-xl p-5">
-      <h3 className="text-sm font-semibold text-red-800 mb-3">Partenaires inactifs</h3>
-      <div className="space-y-2">
-        {alertes.slice(0, 10).map(a => (
-          <div key={a.id} className="flex items-center justify-between">
-            <div>
-              <span className="text-sm text-red-800">{a.nom}</span>
-              <span className="text-xs text-red-500 ml-2">{a.jours_inactif}j sans commande</span>
-            </div>
-            <button onClick={() => onRelance(a)} className="text-xs bg-red-600 text-white px-3 py-1 rounded-md hover:bg-red-700">
-              Relancer
-            </button>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── MODAL RELANCE PARTENAIRE ───────────────────────────────────────────────
-
-function ModalPartnerRelance({ partner, onClose, showToast }) {
-  const [sujet, setSujet] = useState(`Terre de Mars — Nouvelles de ${partner.nom}`);
-  const [corps, setCorps] = useState(`<p>Bonjour ${partner.contact_nom || ''},</p><p>Nous n'avons pas eu de vos nouvelles depuis un moment. Nous serions ravis de reprendre contact et de vous présenter nos nouveautés.</p><p>N'hésitez pas à nous contacter.</p><p>Cordialement,<br/>L'équipe Terre de Mars</p>`);
-  const [sending, setSending] = useState(false);
-
-  const envoyer = async () => {
-    if (!partner.email) { showToast('Ce partenaire n\'a pas d\'email', 'error'); return; }
-    setSending(true);
-    try {
-      await api.post('/account-management/communications/send', { partner_ids: [partner.id], sujet, corps_html: corps });
-      showToast('Email de relance envoyé', 'success');
-      onClose();
-    } catch (e) {
-      showToast('Erreur envoi: ' + e.message, 'error');
-    } finally {
-      setSending(false);
-    }
-  };
-
-  return (
-    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
-        <div className="flex-shrink-0 p-5 border-b border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-900">Relancer {partner.nom}</h2>
-        </div>
-        <div className="overflow-y-auto flex-1 p-5 space-y-4">
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Destinataire</label>
-            <div className="text-sm text-slate-500">{partner.email || 'Aucun email'}</div>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Sujet</label>
-            <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Message</label>
-            <textarea value={corps} onChange={e => setCorps(e.target.value)} rows={8} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-          </div>
-        </div>
-        <div className="flex-shrink-0 p-5 border-t border-slate-100 flex justify-end gap-3">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
-          <button onClick={envoyer} disabled={sending || !partner.email}
-            className="px-4 py-2 text-sm bg-red-600 text-white rounded-lg hover:bg-red-700 disabled:opacity-50">
-            {sending ? 'Envoi...' : 'Envoyer la relance'}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-}
-
-// ─── ACCOUNT COMMUNICATIONS ─────────────────────────────────────────────────
-
-function VueAccountCommunications({ showToast, readOnly }) {
-  const [contacts, setContacts] = useState([]);
-  const [selected, setSelected] = useState(new Set());
-  const [templates, setTemplates] = useState([]);
-  const [sujet, setSujet] = useState('');
-  const [corpsHtml, setCorpsHtml] = useState('');
-  const [sending, setSending] = useState(false);
-  const [search, setSearch] = useState('');
-  const [filterPartner, setFilterPartner] = useState('');
-  const [filterBizType, setFilterBizType] = useState('');
-  const [loading, setLoading] = useState(true);
-  const [editorReady, setEditorReady] = useState(false);
-  const editorRef = useRef(null);
-  const tinymceRef = useRef(null);
-  const corpsHtmlRef = useRef(corpsHtml);
-  corpsHtmlRef.current = corpsHtml;
-
-  // Listes
-  const [lists, setLists] = useState([]);
-  const [activeList, setActiveList] = useState(null);
-  const [newListName, setNewListName] = useState('');
-  const [showNewList, setShowNewList] = useState(false);
-
-  const charger = async () => {
-    try {
-      const [cData, tData, lData] = await Promise.all([
-        api.get('/hubspot/partners/all-contacts'),
-        api.get('/email-templates'),
-        api.get('/account-management/contact-lists'),
-      ]);
-      setContacts(Array.isArray(cData) ? cData : []);
-      setTemplates(Array.isArray(tData) ? tData : []);
-      setLists(Array.isArray(lData) ? lData : []);
-    } catch (e) { showToast('Erreur chargement', 'error'); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { charger(); }, []);
-
-  // TinyMCE init — attendre que le DOM soit prêt après le loading
-  useEffect(() => {
-    if (loading || !editorRef.current || editorReady) return;
-    const timer = setTimeout(() => {
-      if (!editorRef.current || tinymceRef.current) return;
-      const containerId = 'tinymce-acctcomm-' + Date.now();
-      editorRef.current.id = containerId;
-      if (typeof tinymce === 'undefined') return;
-      tinymce.init({
-        selector: '#' + containerId,
-        plugins: 'lists link image table code fullscreen',
-        toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
-        font_family_formats: 'Arial=Arial,Helvetica,sans-serif; Helvetica=Helvetica,Arial,sans-serif; Verdana=Verdana,Geneva,sans-serif; Georgia=Georgia,serif; Times New Roman=Times New Roman,Times,serif',
-        font_size_formats: '10px 12px 14px 16px 18px 20px 24px 28px 32px',
-        menubar: false,
-        height: 300,
-        content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
-        branding: false,
-        promotion: false,
-        placeholder: 'Contenu de votre email...',
-        license_key: 'gpl',
-        setup: (editor) => {
-          editor.on('init', () => {
-            tinymceRef.current = editor;
-            setEditorReady(true);
-            if (corpsHtmlRef.current) editor.setContent(corpsHtmlRef.current);
-          });
-          editor.on('input change keyup ExecCommand NodeChange', () => {
-            setCorpsHtml(editor.getContent());
-          });
-        }
-      });
-    }, 300);
-    return () => {
-      clearTimeout(timer);
-      if (tinymceRef.current) { tinymceRef.current.remove(); tinymceRef.current = null; setEditorReady(false); }
-    };
-  }, [loading]);
-
-  const insertVariable = (v) => {
-    if (tinymceRef.current) tinymceRef.current.insertContent(`{{${v}}}`);
-  };
-
-  const applyTemplate = (tplId) => {
-    const tpl = templates.find(t => t.id === tplId);
-    if (!tpl) return;
-    if (tpl.sujet) setSujet(tpl.sujet);
-    if (tpl.corps_html && tinymceRef.current) {
-      tinymceRef.current.setContent(tpl.corps_html);
-      setCorpsHtml(tpl.corps_html);
-    }
-  };
-
-  const toggleSelect = (id) => {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const toggleAll = () => {
-    if (selected.size === filtered.length && filtered.length > 0) setSelected(new Set());
-    else setSelected(new Set(filtered.map(c => c.id)));
-  };
-
-  const envoyer = async () => {
-    if (selected.size === 0 || !sujet) { showToast('Sélectionnez des contacts et remplissez le sujet', 'error'); return; }
-    const html = tinymceRef.current ? tinymceRef.current.getContent() : corpsHtml;
-    if (!html) { showToast('Le corps du message est vide', 'error'); return; }
-    setSending(true);
-    try {
-      const r = await api.post('/account-management/communications/send-contacts', { contact_ids: [...selected], sujet, corps_html: html });
-      const nb = r.results?.filter(x => x.statut === 'envoyé').length || 0;
-      showToast(`${nb} email(s) envoyé(s)`, 'success');
-      setSelected(new Set());
-    } catch (e) {
-      showToast('Erreur envoi: ' + e.message, 'error');
-    } finally { setSending(false); }
-  };
-
-  // Listes
-  const creerListe = async () => {
-    if (!newListName.trim() || selected.size === 0) { showToast('Nom et contacts requis', 'error'); return; }
-    try {
-      await api.post('/account-management/contact-lists', { name: newListName, contact_ids: [...selected] });
-      showToast(`Liste "${newListName}" créée (${selected.size} contacts)`, 'success');
-      setNewListName(''); setShowNewList(false);
-      charger();
-    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
-  };
-
-  const ajouterAListe = async (listId) => {
-    if (selected.size === 0) return;
-    try {
-      const r = await api.post(`/account-management/contact-lists/${listId}/add`, { contact_ids: [...selected] });
-      showToast(`${r.added} contact(s) ajouté(s)`, 'success');
-      charger();
-    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
-  };
-
-  const chargerListe = async (listId) => {
-    if (activeList === listId) { setActiveList(null); return; }
-    try {
-      const members = await api.get(`/account-management/contact-lists/${listId}/members`);
-      setActiveList(listId);
-      setSelected(new Set(members.map(m => m.id)));
-      setFilterPartner(''); setFilterBizType(''); setSearch('');
-    } catch (e) { showToast('Erreur chargement liste', 'error'); }
-  };
-
-  const supprimerListe = async (listId) => {
-    try {
-      await api.delete(`/account-management/contact-lists/${listId}`);
-      showToast('Liste supprimée', 'success');
-      if (activeList === listId) setActiveList(null);
-      charger();
-    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
-  };
-
-  // Filters
-  const businessTypes = [...new Set(contacts.map(c => c.business_type).filter(Boolean))].sort();
-  const partnerNames = [...new Set(contacts.map(c => c.partner_name))].sort();
-
-  const filtered = contacts.filter(c => {
-    if (filterPartner && c.partner_name !== filterPartner) return false;
-    if (filterBizType && c.business_type !== filterBizType) return false;
-    if (search) {
-      const s = search.toLowerCase();
-      return (c.firstname || '').toLowerCase().includes(s) || (c.lastname || '').toLowerCase().includes(s) ||
-        (c.email || '').toLowerCase().includes(s) || (c.partner_name || '').toLowerCase().includes(s) ||
-        (c.jobtitle || '').toLowerCase().includes(s);
-    }
-    return true;
-  });
-
-  const variables = ['nom_partenaire', 'contact_nom', 'contact_prenom', 'contact_poste'];
-
-  if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
-
-  return (
-    <div className="space-y-4">
-      {/* Listes de contacts */}
-      <div className="bg-white rounded-xl border border-slate-200 p-4">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-800">Listes de contacts</h3>
-          <button onClick={() => setShowNewList(!showNewList)}
-            className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100">
-            + Nouvelle liste
-          </button>
-        </div>
-        {lists.length > 0 && (
-          <div className="flex flex-wrap gap-2 mb-2">
-            {lists.map(l => (
-              <div key={l.id} className={`flex items-center gap-1.5 px-3 py-1.5 rounded-lg border text-sm cursor-pointer transition-colors ${activeList === l.id ? 'border-blue-400 bg-blue-50 text-blue-700' : 'border-slate-200 hover:bg-slate-50 text-slate-700'}`}>
-                <span onClick={() => chargerListe(l.id)}>{l.name}</span>
-                <span className="text-xs text-slate-400">({l.member_count})</span>
-                <button onClick={(e) => { e.stopPropagation(); supprimerListe(l.id); }} className="text-slate-300 hover:text-red-500 ml-1 text-xs">&times;</button>
-              </div>
-            ))}
-          </div>
-        )}
-        {lists.length === 0 && !showNewList && <p className="text-xs text-slate-400">Aucune liste. Sélectionnez des contacts puis créez une liste.</p>}
-        {showNewList && (
-          <div className="flex gap-2 mt-2">
-            <input value={newListName} onChange={e => setNewListName(e.target.value)} placeholder="Nom de la liste..."
-              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-            <button onClick={creerListe} disabled={!newListName.trim() || selected.size === 0}
-              className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              Créer ({selected.size})
-            </button>
-            <button onClick={() => setShowNewList(false)} className="text-sm text-slate-400 px-2">Annuler</button>
-          </div>
-        )}
-        {selected.size > 0 && lists.length > 0 && !showNewList && (
-          <div className="flex items-center gap-2 mt-2">
-            <span className="text-xs text-slate-500">Ajouter {selected.size} contact(s) à :</span>
-            <select onChange={e => { if (e.target.value) ajouterAListe(e.target.value); e.target.value = ''; }}
-              className="border border-slate-200 rounded-lg px-2 py-1 text-xs" defaultValue="">
-              <option value="">— liste —</option>
-              {lists.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
-            </select>
-          </div>
-        )}
-      </div>
-
-      {/* Contacts */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <div className="flex items-center justify-between mb-3">
-          <h3 className="text-sm font-semibold text-slate-800">Contacts partenaires</h3>
-          <span className="text-xs text-slate-400">{selected.size} sélectionné(s) / {filtered.length} contacts</span>
-        </div>
-        <div className="flex gap-2 mb-3 flex-wrap">
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
-            className="flex-1 min-w-[180px] border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-          <select value={filterBizType} onChange={e => setFilterBizType(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
-            <option value="">Tous les types</option>
-            {businessTypes.map(bt => <option key={bt} value={bt}>{bt}</option>)}
-          </select>
-          <select value={filterPartner} onChange={e => setFilterPartner(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
-            <option value="">Tous les partenaires</option>
-            {partnerNames.map(n => <option key={n} value={n}>{n}</option>)}
-          </select>
-        </div>
-        <div className="max-h-72 overflow-y-auto border border-slate-100 rounded-lg">
-          <table className="w-full text-sm">
-            <thead className="sticky top-0 bg-slate-50 z-10">
-              <tr className="border-b border-slate-200">
-                <th className="p-2 text-left w-8">
-                  <input type="checkbox" checked={selected.size === filtered.length && filtered.length > 0}
-                    onChange={toggleAll} className="rounded border-slate-300" />
-                </th>
-                <th className="p-2 text-left text-xs text-slate-500 font-medium">Nom</th>
-                <th className="p-2 text-left text-xs text-slate-500 font-medium">Prénom</th>
-                <th className="p-2 text-left text-xs text-slate-500 font-medium">Poste</th>
-                <th className="p-2 text-left text-xs text-slate-500 font-medium">Email</th>
-                <th className="p-2 text-left text-xs text-slate-500 font-medium">Partenaire</th>
-                <th className="p-2 text-left text-xs text-slate-500 font-medium">Type</th>
-                <th className="p-2 text-left text-xs text-slate-500 font-medium">Partenaire depuis</th>
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map(c => (
-                <tr key={c.id} className={`border-b border-slate-50 hover:bg-slate-50 cursor-pointer ${selected.has(c.id) ? 'bg-blue-50' : ''}`}
-                  onClick={() => toggleSelect(c.id)}>
-                  <td className="p-2">
-                    <input type="checkbox" checked={selected.has(c.id)} onChange={() => toggleSelect(c.id)}
-                      className="rounded border-slate-300" onClick={e => e.stopPropagation()} />
-                  </td>
-                  <td className="p-2 text-slate-800 font-medium">{c.lastname || '—'}</td>
-                  <td className="p-2 text-slate-700">{c.firstname || '—'}</td>
-                  <td className="p-2 text-slate-500 text-xs">{c.jobtitle || '—'}</td>
-                  <td className="p-2 text-slate-500 text-xs">{c.email || '—'}</td>
-                  <td className="p-2 text-slate-600 text-xs">{c.partner_name}</td>
-                  <td className="p-2"><span className={`text-xs px-1.5 py-0.5 rounded ${c.business_type ? 'bg-orange-50 text-orange-700' : 'text-slate-300'}`}>{c.business_type || '—'}</span></td>
-                  <td className="p-2 text-xs text-slate-400">{c.partner_since ? new Date(c.partner_since).toLocaleDateString('fr-FR') : '—'}</td>
-                </tr>
-              ))}
-              {filtered.length === 0 && (
-                <tr><td colSpan="8" className="p-4 text-center text-slate-400 text-sm">Aucun contact</td></tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Editeur email */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-        <h3 className="text-sm font-semibold text-slate-800">Message</h3>
-
-        {templates.length > 0 && (
-          <div>
-            <label className="block text-xs font-medium text-slate-500 mb-1">Template</label>
-            <select onChange={e => applyTemplate(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" defaultValue="">
-              <option value="">— Choisir un template —</option>
-              {templates.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-            </select>
-          </div>
-        )}
-
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Sujet</label>
-          <input value={sujet} onChange={e => setSujet(e.target.value)}
-            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Sujet de l'email" />
-        </div>
-
-        <div>
-          <label className="block text-xs font-medium text-slate-500 mb-1">Corps</label>
-          <div ref={editorRef}><textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" rows={10} placeholder="Chargement de l'éditeur..."></textarea></div>
-        </div>
-
-        <div className="flex flex-wrap gap-1">
-          {variables.map(v => (
-            <button key={v} onClick={() => insertVariable(v)}
-              className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200">
-              {`{{${v}}}`}
-            </button>
-          ))}
-        </div>
-
-        {!readOnly && (
-          <button onClick={envoyer} disabled={sending || selected.size === 0}
-            className="w-full bg-blue-600 text-white text-sm py-2.5 rounded-lg hover:bg-blue-700 disabled:opacity-50">
-            {sending ? 'Envoi en cours...' : `Envoyer à ${selected.size} contact(s)`}
-          </button>
-        )}
-      </div>
-    </div>
-  );
-}
-
-// ─── ACCOUNT PROGRAMS ───────────────────────────────────────────────────────
-
-function VueAccountPrograms({ showToast, readOnly }) {
-  const [partners, setPartners] = useState([]);
-  const [programs, setPrograms] = useState([]);
-  const [editProgram, setEditProgram] = useState(null);
-  const [loading, setLoading] = useState(true);
-
-  const charger = async () => {
-    try {
-      const [hsPartners, prData] = await Promise.all([
-        api.get('/hubspot/partners'),
-        api.get('/account-management/programs'),
-      ]);
-      const mapped = (Array.isArray(hsPartners) ? hsPartners : []).map(p => ({
-        id: p.id,
-        nom: p.name,
-        programme_tier: p.business_type || 'standard',
-        hubspot_company_id: p.hubspot_company_id,
-      }));
-      setPartners(mapped);
-      setPrograms(prData);
-    } catch (e) { showToast('Erreur chargement', 'error'); }
-    finally { setLoading(false); }
-  };
-
-  useEffect(() => { charger(); }, []);
-
-  if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
-
-  // Enrichir partenaires avec programme
-  const programByPartner = {};
-  programs.forEach(p => { programByPartner[p.partner_id] = p; });
-
-  return (
-    <div className="space-y-4">
-      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="border-b border-slate-100">
-              <th className="text-left p-3 text-xs text-slate-500 font-medium">Partenaire</th>
-              <th className="text-left p-3 text-xs text-slate-500 font-medium">Tier</th>
-              <th className="text-left p-3 text-xs text-slate-500 font-medium">Volume</th>
-              <th className="text-left p-3 text-xs text-slate-500 font-medium">Date révision</th>
-              <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {partners.map(p => {
-              const prog = programByPartner[p.id];
-              return (
-                <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50">
-                  <td className="p-3 text-slate-800">{p.nom}</td>
-                  <td className="p-3"><TierBadge tier={p.programme_tier || prog?.tier || 'standard'} />
-                    {(!p.programme_tier || p.programme_tier === 'standard') && !prog && <span className="text-xs text-slate-400">standard</span>}
-                  </td>
-                  <td className="p-3 text-slate-600">{prog?.engagement_volume ? `${prog.engagement_volume}€` : '—'}</td>
-                  <td className="p-3 text-slate-600">{prog?.date_revision ? new Date(prog.date_revision).toLocaleDateString('fr-FR') : '—'}</td>
-                  <td className="p-3 text-right">
-                    {!readOnly && (
-                      <button onClick={() => setEditProgram({ partner_id: p.id, partner_nom: p.nom, ...(prog || {}) })}
-                        className="text-xs text-blue-600 hover:text-blue-800">
-                        {prog ? 'Modifier' : 'Configurer'}
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
-      </div>
-
-      {editProgram && (
-        <ModalProgramEditor program={editProgram} onClose={() => setEditProgram(null)}
-          onSave={() => { setEditProgram(null); charger(); }} showToast={showToast} />
       )}
     </div>
   );
 }
 
-// ─── MODAL PROGRAM EDITOR ───────────────────────────────────────────────────
+// ─── PARTNER LIST (Tab 2) ───────────────────────────────────────────────────
 
-function ModalProgramEditor({ program, onClose, onSave, showToast }) {
-  const [tier, setTier] = useState(program.tier || 'standard');
-  const [label, setLabel] = useState(program.label || '');
-  const [volume, setVolume] = useState(program.engagement_volume || '');
-  const [engNotes, setEngNotes] = useState(program.engagement_notes || '');
-  const [dateDebut, setDateDebut] = useState(program.date_debut || '');
-  const [dateRevision, setDateRevision] = useState(program.date_revision || '');
-  const [notes, setNotes] = useState(program.notes || '');
-  const [contreparties, setContreparties] = useState(() => {
-    try { return typeof program.contreparties === 'string' ? JSON.parse(program.contreparties) : (program.contreparties || {}); }
-    catch { return {}; }
-  });
+function VuePartnerList({ showToast }) {
+  const [partners, setPartners] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState('');
+  const [filterBizType, setFilterBizType] = useState('');
+  const [filterCity, setFilterCity] = useState('');
+  const [selectedPartner, setSelectedPartner] = useState(null);
+
+  const charger = async () => {
+    try {
+      const params = new URLSearchParams();
+      if (filterBizType) params.set('business_type', filterBizType);
+      if (filterCity) params.set('city', filterCity);
+      if (search) params.set('search', search);
+      const r = await api.get('/partner-center/partners?' + params.toString());
+      setPartners(Array.isArray(r) ? r : []);
+    } catch (e) { showToast('Erreur chargement', 'error'); }
+    finally { setLoading(false); }
+  };
+
+  useEffect(() => { charger(); }, [filterBizType, filterCity]);
+
+  const businessTypes = [...new Set(partners.map(p => p.business_type).filter(Boolean))].sort();
+  const cities = [...new Set(partners.map(p => p.city).filter(Boolean))].sort();
+
+  const filtered = search ? partners.filter(p => {
+    const s = search.toLowerCase();
+    return (p.name || '').toLowerCase().includes(s) || (p.city || '').toLowerCase().includes(s) || (p.domain || '').toLowerCase().includes(s);
+  }) : partners;
+
+  if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex gap-2 flex-wrap">
+        <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..."
+          className="flex-1 min-w-[200px] border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+        <select value={filterBizType} onChange={e => setFilterBizType(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+          <option value="">Tous les types</option>
+          {businessTypes.map(bt => <option key={bt} value={bt}>{bt}</option>)}
+        </select>
+        <select value={filterCity} onChange={e => setFilterCity(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm">
+          <option value="">Toutes les villes</option>
+          {cities.map(c => <option key={c} value={c}>{c}</option>)}
+        </select>
+      </div>
+
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Nom</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Type</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Ville</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Capacité</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Partenaire depuis</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Contacts</th>
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.map(p => (
+              <tr key={p.id} className="border-b border-slate-50 hover:bg-slate-50 cursor-pointer" onClick={() => setSelectedPartner(p)}>
+                <td className="p-3 text-slate-800 font-medium">{p.name}</td>
+                <td className="p-3"><span className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-700">{p.business_type || '—'}</span></td>
+                <td className="p-3 text-slate-600">{p.city || '—'}</td>
+                <td className="p-3 text-slate-600">{p.capacite || '—'}</td>
+                <td className="p-3 text-slate-500 text-xs">{p.partner_since ? new Date(p.partner_since).toLocaleDateString('fr-FR') : '—'}</td>
+                <td className="p-3 text-slate-500">{p.nb_contacts || 0}</td>
+              </tr>
+            ))}
+            {filtered.length === 0 && <tr><td colSpan="6" className="p-4 text-center text-slate-400">Aucun partenaire</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      {selectedPartner && <ModalPartnerDetail partner={selectedPartner} onClose={() => setSelectedPartner(null)} showToast={showToast} />}
+    </div>
+  );
+}
+
+// ─── MODAL PARTNER DETAIL ───────────────────────────────────────────────────
+
+function ModalPartnerDetail({ partner, onClose, showToast }) {
+  const [detail, setDetail] = useState(null);
+  const [contacts, setContacts] = useState([]);
+  const [timeline, setTimeline] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [noteText, setNoteText] = useState('');
+  const [tab, setTab] = useState('info');
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [d, c, t] = await Promise.all([
+          api.get(`/partner-center/partners/${partner.id}`),
+          api.get(`/partner-center/partners/${partner.id}/contacts`),
+          api.get(`/partner-center/partners/${partner.id}/timeline`),
+        ]);
+        setDetail(d);
+        setContacts(c);
+        setTimeline(t);
+      } catch (e) { showToast('Erreur chargement', 'error'); }
+      finally { setLoading(false); }
+    })();
+  }, [partner.id]);
+
+  const ajouterNote = async () => {
+    if (!noteText.trim()) return;
+    try {
+      await api.post(`/partner-center/partners/${partner.id}/notes`, { contenu: noteText });
+      setNoteText('');
+      const t = await api.get(`/partner-center/partners/${partner.id}/timeline`);
+      setTimeline(t);
+      showToast('Note ajoutée', 'success');
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const years = partner.partner_since ? Math.floor((Date.now() - new Date(partner.partner_since).getTime()) / (365.25*24*3600*1000)) : null;
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-5 border-b border-slate-100">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-900">{partner.name}</h2>
+              <div className="flex gap-2 mt-1">
+                {partner.business_type && <span className="text-xs px-2 py-0.5 rounded bg-orange-50 text-orange-700">{partner.business_type}</span>}
+                {partner.city && <span className="text-xs text-slate-500">{partner.city}{partner.country ? `, ${partner.country}` : ''}</span>}
+                {years !== null && <span className="text-xs text-slate-500">· {years} an(s) de partenariat</span>}
+              </div>
+            </div>
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+          </div>
+          <div className="flex gap-1 mt-3">
+            {['info', 'contacts', 'timeline'].map(t => (
+              <button key={t} onClick={() => setTab(t)}
+                className={`px-3 py-1.5 rounded-md text-xs font-medium ${tab === t ? 'bg-slate-100 text-slate-800' : 'text-slate-500 hover:text-slate-700'}`}>
+                {t === 'info' ? 'Fiche' : t === 'contacts' ? `Contacts (${contacts.length})` : 'Timeline'}
+              </button>
+            ))}
+          </div>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5">
+          {loading ? <div className="text-center py-8 text-slate-400">Chargement...</div> : (
+            <>
+              {tab === 'info' && detail && (
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 gap-4">
+                    <div><span className="text-xs text-slate-500">Capacité</span><div className="text-sm font-medium">{detail.capacite || '—'} pts d'eau</div></div>
+                    <div><span className="text-xs text-slate-500">CA total</span><div className="text-sm font-medium text-emerald-600">{detail.ca_total ? `${detail.ca_total.toFixed(0)}€` : '0€'}</div></div>
+                    <div><span className="text-xs text-slate-500">Domaine</span><div className="text-sm">{detail.domain || '—'}</div></div>
+                    <div><span className="text-xs text-slate-500">Partenaire depuis</span><div className="text-sm">{detail.partner_since ? new Date(detail.partner_since).toLocaleDateString('fr-FR') : '—'}</div></div>
+                  </div>
+                  {detail.deals?.length > 0 && (
+                    <div>
+                      <h4 className="text-xs font-medium text-slate-500 mb-2">Deals ({detail.deals.length})</h4>
+                      <div className="space-y-1">
+                        {detail.deals.map(d => (
+                          <div key={d.id} className="flex justify-between text-sm py-1 border-b border-slate-50">
+                            <span className="text-slate-700">{d.dealname}</span>
+                            <span className="text-slate-500">{d.amount ? `${d.amount.toFixed(0)}€` : '—'} · {d.dealstage}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {/* Note input */}
+                  <div>
+                    <h4 className="text-xs font-medium text-slate-500 mb-2">Ajouter une note</h4>
+                    <div className="flex gap-2">
+                      <input value={noteText} onChange={e => setNoteText(e.target.value)} placeholder="Note..."
+                        className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm" onKeyDown={e => { if (e.key === 'Enter') ajouterNote(); }} />
+                      <button onClick={ajouterNote} className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">Ajouter</button>
+                    </div>
+                  </div>
+                </div>
+              )}
+              {tab === 'contacts' && (
+                <div className="space-y-2">
+                  {contacts.map(c => (
+                    <div key={c.id} className="flex items-center justify-between py-2 border-b border-slate-50">
+                      <div>
+                        <div className="text-sm font-medium text-slate-800">{c.firstname} {c.lastname}</div>
+                        <div className="text-xs text-slate-500">{c.jobtitle || '—'}</div>
+                      </div>
+                      <div className="text-xs text-slate-500">{c.email || '—'}</div>
+                    </div>
+                  ))}
+                  {contacts.length === 0 && <div className="text-center text-slate-400 text-sm py-4">Aucun contact</div>}
+                </div>
+              )}
+              {tab === 'timeline' && (
+                <div className="space-y-3">
+                  {timeline.map((ev, i) => (
+                    <div key={i} className="flex gap-3 py-2 border-b border-slate-50">
+                      <div className="flex-shrink-0 mt-1">
+                        <span className={`w-2 h-2 rounded-full inline-block ${ev.event_type === 'deal' ? 'bg-emerald-400' : ev.event_type === 'communication' ? 'bg-blue-400' : 'bg-slate-300'}`}></span>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="text-sm text-slate-800">{ev.label || ev.contenu || '—'}</div>
+                        <div className="flex gap-2 text-xs text-slate-400">
+                          <span>{ev.event_type}</span>
+                          {ev.amount && <span>{ev.amount.toFixed(0)}€</span>}
+                          <span>{ev.created_at ? new Date(ev.created_at).toLocaleDateString('fr-FR') : ''}</span>
+                        </div>
+                      </div>
+                    </div>
+                  ))}
+                  {timeline.length === 0 && <div className="text-center text-slate-400 text-sm py-4">Aucun événement</div>}
+                </div>
+              )}
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PARTNER SEGMENTS (Tab 3) ───────────────────────────────────────────────
+
+function VuePartnerSegments({ showToast, readOnly }) {
+  const [segments, setSegments] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showBuilder, setShowBuilder] = useState(false);
+  const [editSegment, setEditSegment] = useState(null);
+
+  const charger = async () => {
+    try {
+      const r = await api.get('/partner-center/segments');
+      setSegments(Array.isArray(r) ? r : []);
+    } catch (e) { showToast('Erreur chargement segments', 'error'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { charger(); }, []);
+
+  const supprimer = async (id) => {
+    if (!confirm('Supprimer ce segment ?')) return;
+    try { await api.delete(`/partner-center/segments/${id}`); charger(); showToast('Segment supprimé', 'success'); }
+    catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
+
+  return (
+    <div className="space-y-4">
+      {!readOnly && (
+        <div className="flex justify-end">
+          <button onClick={() => { setEditSegment(null); setShowBuilder(true); }}
+            className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">+ Nouveau segment</button>
+        </div>
+      )}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Nom</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Description</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Membres</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Règles</th>
+              <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {segments.map(s => (
+              <tr key={s.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="p-3 text-slate-800 font-medium">{s.name}</td>
+                <td className="p-3 text-slate-500 text-xs">{s.description || '—'}</td>
+                <td className="p-3"><span className="text-sm font-medium text-blue-600">{s.member_count}</span></td>
+                <td className="p-3 text-xs text-slate-500">{s.rules?.length || 0} règle(s)</td>
+                <td className="p-3 text-right">
+                  {!readOnly && (
+                    <div className="flex gap-1 justify-end">
+                      <button onClick={() => { setEditSegment(s); setShowBuilder(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
+                      <button onClick={() => supprimer(s.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
+                    </div>
+                  )}
+                </td>
+              </tr>
+            ))}
+            {segments.length === 0 && <tr><td colSpan="5" className="p-4 text-center text-slate-400">Aucun segment</td></tr>}
+          </tbody>
+        </table>
+      </div>
+      {showBuilder && <ModalSegmentBuilder segment={editSegment} onClose={() => setShowBuilder(false)} onSave={() => { setShowBuilder(false); charger(); }} showToast={showToast} />}
+    </div>
+  );
+}
+
+function ModalSegmentBuilder({ segment, onClose, onSave, showToast }) {
+  const [name, setName] = useState(segment?.name || '');
+  const [description, setDescription] = useState(segment?.description || '');
+  const [rules, setRules] = useState(segment?.rules || []);
+  const [preview, setPreview] = useState(null);
   const [saving, setSaving] = useState(false);
 
-  const contrepartiesList = [
-    { key: 'remise_volume', label: 'Remise volume' },
-    { key: 'franco_port', label: 'Franco de port' },
-    { key: 'echantillons', label: 'Echantillons gratuits' },
-    { key: 'priorite_stock', label: 'Priorité stock' },
-    { key: 'support_marketing', label: 'Support marketing' },
+  const FIELDS = [
+    { value: 'business_type', label: 'Type business' },
+    { value: 'city', label: 'Ville' },
+    { value: 'country', label: 'Pays' },
+    { value: 'capacite', label: 'Capacité' },
+    { value: 'partner_since', label: 'Partenaire depuis' },
+    { value: 'name', label: 'Nom' },
+  ];
+  const OPERATORS = [
+    { value: 'eq', label: '=' }, { value: 'neq', label: '!=' }, { value: 'contains', label: 'contient' },
+    { value: 'gte', label: '>=' }, { value: 'lte', label: '<=' }, { value: 'in', label: 'dans (,)' },
   ];
 
+  const addRule = () => setRules([...rules, { field: 'business_type', operator: 'eq', value: '' }]);
+  const removeRule = (i) => setRules(rules.filter((_, j) => j !== i));
+  const updateRule = (i, key, val) => { const n = [...rules]; n[i] = { ...n[i], [key]: val }; setRules(n); };
+
+  const previewCount = async () => {
+    try {
+      const body = segment ? undefined : undefined;
+      // Save temp then resolve or just post the rules
+      const tempId = segment?.id || 'preview';
+      if (segment?.id) {
+        const r = await api.get(`/partner-center/segments/${segment.id}/resolve`);
+        setPreview(r.length);
+      } else {
+        // For preview without saving, save, resolve, then delete if new
+        // Simpler: just show rules count
+        setPreview(null);
+        showToast('Sauvegardez d\'abord pour voir le preview', 'info');
+      }
+    } catch (e) { showToast('Erreur preview', 'error'); }
+  };
+
   const sauvegarder = async () => {
+    if (!name.trim()) { showToast('Nom requis', 'error'); return; }
     setSaving(true);
     try {
-      const body = { partner_id: program.partner_id, tier, label, engagement_volume: volume || null,
-        engagement_notes: engNotes, contreparties, date_debut: dateDebut || null, date_revision: dateRevision || null, notes };
-
-      if (program.id) {
-        await api.put(`/account-management/programs/${program.id}`, body);
+      if (segment?.id) {
+        await api.put(`/partner-center/segments/${segment.id}`, { name, description, rules });
       } else {
-        await api.post('/account-management/programs', body);
+        await api.post('/partner-center/segments', { name, description, rules });
       }
-      showToast('Programme sauvegardé', 'success');
+      showToast('Segment sauvegardé', 'success');
       onSave();
-    } catch (e) {
-      showToast('Erreur: ' + e.message, 'error');
-    } finally {
-      setSaving(false);
-    }
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    finally { setSaving(false); }
   };
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex-shrink-0 p-5 border-b border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-900">Programme — {program.partner_nom}</h2>
+          <h2 className="text-lg font-semibold text-slate-900">{segment ? 'Modifier segment' : 'Nouveau segment'}</h2>
         </div>
         <div className="overflow-y-auto flex-1 p-5 space-y-4">
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Tier</label>
-            <select value={tier} onChange={e => setTier(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-              <option value="standard">Standard</option>
-              <option value="bronze">Bronze</option>
-              <option value="silver">Silver</option>
-              <option value="gold">Gold</option>
-            </select>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Nom</label>
+            <input value={name} onChange={e => setName(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Label personnalisé</label>
-            <input value={label} onChange={e => setLabel(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Ex: Programme VIP 2026" />
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Volume engagement (€)</label>
-              <input type="number" value={volume} onChange={e => setVolume(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Notes volume</label>
-              <input value={engNotes} onChange={e => setEngNotes(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
-            </div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Description</label>
+            <input value={description} onChange={e => setDescription(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-2">Contreparties</label>
-            <div className="space-y-1">
-              {contrepartiesList.map(c => (
-                <label key={c.key} className="flex items-center gap-2 py-1">
-                  <input type="checkbox" checked={!!contreparties[c.key]}
-                    onChange={e => setContreparties(prev => ({ ...prev, [c.key]: e.target.checked }))}
-                    className="rounded border-slate-300" />
-                  <span className="text-sm text-slate-700">{c.label}</span>
-                </label>
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-slate-600">Règles</label>
+              <button onClick={addRule} className="text-xs text-blue-600 hover:text-blue-800">+ Ajouter règle</button>
+            </div>
+            <div className="space-y-2">
+              {rules.map((r, i) => (
+                <div key={i} className="flex gap-2 items-center">
+                  <select value={r.field} onChange={e => updateRule(i, 'field', e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                    {FIELDS.map(f => <option key={f.value} value={f.value}>{f.label}</option>)}
+                  </select>
+                  <select value={r.operator} onChange={e => updateRule(i, 'operator', e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                    {OPERATORS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                  <input value={r.value} onChange={e => updateRule(i, 'value', e.target.value)}
+                    className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs" placeholder="Valeur" />
+                  <button onClick={() => removeRule(i)} className="text-red-400 hover:text-red-600 text-xs">&times;</button>
+                </div>
               ))}
+              {rules.length === 0 && <div className="text-xs text-slate-400">Aucune règle (tous les partenaires)</div>}
             </div>
           </div>
+          {segment?.id && (
+            <div className="flex items-center gap-2">
+              <button onClick={previewCount} className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200">Prévisualiser</button>
+              {preview !== null && <span className="text-xs text-blue-600 font-medium">{preview} partenaire(s) trouvé(s)</span>}
+            </div>
+          )}
+        </div>
+        <div className="flex-shrink-0 p-5 border-t border-slate-100 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PARTNER CAMPAIGNS (Tab 4) ──────────────────────────────────────────────
+
+function VuePartnerCampaigns({ showToast, readOnly }) {
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showEditor, setShowEditor] = useState(false);
+  const [editCampaign, setEditCampaign] = useState(null);
+  const [viewCampaign, setViewCampaign] = useState(null);
+
+  const charger = async () => {
+    try {
+      const r = await api.get('/partner-center/campaigns');
+      setCampaigns(Array.isArray(r) ? r : []);
+    } catch (e) { showToast('Erreur chargement', 'error'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { charger(); }, []);
+
+  const supprimer = async (id) => {
+    if (!confirm('Supprimer cette campagne ?')) return;
+    try { await api.delete(`/partner-center/campaigns/${id}`); charger(); showToast('Campagne supprimée', 'success'); }
+    catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const statutColors = {
+    brouillon: 'bg-slate-100 text-slate-600',
+    'programmée': 'bg-blue-50 text-blue-700',
+    en_cours: 'bg-amber-50 text-amber-700',
+    'terminée': 'bg-emerald-50 text-emerald-700',
+  };
+
+  if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
+
+  return (
+    <div className="space-y-4">
+      {!readOnly && (
+        <div className="flex justify-end">
+          <button onClick={() => { setEditCampaign(null); setShowEditor(true); }}
+            className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">+ Nouvelle campagne</button>
+        </div>
+      )}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Nom</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Statut</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Destinataires</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Envoyés</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Ouvert</th>
+              <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {campaigns.map(c => (
+              <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="p-3">
+                  <div className="text-slate-800 font-medium">{c.nom}</div>
+                  <div className="text-xs text-slate-400">{c.sujet}</div>
+                </td>
+                <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded ${statutColors[c.statut] || 'bg-slate-100 text-slate-600'}`}>{c.statut}</span></td>
+                <td className="p-3 text-slate-600">{c.total_recipients}</td>
+                <td className="p-3 text-slate-600">{c.sent_count}</td>
+                <td className="p-3 text-slate-600">{c.stats?.open_rate || 0}%</td>
+                <td className="p-3 text-right">
+                  <div className="flex gap-1 justify-end">
+                    <button onClick={() => setViewCampaign(c)} className="text-xs text-slate-600 hover:text-slate-800 px-2 py-1">Voir</button>
+                    {!readOnly && c.statut === 'brouillon' && (
+                      <button onClick={() => { setEditCampaign(c); setShowEditor(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
+                    )}
+                    {!readOnly && c.statut !== 'en_cours' && (
+                      <button onClick={() => supprimer(c.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {campaigns.length === 0 && <tr><td colSpan="6" className="p-4 text-center text-slate-400">Aucune campagne</td></tr>}
+          </tbody>
+        </table>
+      </div>
+
+      {showEditor && <ModalPartnerCampaignEditor campaign={editCampaign} onClose={() => setShowEditor(false)} onSave={() => { setShowEditor(false); charger(); }} showToast={showToast} />}
+      {viewCampaign && <ModalPartnerCampaignDetail campaign={viewCampaign} onClose={() => setViewCampaign(null)} showToast={showToast} onRefresh={charger} readOnly={readOnly} />}
+    </div>
+  );
+}
+
+function ModalPartnerCampaignEditor({ campaign, onClose, onSave, showToast }) {
+  const [nom, setNom] = useState(campaign?.nom || '');
+  const [sujet, setSujet] = useState(campaign?.sujet || '');
+  const [corpsHtml, setCorpsHtml] = useState(campaign?.corps_html || '');
+  const [sourceType, setSourceType] = useState(campaign?.source_type || '');
+  const [sourceId, setSourceId] = useState(campaign?.source_id || '');
+  const [segments, setSegments] = useState([]);
+  const [lists, setLists] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const editorRef = useRef(null);
+  const tinymceRef = useRef(null);
+  const corpsHtmlRef = useRef(corpsHtml);
+  corpsHtmlRef.current = corpsHtml;
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [s, l] = await Promise.all([api.get('/partner-center/segments'), api.get('/partner-center/contact-lists')]);
+        setSegments(s); setLists(l);
+      } catch (_) {}
+    })();
+  }, []);
+
+  useEffect(() => {
+    const timer = setTimeout(() => {
+      if (!editorRef.current || tinymceRef.current) return;
+      const containerId = 'tinymce-pcampaign-' + Date.now();
+      editorRef.current.id = containerId;
+      if (typeof tinymce === 'undefined') return;
+      tinymce.init({
+        selector: '#' + containerId, plugins: 'lists link image table code fullscreen',
+        toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | link image table | forecolor | removeformat | fullscreen code',
+        menubar: false, height: 300, content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
+        branding: false, promotion: false, license_key: 'gpl',
+        setup: (editor) => {
+          editor.on('init', () => { tinymceRef.current = editor; if (corpsHtmlRef.current) editor.setContent(corpsHtmlRef.current); });
+          editor.on('input change keyup ExecCommand NodeChange', () => setCorpsHtml(editor.getContent()));
+        }
+      });
+    }, 300);
+    return () => { clearTimeout(timer); if (tinymceRef.current) { tinymceRef.current.remove(); tinymceRef.current = null; } };
+  }, []);
+
+  const variables = ['prenom', 'nom', 'hotel', 'business_type', 'partner_since', 'anniversaire_annees'];
+
+  const sauvegarder = async () => {
+    if (!nom || !sujet) { showToast('Nom et sujet requis', 'error'); return; }
+    setSaving(true);
+    const html = tinymceRef.current ? tinymceRef.current.getContent() : corpsHtml;
+    try {
+      if (campaign?.id) {
+        await api.put(`/partner-center/campaigns/${campaign.id}`, { nom, sujet, corps_html: html, source_type: sourceType, source_id: sourceId });
+      } else {
+        await api.post('/partner-center/campaigns', { nom, sujet, corps_html: html, source_type: sourceType, source_id: sourceId });
+      }
+      showToast('Campagne sauvegardée', 'success');
+      onSave();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-5 border-b border-slate-100">
+          <h2 className="text-lg font-semibold text-slate-900">{campaign ? 'Modifier campagne' : 'Nouvelle campagne'}</h2>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
           <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-xs font-medium text-slate-600 mb-1">Nom</label>
+              <input value={nom} onChange={e => setNom(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="block text-xs font-medium text-slate-600 mb-1">Source</label>
+              <select value={sourceType} onChange={e => { setSourceType(e.target.value); setSourceId(''); }} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                <option value="">Manuel</option>
+                <option value="segment">Segment</option>
+                <option value="contact_list">Liste de contacts</option>
+              </select></div>
+          </div>
+          {sourceType === 'segment' && (
+            <select value={sourceId} onChange={e => setSourceId(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="">— Choisir un segment —</option>
+              {segments.map(s => <option key={s.id} value={s.id}>{s.name} ({s.member_count})</option>)}
+            </select>
+          )}
+          {sourceType === 'contact_list' && (
+            <select value={sourceId} onChange={e => setSourceId(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="">— Choisir une liste —</option>
+              {lists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.member_count})</option>)}
+            </select>
+          )}
+          <div><label className="block text-xs font-medium text-slate-600 mb-1">Sujet</label>
+            <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
+          <div><label className="block text-xs font-medium text-slate-600 mb-1">Corps</label>
+            <div ref={editorRef}><textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" rows={10} placeholder="Chargement..."></textarea></div></div>
+          <div className="flex flex-wrap gap-1">
+            {variables.map(v => (
+              <button key={v} onClick={() => tinymceRef.current?.insertContent(`{{${v}}}`)}
+                className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200">{`{{${v}}}`}</button>
+            ))}
+          </div>
+        </div>
+        <div className="flex-shrink-0 p-5 border-t border-slate-100 flex justify-end gap-3">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
+          <button onClick={sauvegarder} disabled={saving} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, readOnly }) {
+  const [recipients, setRecipients] = useState([]);
+  const [stats, setStats] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [testEmail, setTestEmail] = useState('');
+  const [sending, setSending] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [r, s] = await Promise.all([
+          api.get(`/partner-center/campaigns/${campaign.id}/recipients`),
+          api.get(`/partner-center/campaigns/${campaign.id}/stats`),
+        ]);
+        setRecipients(r); setStats(s);
+      } catch (e) { showToast('Erreur chargement', 'error'); }
+      finally { setLoading(false); }
+    })();
+  }, [campaign.id]);
+
+  const addRecipients = async () => {
+    if (!campaign.source_type || !campaign.source_id) { showToast('Configurez la source dans l\'éditeur', 'error'); return; }
+    try {
+      const r = await api.post(`/partner-center/campaigns/${campaign.id}/recipients`, { source_type: campaign.source_type, source_id: campaign.source_id });
+      showToast(`${r.added} destinataire(s) ajouté(s)`, 'success');
+      const recips = await api.get(`/partner-center/campaigns/${campaign.id}/recipients`);
+      setRecipients(recips);
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const envoyerTest = async () => {
+    if (!testEmail) return;
+    try {
+      await api.post(`/partner-center/campaigns/${campaign.id}/test`, { email: testEmail });
+      showToast(`Test envoyé à ${testEmail}`, 'success');
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const envoyer = async () => {
+    if (!confirm(`Envoyer à ${recipients.length} destinataire(s) ?`)) return;
+    setSending(true);
+    try {
+      await api.post(`/partner-center/campaigns/${campaign.id}/send-now`);
+      showToast('Campagne lancée', 'success');
+      onRefresh(); onClose();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    finally { setSending(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-5 border-b border-slate-100">
+          <div className="flex items-center justify-between">
             <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Date début</label>
-              <input type="date" value={dateDebut} onChange={e => setDateDebut(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              <h2 className="text-lg font-semibold text-slate-900">{campaign.nom}</h2>
+              <div className="text-xs text-slate-500 mt-1">{campaign.sujet}</div>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-slate-600 mb-1">Date révision</label>
-              <input type="date" value={dateRevision} onChange={e => setDateRevision(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl">&times;</button>
+          </div>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          {loading ? <div className="text-center py-8 text-slate-400">Chargement...</div> : (
+            <>
+              {/* Stats */}
+              {stats && (
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="bg-slate-50 rounded-lg p-3 text-center">
+                    <div className="text-lg font-bold text-slate-800">{stats.total_recipients}</div>
+                    <div className="text-xs text-slate-500">Destinataires</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3 text-center">
+                    <div className="text-lg font-bold text-blue-600">{stats.sent_count}</div>
+                    <div className="text-xs text-slate-500">Envoyés</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3 text-center">
+                    <div className="text-lg font-bold text-emerald-600">{stats.events?.find(e => e.type === 'ouverture')?.count || 0}</div>
+                    <div className="text-xs text-slate-500">Ouvertures</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-3 text-center">
+                    <div className="text-lg font-bold text-red-600">{stats.error_count}</div>
+                    <div className="text-xs text-slate-500">Erreurs</div>
+                  </div>
+                </div>
+              )}
+
+              {/* Actions */}
+              {!readOnly && campaign.statut === 'brouillon' && (
+                <div className="flex gap-2 flex-wrap">
+                  <button onClick={addRecipients} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100">
+                    Charger destinataires
+                  </button>
+                  <div className="flex gap-1">
+                    <input value={testEmail} onChange={e => setTestEmail(e.target.value)} placeholder="Email test..."
+                      className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-48" />
+                    <button onClick={envoyerTest} className="text-xs bg-slate-100 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-200">Test</button>
+                  </div>
+                  {recipients.length > 0 && (
+                    <button onClick={envoyer} disabled={sending}
+                      className="text-xs bg-emerald-600 text-white px-3 py-1.5 rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                      {sending ? 'Envoi...' : `Envoyer (${recipients.length})`}
+                    </button>
+                  )}
+                </div>
+              )}
+
+              {/* Recipients */}
+              <div className="max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
+                <table className="w-full text-xs">
+                  <thead className="sticky top-0 bg-slate-50">
+                    <tr className="border-b border-slate-200">
+                      <th className="p-2 text-left text-slate-500">Email</th>
+                      <th className="p-2 text-left text-slate-500">Nom</th>
+                      <th className="p-2 text-left text-slate-500">Partenaire</th>
+                      <th className="p-2 text-left text-slate-500">Statut</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {recipients.map(r => (
+                      <tr key={r.id} className="border-b border-slate-50">
+                        <td className="p-2 text-slate-600">{r.email}</td>
+                        <td className="p-2 text-slate-700">{r.firstname} {r.lastname}</td>
+                        <td className="p-2 text-slate-500">{r.partner_name}</td>
+                        <td className="p-2"><span className={`px-1.5 py-0.5 rounded ${r.statut === 'envoyé' ? 'bg-emerald-50 text-emerald-600' : r.statut === 'erreur' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-500'}`}>{r.statut}</span></td>
+                      </tr>
+                    ))}
+                    {recipients.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-slate-400">Aucun destinataire</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ─── PARTNER PROGRAMS & MOMENTS (Tab 5) ─────────────────────────────────────
+
+function VuePartnerPrograms({ showToast, readOnly }) {
+  const [programs, setPrograms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showEditor, setShowEditor] = useState(false);
+  const [editProgram, setEditProgram] = useState(null);
+
+  const charger = async () => {
+    try {
+      const r = await api.get('/partner-center/programs');
+      setPrograms(Array.isArray(r) ? r : []);
+    } catch (e) { showToast('Erreur chargement', 'error'); }
+    finally { setLoading(false); }
+  };
+  useEffect(() => { charger(); }, []);
+
+  const supprimer = async (id) => {
+    if (!confirm('Supprimer ce programme ?')) return;
+    try { await api.delete(`/partner-center/programs/${id}`); charger(); showToast('Programme supprimé', 'success'); }
+    catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const toggleActif = async (prog) => {
+    try {
+      await api.put(`/partner-center/programs/${prog.id}`, { actif: !prog.actif });
+      charger();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const typeLabels = { anniversary: 'Anniversaire', welcome: 'Bienvenue', reactivation: 'Réactivation' };
+  const typeColors = { anniversary: 'bg-amber-50 text-amber-700', welcome: 'bg-emerald-50 text-emerald-700', reactivation: 'bg-red-50 text-red-700' };
+
+  if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
+
+  return (
+    <div className="space-y-4">
+      {!readOnly && (
+        <div className="flex justify-end">
+          <button onClick={() => { setEditProgram(null); setShowEditor(true); }}
+            className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">+ Nouveau programme</button>
+        </div>
+      )}
+      <div className="space-y-3">
+        {programs.map(p => (
+          <div key={p.id} className="bg-white rounded-xl border border-slate-200 p-5">
+            <div className="flex items-center justify-between mb-3">
+              <div className="flex items-center gap-3">
+                <h3 className="text-sm font-semibold text-slate-800">{p.nom}</h3>
+                <span className={`text-xs px-2 py-0.5 rounded ${typeColors[p.type] || 'bg-slate-100 text-slate-600'}`}>{typeLabels[p.type] || p.type}</span>
+                <span className={`text-xs px-2 py-0.5 rounded ${p.actif ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-400'}`}>{p.actif ? 'Actif' : 'Inactif'}</span>
+              </div>
+              {!readOnly && (
+                <div className="flex gap-1">
+                  <button onClick={() => toggleActif(p)} className={`text-xs px-2 py-1 rounded ${p.actif ? 'text-red-500 hover:text-red-700' : 'text-emerald-500 hover:text-emerald-700'}`}>
+                    {p.actif ? 'Désactiver' : 'Activer'}
+                  </button>
+                  <button onClick={() => { setEditProgram(p); setShowEditor(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
+                  <button onClick={() => supprimer(p.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
+                </div>
+              )}
             </div>
+            {/* Milestones */}
+            {p.milestones?.length > 0 && (
+              <div className="space-y-1">
+                {p.milestones.map((m, i) => (
+                  <div key={m.id} className="flex items-center justify-between py-1.5 border-b border-slate-50 text-sm">
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs text-slate-400 w-5">{i + 1}</span>
+                      <span className="text-slate-700">{m.sujet}</span>
+                    </div>
+                    <span className="text-xs text-slate-500">
+                      {m.trigger_type === 'partner_since_anniversary' ? 'Anniversaire' :
+                       m.trigger_type === 'days_after_start' ? `J+${m.trigger_value}` :
+                       m.trigger_type === 'inactivity_days' ? `${m.trigger_value}j inactif` : m.trigger_type}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+            <div className="mt-2 text-xs text-slate-400">{p.logs_count || 0} envoi(s) effectué(s)</div>
+          </div>
+        ))}
+        {programs.length === 0 && <div className="text-center py-8 text-slate-400 bg-white rounded-xl border border-slate-200">Aucun programme automatique</div>}
+      </div>
+
+      {showEditor && <ModalAutoProgramEditor program={editProgram} onClose={() => setShowEditor(false)}
+        onSave={() => { setShowEditor(false); charger(); }} showToast={showToast} />}
+    </div>
+  );
+}
+
+function ModalAutoProgramEditor({ program, onClose, onSave, showToast }) {
+  const [nom, setNom] = useState(program?.nom || '');
+  const [type, setType] = useState(program?.type || 'anniversary');
+  const [milestones, setMilestones] = useState(program?.milestones || []);
+  const [saving, setSaving] = useState(false);
+
+  const TRIGGER_TYPES = [
+    { value: 'partner_since_anniversary', label: 'Anniversaire partenaire' },
+    { value: 'days_after_start', label: 'Jours après début' },
+    { value: 'inactivity_days', label: 'Jours d\'inactivité' },
+  ];
+
+  const addMilestone = () => setMilestones([...milestones, { trigger_type: 'partner_since_anniversary', trigger_value: 365, sujet: '', corps_html: '' }]);
+  const removeMilestone = (i) => setMilestones(milestones.filter((_, j) => j !== i));
+  const updateMilestone = (i, key, val) => { const n = [...milestones]; n[i] = { ...n[i], [key]: val }; setMilestones(n); };
+
+  const sauvegarder = async () => {
+    if (!nom) { showToast('Nom requis', 'error'); return; }
+    setSaving(true);
+    try {
+      if (program?.id) {
+        await api.put(`/partner-center/programs/${program.id}`, { nom, type });
+        // Update milestones: delete all + recreate
+        for (const m of (program.milestones || [])) {
+          try { await api.delete(`/partner-center/programs/milestones/${m.id}`); } catch (_) {}
+        }
+        for (const m of milestones) {
+          await api.post(`/partner-center/programs/${program.id}/milestones`, m);
+        }
+      } else {
+        await api.post('/partner-center/programs', { nom, type, milestones });
+      }
+      showToast('Programme sauvegardé', 'success');
+      onSave();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-2xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-5 border-b border-slate-100">
+          <h2 className="text-lg font-semibold text-slate-900">{program ? 'Modifier programme' : 'Nouveau programme'}</h2>
+        </div>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-3">
+            <div><label className="block text-xs font-medium text-slate-600 mb-1">Nom</label>
+              <input value={nom} onChange={e => setNom(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
+            <div><label className="block text-xs font-medium text-slate-600 mb-1">Type</label>
+              <select value={type} onChange={e => setType(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                <option value="anniversary">Anniversaire</option>
+                <option value="welcome">Bienvenue</option>
+                <option value="reactivation">Réactivation</option>
+              </select></div>
           </div>
           <div>
-            <label className="block text-xs font-medium text-slate-600 mb-1">Notes</label>
-            <textarea value={notes} onChange={e => setNotes(e.target.value)} rows={3} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            <div className="flex items-center justify-between mb-2">
+              <label className="text-xs font-medium text-slate-600">Milestones</label>
+              <button onClick={addMilestone} className="text-xs text-blue-600 hover:text-blue-800">+ Ajouter</button>
+            </div>
+            <div className="space-y-3">
+              {milestones.map((m, i) => (
+                <div key={i} className="border border-slate-200 rounded-lg p-3 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-medium text-slate-500">Milestone {i + 1}</span>
+                    <button onClick={() => removeMilestone(i)} className="text-red-400 hover:text-red-600 text-xs">&times;</button>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    <select value={m.trigger_type} onChange={e => updateMilestone(i, 'trigger_type', e.target.value)} className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs">
+                      {TRIGGER_TYPES.map(t => <option key={t.value} value={t.value}>{t.label}</option>)}
+                    </select>
+                    <input type="number" value={m.trigger_value || ''} onChange={e => updateMilestone(i, 'trigger_value', parseInt(e.target.value) || null)}
+                      className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs" placeholder="Valeur (jours)" />
+                  </div>
+                  <input value={m.sujet} onChange={e => updateMilestone(i, 'sujet', e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs" placeholder="Sujet email" />
+                  <textarea value={m.corps_html || ''} onChange={e => updateMilestone(i, 'corps_html', e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-2 py-1.5 text-xs" rows={3} placeholder="Corps HTML" />
+                </div>
+              ))}
+              {milestones.length === 0 && <div className="text-xs text-slate-400">Aucun milestone</div>}
+            </div>
           </div>
         </div>
         <div className="flex-shrink-0 p-5 border-t border-slate-100 flex justify-end gap-3">
@@ -18085,7 +18386,7 @@ function App() {
     { id: "portail", icon: "📦", label: "Portail", children: [
       { id: "commandes", label: "Commandes" },
       { id: "partenaires", label: "Partenaires" },
-      { id: "account-mgmt", label: "Gestion Comptes" },
+      { id: "account-mgmt", label: "Relation Partenaires" },
     ]},
     { id: "leads-group", icon: "👥", label: "Leads", children: [
       { id: "leads", label: "Contacts" },
@@ -18295,7 +18596,7 @@ function App() {
           {vue === "dashboard-ventes" && <AnalyticsSpreadsheet showToast={showToast} />}
           {vue === "commandes" && <VueCommandes showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "partenaires" && <VuePartenaires showToast={showToast} readOnly={!canWrite('portail')} />}
-          {vue === "account-mgmt" && <VueAccountManagement showToast={showToast} readOnly={!canWrite('portail')} />}
+          {vue === "account-mgmt" && <VuePartnerCenter showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}
           {vue === "prospection" && <VueProspection showToast={showToast} readOnly={!canWrite('leads')} sequences={sequencesNorm} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} readOnly={!canWrite('campagnes')} />}

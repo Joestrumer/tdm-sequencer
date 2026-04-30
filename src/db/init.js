@@ -656,6 +656,100 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_pcl_members_list ON partner_contact_list_members(list_id);
   CREATE INDEX IF NOT EXISTS idx_pcl_members_contact ON partner_contact_list_members(contact_id);
+
+  -- ─── Tables Partner Relationship Center ──────────────────────────────────────
+
+  CREATE TABLE IF NOT EXISTS partner_segments (
+    id TEXT PRIMARY KEY,
+    name TEXT NOT NULL,
+    description TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_segment_rules (
+    id TEXT PRIMARY KEY,
+    segment_id TEXT NOT NULL REFERENCES partner_segments(id) ON DELETE CASCADE,
+    field TEXT NOT NULL,
+    operator TEXT NOT NULL,
+    value TEXT NOT NULL,
+    ordre INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_campaigns (
+    id TEXT PRIMARY KEY,
+    nom TEXT NOT NULL,
+    sujet TEXT NOT NULL,
+    corps_html TEXT,
+    statut TEXT DEFAULT 'brouillon',
+    scheduled_at TEXT,
+    started_at TEXT,
+    completed_at TEXT,
+    total_recipients INTEGER DEFAULT 0,
+    sent_count INTEGER DEFAULT 0,
+    error_count INTEGER DEFAULT 0,
+    source_type TEXT,
+    source_id TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_campaign_recipients (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES partner_campaigns(id) ON DELETE CASCADE,
+    contact_id INTEGER,
+    email TEXT NOT NULL,
+    firstname TEXT,
+    lastname TEXT,
+    partner_name TEXT,
+    statut TEXT DEFAULT 'en_attente',
+    tracking_id TEXT UNIQUE,
+    sent_at TEXT,
+    error TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_campaign_events (
+    id TEXT PRIMARY KEY,
+    campaign_id TEXT NOT NULL REFERENCES partner_campaigns(id),
+    recipient_id TEXT,
+    type TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_auto_programs (
+    id TEXT PRIMARY KEY,
+    nom TEXT NOT NULL,
+    type TEXT NOT NULL,
+    actif INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_program_milestones (
+    id TEXT PRIMARY KEY,
+    program_id TEXT NOT NULL REFERENCES partner_auto_programs(id) ON DELETE CASCADE,
+    trigger_type TEXT NOT NULL,
+    trigger_value INTEGER,
+    sujet TEXT NOT NULL,
+    corps_html TEXT,
+    ordre INTEGER DEFAULT 0
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_milestone_logs (
+    id TEXT PRIMARY KEY,
+    milestone_id TEXT NOT NULL,
+    partner_id INTEGER NOT NULL,
+    contact_id INTEGER,
+    sent_at TEXT DEFAULT (datetime('now')),
+    statut TEXT DEFAULT 'envoyé'
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_partner_segments_name ON partner_segments(name);
+  CREATE INDEX IF NOT EXISTS idx_partner_segment_rules_seg ON partner_segment_rules(segment_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_campaigns_statut ON partner_campaigns(statut);
+  CREATE INDEX IF NOT EXISTS idx_partner_cr_campaign ON partner_campaign_recipients(campaign_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_cr_tracking ON partner_campaign_recipients(tracking_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_ce_campaign ON partner_campaign_events(campaign_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_auto_programs_type ON partner_auto_programs(type);
+  CREATE INDEX IF NOT EXISTS idx_partner_milestones_program ON partner_program_milestones(program_id);
+  CREATE INDEX IF NOT EXISTS idx_partner_milestone_logs_ms ON partner_milestone_logs(milestone_id);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
@@ -731,6 +825,11 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN programme_tier TEXT DEFAULT \'standard\'',
   // HubSpot Partners
   'ALTER TABLE hubspot_partners ADD COLUMN partner_since TEXT',
+  // Partner Relationship Center
+  'ALTER TABLE hubspot_partners ADD COLUMN phone TEXT',
+  'ALTER TABLE hubspot_partners ADD COLUMN email TEXT',
+  'ALTER TABLE hubspot_partners ADD COLUMN notes TEXT',
+  'ALTER TABLE hubspot_partner_contacts ADD COLUMN phone TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
