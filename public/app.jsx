@@ -16205,11 +16205,11 @@ function VuePartnerCenter({ showToast, readOnly }) {
 function VuePartnerDashboard({ showToast, ownerId }) {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
-  const [showRelance, setShowRelance] = useState(null);
   const [syncing, setSyncing] = useState(false);
   const [expandedType, setExpandedType] = useState(null);
   const [typePartners, setTypePartners] = useState([]);
   const [loadingType, setLoadingType] = useState(false);
+  const [showAnnivConfig, setShowAnnivConfig] = useState(false);
 
   const charger = async () => {
     try {
@@ -16228,7 +16228,7 @@ function VuePartnerDashboard({ showToast, ownerId }) {
   if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
   if (!data) return <div className="text-center py-12 text-red-400">Erreur de chargement</div>;
 
-  const { kpis, par_business_type, at_risk, anniversaires, top_partenaires } = data;
+  const { kpis, par_business_type, at_risk, anniversaires, anniversaryConfig, top_partenaires } = data;
 
   const syncHubspot = async () => {
     setSyncing(true);
@@ -16238,6 +16238,14 @@ function VuePartnerDashboard({ showToast, ownerId }) {
       charger();
     } catch (e) { showToast('Erreur sync: ' + e.message, 'error'); }
     finally { setSyncing(false); }
+  };
+
+  const formatDateFr = (dateStr) => {
+    if (!dateStr) return '';
+    try {
+      const d = new Date(dateStr + 'T00:00:00');
+      return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+    } catch (_) { return dateStr; }
   };
 
   return (
@@ -16257,7 +16265,7 @@ function VuePartnerDashboard({ showToast, ownerId }) {
         ))}
       </div>
 
-      {/* Répartition business_type + Sync */}
+      {/* Répartition business_type — grille colonnes */}
       <div className="bg-white rounded-xl border border-slate-200 p-5">
         <div className="flex items-center justify-between mb-4">
           <h3 className="text-sm font-semibold text-slate-800">Répartition par type</h3>
@@ -16267,10 +16275,10 @@ function VuePartnerDashboard({ showToast, ownerId }) {
           </button>
         </div>
         {par_business_type?.length > 0 && (
-          <div className="space-y-1">
+          <div className="grid grid-cols-2 lg:grid-cols-3 gap-3">
             {par_business_type.map(bt => (
-              <div key={bt.business_type}>
-                <button onClick={async () => {
+              <div key={bt.business_type} className="border border-slate-200 rounded-lg p-3 hover:border-orange-300 transition-colors cursor-pointer"
+                onClick={async () => {
                   if (expandedType === bt.business_type) { setExpandedType(null); return; }
                   setExpandedType(bt.business_type);
                   setLoadingType(true);
@@ -16280,24 +16288,27 @@ function VuePartnerDashboard({ showToast, ownerId }) {
                     setTypePartners(r);
                   } catch (_) { setTypePartners([]); }
                   finally { setLoadingType(false); }
-                }} className="w-full flex items-center justify-between text-sm py-1.5 px-2 rounded hover:bg-slate-50 cursor-pointer">
-                  <span className="text-slate-700 flex items-center gap-1">
-                    <span className={`transition-transform ${expandedType === bt.business_type ? 'rotate-90' : ''}`}>&#9654;</span>
-                    {bt.business_type}
-                  </span>
-                  <span className="text-slate-500">{bt.count} partenaires · {bt.capacite_totale} pts d'eau</span>
-                </button>
+                }}>
+                <div className="flex items-center justify-between mb-1">
+                  <span className="text-sm font-semibold text-slate-800">{bt.business_type}</span>
+                  <span className={`text-xs transition-transform ${expandedType === bt.business_type ? 'rotate-90' : ''}`}>&#9654;</span>
+                </div>
+                <div className="flex items-center gap-3">
+                  <span className="text-lg font-bold text-orange-600">{bt.count}</span>
+                  <span className="text-xs text-slate-400">partenaires</span>
+                </div>
+                <div className="text-xs text-slate-500 mt-0.5">{bt.capacite_totale} pts d'eau</div>
                 {expandedType === bt.business_type && (
-                  <div className="ml-6 mb-2">
+                  <div className="mt-2 pt-2 border-t border-slate-100">
                     {loadingType ? <div className="text-xs text-slate-400 py-1">Chargement...</div> : (
-                      <div className="space-y-1">
+                      <div className="space-y-1 max-h-40 overflow-y-auto">
                         {typePartners.map(p => (
-                          <div key={p.id} className="flex items-center justify-between text-xs py-1 border-b border-slate-50">
-                            <span className="text-slate-700 font-medium">{p.name}</span>
-                            <span className="text-slate-400">{p.capacite || 0} pts · {[p.city, p.country].filter(Boolean).join(', ') || '—'}</span>
+                          <div key={p.id} className="flex items-center justify-between text-xs py-0.5">
+                            <span className="text-slate-700 font-medium truncate">{p.name}</span>
+                            <span className="text-slate-400 ml-1 flex-shrink-0">{p.capacite || 0} pts</span>
                           </div>
                         ))}
-                        {typePartners.length === 0 && <div className="text-xs text-slate-400">Aucun partenaire</div>}
+                        {typePartners.length === 0 && <div className="text-xs text-slate-400">Aucun</div>}
                       </div>
                     )}
                   </div>
@@ -16324,23 +16335,41 @@ function VuePartnerDashboard({ showToast, ownerId }) {
           </div>
         )}
 
-        {/* Anniversaires */}
-        {anniversaires?.length > 0 && (
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
-            <h3 className="text-sm font-semibold text-amber-800 mb-3">Anniversaires (30j)</h3>
-            <div className="space-y-2 max-h-60 overflow-y-auto">
+        {/* Anniversaires enrichis */}
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
+          <div className="flex items-center justify-between mb-3">
+            <h3 className="text-sm font-semibold text-amber-800">Anniversaires (60j)</h3>
+            <button onClick={() => setShowAnnivConfig(true)}
+              className="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg hover:bg-amber-200 flex items-center gap-1">
+              {anniversaryConfig?.active ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span> : null}
+              Configurer
+            </button>
+          </div>
+          {anniversaires?.length > 0 ? (
+            <div className="space-y-2 max-h-72 overflow-y-auto">
               {anniversaires.map(p => {
-                const years = p.partner_since ? Math.floor((Date.now() - new Date(p.partner_since).getTime()) / (365.25*24*3600*1000)) : '?';
+                const daysColor = p.days_until <= 7 ? 'bg-red-100 text-red-700' : p.days_until <= 15 ? 'bg-orange-100 text-orange-700' : 'bg-blue-100 text-blue-700';
                 return (
-                  <div key={p.id} className="flex items-center justify-between text-sm">
-                    <span className="text-amber-800">{p.name}</span>
-                    <span className="text-xs text-amber-600">{years} an(s)</span>
+                  <div key={p.id} className="bg-white/60 rounded-lg p-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-semibold text-amber-900">{p.name}</span>
+                      <div className="flex items-center gap-1.5">
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-amber-100 text-amber-700">{p.years_at_anniversary} an{p.years_at_anniversary > 1 ? 's' : ''}</span>
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${daysColor}`}>
+                          {p.days_until === 0 ? "aujourd'hui" : `dans ${p.days_until}j`}
+                        </span>
+                        {anniversaryConfig?.active && <span className="text-xs" title="Email auto actif">&#9993;</span>}
+                      </div>
+                    </div>
+                    <div className="text-xs text-amber-600 mt-0.5">{formatDateFr(p.next_anniversary)}</div>
                   </div>
                 );
               })}
             </div>
-          </div>
-        )}
+          ) : (
+            <div className="text-xs text-amber-500 py-2">Aucun anniversaire dans les 60 prochains jours</div>
+          )}
+        </div>
       </div>
 
       {/* Top partenaires CA */}
@@ -16364,6 +16393,136 @@ function VuePartnerDashboard({ showToast, ownerId }) {
           </div>
         </div>
       )}
+
+      {/* Modal config anniversaires */}
+      {showAnnivConfig && <ModalAnniversaryConfig showToast={showToast} onClose={() => { setShowAnnivConfig(false); charger(); }} />}
+    </div>
+  );
+}
+
+// ─── MODAL ANNIVERSARY CONFIG ──────────────────────────────────────────────
+
+function ModalAnniversaryConfig({ showToast, onClose }) {
+  const [config, setConfig] = useState({ template_id: '', days_before: 0, active: false });
+  const [templates, setTemplates] = useState([]);
+  const [logs, setLogs] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    (async () => {
+      try {
+        const [cfg, tpls, lg] = await Promise.all([
+          api.get('/partner-center/anniversary-config'),
+          api.get('/partner-center/templates'),
+          api.get('/partner-center/anniversary-logs'),
+        ]);
+        if (cfg) setConfig({ template_id: cfg.template_id || '', days_before: cfg.days_before || 0, active: !!cfg.active });
+        setTemplates(Array.isArray(tpls) ? tpls : []);
+        setLogs(Array.isArray(lg) ? lg : []);
+      } catch (e) { showToast('Erreur chargement config', 'error'); }
+      finally { setLoading(false); }
+    })();
+  }, []);
+
+  const sauvegarder = async () => {
+    setSaving(true);
+    try {
+      await api.put('/partner-center/anniversary-config', config);
+      showToast('Config anniversaire sauvegardée', 'success');
+      onClose();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    finally { setSaving(false); }
+  };
+
+  const DAYS_OPTIONS = [
+    { value: 0, label: 'Le jour J' },
+    { value: 3, label: '3 jours avant' },
+    { value: 7, label: '7 jours avant' },
+    { value: 14, label: '14 jours avant' },
+    { value: 30, label: '30 jours avant' },
+  ];
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[85vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-slate-200 flex-shrink-0">
+          <h2 className="text-lg font-semibold text-slate-900">Emails automatiques d'anniversaire</h2>
+          <p className="text-xs text-slate-500 mt-1">Envoi automatique d'un email aux partenaires pour leur anniversaire de partenariat</p>
+        </div>
+        <div className="p-5 overflow-y-auto flex-1 space-y-4">
+          {loading ? <div className="text-center text-slate-400 py-4">Chargement...</div> : (
+            <>
+              {/* Toggle actif */}
+              <div className="flex items-center justify-between">
+                <label className="text-sm font-medium text-slate-700">Activer l'envoi automatique</label>
+                <button onClick={() => setConfig(c => ({ ...c, active: !c.active }))}
+                  className={`w-11 h-6 rounded-full transition-colors flex items-center px-0.5 ${config.active ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+                  <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${config.active ? 'translate-x-5' : ''}`}></div>
+                </button>
+              </div>
+
+              {/* Template */}
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">Template d'email</label>
+                <select value={config.template_id} onChange={e => setConfig(c => ({ ...c, template_id: e.target.value }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                  <option value="">-- Choisir un template --</option>
+                  {templates.map(t => (
+                    <option key={t.id} value={t.id}>{t.nom} — {t.sujet}</option>
+                  ))}
+                </select>
+                <p className="text-xs text-slate-400 mt-1">Variables : {'{{hotel}}'}, {'{{anniversaire_annees}}'}, {'{{prenom}}'}, {'{{nom}}'}</p>
+              </div>
+
+              {/* Jours avant */}
+              <div>
+                <label className="text-sm font-medium text-slate-700 block mb-1">Quand envoyer</label>
+                <select value={config.days_before} onChange={e => setConfig(c => ({ ...c, days_before: parseInt(e.target.value) }))}
+                  className="w-full border border-slate-300 rounded-lg px-3 py-2 text-sm">
+                  {DAYS_OPTIONS.map(o => (
+                    <option key={o.value} value={o.value}>{o.label}</option>
+                  ))}
+                </select>
+              </div>
+
+              {/* Historique */}
+              {logs.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-medium text-slate-700 mb-2">Derniers envois</h4>
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-slate-50">
+                        <tr>
+                          <th className="text-left px-3 py-1.5 text-slate-600">Partenaire</th>
+                          <th className="text-left px-3 py-1.5 text-slate-600">Email</th>
+                          <th className="text-left px-3 py-1.5 text-slate-600">Date</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {logs.slice(0, 10).map(l => (
+                          <tr key={l.id} className="border-t border-slate-100">
+                            <td className="px-3 py-1.5 text-slate-700">{l.partner_name || '—'}</td>
+                            <td className="px-3 py-1.5 text-slate-500">{l.contact_email || '—'}</td>
+                            <td className="px-3 py-1.5 text-slate-400">{l.sent_at ? new Date(l.sent_at).toLocaleDateString('fr-FR') : '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div className="p-4 border-t border-slate-200 flex justify-end gap-2 flex-shrink-0">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-100 rounded-lg">Annuler</button>
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 text-sm bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50">
+            {saving ? 'Enregistrement...' : 'Enregistrer'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }

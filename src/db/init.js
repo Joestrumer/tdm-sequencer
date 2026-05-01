@@ -769,6 +769,27 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_partner_auto_programs_type ON partner_auto_programs(type);
   CREATE INDEX IF NOT EXISTS idx_partner_milestones_program ON partner_program_milestones(program_id);
   CREATE INDEX IF NOT EXISTS idx_partner_milestone_logs_ms ON partner_milestone_logs(milestone_id);
+
+  -- ─── Tables Anniversaires Partenaires (emails auto) ────────────────────────
+
+  CREATE TABLE IF NOT EXISTS partner_anniversary_config (
+    id TEXT PRIMARY KEY,
+    template_id TEXT,
+    days_before INTEGER DEFAULT 0,
+    active INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE TABLE IF NOT EXISTS partner_anniversary_logs (
+    id TEXT PRIMARY KEY,
+    partner_id INTEGER NOT NULL,
+    contact_email TEXT,
+    template_id TEXT,
+    year INTEGER NOT NULL,
+    sent_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_anniv_logs_partner ON partner_anniversary_logs(partner_id, year);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────

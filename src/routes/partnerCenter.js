@@ -106,16 +106,45 @@ module.exports = (db) => {
         LIMIT 20
       `).all(...ownerParams);
 
-      // Anniversaires 30j
+      // Anniversaires 60j — calcul précis date/durée/jours restants
       const anniversaires = db.prepare(`
-        SELECT hp.id, hp.name, hp.city, hp.business_type, hp.partner_since,
-               CAST((julianday(hp.partner_since) - julianday('now')) % 365.25 AS INTEGER) as days_to_anniversary
-        FROM hubspot_partners hp
-        WHERE hp.partner_since IS NOT NULL
-        AND ABS(CAST((julianday('now') - julianday(hp.partner_since)) % 365.25 AS INTEGER)) <= 30${ownerWhere}
-        ORDER BY days_to_anniversary
+        WITH anniv AS (
+          SELECT hp.id, hp.name, hp.city, hp.business_type, hp.partner_since,
+            -- Mois et jour de partner_since
+            CAST(strftime('%m', hp.partner_since) AS INTEGER) as ps_month,
+            CAST(strftime('%d', hp.partner_since) AS INTEGER) as ps_day,
+            CAST(strftime('%Y', 'now') AS INTEGER) as cur_year,
+            CAST(strftime('%Y', hp.partner_since) AS INTEGER) as ps_year
+          FROM hubspot_partners hp
+          WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''${ownerWhere}
+        )
+        SELECT id, name, city, business_type, partner_since,
+          CASE
+            WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
+            THEN printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)
+            ELSE printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)
+          END as next_anniversary,
+          CASE
+            WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
+            THEN cur_year - ps_year
+            ELSE cur_year + 1 - ps_year
+          END as years_at_anniversary,
+          CASE
+            WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
+            THEN CAST(julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) - julianday('now') AS INTEGER)
+            ELSE CAST(julianday(printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)) - julianday('now') AS INTEGER)
+          END as days_until
+        FROM anniv
+        HAVING days_until <= 60
+        ORDER BY days_until ASC
         LIMIT 20
       `).all(...ownerParams);
+
+      // Config anniversaire active
+      let anniversaryConfig = null;
+      try {
+        anniversaryConfig = db.prepare("SELECT * FROM partner_anniversary_config WHERE active = 1 LIMIT 1").get() || null;
+      } catch (_) {}
 
       // Top partenaires CA
       const top_partenaires = db.prepare(`
@@ -134,6 +163,7 @@ module.exports = (db) => {
         par_business_type,
         at_risk,
         anniversaires,
+        anniversaryConfig,
         top_partenaires,
       });
     } catch (e) {
@@ -970,6 +1000,49 @@ module.exports = (db) => {
     try {
       db.prepare('DELETE FROM partner_email_templates WHERE id = ?').run(req.params.id);
       res.json({ ok: true });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  ANNIVERSARY CONFIG & LOGS
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  router.get('/anniversary-config', (req, res) => {
+    try {
+      const config = db.prepare('SELECT * FROM partner_anniversary_config LIMIT 1').get() || null;
+      res.json(config);
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  router.put('/anniversary-config', (req, res) => {
+    try {
+      const { template_id, days_before, active } = req.body;
+      const existing = db.prepare('SELECT * FROM partner_anniversary_config LIMIT 1').get();
+      if (existing) {
+        db.prepare('UPDATE partner_anniversary_config SET template_id = ?, days_before = ?, active = ? WHERE id = ?').run(
+          template_id || existing.template_id, days_before !== undefined ? days_before : existing.days_before,
+          active !== undefined ? (active ? 1 : 0) : existing.active, existing.id
+        );
+      } else {
+        const id = randomUUID();
+        db.prepare('INSERT INTO partner_anniversary_config (id, template_id, days_before, active) VALUES (?, ?, ?, ?)').run(
+          id, template_id || null, days_before || 0, active ? 1 : 0
+        );
+      }
+      res.json(db.prepare('SELECT * FROM partner_anniversary_config LIMIT 1').get());
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  router.get('/anniversary-logs', (req, res) => {
+    try {
+      const logs = db.prepare(`
+        SELECT l.*, hp.name as partner_name, pet.nom as template_name
+        FROM partner_anniversary_logs l
+        LEFT JOIN hubspot_partners hp ON hp.id = l.partner_id
+        LEFT JOIN partner_email_templates pet ON pet.id = l.template_id
+        ORDER BY l.sent_at DESC LIMIT 50
+      `).all();
+      res.json(logs);
     } catch (e) { res.status(500).json({ erreur: e.message }); }
   });
 

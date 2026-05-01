@@ -56,6 +56,9 @@ partnerAlertChecker.initialiser(db);
 const partnerMilestoneScheduler = require('./jobs/partnerMilestoneScheduler');
 partnerMilestoneScheduler.initialiser(db);
 
+const anniversaryScheduler = require('./jobs/anniversaryScheduler');
+anniversaryScheduler.initialiser(db);
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
