@@ -135,8 +135,16 @@ module.exports = (db) => {
             ELSE CAST(julianday(printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)) - julianday('now') AS INTEGER)
           END as days_until
         FROM anniv
-        HAVING days_until <= 60
-        ORDER BY days_until ASC
+        WHERE CASE
+            WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
+            THEN CAST(julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) - julianday('now') AS INTEGER)
+            ELSE CAST(julianday(printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)) - julianday('now') AS INTEGER)
+          END <= 60
+        ORDER BY CASE
+            WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
+            THEN CAST(julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) - julianday('now') AS INTEGER)
+            ELSE CAST(julianday(printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)) - julianday('now') AS INTEGER)
+          END ASC
         LIMIT 20
       `).all(...ownerParams);
 
