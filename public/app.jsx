@@ -16184,13 +16184,12 @@ function VuePartnerCenter({ showToast, readOnly }) {
             </button>
           ))}
         </div>
-        {owners.length > 0 && (
-          <select value={selectedOwner} onChange={e => setSelectedOwner(e.target.value)}
-            className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-            <option value="">Tous les owners</option>
-            {owners.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
-          </select>
-        )}
+        <select value={selectedOwner} onChange={e => setSelectedOwner(e.target.value)}
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+          <option value="">Tous les owners</option>
+          {owners.map(o => <option key={o.id} value={o.id}>{o.label}</option>)}
+          {owners.length === 0 && <option disabled>Sync HubSpot pour charger</option>}
+        </select>
       </div>
       {tab === 'dashboard' && <VuePartnerDashboard showToast={showToast} ownerId={selectedOwner} />}
       {tab === 'partenaires' && <VuePartnerList showToast={showToast} ownerId={selectedOwner} />}
@@ -16690,6 +16689,7 @@ function VuePartnerSegments({ showToast, readOnly, ownerId }) {
                     <th className="p-2 text-left text-slate-500">Email</th>
                     <th className="p-2 text-left text-slate-500">Partenaire</th>
                     <th className="p-2 text-left text-slate-500">Poste</th>
+                    {!readOnly && <th className="p-2 text-right text-slate-500"></th>}
                   </tr>
                 </thead>
                 <tbody>
@@ -16699,9 +16699,21 @@ function VuePartnerSegments({ showToast, readOnly, ownerId }) {
                       <td className="p-2 text-slate-600">{c.email}</td>
                       <td className="p-2 text-slate-500">{c.partner_name}</td>
                       <td className="p-2 text-slate-500">{c.jobtitle || '—'}</td>
+                      {!readOnly && (
+                        <td className="p-2 text-right">
+                          <button onClick={async () => {
+                            try {
+                              await api.post(`/partner-center/segments/${viewContacts}/exclude`, { hubspot_company_id: c.partner_hubspot_company_id || c.hubspot_company_id });
+                              setContacts(contacts.filter(ct => ct.hubspot_company_id !== (c.partner_hubspot_company_id || c.hubspot_company_id)));
+                              charger();
+                              showToast('Partenaire exclu du segment', 'success');
+                            } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+                          }} className="text-xs text-red-400 hover:text-red-600" title="Exclure ce partenaire du segment">&times;</button>
+                        </td>
+                      )}
                     </tr>
                   ))}
-                  {contacts.length === 0 && <tr><td colSpan="4" className="p-4 text-center text-slate-400">Aucun contact</td></tr>}
+                  {contacts.length === 0 && <tr><td colSpan={!readOnly ? 5 : 4} className="p-4 text-center text-slate-400">Aucun contact</td></tr>}
                 </tbody>
               </table>
             </div>
@@ -16946,6 +16958,12 @@ function ModalPartnerCampaignEditor({ campaign, onClose, onSave, showToast }) {
   const [lists, setLists] = useState([]);
   const [templates, setTemplates] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [pieceJointe, setPieceJointe] = useState(() => {
+    if (!campaign?.piece_jointe) return null;
+    try { return typeof campaign.piece_jointe === 'string' ? JSON.parse(campaign.piece_jointe) : campaign.piece_jointe; }
+    catch (_) { return null; }
+  });
+  const pjRef = useRef(null);
   const editorRef = useRef(null);
   const tinymceRef = useRef(null);
   const corpsHtmlRef = useRef(corpsHtml);
@@ -16973,14 +16991,22 @@ function ModalPartnerCampaignEditor({ campaign, onClose, onSave, showToast }) {
     showToast(`Template "${t.nom}" appliqué`, 'success');
   };
 
+  const chargerPj = (file) => {
+    if (!file) return;
+    if (file.size > 5000000) { showToast('Fichier trop volumineux (max 5 MB)', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPieceJointe({ nom: file.name, taille: file.size, type: file.type, data: e.target.result.split(',')[1] });
+    };
+    reader.readAsDataURL(file);
+  };
+
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!editorRef.current || tinymceRef.current) return;
-      const containerId = 'tinymce-pcampaign-' + Date.now();
-      editorRef.current.id = containerId;
       if (typeof tinymce === 'undefined') return;
       tinymce.init({
-        selector: '#' + containerId, plugins: 'lists link image table code fullscreen',
+        target: editorRef.current, plugins: 'lists link image table code fullscreen',
         toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | link image table | forecolor | removeformat | fullscreen code',
         menubar: false, height: 300, content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
         branding: false, promotion: false, license_key: 'gpl',
@@ -17000,10 +17026,11 @@ function ModalPartnerCampaignEditor({ campaign, onClose, onSave, showToast }) {
     setSaving(true);
     const html = tinymceRef.current ? tinymceRef.current.getContent() : corpsHtml;
     try {
+      const payload = { nom, sujet, corps_html: html, source_type: sourceType, source_id: sourceId, piece_jointe: pieceJointe };
       if (campaign?.id) {
-        await api.put(`/partner-center/campaigns/${campaign.id}`, { nom, sujet, corps_html: html, source_type: sourceType, source_id: sourceId });
+        await api.put(`/partner-center/campaigns/${campaign.id}`, payload);
       } else {
-        await api.post('/partner-center/campaigns', { nom, sujet, corps_html: html, source_type: sourceType, source_id: sourceId });
+        await api.post('/partner-center/campaigns', payload);
       }
       showToast('Campagne sauvegardée', 'success');
       onSave();
@@ -17050,12 +17077,40 @@ function ModalPartnerCampaignEditor({ campaign, onClose, onSave, showToast }) {
           <div><label className="block text-xs font-medium text-slate-600 mb-1">Sujet</label>
             <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
           <div><label className="block text-xs font-medium text-slate-600 mb-1">Corps</label>
-            <div ref={editorRef}><textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" rows={10} placeholder="Chargement..."></textarea></div></div>
+            <div ref={editorRef}></div></div>
           <div className="flex flex-wrap gap-1">
             {variables.map(v => (
               <button key={v} onClick={() => tinymceRef.current?.insertContent(`{{${v}}}`)}
                 className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200">{`{{${v}}}`}</button>
             ))}
+          </div>
+          {/* Signature preview */}
+          <div className="border-t border-slate-100 pt-3">
+            <div className="text-xs text-slate-400 mb-2 flex items-center gap-1.5">
+              <span className="w-4 h-px bg-slate-200 inline-block" />
+              Signature automatique
+              <span className="w-4 h-px bg-slate-200 inline-block" />
+            </div>
+            <div dangerouslySetInnerHTML={{ __html: getSignatureHtml() }} style={{ pointerEvents: 'none', opacity: 0.7 }} />
+          </div>
+          {/* Pièce jointe */}
+          <div>
+            <label className="block text-xs font-medium text-slate-600 mb-1">Pièce jointe</label>
+            {pieceJointe ? (
+              <div className="flex items-center gap-2.5 bg-white border border-slate-200 rounded-lg px-3 py-2">
+                <span className="text-base">📎</span>
+                <div className="flex-1 min-w-0">
+                  <div className="text-xs font-medium text-slate-700 truncate">{pieceJointe.nom}</div>
+                  <div className="text-xs text-slate-400">{Math.round(pieceJointe.taille / 1024)} ko</div>
+                </div>
+                <button onClick={() => setPieceJointe(null)} className="text-xs text-red-500 hover:text-red-700 font-medium px-2 py-1 hover:bg-red-50 rounded">✕</button>
+              </div>
+            ) : (
+              <button onClick={() => pjRef.current?.click()} className="w-full flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 transition-colors py-2 rounded-lg border border-dashed border-slate-200">
+                📎 Ajouter une pièce jointe
+              </button>
+            )}
+            <input ref={pjRef} type="file" className="hidden" onChange={e => chargerPj(e.target.files?.[0])} />
           </div>
         </div>
         <div className="flex-shrink-0 p-5 border-t border-slate-100 flex justify-end gap-3">
@@ -17368,11 +17423,9 @@ function ModalPartnerTemplateEditor({ template, onClose, onSave, showToast }) {
   useEffect(() => {
     const timer = setTimeout(() => {
       if (!editorRef.current || tinymceRef.current) return;
-      const containerId = 'tinymce-ptemplate-' + Date.now();
-      editorRef.current.id = containerId;
       if (typeof tinymce === 'undefined') return;
       tinymce.init({
-        selector: '#' + containerId, plugins: 'lists link image table code fullscreen',
+        target: editorRef.current, plugins: 'lists link image table code fullscreen',
         toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | link image table | forecolor | removeformat | fullscreen code',
         menubar: false, height: 300, content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
         branding: false, promotion: false, license_key: 'gpl',
@@ -17421,7 +17474,7 @@ function ModalPartnerTemplateEditor({ template, onClose, onSave, showToast }) {
           <div><label className="block text-xs font-medium text-slate-600 mb-1">Sujet</label>
             <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" /></div>
           <div><label className="block text-xs font-medium text-slate-600 mb-1">Corps</label>
-            <div ref={editorRef}><textarea className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" rows={10} placeholder="Chargement..."></textarea></div></div>
+            <div ref={editorRef}></div></div>
           <div className="flex flex-wrap gap-1">
             {variables.map(v => (
               <button key={v} onClick={() => tinymceRef.current?.insertContent(`{{${v}}}`)}

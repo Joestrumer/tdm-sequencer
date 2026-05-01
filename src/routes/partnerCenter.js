@@ -259,7 +259,7 @@ module.exports = (db) => {
       // Enrichir avec le nombre de membres (résolution dynamique)
       const result = segments.map(s => {
         const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(s.id);
-        const count = resolveSegmentCount(rules);
+        const count = resolveSegmentCount(rules, s.id);
         return { ...s, rules, member_count: count };
       });
       res.json(result);
@@ -313,7 +313,7 @@ module.exports = (db) => {
   router.get('/segments/:id/resolve', (req, res) => {
     try {
       const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(req.params.id);
-      const partners = resolveSegment(rules, req.query.owner_id);
+      const partners = resolveSegment(rules, req.query.owner_id, req.params.id);
       res.json(partners);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -324,18 +324,36 @@ module.exports = (db) => {
   router.get('/segments/:id/resolve-contacts', (req, res) => {
     try {
       const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(req.params.id);
-      const partners = resolveSegment(rules, req.query.owner_id);
+      const partners = resolveSegment(rules, req.query.owner_id, req.params.id);
       const contacts = [];
       for (const p of partners) {
         const pContacts = db.prepare("SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''").all(p.hubspot_company_id);
         for (const c of pContacts) {
-          contacts.push({ ...c, partner_name: p.name, partner_business_type: p.business_type });
+          contacts.push({ ...c, partner_name: p.name, partner_business_type: p.business_type, partner_hubspot_company_id: p.hubspot_company_id });
         }
       }
       res.json(contacts);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
+  });
+
+  // Exclure un partenaire d'un segment
+  router.post('/segments/:id/exclude', (req, res) => {
+    try {
+      const { hubspot_company_id } = req.body;
+      if (!hubspot_company_id) return res.status(400).json({ erreur: 'hubspot_company_id requis' });
+      db.prepare('INSERT OR IGNORE INTO partner_segment_exclusions (segment_id, hubspot_company_id) VALUES (?, ?)').run(req.params.id, hubspot_company_id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // Réintégrer un partenaire dans un segment
+  router.delete('/segments/:id/exclude/:companyId', (req, res) => {
+    try {
+      db.prepare('DELETE FROM partner_segment_exclusions WHERE segment_id = ? AND hubspot_company_id = ?').run(req.params.id, req.params.companyId);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
   });
 
   // Résolution dynamique des segments
@@ -388,18 +406,21 @@ module.exports = (db) => {
     return ALLOWED_FIELDS[field] || null;
   }
 
-  function resolveSegment(rules, ownerId) {
+  function resolveSegment(rules, ownerId, segmentId) {
     const { where, params } = buildSegmentWhere(rules);
     let sql = `SELECT hp.*, (SELECT COUNT(*) FROM hubspot_partner_contacts c WHERE c.hubspot_company_id = hp.hubspot_company_id) as nb_contacts
       FROM hubspot_partners hp WHERE ${where}`;
+    if (segmentId) { sql += ' AND hp.hubspot_company_id NOT IN (SELECT hubspot_company_id FROM partner_segment_exclusions WHERE segment_id = ?)'; params.push(segmentId); }
     if (ownerId) { sql += ' AND hp.hubspot_owner_id = ?'; params.push(ownerId); }
     sql += ' ORDER BY hp.name';
     return db.prepare(sql).all(...params);
   }
 
-  function resolveSegmentCount(rules) {
+  function resolveSegmentCount(rules, segmentId) {
     const { where, params } = buildSegmentWhere(rules);
-    return db.prepare(`SELECT COUNT(*) as n FROM hubspot_partners hp WHERE ${where}`).get(...params).n;
+    let sql = `SELECT COUNT(*) as n FROM hubspot_partners hp WHERE ${where}`;
+    if (segmentId) { sql += ' AND hp.hubspot_company_id NOT IN (SELECT hubspot_company_id FROM partner_segment_exclusions WHERE segment_id = ?)'; params.push(segmentId); }
+    return db.prepare(sql).get(...params).n;
   }
 
   // ═══════════════════════════════════════════════════════════════════════════
@@ -427,10 +448,10 @@ module.exports = (db) => {
 
   router.post('/campaigns', (req, res) => {
     try {
-      const { nom, sujet, corps_html, source_type, source_id } = req.body;
+      const { nom, sujet, corps_html, source_type, source_id, piece_jointe } = req.body;
       if (!nom || !sujet) return res.status(400).json({ erreur: 'nom et sujet requis' });
       const id = randomUUID();
-      db.prepare('INSERT INTO partner_campaigns (id, nom, sujet, corps_html, source_type, source_id) VALUES (?, ?, ?, ?, ?, ?)').run(id, nom, sujet, corps_html || '', source_type || null, source_id || null);
+      db.prepare('INSERT INTO partner_campaigns (id, nom, sujet, corps_html, source_type, source_id, piece_jointe) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, nom, sujet, corps_html || '', source_type || null, source_id || null, piece_jointe ? JSON.stringify(piece_jointe) : null);
       res.json(db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(id));
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -442,10 +463,11 @@ module.exports = (db) => {
       const c = db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(req.params.id);
       if (!c) return res.status(404).json({ erreur: 'Campagne introuvable' });
       if (c.statut !== 'brouillon') return res.status(400).json({ erreur: 'Campagne non modifiable' });
-      const { nom, sujet, corps_html, source_type, source_id } = req.body;
-      db.prepare('UPDATE partner_campaigns SET nom = ?, sujet = ?, corps_html = ?, source_type = ?, source_id = ? WHERE id = ?').run(
+      const { nom, sujet, corps_html, source_type, source_id, piece_jointe } = req.body;
+      db.prepare('UPDATE partner_campaigns SET nom = ?, sujet = ?, corps_html = ?, source_type = ?, source_id = ?, piece_jointe = ? WHERE id = ?').run(
         nom || c.nom, sujet || c.sujet, corps_html !== undefined ? corps_html : c.corps_html,
         source_type !== undefined ? source_type : c.source_type, source_id !== undefined ? source_id : c.source_id,
+        piece_jointe !== undefined ? (piece_jointe ? JSON.stringify(piece_jointe) : null) : c.piece_jointe,
         req.params.id
       );
       res.json(db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(req.params.id));
@@ -481,7 +503,7 @@ module.exports = (db) => {
         const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(source_id);
         const partners = resolveSegment(rules);
         for (const p of partners) {
-          const pContacts = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ""').all(p.hubspot_company_id);
+          const pContacts = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''').all(p.hubspot_company_id);
           for (const c of pContacts) {
             contactsToPreview.push({ contact_id: c.id, email: c.email, firstname: c.firstname, lastname: c.lastname, partner_name: p.name, jobtitle: c.jobtitle });
           }
@@ -525,7 +547,7 @@ module.exports = (db) => {
         const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(source_id);
         const partners = resolveSegment(rules);
         for (const p of partners) {
-          const pContacts = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ""').all(p.hubspot_company_id);
+          const pContacts = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''').all(p.hubspot_company_id);
           for (const c of pContacts) {
             contactsToAdd.push({ contact_id: c.id, email: c.email, firstname: c.firstname, lastname: c.lastname, partner_name: p.name });
           }
@@ -597,8 +619,8 @@ module.exports = (db) => {
       const c = db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(req.params.id);
       if (!c) return res.status(404).json({ erreur: 'Campagne introuvable' });
       const newId = randomUUID();
-      db.prepare('INSERT INTO partner_campaigns (id, nom, sujet, corps_html, source_type, source_id) VALUES (?, ?, ?, ?, ?, ?)').run(
-        newId, c.nom + ' (copie)', c.sujet, c.corps_html, c.source_type, c.source_id
+      db.prepare('INSERT INTO partner_campaigns (id, nom, sujet, corps_html, source_type, source_id, piece_jointe) VALUES (?, ?, ?, ?, ?, ?, ?)').run(
+        newId, c.nom + ' (copie)', c.sujet, c.corps_html, c.source_type, c.source_id, c.piece_jointe
       );
       res.json(db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(newId));
     } catch (e) {
@@ -616,17 +638,28 @@ module.exports = (db) => {
 
       const brevoService = require('../services/brevoService');
       const sujet = `[TEST] ${campaign.sujet}`;
-      const html = substitutePartnerVars(campaign.corps_html || '', {
+      let html = substitutePartnerVars(campaign.corps_html || '', {
         prenom: 'Test', nom: 'Utilisateur', hotel: 'Hôtel Example', business_type: 'Luxe', partner_since: '2024-01-01', anniversaire_annees: 1,
       });
+      const signature = brevoService.SIGNATURE_HUGO || '';
+      if (signature) html += `<br/><br/>${signature}`;
 
-      await brevoService.brevoSendEmail({
+      const emailPayload = {
         sender: brevoService.SENDER,
         to: [{ email, name: 'Test' }],
         subject: sujet,
         htmlContent: html,
         replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
-      });
+      };
+
+      if (campaign.piece_jointe) {
+        try {
+          const pj = typeof campaign.piece_jointe === 'string' ? JSON.parse(campaign.piece_jointe) : campaign.piece_jointe;
+          if (pj?.data) emailPayload.attachment = [{ content: pj.data, name: pj.nom }];
+        } catch (_) {}
+      }
+
+      await brevoService.brevoSendEmail(emailPayload);
 
       res.json({ ok: true, message: `Email test envoyé à ${email}` });
     } catch (e) {
@@ -678,16 +711,34 @@ module.exports = (db) => {
           }
         }
 
-        const html = substitutePartnerVars(campaign.corps_html || '', partnerData);
+        let html = substitutePartnerVars(campaign.corps_html || '', partnerData);
         const sujetFinal = substitutePartnerVars(campaign.sujet, partnerData);
 
-        await brevoService.brevoSendEmail({
+        // Ajouter signature
+        const signature = brevoService.SIGNATURE_HUGO || '';
+        if (signature) {
+          html += `<br/><br/>${signature}`;
+        }
+
+        const emailPayload = {
           sender: brevoService.SENDER,
           to: [{ email: r.email, name: `${r.firstname || ''} ${r.lastname || ''}`.trim() || r.partner_name }],
           subject: sujetFinal,
           htmlContent: html,
           replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
-        });
+        };
+
+        // Pièce jointe
+        if (campaign.piece_jointe) {
+          try {
+            const pj = typeof campaign.piece_jointe === 'string' ? JSON.parse(campaign.piece_jointe) : campaign.piece_jointe;
+            if (pj?.data) {
+              emailPayload.attachment = [{ content: pj.data, name: pj.nom }];
+            }
+          } catch (_) {}
+        }
+
+        await brevoService.brevoSendEmail(emailPayload);
 
         db.prepare("UPDATE partner_campaign_recipients SET statut = 'envoyé', sent_at = datetime('now') WHERE id = ?").run(r.id);
         sentCount++;
