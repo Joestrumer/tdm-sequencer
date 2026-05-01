@@ -503,7 +503,7 @@ module.exports = (db) => {
         const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(source_id);
         const partners = resolveSegment(rules);
         for (const p of partners) {
-          const pContacts = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''').all(p.hubspot_company_id);
+          const pContacts = db.prepare("SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''").all(p.hubspot_company_id);
           for (const c of pContacts) {
             contactsToPreview.push({ contact_id: c.id, email: c.email, firstname: c.firstname, lastname: c.lastname, partner_name: p.name, jobtitle: c.jobtitle });
           }
@@ -547,7 +547,7 @@ module.exports = (db) => {
         const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(source_id);
         const partners = resolveSegment(rules);
         for (const p of partners) {
-          const pContacts = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''').all(p.hubspot_company_id);
+          const pContacts = db.prepare("SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''").all(p.hubspot_company_id);
           for (const c of pContacts) {
             contactsToAdd.push({ contact_id: c.id, email: c.email, firstname: c.firstname, lastname: c.lastname, partner_name: p.name });
           }
