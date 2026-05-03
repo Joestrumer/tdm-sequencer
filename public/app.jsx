@@ -4039,12 +4039,44 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
     });
   };
 
+  const [selectAllFiltered, setSelectAllFiltered] = useState(false);
+
   const toggleSelectAll = () => {
-    if (selectedHotels.size === hotels.length) {
-      setSelectedHotels(new Set());
+    const allPageSelected = hotels.length > 0 && hotels.every(h => selectedHotels.has(h.id));
+    if (allPageSelected) {
+      // Deselect current page
+      setSelectedHotels(prev => {
+        const newSet = new Set(prev);
+        hotels.forEach(h => newSet.delete(h.id));
+        return newSet;
+      });
+      setSelectAllFiltered(false);
     } else {
-      setSelectedHotels(new Set(hotels.map(h => h.id)));
+      // Select current page
+      setSelectedHotels(prev => {
+        const newSet = new Set(prev);
+        hotels.forEach(h => newSet.add(h.id));
+        return newSet;
+      });
     }
+  };
+
+  const selectAllFilteredHotels = async () => {
+    try {
+      const params = new URLSearchParams({ ...filters });
+      Object.keys(params).forEach(key => params.get(key) === '' && params.delete(key));
+      const res = await api.get(`/prospection/hotels/ids?${params}`);
+      if (res.ids) {
+        setSelectedHotels(new Set(res.ids));
+        setSelectAllFiltered(true);
+        showToast(`${res.ids.length} hôtels sélectionnés`, 'success');
+      }
+    } catch (e) { showToast('Erreur sélection: ' + e.message, 'error'); }
+  };
+
+  const clearSelection = () => {
+    setSelectedHotels(new Set());
+    setSelectAllFiltered(false);
   };
 
   // Vérifie le statut du scraping en cours
@@ -4867,6 +4899,21 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       {/* Tableau Hotels France */}
       {activeSource === 'hotels_france' && (
       <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        {/* Bandeau sélection multi-pages */}
+        {selectedHotels.size > 0 && (
+          <div className="px-4 py-2.5 bg-blue-50 border-b border-blue-100 flex items-center justify-between">
+            <div className="flex items-center gap-2 text-sm">
+              <span className="font-medium text-blue-800">{selectedHotels.size} hôtel(s) sélectionné(s)</span>
+              {!selectAllFiltered && selectedHotels.size < total && (
+                <button onClick={selectAllFilteredHotels} className="text-blue-600 hover:text-blue-800 underline font-medium">
+                  Sélectionner les {total} résultats
+                </button>
+              )}
+              {selectAllFiltered && <span className="text-blue-600">(tous les résultats filtrés)</span>}
+            </div>
+            <button onClick={clearSelection} className="text-xs text-blue-600 hover:text-blue-800">Tout désélectionner</button>
+          </div>
+        )}
         <div className="overflow-x-auto">
           <table className="w-full">
             <thead className="bg-slate-50 border-b border-slate-200">
@@ -4874,7 +4921,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                 <th className="px-4 py-3 text-left">
                   <input
                     type="checkbox"
-                    checked={hotels.length > 0 && selectedHotels.size === hotels.length}
+                    checked={hotels.length > 0 && hotels.every(h => selectedHotels.has(h.id))}
                     onChange={toggleSelectAll}
                     className="rounded border-slate-300"
                   />

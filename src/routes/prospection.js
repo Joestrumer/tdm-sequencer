@@ -371,6 +371,31 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/prospection/hotels/ids — Tous les IDs correspondant aux filtres (pour sélection multi-pages)
+  router.get('/hotels/ids', (req, res) => {
+    try {
+      const { classement, commune, code_postal, type_hebergement, capacite_min, capacite_max, chambres_min, chambres_max, scraping_status, imported, search, linkedin_contacts } = req.query;
+      let query = 'SELECT id FROM hotels_france WHERE 1=1';
+      const params = [];
+      if (classement) { query += ' AND classement = ?'; params.push(classement); }
+      if (commune) { query += ' AND commune LIKE ?'; params.push(`%${commune}%`); }
+      if (code_postal) { query += ' AND code_postal = ?'; params.push(code_postal); }
+      if (type_hebergement) { query += ' AND type_hebergement = ?'; params.push(type_hebergement); }
+      if (capacite_min) { query += ' AND capacite_accueil >= ?'; params.push(parseInt(capacite_min)); }
+      if (capacite_max) { query += ' AND capacite_accueil <= ?'; params.push(parseInt(capacite_max)); }
+      if (chambres_min) { query += ' AND nombre_chambres >= ?'; params.push(parseInt(chambres_min)); }
+      if (chambres_max) { query += ' AND nombre_chambres <= ?'; params.push(parseInt(chambres_max)); }
+      if (scraping_status) { query += ' AND scraping_status = ?'; params.push(scraping_status); }
+      if (imported !== undefined) { query += ' AND imported_as_lead = ?'; params.push(imported === 'true' ? 1 : 0); }
+      if (search) { query += ' AND (nom_commercial LIKE ? OR adresse LIKE ? OR commune LIKE ?)'; const s = `%${search}%`; params.push(s, s, s); }
+      if (linkedin_contacts === 'true') { query += " AND linkedin_contacts IS NOT NULL AND linkedin_contacts != '[]'"; }
+      const ids = db.prepare(query).all(...params).map(r => r.id);
+      res.json({ ids, total: ids.length });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // GET /api/prospection/stats — Statistiques globales
   router.get('/stats', (req, res) => {
     try {
