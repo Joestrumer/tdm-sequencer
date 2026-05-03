@@ -1,6 +1,6 @@
 /**
  * anniversaryScheduler.js — Envoi automatique d'emails d'anniversaire partenaires
- * Cron quotidien à 9h : vérifie la config, trouve les partenaires éligibles, envoie
+ * Cron quotidien à 9h : cherche les campagnes anniversaire actives, trouve les partenaires éligibles, envoie
  */
 const cron = require('node-cron');
 const { randomUUID } = require('crypto');
@@ -16,121 +16,118 @@ function initialiser(db) {
 async function traiterAnniversaires() {
   if (!_db) return;
 
-  // Lire config active
-  let config;
+  // Vérifier si le système est actif (config globale)
+  let globalConfig;
   try {
-    config = _db.prepare("SELECT * FROM partner_anniversary_config WHERE active = 1 LIMIT 1").get();
+    globalConfig = _db.prepare("SELECT * FROM partner_anniversary_config WHERE active = 1 LIMIT 1").get();
   } catch (_) { return; }
-  if (!config || !config.template_id) return;
+  if (!globalConfig) return;
 
-  // Charger le template par défaut
-  const defaultTemplate = _db.prepare('SELECT * FROM partner_email_templates WHERE id = ?').get(config.template_id);
-  if (!defaultTemplate) {
-    console.warn('🎉 Anniversary: template par défaut introuvable', config.template_id);
-    return;
+  // Charger toutes les campagnes anniversaire actives (statut != 'brouillon')
+  let campaigns = [];
+  try {
+    campaigns = _db.prepare("SELECT * FROM partner_campaigns WHERE COALESCE(type, 'marketing') = 'anniversaire' AND statut != 'brouillon'").all();
+  } catch (_) {
+    // Fallback: utiliser l'ancien système avec template_id de la config
+    if (globalConfig.template_id) {
+      const tpl = _db.prepare('SELECT * FROM partner_email_templates WHERE id = ?').get(globalConfig.template_id);
+      if (tpl) {
+        campaigns = [{ id: 'legacy', nom: 'Legacy', sujet: tpl.sujet, corps_html: tpl.corps_html, business_type_filter: null, days_before: globalConfig.days_before || 0 }];
+      }
+    }
   }
 
-  // Charger les règles par business_type
-  let businessTypeRules = [];
-  try { businessTypeRules = _db.prepare('SELECT * FROM partner_anniversary_rules WHERE active = 1').all(); } catch (_) {}
+  if (campaigns.length === 0) return;
 
-  const daysBefore = config.days_before || 0;
   const currentYear = new Date().getFullYear();
-
-  // Trouver partenaires dont anniversaire = dans days_before jours
-  const partners = _db.prepare(`
-    WITH anniv AS (
-      SELECT hp.*,
-        CAST(strftime('%m', hp.partner_since) AS INTEGER) as ps_month,
-        CAST(strftime('%d', hp.partner_since) AS INTEGER) as ps_day,
-        CAST(strftime('%Y', 'now') AS INTEGER) as cur_year,
-        CAST(strftime('%Y', hp.partner_since) AS INTEGER) as ps_year
-      FROM hubspot_partners hp
-      WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''
-    )
-    SELECT *,
-      CASE
-        WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
-        THEN CAST(julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) - julianday('now') AS INTEGER)
-        ELSE CAST(julianday(printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)) - julianday('now') AS INTEGER)
-      END as days_until,
-      CASE
-        WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
-        THEN cur_year - ps_year
-        ELSE cur_year + 1 - ps_year
-      END as years_at_anniversary
-    FROM anniv
-    HAVING days_until = ?
-  `).all(daysBefore);
-
-  if (partners.length === 0) return;
-
   const brevoService = require('../services/brevoService');
   let totalSent = 0;
 
-  for (const partner of partners) {
-    try {
-      // Vérifier exclusion anniversaire
-      const excluded = _db.prepare('SELECT 1 FROM partner_anniversary_exclusions WHERE partner_id = ?').get(partner.id);
-      if (excluded) continue;
+  for (const campaign of campaigns) {
+    const daysBefore = campaign.days_before != null ? campaign.days_before : (globalConfig.days_before || 0);
 
-      // Vérifier pas déjà envoyé cette année
-      const alreadySent = _db.prepare(
-        'SELECT id FROM partner_anniversary_logs WHERE partner_id = ? AND year = ?'
-      ).get(partner.id, currentYear);
-      if (alreadySent) continue;
+    // Trouver partenaires dont anniversaire = dans days_before jours
+    let query = `
+      SELECT hp.*,
+        CAST(strftime('%Y', 'now') AS INTEGER) - CAST(strftime('%Y', hp.partner_since) AS INTEGER) as years_at_anniversary
+      FROM hubspot_partners hp
+      WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''
+        AND CASE
+          WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
+          THEN CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
+          ELSE CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
+        END = ?
+    `;
+    const params = [daysBefore];
 
-      // Trouver contacts
-      const contacts = _db.prepare(`
-        SELECT * FROM hubspot_partner_contacts
-        WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''
-      `).all(partner.hubspot_company_id);
-      if (contacts.length === 0) continue;
+    // Filtrer par business_type si défini
+    if (campaign.business_type_filter) {
+      query += ' AND hp.business_type = ?';
+      params.push(campaign.business_type_filter);
+    }
 
-      // Choisir le template selon le business_type du partenaire
-      const rule = businessTypeRules.find(r => r.business_type === partner.business_type);
-      let template = defaultTemplate;
-      if (rule && rule.template_id) {
-        const specific = _db.prepare('SELECT * FROM partner_email_templates WHERE id = ?').get(rule.template_id);
-        if (specific) template = specific;
-      }
+    const partners = _db.prepare(query).all(...params);
+    if (partners.length === 0) continue;
 
-      for (const contact of contacts) {
-        const data = {
-          prenom: contact.firstname || '',
-          nom: contact.lastname || '',
-          hotel: partner.name,
-          business_type: partner.business_type || '',
-          partner_since: partner.partner_since || '',
-          anniversaire_annees: partner.years_at_anniversary || 0,
-        };
+    for (const partner of partners) {
+      try {
+        // Vérifier exclusion
+        const excluded = _db.prepare('SELECT 1 FROM partner_anniversary_exclusions WHERE partner_id = ?').get(partner.id);
+        if (excluded) continue;
 
-        const sujet = substituteVars(template.sujet, data);
-        let html = substituteVars(template.corps_html || '', data);
-        const signature = brevoService.SIGNATURE_HUGO || '';
-        if (signature) html += `<br/><br/>${signature}`;
+        // Vérifier pas déjà envoyé cette année (pour cette campagne)
+        const alreadySent = _db.prepare(
+          'SELECT id FROM partner_anniversary_logs WHERE partner_id = ? AND year = ? AND template_id = ?'
+        ).get(partner.id, currentYear, campaign.id);
+        if (alreadySent) continue;
 
-        try {
-          await brevoService.brevoSendEmail({
-            sender: brevoService.SENDER,
-            to: [{ email: contact.email, name: `${contact.firstname || ''} ${contact.lastname || ''}`.trim() || partner.name }],
-            subject: sujet,
-            htmlContent: html,
-            replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
-          });
+        // Trouver contacts
+        const contacts = _db.prepare(`
+          SELECT * FROM hubspot_partner_contacts
+          WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''
+        `).all(partner.hubspot_company_id);
+        if (contacts.length === 0) continue;
 
-          _db.prepare('INSERT INTO partner_anniversary_logs (id, partner_id, contact_email, template_id, year) VALUES (?, ?, ?, ?, ?)').run(
-            randomUUID(), partner.id, contact.email, config.template_id, currentYear
-          );
-          totalSent++;
+        for (const contact of contacts) {
+          const data = {
+            prenom: contact.firstname || '',
+            nom: contact.lastname || '',
+            hotel: partner.name,
+            business_type: partner.business_type || '',
+            partner_since: partner.partner_since || '',
+            anniversaire_annees: partner.years_at_anniversary || 0,
+          };
 
-          await new Promise(r => setTimeout(r, 2000));
-        } catch (sendErr) {
-          console.error(`🎉 Anniversary: erreur envoi → ${contact.email}:`, sendErr.message);
+          const sujet = substituteVars(campaign.sujet, data);
+          let html = substituteVars(campaign.corps_html || '', data);
+          const signature = brevoService.SIGNATURE_HUGO || '';
+          if (signature) html += `<br/><br/>${signature}`;
+
+          try {
+            await brevoService.brevoSendEmail({
+              sender: brevoService.SENDER,
+              to: [{ email: contact.email, name: `${contact.firstname || ''} ${contact.lastname || ''}`.trim() || partner.name }],
+              subject: sujet,
+              htmlContent: html,
+              replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
+            });
+
+            _db.prepare('INSERT INTO partner_anniversary_logs (id, partner_id, contact_email, template_id, year) VALUES (?, ?, ?, ?, ?)').run(
+              randomUUID(), partner.id, contact.email, campaign.id, currentYear
+            );
+            totalSent++;
+
+            // Incrémenter le compteur de la campagne
+            try { _db.prepare('UPDATE partner_campaigns SET sent_count = sent_count + 1 WHERE id = ?').run(campaign.id); } catch (_) {}
+
+            await new Promise(r => setTimeout(r, 2000));
+          } catch (sendErr) {
+            console.error(`🎉 Anniversary [${campaign.nom}]: erreur envoi → ${contact.email}:`, sendErr.message);
+          }
         }
+      } catch (err) {
+        console.error(`🎉 Anniversary [${campaign.nom}]: erreur partenaire ${partner.name}:`, err.message);
       }
-    } catch (err) {
-      console.error(`🎉 Anniversary: erreur partenaire ${partner.name}:`, err.message);
     }
   }
 

@@ -512,7 +512,8 @@ module.exports = (db) => {
 
   router.get('/campaigns', (req, res) => {
     try {
-      const campaigns = db.prepare('SELECT * FROM partner_campaigns ORDER BY created_at DESC').all();
+      const type = req.query.type || 'marketing';
+      const campaigns = db.prepare("SELECT * FROM partner_campaigns WHERE COALESCE(type, 'marketing') = ? ORDER BY created_at DESC").all(type);
       // Enrichir avec stats événements
       const stmtEvents = db.prepare(`
         SELECT type, COUNT(*) as count FROM partner_campaign_events WHERE campaign_id = ? GROUP BY type
@@ -531,10 +532,16 @@ module.exports = (db) => {
 
   router.post('/campaigns', (req, res) => {
     try {
-      const { nom, sujet, corps_html, source_type, source_id, piece_jointe } = req.body;
+      const { nom, sujet, corps_html, source_type, source_id, piece_jointe, type, business_type_filter, days_before } = req.body;
       if (!nom || !sujet) return res.status(400).json({ erreur: 'nom et sujet requis' });
       const id = randomUUID();
-      db.prepare('INSERT INTO partner_campaigns (id, nom, sujet, corps_html, source_type, source_id, piece_jointe) VALUES (?, ?, ?, ?, ?, ?, ?)').run(id, nom, sujet, corps_html || '', source_type || null, source_id || null, piece_jointe ? JSON.stringify(piece_jointe) : null);
+      const campaignType = type || 'marketing';
+      const statut = campaignType === 'anniversaire' ? 'actif' : 'brouillon';
+      db.prepare('INSERT INTO partner_campaigns (id, nom, sujet, corps_html, source_type, source_id, piece_jointe, type, business_type_filter, days_before, statut) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)').run(
+        id, nom, sujet, corps_html || '', source_type || null, source_id || null,
+        piece_jointe ? JSON.stringify(piece_jointe) : null,
+        campaignType, business_type_filter || null, days_before != null ? days_before : 0, statut
+      );
       res.json(db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(id));
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -546,11 +553,13 @@ module.exports = (db) => {
       const c = db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(req.params.id);
       if (!c) return res.status(404).json({ erreur: 'Campagne introuvable' });
       if (c.statut !== 'brouillon') return res.status(400).json({ erreur: 'Campagne non modifiable' });
-      const { nom, sujet, corps_html, source_type, source_id, piece_jointe } = req.body;
-      db.prepare('UPDATE partner_campaigns SET nom = ?, sujet = ?, corps_html = ?, source_type = ?, source_id = ?, piece_jointe = ? WHERE id = ?').run(
+      const { nom, sujet, corps_html, source_type, source_id, piece_jointe, business_type_filter, days_before } = req.body;
+      db.prepare('UPDATE partner_campaigns SET nom = ?, sujet = ?, corps_html = ?, source_type = ?, source_id = ?, piece_jointe = ?, business_type_filter = ?, days_before = ? WHERE id = ?').run(
         nom || c.nom, sujet || c.sujet, corps_html !== undefined ? corps_html : c.corps_html,
         source_type !== undefined ? source_type : c.source_type, source_id !== undefined ? source_id : c.source_id,
         piece_jointe !== undefined ? (piece_jointe ? JSON.stringify(piece_jointe) : null) : c.piece_jointe,
+        business_type_filter !== undefined ? business_type_filter : c.business_type_filter,
+        days_before != null ? days_before : c.days_before,
         req.params.id
       );
       res.json(db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(req.params.id));

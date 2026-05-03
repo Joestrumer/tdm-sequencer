@@ -887,6 +887,10 @@ const migrations = [
   'ALTER TABLE hubspot_partner_contacts ADD COLUMN phone TEXT',
   'ALTER TABLE hubspot_partners ADD COLUMN hubspot_owner_id TEXT',
   'ALTER TABLE partner_campaigns ADD COLUMN piece_jointe TEXT',
+  // Anniversaires — type de campagne + filtre business_type
+  "ALTER TABLE partner_campaigns ADD COLUMN type TEXT DEFAULT 'marketing'",
+  'ALTER TABLE partner_campaigns ADD COLUMN business_type_filter TEXT',
+  'ALTER TABLE partner_campaigns ADD COLUMN days_before INTEGER DEFAULT 0',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

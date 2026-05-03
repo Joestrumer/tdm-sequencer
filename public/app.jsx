@@ -17638,59 +17638,46 @@ function ModalPartnerTemplateEditor({ template, onClose, onSave, showToast }) {
 // ─── PARTNER ANNIVERSARIES (sous-onglet Communications) ────────────────────
 
 function VuePartnerAnniversaries({ showToast, readOnly }) {
-  const [config, setConfig] = useState({ template_id: '', days_before: 0, active: false });
-  const [rules, setRules] = useState([]);
-  const [templates, setTemplates] = useState([]);
-  const [partners, setPartners] = useState([]);
-  const [logs, setLogs] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [showEditor, setShowEditor] = useState(false);
-  const [editRule, setEditRule] = useState(null);
+  const [editCampaign, setEditCampaign] = useState(null);
+  const [viewCampaign, setViewCampaign] = useState(null);
+  const [config, setConfig] = useState({ active: false, days_before: 0 });
+  const [savingConfig, setSavingConfig] = useState(false);
 
   const charger = async () => {
     try {
-      const [cfg, tpls, rls, ptnrs, lg] = await Promise.all([
-        api.get('/partner-center/anniversary-config'),
-        api.get('/partner-center/templates'),
-        api.get('/partner-center/anniversary-rules').catch(() => []),
-        api.get('/partner-center/anniversary-eligible').catch(() => []),
-        api.get('/partner-center/anniversary-logs'),
+      const [c, cfg] = await Promise.all([
+        api.get('/partner-center/campaigns?type=anniversaire'),
+        api.get('/partner-center/anniversary-config').catch(() => null),
       ]);
-      if (cfg) setConfig({ template_id: cfg.template_id || '', days_before: cfg.days_before || 0, active: !!cfg.active });
-      setTemplates(Array.isArray(tpls) ? tpls : []);
-      setRules(Array.isArray(rls) ? rls : []);
-      setPartners(Array.isArray(ptnrs) ? ptnrs : []);
-      setLogs(Array.isArray(lg) ? lg : []);
+      setCampaigns(Array.isArray(c) ? c : []);
+      if (cfg) setConfig({ active: !!cfg.active, days_before: cfg.days_before || 0 });
     } catch (e) { showToast('Erreur chargement', 'error'); }
     finally { setLoading(false); }
   };
   useEffect(() => { charger(); }, []);
 
+  const supprimer = async (id) => {
+    if (!confirm('Supprimer cette campagne anniversaire ?')) return;
+    try { await api.delete(`/partner-center/campaigns/${id}`); charger(); showToast('Campagne supprimée', 'success'); }
+    catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
   const sauvegarderConfig = async () => {
-    setSaving(true);
+    setSavingConfig(true);
     try {
       await api.put('/partner-center/anniversary-config', config);
       showToast('Configuration sauvegardée', 'success');
     } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
-    finally { setSaving(false); }
+    finally { setSavingConfig(false); }
   };
 
-  const supprimerRegle = async (id) => {
-    if (!confirm('Supprimer cette règle ?')) return;
-    try { await api.delete(`/partner-center/anniversary-rules/${id}`); charger(); showToast('Règle supprimée', 'success'); }
-    catch (e) { showToast('Erreur: ' + e.message, 'error'); }
-  };
-
-  const toggleExclusion = async (partnerId, excluded) => {
-    try {
-      if (excluded) {
-        await api.delete(`/partner-center/anniversary-exclude/${partnerId}`);
-      } else {
-        await api.post(`/partner-center/anniversary-exclude/${partnerId}`);
-      }
-      charger();
-    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  const statutColors = {
+    brouillon: 'bg-slate-100 text-slate-600',
+    actif: 'bg-emerald-50 text-emerald-700',
+    'terminée': 'bg-purple-50 text-purple-700',
   };
 
   const DAYS_OPTIONS = [
@@ -17704,172 +17691,186 @@ function VuePartnerAnniversaries({ showToast, readOnly }) {
   if (loading) return <div className="text-center py-12 text-slate-400">Chargement...</div>;
 
   return (
-    <div className="space-y-6">
-      {/* Config globale — bandeau compact */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5">
-        <div className="flex items-center justify-between mb-4">
-          <div className="flex items-center gap-3">
-            <h3 className="text-sm font-semibold text-slate-800">Emails anniversaires</h3>
-            <button onClick={() => { setConfig(c => ({ ...c, active: !c.active })); }} disabled={readOnly}
-              className={`w-11 h-6 rounded-full transition-colors flex items-center px-0.5 ${config.active ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-              <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${config.active ? 'translate-x-5' : ''}`}></div>
+    <div className="space-y-4">
+      {/* Config globale */}
+      <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4">
+        <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-amber-800">Envoi automatique</label>
+            <button onClick={() => setConfig(c => ({ ...c, active: !c.active }))} disabled={readOnly}
+              className={`w-10 h-5 rounded-full transition-colors flex items-center px-0.5 ${config.active ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+              <div className={`w-4 h-4 rounded-full bg-white shadow transition-transform ${config.active ? 'translate-x-5' : ''}`}></div>
             </button>
-            <span className={`text-xs ${config.active ? 'text-emerald-600' : 'text-slate-400'}`}>{config.active ? 'Actif' : 'Inactif'}</span>
           </div>
-          {!readOnly && (
-            <button onClick={() => { setEditRule(null); setShowEditor(true); }}
-              className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">+ Nouvelle règle</button>
-          )}
-        </div>
-        <div className="grid grid-cols-3 gap-4 items-end">
-          <div>
-            <label className="text-xs font-medium text-slate-600 block mb-1">Template par défaut</label>
-            <select value={config.template_id} onChange={e => setConfig(c => ({ ...c, template_id: e.target.value }))} disabled={readOnly}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-              <option value="">-- Choisir un template --</option>
-              {templates.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-            </select>
-          </div>
-          <div>
-            <label className="text-xs font-medium text-slate-600 block mb-1">Envoi</label>
+          <div className="flex items-center gap-2">
+            <label className="text-xs text-amber-700">Timing :</label>
             <select value={config.days_before} onChange={e => setConfig(c => ({ ...c, days_before: parseInt(e.target.value) }))} disabled={readOnly}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              className="border border-amber-200 rounded px-2 py-1 text-xs bg-white">
               {DAYS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
-          <div>
-            {!readOnly && (
-              <button onClick={sauvegarderConfig} disabled={saving}
-                className="w-full px-4 py-2 text-sm bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50">
-                {saving ? 'Enregistrement...' : 'Enregistrer la config'}
-              </button>
-            )}
-          </div>
+          {!readOnly && (
+            <button onClick={sauvegarderConfig} disabled={savingConfig}
+              className="text-xs bg-amber-200 text-amber-800 px-3 py-1 rounded hover:bg-amber-300 disabled:opacity-50">
+              {savingConfig ? '...' : 'Sauver'}
+            </button>
+          )}
         </div>
-        <p className="text-xs text-slate-400 mt-3">Variables : {'{{hotel}}'}, {'{{anniversaire_annees}}'}, {'{{prenom}}'}, {'{{nom}}'}, {'{{business_type}}'}</p>
+        <span className={`text-xs font-medium ${config.active ? 'text-emerald-600' : 'text-slate-400'}`}>
+          {config.active ? '● Actif' : '○ Inactif'}
+        </span>
       </div>
 
-      {/* Règles par business_type — style campagnes */}
-      {rules.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-slate-100 bg-slate-50">
-                <th className="text-left p-3 text-xs text-slate-500 font-medium">Business Type</th>
-                <th className="text-left p-3 text-xs text-slate-500 font-medium">Template</th>
-                <th className="text-left p-3 text-xs text-slate-500 font-medium">Statut</th>
-                <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {rules.map(r => {
-                const tpl = templates.find(t => t.id === r.template_id);
-                return (
-                  <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
-                    <td className="p-3">
-                      <span className="text-sm font-medium text-slate-800">{r.business_type}</span>
-                    </td>
-                    <td className="p-3">
-                      <div className="text-slate-700">{tpl?.nom || '(template par défaut)'}</div>
-                      {tpl && <div className="text-xs text-slate-400">{tpl.sujet}</div>}
-                    </td>
-                    <td className="p-3">
-                      <span className={`text-xs px-2 py-0.5 rounded ${r.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
-                        {r.active ? 'Actif' : 'Inactif'}
-                      </span>
-                    </td>
-                    <td className="p-3 text-right">
-                      {!readOnly && (
-                        <div className="flex gap-1 justify-end">
-                          <button onClick={() => { setEditRule(r); setShowEditor(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
-                          <button onClick={() => supprimerRegle(r.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
-                        </div>
-                      )}
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
-      )}
-
-      {/* Partenaires éligibles */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-        <h3 className="text-sm font-semibold text-slate-800">Prochains anniversaires (60 jours)</h3>
-        {partners.length > 0 ? (
-          <div className="space-y-2 max-h-80 overflow-y-auto">
-            {partners.map(p => (
-              <div key={p.id} className="flex items-center justify-between py-2 border-b border-slate-50">
-                <div className="flex items-center gap-3 min-w-0 flex-1">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-sm font-medium text-slate-800 truncate">{p.name}</div>
-                    <div className="text-xs text-slate-400">{p.business_type || '—'} · {p.anniversary_date ? new Date(p.anniversary_date).toLocaleDateString('fr-FR') : '—'} · J-{p.days_until}</div>
-                  </div>
-                </div>
-                <div className="flex items-center gap-2">
-                  {p.excluded ? <span className="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-500">Exclu</span>
-                  : p.already_sent ? <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">Envoyé</span>
-                  : <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">Programmé</span>}
-                  {!readOnly && (
-                    p.excluded ? (
-                      <button onClick={() => toggleExclusion(p.id, true)} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100">Réintégrer</button>
-                    ) : !p.already_sent ? (
-                      <button onClick={() => toggleExclusion(p.id, false)} className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 hover:bg-red-100">Exclure</button>
-                    ) : null
-                  )}
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-xs text-slate-400 py-4 text-center">Aucun anniversaire dans les 60 prochains jours</div>
+      {/* Header + bouton */}
+      <div className="flex items-center justify-between">
+        <p className="text-xs text-slate-500">Créez des campagnes qui s'envoient automatiquement aux dates d'anniversaire de partenariat, par business type.</p>
+        {!readOnly && (
+          <button onClick={() => { setEditCampaign(null); setShowEditor(true); }}
+            className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">+ Nouvelle campagne anniversaire</button>
         )}
       </div>
 
-      {/* Historique */}
-      {logs.length > 0 && (
-        <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
-          <h3 className="text-sm font-semibold text-slate-800">Historique des envois</h3>
-          <div className="max-h-64 overflow-y-auto">
-            <table className="w-full text-sm">
-              <thead><tr className="border-b border-slate-100 bg-slate-50">
-                <th className="text-left p-2 text-xs text-slate-500">Partenaire</th>
-                <th className="text-left p-2 text-xs text-slate-500">Email</th>
-                <th className="text-left p-2 text-xs text-slate-500">Date</th>
-              </tr></thead>
-              <tbody>
-                {logs.slice(0, 30).map(l => (
-                  <tr key={l.id} className="border-b border-slate-50">
-                    <td className="p-2 text-slate-700">{l.partner_name || '—'}</td>
-                    <td className="p-2 text-slate-500">{l.contact_email || '—'}</td>
-                    <td className="p-2 text-slate-400">{l.sent_at ? new Date(l.sent_at).toLocaleDateString('fr-FR') : '—'}</td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        </div>
-      )}
+      {/* Tableau campagnes anniversaires */}
+      <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="border-b border-slate-100 bg-slate-50">
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Nom</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Business Type</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Timing</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Statut</th>
+              <th className="text-left p-3 text-xs text-slate-500 font-medium">Envoyés</th>
+              <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {campaigns.map(c => (
+              <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50">
+                <td className="p-3">
+                  <div className="text-slate-800 font-medium">{c.nom}</div>
+                  <div className="text-xs text-slate-400">{c.sujet}</div>
+                </td>
+                <td className="p-3"><span className="text-xs px-2 py-0.5 rounded bg-orange-50 text-orange-600">{c.business_type_filter || 'Tous'}</span></td>
+                <td className="p-3 text-xs text-slate-600">
+                  {c.days_before === 0 ? 'Jour J' : `J-${c.days_before}`}
+                </td>
+                <td className="p-3"><span className={`text-xs px-2 py-0.5 rounded ${statutColors[c.statut] || 'bg-slate-100 text-slate-600'}`}>{c.statut}</span></td>
+                <td className="p-3 text-slate-600">{c.sent_count || 0}</td>
+                <td className="p-3 text-right">
+                  <div className="flex gap-1 justify-end">
+                    <button onClick={() => setViewCampaign(c)} className="text-xs text-slate-600 hover:text-slate-800 px-2 py-1">Voir</button>
+                    {!readOnly && c.statut === 'brouillon' && (
+                      <button onClick={() => { setEditCampaign(c); setShowEditor(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
+                    )}
+                    {!readOnly && (
+                      <button onClick={() => supprimer(c.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
+                    )}
+                  </div>
+                </td>
+              </tr>
+            ))}
+            {campaigns.length === 0 && <tr><td colSpan="6" className="p-4 text-center text-slate-400">Aucune campagne anniversaire</td></tr>}
+          </tbody>
+        </table>
+      </div>
 
-      {/* Modal éditeur de règle anniversaire */}
-      {showEditor && <ModalAnniversaryRuleEditor rule={editRule} templates={templates}
-        onClose={() => setShowEditor(false)} onSave={() => { setShowEditor(false); charger(); }} showToast={showToast} />}
+      {showEditor && <ModalAnniversaryCampaignEditor campaign={editCampaign} onClose={() => setShowEditor(false)} onSave={() => { setShowEditor(false); charger(); }} showToast={showToast} />}
+      {viewCampaign && <ModalPartnerCampaignDetail campaign={viewCampaign} onClose={() => setViewCampaign(null)} showToast={showToast} onRefresh={charger} readOnly={readOnly} />}
     </div>
   );
 }
 
-function ModalAnniversaryRuleEditor({ rule, templates, onClose, onSave, showToast }) {
-  const [businessType, setBusinessType] = useState(rule?.business_type || '');
-  const [templateId, setTemplateId] = useState(rule?.template_id || '');
+function ModalAnniversaryCampaignEditor({ campaign, onClose, onSave, showToast }) {
+  const [step, setStep] = useState(1);
+  const [nom, setNom] = useState(campaign?.nom || '');
+  const [sujet, setSujet] = useState(campaign?.sujet || '');
+  const [corpsHtml, setCorpsHtml] = useState(campaign?.corps_html || '');
+  const [businessTypeFilter, setBusinessTypeFilter] = useState(campaign?.business_type_filter || '');
+  const [daysBefore, setDaysBefore] = useState(campaign?.days_before || 0);
+  const [templates, setTemplates] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [pieceJointe, setPieceJointe] = useState(() => {
+    if (!campaign?.piece_jointe) return null;
+    try { return typeof campaign.piece_jointe === 'string' ? JSON.parse(campaign.piece_jointe) : campaign.piece_jointe; }
+    catch (_) { return null; }
+  });
+  const pjRef = useRef(null);
+  const editorRef = useRef(null);
+  const tinymceRef = useRef(null);
+  const corpsHtmlRef = useRef(corpsHtml);
+  corpsHtmlRef.current = corpsHtml;
+
+  useEffect(() => {
+    api.get('/partner-center/templates').then(t => setTemplates(Array.isArray(t) ? t : [])).catch(() => {});
+  }, []);
+
+  const applyTemplate = (templateId) => {
+    const t = templates.find(tp => tp.id === templateId);
+    if (!t) return;
+    setSujet(t.sujet);
+    setCorpsHtml(t.corps_html || '');
+    if (tinymceRef.current) tinymceRef.current.setContent(t.corps_html || '');
+    showToast(`Template "${t.nom}" appliqué`, 'success');
+  };
+
+  const chargerPj = (file) => {
+    if (!file) return;
+    if (file.size > 5000000) { showToast('Fichier trop volumineux (max 5 MB)', 'error'); return; }
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      setPieceJointe({ nom: file.name, taille: file.size, type: file.type, data: e.target.result.split(',')[1] });
+    };
+    reader.readAsDataURL(file);
+  };
+
+  useEffect(() => {
+    if (step !== 1) return;
+    const timer = setTimeout(() => {
+      if (!editorRef.current || tinymceRef.current) return;
+      if (typeof tinymce === 'undefined') return;
+      tinymce.init({
+        target: editorRef.current, plugins: 'lists link image table code fullscreen',
+        toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | link image table | forecolor | removeformat | fullscreen code',
+        menubar: false, height: 300, content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
+        branding: false, promotion: false, license_key: 'gpl',
+        setup: (editor) => {
+          editor.on('init', () => { tinymceRef.current = editor; if (corpsHtmlRef.current) editor.setContent(corpsHtmlRef.current); });
+          editor.on('input change keyup ExecCommand NodeChange', () => setCorpsHtml(editor.getContent()));
+        }
+      });
+    }, 300);
+    return () => { clearTimeout(timer); if (tinymceRef.current) { tinymceRef.current.remove(); tinymceRef.current = null; } };
+  }, [step]);
+
+  const variables = ['prenom', 'nom', 'hotel', 'business_type', 'partner_since', 'anniversaire_annees'];
+
+  const DAYS_OPTIONS = [
+    { value: 0, label: 'Le jour J' },
+    { value: 3, label: '3 jours avant' },
+    { value: 7, label: '7 jours avant' },
+    { value: 14, label: '14 jours avant' },
+    { value: 30, label: '30 jours avant' },
+  ];
 
   const sauvegarder = async () => {
-    if (!businessType) { showToast('Business type requis', 'error'); return; }
+    if (!nom || !sujet) { showToast('Nom et sujet requis', 'error'); return; }
     setSaving(true);
+    const html = tinymceRef.current ? tinymceRef.current.getContent() : corpsHtml;
     try {
-      await api.post('/partner-center/anniversary-rules', { business_type: businessType, template_id: templateId || null });
-      showToast('Règle sauvegardée', 'success');
+      const payload = {
+        nom, sujet, corps_html: html, piece_jointe: pieceJointe,
+        type: 'anniversaire',
+        business_type_filter: businessTypeFilter || null,
+        days_before: daysBefore,
+        source_type: 'anniversaire',
+        source_id: businessTypeFilter || 'all',
+      };
+      if (campaign?.id) {
+        await api.put(`/partner-center/campaigns/${campaign.id}`, payload);
+      } else {
+        await api.post('/partner-center/campaigns', payload);
+      }
+      showToast('Campagne anniversaire sauvegardée', 'success');
       onSave();
     } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
     finally { setSaving(false); }
@@ -17877,32 +17878,127 @@ function ModalAnniversaryRuleEditor({ rule, templates, onClose, onSave, showToas
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
-      <div className="bg-white rounded-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
-        <div className="p-5 border-b border-slate-100">
-          <h2 className="text-lg font-semibold text-slate-900">{rule ? 'Modifier la règle' : 'Nouvelle règle anniversaire'}</h2>
-          <p className="text-xs text-slate-500 mt-1">Assigner un template spécifique pour un type de partenaire</p>
-        </div>
-        <div className="p-5 space-y-4">
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Business Type</label>
-            <input value={businessType} onChange={e => setBusinessType(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="ex: Luxe, Resort, SPA, Boutique..." />
-          </div>
-          <div>
-            <label className="text-sm font-medium text-slate-700 block mb-1">Template email</label>
-            <select value={templateId} onChange={e => setTemplateId(e.target.value)}
-              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-              <option value="">(Utiliser le template par défaut)</option>
-              {templates.map(t => <option key={t.id} value={t.id}>{t.nom} — {t.sujet}</option>)}
-            </select>
+      <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="flex-shrink-0 p-5 border-b border-slate-100">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-slate-900">{campaign ? 'Modifier' : 'Nouvelle campagne anniversaire'}</h2>
+            <div className="flex gap-1">
+              <button onClick={() => setStep(1)} className={`px-3 py-1 rounded text-xs font-medium ${step === 1 ? 'bg-blue-100 text-blue-700' : 'text-slate-400'}`}>1. Contenu</button>
+              <button onClick={() => setStep(2)} className={`px-3 py-1 rounded text-xs font-medium ${step === 2 ? 'bg-blue-100 text-blue-700' : 'text-slate-400'}`}>2. Destinataires</button>
+              <button onClick={() => setStep(3)} className={`px-3 py-1 rounded text-xs font-medium ${step === 3 ? 'bg-blue-100 text-blue-700' : 'text-slate-400'}`}>3. Envoi</button>
+            </div>
           </div>
         </div>
-        <div className="p-4 border-t border-slate-100 flex justify-end gap-2">
-          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
-          <button onClick={sauvegarder} disabled={saving}
-            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-            {saving ? 'Enregistrement...' : 'Enregistrer'}
-          </button>
+        <div className="overflow-y-auto flex-1 p-5 space-y-4">
+          {/* Step 1: Contenu */}
+          {step === 1 && (
+            <>
+              <div><label className="block text-xs font-medium text-slate-600 mb-1">Nom de la campagne</label>
+                <input value={nom} onChange={e => setNom(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="ex: Anniversaire Luxe 2026" /></div>
+              {templates.length > 0 && (
+                <div><label className="block text-xs font-medium text-slate-600 mb-1">Appliquer un template</label>
+                  <select onChange={e => { if (e.target.value) applyTemplate(e.target.value); e.target.value = ''; }} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                    <option value="">— Choisir un template —</option>
+                    {templates.map(t => <option key={t.id} value={t.id}>{t.nom} ({t.categorie})</option>)}
+                  </select></div>
+              )}
+              <div><label className="block text-xs font-medium text-slate-600 mb-1">Sujet</label>
+                <input value={sujet} onChange={e => setSujet(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="Joyeux anniversaire {{hotel}} !" /></div>
+              <div><label className="block text-xs font-medium text-slate-600 mb-1">Corps</label>
+                <div ref={editorRef}></div></div>
+              <div className="flex flex-wrap gap-1">
+                {variables.map(v => (
+                  <button key={v} onClick={() => tinymceRef.current?.insertContent(`{{${v}}}`)}
+                    className="text-xs bg-slate-100 text-slate-600 px-2 py-1 rounded hover:bg-slate-200">{`{{${v}}}`}</button>
+                ))}
+              </div>
+              {/* Signature */}
+              <div className="border-t border-slate-100 pt-3">
+                <div className="text-xs text-slate-400 mb-2 flex items-center gap-1.5">
+                  <span className="w-4 h-px bg-slate-200 inline-block" />Signature automatique<span className="w-4 h-px bg-slate-200 inline-block" />
+                </div>
+                <div dangerouslySetInnerHTML={{ __html: getSignatureHtml() }} style={{ pointerEvents: 'none', opacity: 0.7 }} />
+              </div>
+              {/* PJ */}
+              <div>
+                <label className="block text-xs font-medium text-slate-600 mb-1">Pièce jointe</label>
+                {pieceJointe ? (
+                  <div className="flex items-center gap-2 bg-white border border-slate-200 rounded-lg px-3 py-2">
+                    <span>📎</span>
+                    <div className="flex-1 min-w-0">
+                      <div className="text-xs font-medium text-slate-700 truncate">{pieceJointe.nom}</div>
+                      <div className="text-xs text-slate-400">{Math.round(pieceJointe.taille / 1024)} ko</div>
+                    </div>
+                    <button onClick={() => setPieceJointe(null)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">✕</button>
+                  </div>
+                ) : (
+                  <button onClick={() => pjRef.current?.click()} className="w-full flex items-center justify-center gap-2 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-100 py-2 rounded-lg border border-dashed border-slate-200">
+                    📎 Ajouter une pièce jointe
+                  </button>
+                )}
+                <input ref={pjRef} type="file" className="hidden" onChange={e => chargerPj(e.target.files?.[0])} />
+              </div>
+            </>
+          )}
+
+          {/* Step 2: Destinataires */}
+          {step === 2 && (
+            <>
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+                <h4 className="text-sm font-medium text-blue-800 mb-2">Ciblage par business type</h4>
+                <p className="text-xs text-blue-600 mb-3">Les destinataires seront automatiquement les contacts des partenaires dont l'anniversaire correspond, filtrés par business type.</p>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Business Type (laisser vide = tous les partenaires)</label>
+                  <input value={businessTypeFilter} onChange={e => setBusinessTypeFilter(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="ex: Luxe, Resort, SPA, Boutique..." />
+                </div>
+              </div>
+              <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
+                <strong>Comment ça marche :</strong> Le scheduler envoie automatiquement cet email aux contacts de tous les partenaires
+                {businessTypeFilter ? ` de type "${businessTypeFilter}"` : ''} dont la date d'anniversaire de partenariat arrive.
+                Les destinataires sont déterminés dynamiquement — pas besoin de les ajouter manuellement.
+              </div>
+            </>
+          )}
+
+          {/* Step 3: Envoi */}
+          {step === 3 && (
+            <>
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+                <h4 className="text-sm font-medium text-amber-800">Paramètres d'envoi</h4>
+                <div>
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Quand envoyer par rapport à la date anniversaire</label>
+                  <select value={daysBefore} onChange={e => setDaysBefore(parseInt(e.target.value))}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                    {DAYS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3 space-y-1">
+                <div><strong>Résumé :</strong></div>
+                <div>• Campagne : {nom || '(sans nom)'}</div>
+                <div>• Sujet : {sujet || '(vide)'}</div>
+                <div>• Cible : {businessTypeFilter || 'Tous les partenaires'}</div>
+                <div>• Timing : {daysBefore === 0 ? 'Le jour de l\'anniversaire' : `${daysBefore} jours avant`}</div>
+                <div className="mt-2 text-amber-600">Une fois sauvegardée, la campagne sera active et enverra automatiquement aux prochains anniversaires.</div>
+              </div>
+            </>
+          )}
+        </div>
+        <div className="flex-shrink-0 p-5 border-t border-slate-100 flex justify-between">
+          <div>
+            {step > 1 && <button onClick={() => setStep(step - 1)} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">← Précédent</button>}
+          </div>
+          <div className="flex gap-3">
+            <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
+            {step < 3 ? (
+              <button onClick={() => setStep(step + 1)} className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700">Suivant →</button>
+            ) : (
+              <button onClick={sauvegarder} disabled={saving} className="px-4 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                {saving ? 'Sauvegarde...' : 'Sauvegarder & activer'}
+              </button>
+            )}
+          </div>
         </div>
       </div>
     </div>
