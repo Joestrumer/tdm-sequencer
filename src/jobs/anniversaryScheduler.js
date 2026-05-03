@@ -66,6 +66,10 @@ async function traiterAnniversaires() {
 
   for (const partner of partners) {
     try {
+      // Vérifier exclusion anniversaire
+      const excluded = _db.prepare('SELECT 1 FROM partner_anniversary_exclusions WHERE partner_id = ?').get(partner.id);
+      if (excluded) continue;
+
       // Vérifier pas déjà envoyé cette année
       const alreadySent = _db.prepare(
         'SELECT id FROM partner_anniversary_logs WHERE partner_id = ? AND year = ?'

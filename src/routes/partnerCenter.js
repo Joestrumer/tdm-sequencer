@@ -154,6 +154,16 @@ module.exports = (db) => {
         anniversaryConfig = db.prepare("SELECT * FROM partner_anniversary_config WHERE active = 1 LIMIT 1").get() || null;
       } catch (_) {}
 
+      // Enrichir anniversaires avec excluded / email_sent_this_year / email_scheduled
+      const currentYear = new Date().getFullYear();
+      for (const a of anniversaires) {
+        const excluded = db.prepare('SELECT 1 FROM partner_anniversary_exclusions WHERE partner_id = ?').get(a.id);
+        a.excluded = !!excluded;
+        const sent = db.prepare('SELECT 1 FROM partner_anniversary_logs WHERE partner_id = ? AND year = ?').get(a.id, currentYear);
+        a.email_sent_this_year = !!sent;
+        a.email_scheduled = !!(anniversaryConfig?.active && !a.excluded && !a.email_sent_this_year);
+      }
+
       // Top partenaires CA
       const top_partenaires = db.prepare(`
         SELECT hp.id, hp.name, hp.business_type, hp.city,
@@ -224,10 +234,45 @@ module.exports = (db) => {
       const partner = db.prepare('SELECT * FROM hubspot_partners WHERE id = ?').get(req.params.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       const contacts = db.prepare('SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? ORDER BY lastname').all(partner.hubspot_company_id);
-      res.json(contacts);
+
+      // Enrichir chaque contact : segments du partenaire + listes de contacts
+      const allSegments = db.prepare('SELECT * FROM partner_segments').all();
+      const partnerSegments = [];
+      for (const seg of allSegments) {
+        const rules = db.prepare('SELECT * FROM partner_segment_rules WHERE segment_id = ? ORDER BY ordre').all(seg.id);
+        const { where, params } = buildSegmentWhere(rules);
+        const excluded = db.prepare('SELECT 1 FROM partner_segment_exclusions WHERE segment_id = ? AND hubspot_company_id = ?').get(seg.id, partner.hubspot_company_id);
+        if (excluded) continue;
+        const match = db.prepare(`SELECT 1 FROM hubspot_partners hp WHERE hp.hubspot_company_id = ? AND ${where}`).get(partner.hubspot_company_id, ...params);
+        if (match) partnerSegments.push({ id: seg.id, name: seg.name });
+      }
+
+      const stmtLists = db.prepare(`
+        SELECT l.id, l.name FROM partner_contact_list_members m
+        JOIN partner_contact_lists l ON l.id = m.list_id
+        WHERE m.contact_id = ?
+      `);
+
+      const enriched = contacts.map(c => ({
+        ...c,
+        segments: partnerSegments,
+        lists: stmtLists.all(c.id),
+      }));
+
+      res.json(enriched);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
+  });
+
+  // Ajouter un contact à une liste
+  router.post('/contact-lists/:id/add-member', (req, res) => {
+    try {
+      const { contact_id } = req.body;
+      if (!contact_id) return res.status(400).json({ erreur: 'contact_id requis' });
+      db.prepare('INSERT OR IGNORE INTO partner_contact_list_members (list_id, contact_id) VALUES (?, ?)').run(req.params.id, contact_id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
   });
 
   router.get('/partners/:id/timeline', (req, res) => {
@@ -1038,6 +1083,22 @@ module.exports = (db) => {
         );
       }
       res.json(db.prepare('SELECT * FROM partner_anniversary_config LIMIT 1').get());
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // Exclure un partenaire des emails anniversaire
+  router.post('/anniversary-exclude/:partnerId', (req, res) => {
+    try {
+      db.prepare('INSERT OR IGNORE INTO partner_anniversary_exclusions (partner_id) VALUES (?)').run(req.params.partnerId);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // Réintégrer un partenaire dans les emails anniversaire
+  router.delete('/anniversary-exclude/:partnerId', (req, res) => {
+    try {
+      db.prepare('DELETE FROM partner_anniversary_exclusions WHERE partner_id = ?').run(req.params.partnerId);
+      res.json({ ok: true });
     } catch (e) { res.status(500).json({ erreur: e.message }); }
   });
 

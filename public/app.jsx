@@ -15773,7 +15773,7 @@ const ModalProfile = ({ onClose, showToast }) => {
 
   // Permissions lisibles
   const PERM_LABELS = {
-    dashboard: 'Dashboard', portail: 'Portail', leads: 'Leads',
+    dashboard: 'Dashboard', portail: 'Portail Partenaire', leads: 'Leads',
     campagnes: 'Campagnes', factures: 'Factures', emails: 'Validation Email', config: 'Configuration'
   };
 
@@ -15846,7 +15846,7 @@ const ModalProfile = ({ onClose, showToast }) => {
 
 const PERM_TABS = [
   { id: 'dashboard', label: 'Dashboard' },
-  { id: 'portail', label: 'Portail' },
+  { id: 'portail', label: 'Portail Partenaire' },
   { id: 'leads', label: 'Leads' },
   { id: 'campagnes', label: 'Campagnes' },
   { id: 'factures', label: 'Factures' },
@@ -16358,10 +16358,36 @@ function VuePartnerDashboard({ showToast, ownerId }) {
                         <span className={`text-xs px-1.5 py-0.5 rounded ${daysColor}`}>
                           {p.days_until === 0 ? "aujourd'hui" : `dans ${p.days_until}j`}
                         </span>
-                        {anniversaryConfig?.active && <span className="text-xs" title="Email auto actif">&#9993;</span>}
                       </div>
                     </div>
-                    <div className="text-xs text-amber-600 mt-0.5">{formatDateFr(p.next_anniversary)}</div>
+                    <div className="flex items-center justify-between mt-1">
+                      <div className="text-xs text-amber-600">{formatDateFr(p.next_anniversary)}</div>
+                      <div className="flex items-center gap-1.5">
+                        {p.email_sent_this_year && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">Envoyé</span>
+                        )}
+                        {p.email_scheduled && !p.email_sent_this_year && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-100 text-emerald-700">Email programmé</span>
+                        )}
+                        {p.excluded && (
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 line-through">Exclu</span>
+                        )}
+                        {/* Toggle exclusion */}
+                        {!p.email_sent_this_year && (
+                          p.excluded ? (
+                            <button onClick={async () => {
+                              try { await api.delete(`/partner-center/anniversary-exclude/${p.id}`); charger(); showToast('Partenaire réintégré', 'success'); }
+                              catch (e) { showToast('Erreur', 'error'); }
+                            }} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100">Réintégrer</button>
+                          ) : p.email_scheduled ? (
+                            <button onClick={async () => {
+                              try { await api.post(`/partner-center/anniversary-exclude/${p.id}`); charger(); showToast('Email déprogrammé', 'success'); }
+                              catch (e) { showToast('Erreur', 'error'); }
+                            }} className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 hover:bg-red-100">Déprogrammer</button>
+                          ) : null
+                        )}
+                      </div>
+                    </div>
                   </div>
                 );
               })}
@@ -16621,18 +16647,22 @@ function ModalPartnerDetail({ partner, onClose, showToast }) {
   const [loading, setLoading] = useState(true);
   const [noteText, setNoteText] = useState('');
   const [tab, setTab] = useState('info');
+  const [contactLists, setContactLists] = useState([]);
+  const [addingToList, setAddingToList] = useState(null); // contact id for dropdown
 
   useEffect(() => {
     (async () => {
       try {
-        const [d, c, t] = await Promise.all([
+        const [d, c, t, cl] = await Promise.all([
           api.get(`/partner-center/partners/${partner.id}`),
           api.get(`/partner-center/partners/${partner.id}/contacts`),
           api.get(`/partner-center/partners/${partner.id}/timeline`),
+          api.get('/partner-center/contact-lists'),
         ]);
         setDetail(d);
         setContacts(c);
         setTimeline(t);
+        setContactLists(Array.isArray(cl) ? cl : []);
       } catch (e) { showToast('Erreur chargement', 'error'); }
       finally { setLoading(false); }
     })();
@@ -16713,12 +16743,46 @@ function ModalPartnerDetail({ partner, onClose, showToast }) {
               {tab === 'contacts' && (
                 <div className="space-y-2">
                   {contacts.map(c => (
-                    <div key={c.id} className="flex items-center justify-between py-2 border-b border-slate-50">
-                      <div>
-                        <div className="text-sm font-medium text-slate-800">{c.firstname} {c.lastname}</div>
-                        <div className="text-xs text-slate-500">{c.jobtitle || '—'}</div>
+                    <div key={c.id} className="py-2 border-b border-slate-50">
+                      <div className="flex items-center justify-between">
+                        <div>
+                          <div className="text-sm font-medium text-slate-800">{c.firstname} {c.lastname}</div>
+                          <div className="text-xs text-slate-500">{c.jobtitle || '—'}</div>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-slate-500">{c.email || '—'}</span>
+                          <div className="relative">
+                            <button onClick={() => setAddingToList(addingToList === c.id ? null : c.id)}
+                              className="text-xs bg-slate-100 hover:bg-blue-100 text-slate-600 hover:text-blue-700 w-6 h-6 rounded-full flex items-center justify-center" title="Ajouter à une liste">+</button>
+                            {addingToList === c.id && (
+                              <div className="absolute right-0 top-7 z-20 bg-white border border-slate-200 rounded-lg shadow-lg py-1 w-48">
+                                {contactLists.length === 0 ? (
+                                  <div className="text-xs text-slate-400 px-3 py-2">Aucune liste</div>
+                                ) : contactLists.map(l => (
+                                  <button key={l.id} onClick={async () => {
+                                    try {
+                                      await api.post(`/partner-center/contact-lists/${l.id}/add-member`, { contact_id: c.id });
+                                      showToast(`Ajouté à "${l.name}"`, 'success');
+                                      const updated = await api.get(`/partner-center/partners/${partner.id}/contacts`);
+                                      setContacts(updated);
+                                    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+                                    setAddingToList(null);
+                                  }} className="block w-full text-left text-xs px-3 py-1.5 hover:bg-slate-50 text-slate-700">{l.name}</button>
+                                ))}
+                              </div>
+                            )}
+                          </div>
+                        </div>
                       </div>
-                      <div className="text-xs text-slate-500">{c.email || '—'}</div>
+                      {/* Badges segments + listes */}
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {c.segments?.map(s => (
+                          <span key={s.id} className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600">{s.name}</span>
+                        ))}
+                        {c.lists?.map(l => (
+                          <span key={l.id} className="text-[10px] px-1.5 py-0.5 rounded-full bg-purple-50 text-purple-600">{l.name}</span>
+                        ))}
+                      </div>
                     </div>
                   ))}
                   {contacts.length === 0 && <div className="text-center text-slate-400 text-sm py-4">Aucun contact</div>}
@@ -18939,7 +19003,7 @@ function App() {
       { id: "dashboard-marketing", label: "Marketing" },
       { id: "dashboard-ventes", label: "Ventes" },
     ]},
-    { id: "portail", icon: "📦", label: "Portail", children: [
+    { id: "portail", icon: "📦", label: "Portail Partenaire", children: [
       { id: "commandes", label: "Commandes" },
       { id: "partenaires", label: "Partenaires" },
       { id: "account-mgmt", label: "Relation Partenaires" },

@@ -790,6 +790,12 @@ db.exec(`
   );
 
   CREATE INDEX IF NOT EXISTS idx_anniv_logs_partner ON partner_anniversary_logs(partner_id, year);
+
+  -- ─── Table Exclusions Anniversaires ─────────────────────────────────────────
+  CREATE TABLE IF NOT EXISTS partner_anniversary_exclusions (
+    partner_id INTEGER PRIMARY KEY,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
