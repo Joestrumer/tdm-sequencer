@@ -194,7 +194,11 @@ async function scrapeHotel(db, hotelId) {
   `).run(hotelId);
 
   try {
-    const result = await scrapeHotelWebsite(hotel.site_internet);
+    // Timeout de 20s pour éviter les blocages
+    const result = await Promise.race([
+      scrapeHotelWebsite(hotel.site_internet),
+      new Promise((_, reject) => setTimeout(() => reject(new Error('Timeout scraping (20s)')), 20000)),
+    ]);
 
     // Si aucun email trouvé, c'est une erreur partielle
     if (!result.email) {
@@ -247,6 +251,14 @@ async function scrapeHotel(db, hotelId) {
  * @param {function} onProgress - Callback appelé à chaque hôtel scrapé
  */
 async function scrapeBatch(db, hotelIds, onProgress = null) {
+  // Reset les hôtels bloqués en 'processing' depuis plus de 5 minutes
+  try {
+    db.prepare(`
+      UPDATE hotels_france SET scraping_status = 'error', scraping_error = 'Timeout - reset automatique'
+      WHERE scraping_status = 'processing' AND scraping_date < datetime('now', '-5 minutes')
+    `).run();
+  } catch (_) {}
+
   const results = {
     total: hotelIds.length,
     success: 0,
@@ -255,7 +267,16 @@ async function scrapeBatch(db, hotelIds, onProgress = null) {
   };
 
   for (const hotelId of hotelIds) {
-    const result = await scrapeHotel(db, hotelId);
+    let result;
+    try {
+      result = await scrapeHotel(db, hotelId);
+    } catch (err) {
+      // Catch-all pour ne jamais bloquer la boucle
+      try {
+        db.prepare(`UPDATE hotels_france SET scraping_status = 'error', scraping_error = ?, scraping_date = datetime('now') WHERE id = ?`).run((err.message || 'Erreur inconnue').slice(0, 255), hotelId);
+      } catch (_) {}
+      result = { success: false, error: err.message };
+    }
 
     if (result.success) {
       results.success++;

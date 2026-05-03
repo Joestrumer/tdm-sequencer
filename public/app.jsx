@@ -4492,6 +4492,19 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
             <p className="text-xs text-blue-700">{scrapingProgress.processing} hôtel(s) en traitement</p>
           </div>
           <button
+            onClick={async () => {
+              try {
+                await api.post('/prospection/scrape-reset');
+                showToast('Hôtels bloqués réinitialisés', 'success');
+                stopPolling();
+                chargerHotels();
+              } catch (e) { showToast('Erreur reset', 'error'); }
+            }}
+            className="text-xs text-red-600 hover:text-red-800 font-medium px-2 py-1 rounded hover:bg-red-50"
+          >
+            Débloquer
+          </button>
+          <button
             onClick={stopPolling}
             className="text-xs text-blue-600 hover:text-blue-800 font-medium"
           >

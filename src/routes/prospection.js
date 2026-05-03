@@ -490,6 +490,19 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/prospection/scrape-reset — Reset les hôtels bloqués en 'processing'
+  router.post('/scrape-reset', (req, res) => {
+    try {
+      const result = db.prepare(`
+        UPDATE hotels_france SET scraping_status = 'pending', scraping_error = NULL
+        WHERE scraping_status = 'processing'
+      `).run();
+      res.json({ success: true, reset: result.changes });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // POST /api/prospection/create-leads — Convertit des hôtels scrapés en leads
   router.post('/create-leads', (req, res) => {
     const { hotel_ids } = req.body;
