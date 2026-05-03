@@ -23,12 +23,16 @@ async function traiterAnniversaires() {
   } catch (_) { return; }
   if (!config || !config.template_id) return;
 
-  // Charger le template
-  const template = _db.prepare('SELECT * FROM partner_email_templates WHERE id = ?').get(config.template_id);
-  if (!template) {
-    console.warn('🎉 Anniversary: template introuvable', config.template_id);
+  // Charger le template par défaut
+  const defaultTemplate = _db.prepare('SELECT * FROM partner_email_templates WHERE id = ?').get(config.template_id);
+  if (!defaultTemplate) {
+    console.warn('🎉 Anniversary: template par défaut introuvable', config.template_id);
     return;
   }
+
+  // Charger les règles par business_type
+  let businessTypeRules = [];
+  try { businessTypeRules = _db.prepare('SELECT * FROM partner_anniversary_rules WHERE active = 1').all(); } catch (_) {}
 
   const daysBefore = config.days_before || 0;
   const currentYear = new Date().getFullYear();
@@ -82,6 +86,14 @@ async function traiterAnniversaires() {
         WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''
       `).all(partner.hubspot_company_id);
       if (contacts.length === 0) continue;
+
+      // Choisir le template selon le business_type du partenaire
+      const rule = businessTypeRules.find(r => r.business_type === partner.business_type);
+      let template = defaultTemplate;
+      if (rule && rule.template_id) {
+        const specific = _db.prepare('SELECT * FROM partner_email_templates WHERE id = ?').get(rule.template_id);
+        if (specific) template = specific;
+      }
 
       for (const contact of contacts) {
         const data = {

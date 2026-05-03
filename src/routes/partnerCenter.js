@@ -1102,6 +1102,76 @@ module.exports = (db) => {
     } catch (e) { res.status(500).json({ erreur: e.message }); }
   });
 
+  // ═══════════════════════════════════════════════════════════════════════════
+  //  ANNIVERSARY RULES (par business_type)
+  // ═══════════════════════════════════════════════════════════════════════════
+
+  router.get('/anniversary-rules', (req, res) => {
+    try {
+      const rules = db.prepare('SELECT * FROM partner_anniversary_rules ORDER BY business_type').all();
+      res.json(rules);
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  router.post('/anniversary-rules', (req, res) => {
+    try {
+      const { business_type, template_id } = req.body;
+      if (!business_type) return res.status(400).json({ erreur: 'business_type requis' });
+      const id = randomUUID();
+      db.prepare(`INSERT INTO partner_anniversary_rules (id, business_type, template_id) VALUES (?, ?, ?)
+        ON CONFLICT(business_type) DO UPDATE SET template_id = excluded.template_id`).run(id, business_type, template_id || null);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  router.delete('/anniversary-rules/:id', (req, res) => {
+    try {
+      db.prepare('DELETE FROM partner_anniversary_rules WHERE id = ?').run(req.params.id);
+      res.json({ ok: true });
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
+  // Partenaires éligibles (60 prochains jours)
+  router.get('/anniversary-eligible', (req, res) => {
+    try {
+      const currentYear = new Date().getFullYear();
+      const partners = db.prepare(`
+        WITH anniv AS (
+          SELECT hp.*,
+            CAST(strftime('%m', hp.partner_since) AS INTEGER) as ps_month,
+            CAST(strftime('%d', hp.partner_since) AS INTEGER) as ps_day,
+            CAST(strftime('%Y', 'now') AS INTEGER) as cur_year
+          FROM hubspot_partners hp
+          WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''
+        )
+        SELECT *,
+          CASE
+            WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
+            THEN printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)
+            ELSE printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)
+          END as anniversary_date,
+          CASE
+            WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
+            THEN CAST(julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) - julianday('now') AS INTEGER)
+            ELSE CAST(julianday(printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)) - julianday('now') AS INTEGER)
+          END as days_until
+        FROM anniv
+        HAVING days_until <= 60
+        ORDER BY days_until
+      `).all();
+
+      // Enrich with exclusion/sent status
+      for (const p of partners) {
+        const excl = db.prepare('SELECT 1 FROM partner_anniversary_exclusions WHERE partner_id = ?').get(p.id);
+        p.excluded = !!excl;
+        const sent = db.prepare('SELECT 1 FROM partner_anniversary_logs WHERE partner_id = ? AND year = ?').get(p.id, currentYear);
+        p.already_sent = !!sent;
+      }
+
+      res.json(partners);
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
   router.get('/anniversary-logs', (req, res) => {
     try {
       const logs = db.prepare(`

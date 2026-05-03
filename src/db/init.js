@@ -796,6 +796,15 @@ db.exec(`
     partner_id INTEGER PRIMARY KEY,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  -- ─── Règles anniversaires par business_type ──────────────────────────────────
+  CREATE TABLE IF NOT EXISTS partner_anniversary_rules (
+    id TEXT PRIMARY KEY,
+    business_type TEXT NOT NULL UNIQUE,
+    template_id TEXT,
+    active INTEGER DEFAULT 1,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
