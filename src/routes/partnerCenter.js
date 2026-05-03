@@ -1136,27 +1136,27 @@ module.exports = (db) => {
     try {
       const currentYear = new Date().getFullYear();
       const partners = db.prepare(`
-        WITH anniv AS (
-          SELECT hp.*,
-            CAST(strftime('%m', hp.partner_since) AS INTEGER) as ps_month,
-            CAST(strftime('%d', hp.partner_since) AS INTEGER) as ps_day,
-            CAST(strftime('%Y', 'now') AS INTEGER) as cur_year
-          FROM hubspot_partners hp
-          WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''
-        )
-        SELECT *,
+        SELECT hp.*,
+          CAST(strftime('%m', hp.partner_since) AS INTEGER) as ps_month,
+          CAST(strftime('%d', hp.partner_since) AS INTEGER) as ps_day,
+          CAST(strftime('%Y', 'now') AS INTEGER) as cur_year,
           CASE
-            WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
-            THEN printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)
-            ELSE printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)
+            WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
+            THEN printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))
+            ELSE printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))
           END as anniversary_date,
           CASE
-            WHEN julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) >= julianday('now')
-            THEN CAST(julianday(printf('%04d-%02d-%02d', cur_year, ps_month, ps_day)) - julianday('now') AS INTEGER)
-            ELSE CAST(julianday(printf('%04d-%02d-%02d', cur_year + 1, ps_month, ps_day)) - julianday('now') AS INTEGER)
+            WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
+            THEN CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
+            ELSE CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
           END as days_until
-        FROM anniv
-        HAVING days_until <= 60
+        FROM hubspot_partners hp
+        WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''
+          AND CASE
+            WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
+            THEN CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
+            ELSE CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
+          END <= 60
         ORDER BY days_until
       `).all();
 

@@ -16159,6 +16159,7 @@ const ModalEditUser = ({ user, onClose, onSave, showToast }) => {
 
 function VuePartnerCenter({ showToast, readOnly }) {
   const [tab, setTab] = useState('dashboard');
+  const [commSubTab, setCommSubTab] = useState(null);
   const [owners, setOwners] = useState([]);
   const [selectedOwner, setSelectedOwner] = useState('');
   const tabs = [
@@ -16190,10 +16191,10 @@ function VuePartnerCenter({ showToast, readOnly }) {
           {owners.length === 0 && <option disabled>Sync HubSpot pour charger</option>}
         </select>
       </div>
-      {tab === 'dashboard' && <VuePartnerDashboard showToast={showToast} ownerId={selectedOwner} onNavigate={(t) => setTab(t)} />}
+      {tab === 'dashboard' && <VuePartnerDashboard showToast={showToast} ownerId={selectedOwner} onNavigate={(t, sub) => { setTab(t); if (sub) setCommSubTab(sub); }} />}
       {tab === 'partenaires' && <VuePartnerList showToast={showToast} ownerId={selectedOwner} />}
       {tab === 'segments' && <VuePartnerSegments showToast={showToast} readOnly={readOnly} ownerId={selectedOwner} />}
-      {tab === 'communications' && <VuePartnerCampaigns showToast={showToast} readOnly={readOnly} />}
+      {tab === 'communications' && <VuePartnerCampaigns showToast={showToast} readOnly={readOnly} initialSubTab={commSubTab} />}
     </div>
   );
 }
@@ -16336,7 +16337,7 @@ function VuePartnerDashboard({ showToast, ownerId, onNavigate }) {
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-5">
           <div className="flex items-center justify-between mb-3">
             <h3 className="text-sm font-semibold text-amber-800">Anniversaires (60j)</h3>
-            <button onClick={() => onNavigate && onNavigate('communications')}
+            <button onClick={() => onNavigate && onNavigate('communications', 'anniversaires')}
               className="text-xs bg-amber-100 text-amber-700 px-2.5 py-1 rounded-lg hover:bg-amber-200 flex items-center gap-1">
               {anniversaryConfig?.active ? <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 inline-block"></span> : null}
               Gérer
@@ -16931,8 +16932,8 @@ function ModalSegmentBuilder({ segment, onClose, onSave, showToast }) {
 
 // ─── PARTNER CAMPAIGNS (Tab 4) ──────────────────────────────────────────────
 
-function VuePartnerCampaigns({ showToast, readOnly }) {
-  const [subTab, setSubTab] = useState('campaigns');
+function VuePartnerCampaigns({ showToast, readOnly, initialSubTab }) {
+  const [subTab, setSubTab] = useState(initialSubTab || 'campaigns');
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
@@ -17597,15 +17598,16 @@ function VuePartnerAnniversaries({ showToast, readOnly }) {
   const [logs, setLogs] = useState([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-  const [newRule, setNewRule] = useState({ business_type: '', template_id: '' });
+  const [showEditor, setShowEditor] = useState(false);
+  const [editRule, setEditRule] = useState(null);
 
   const charger = async () => {
     try {
       const [cfg, tpls, rls, ptnrs, lg] = await Promise.all([
         api.get('/partner-center/anniversary-config'),
         api.get('/partner-center/templates'),
-        api.get('/partner-center/anniversary-rules'),
-        api.get('/partner-center/anniversary-eligible'),
+        api.get('/partner-center/anniversary-rules').catch(() => []),
+        api.get('/partner-center/anniversary-eligible').catch(() => []),
         api.get('/partner-center/anniversary-logs'),
       ]);
       if (cfg) setConfig({ template_id: cfg.template_id || '', days_before: cfg.days_before || 0, active: !!cfg.active });
@@ -17627,17 +17629,8 @@ function VuePartnerAnniversaries({ showToast, readOnly }) {
     finally { setSaving(false); }
   };
 
-  const ajouterRegle = async () => {
-    if (!newRule.business_type) { showToast('Business type requis', 'error'); return; }
-    try {
-      await api.post('/partner-center/anniversary-rules', newRule);
-      setNewRule({ business_type: '', template_id: '' });
-      charger();
-      showToast('Règle ajoutée', 'success');
-    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
-  };
-
   const supprimerRegle = async (id) => {
+    if (!confirm('Supprimer cette règle ?')) return;
     try { await api.delete(`/partner-center/anniversary-rules/${id}`); charger(); showToast('Règle supprimée', 'success'); }
     catch (e) { showToast('Erreur: ' + e.message, 'error'); }
   };
@@ -17665,153 +17658,206 @@ function VuePartnerAnniversaries({ showToast, readOnly }) {
 
   return (
     <div className="space-y-6">
-      {/* Config globale */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-800">Configuration globale</h3>
-        <div className="flex items-center justify-between">
-          <label className="text-sm text-slate-700">Activer l'envoi automatique</label>
-          <button onClick={() => setConfig(c => ({ ...c, active: !c.active }))} disabled={readOnly}
-            className={`w-11 h-6 rounded-full transition-colors flex items-center px-0.5 ${config.active ? 'bg-emerald-500' : 'bg-slate-300'}`}>
-            <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${config.active ? 'translate-x-5' : ''}`}></div>
-          </button>
+      {/* Config globale — bandeau compact */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5">
+        <div className="flex items-center justify-between mb-4">
+          <div className="flex items-center gap-3">
+            <h3 className="text-sm font-semibold text-slate-800">Emails anniversaires</h3>
+            <button onClick={() => { setConfig(c => ({ ...c, active: !c.active })); }} disabled={readOnly}
+              className={`w-11 h-6 rounded-full transition-colors flex items-center px-0.5 ${config.active ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+              <div className={`w-5 h-5 rounded-full bg-white shadow transition-transform ${config.active ? 'translate-x-5' : ''}`}></div>
+            </button>
+            <span className={`text-xs ${config.active ? 'text-emerald-600' : 'text-slate-400'}`}>{config.active ? 'Actif' : 'Inactif'}</span>
+          </div>
+          {!readOnly && (
+            <button onClick={() => { setEditRule(null); setShowEditor(true); }}
+              className="bg-blue-600 text-white text-sm px-4 py-2 rounded-lg hover:bg-blue-700">+ Nouvelle règle</button>
+          )}
         </div>
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-3 gap-4 items-end">
           <div>
             <label className="text-xs font-medium text-slate-600 block mb-1">Template par défaut</label>
             <select value={config.template_id} onChange={e => setConfig(c => ({ ...c, template_id: e.target.value }))} disabled={readOnly}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-              <option value="">-- Choisir --</option>
-              {templates.map(t => <option key={t.id} value={t.id}>{t.nom} — {t.sujet}</option>)}
+              <option value="">-- Choisir un template --</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
             </select>
           </div>
           <div>
-            <label className="text-xs font-medium text-slate-600 block mb-1">Quand envoyer</label>
+            <label className="text-xs font-medium text-slate-600 block mb-1">Envoi</label>
             <select value={config.days_before} onChange={e => setConfig(c => ({ ...c, days_before: parseInt(e.target.value) }))} disabled={readOnly}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
               {DAYS_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
             </select>
           </div>
+          <div>
+            {!readOnly && (
+              <button onClick={sauvegarderConfig} disabled={saving}
+                className="w-full px-4 py-2 text-sm bg-slate-800 text-white rounded-lg hover:bg-slate-900 disabled:opacity-50">
+                {saving ? 'Enregistrement...' : 'Enregistrer la config'}
+              </button>
+            )}
+          </div>
         </div>
-        {!readOnly && (
-          <div className="flex justify-end">
-            <button onClick={sauvegarderConfig} disabled={saving}
-              className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
-              {saving ? 'Enregistrement...' : 'Enregistrer'}
-            </button>
-          </div>
-        )}
-        <p className="text-xs text-slate-400">Variables : {'{{hotel}}'}, {'{{anniversaire_annees}}'}, {'{{prenom}}'}, {'{{nom}}'}, {'{{business_type}}'}</p>
+        <p className="text-xs text-slate-400 mt-3">Variables : {'{{hotel}}'}, {'{{anniversaire_annees}}'}, {'{{prenom}}'}, {'{{nom}}'}, {'{{business_type}}'}</p>
       </div>
 
-      {/* Règles par business_type */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-800">Règles par business type</h3>
-        <p className="text-xs text-slate-500">Assigner un template spécifique selon le type de partenaire. Si aucune règle ne correspond, le template par défaut est utilisé.</p>
-        {rules.length > 0 && (
+      {/* Règles par business_type — style campagnes */}
+      {rules.length > 0 && (
+        <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
           <table className="w-full text-sm">
-            <thead><tr className="border-b border-slate-100 bg-slate-50">
-              <th className="text-left p-2 text-xs text-slate-500">Business Type</th>
-              <th className="text-left p-2 text-xs text-slate-500">Template</th>
-              <th className="text-right p-2 text-xs text-slate-500">Actions</th>
-            </tr></thead>
+            <thead>
+              <tr className="border-b border-slate-100 bg-slate-50">
+                <th className="text-left p-3 text-xs text-slate-500 font-medium">Business Type</th>
+                <th className="text-left p-3 text-xs text-slate-500 font-medium">Template</th>
+                <th className="text-left p-3 text-xs text-slate-500 font-medium">Statut</th>
+                <th className="text-right p-3 text-xs text-slate-500 font-medium">Actions</th>
+              </tr>
+            </thead>
             <tbody>
-              {rules.map(r => (
-                <tr key={r.id} className="border-b border-slate-50">
-                  <td className="p-2 text-slate-700">{r.business_type}</td>
-                  <td className="p-2 text-slate-600">{templates.find(t => t.id === r.template_id)?.nom || '(défaut)'}</td>
-                  <td className="p-2 text-right">
-                    {!readOnly && <button onClick={() => supprimerRegle(r.id)} className="text-xs text-red-500 hover:text-red-700">Supprimer</button>}
-                  </td>
-                </tr>
-              ))}
+              {rules.map(r => {
+                const tpl = templates.find(t => t.id === r.template_id);
+                return (
+                  <tr key={r.id} className="border-b border-slate-50 hover:bg-slate-50">
+                    <td className="p-3">
+                      <span className="text-sm font-medium text-slate-800">{r.business_type}</span>
+                    </td>
+                    <td className="p-3">
+                      <div className="text-slate-700">{tpl?.nom || '(template par défaut)'}</div>
+                      {tpl && <div className="text-xs text-slate-400">{tpl.sujet}</div>}
+                    </td>
+                    <td className="p-3">
+                      <span className={`text-xs px-2 py-0.5 rounded ${r.active ? 'bg-emerald-50 text-emerald-600' : 'bg-slate-100 text-slate-500'}`}>
+                        {r.active ? 'Actif' : 'Inactif'}
+                      </span>
+                    </td>
+                    <td className="p-3 text-right">
+                      {!readOnly && (
+                        <div className="flex gap-1 justify-end">
+                          <button onClick={() => { setEditRule(r); setShowEditor(true); }} className="text-xs text-blue-600 hover:text-blue-800 px-2 py-1">Modifier</button>
+                          <button onClick={() => supprimerRegle(r.id)} className="text-xs text-red-500 hover:text-red-700 px-2 py-1">Suppr.</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
             </tbody>
           </table>
-        )}
-        {!readOnly && (
-          <div className="flex gap-2 items-end">
-            <div className="flex-1">
-              <label className="text-xs text-slate-500 block mb-1">Business type</label>
-              <input value={newRule.business_type} onChange={e => setNewRule(r => ({ ...r, business_type: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="ex: Luxe, Resort, SPA..." />
-            </div>
-            <div className="flex-1">
-              <label className="text-xs text-slate-500 block mb-1">Template</label>
-              <select value={newRule.template_id} onChange={e => setNewRule(r => ({ ...r, template_id: e.target.value }))}
-                className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
-                <option value="">-- Template --</option>
-                {templates.map(t => <option key={t.id} value={t.id}>{t.nom}</option>)}
-              </select>
-            </div>
-            <button onClick={ajouterRegle} className="px-3 py-2 text-sm bg-emerald-600 text-white rounded-lg hover:bg-emerald-700">Ajouter</button>
-          </div>
-        )}
-      </div>
+        </div>
+      )}
 
-      {/* Partenaires éligibles (60j) */}
-      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-4">
-        <h3 className="text-sm font-semibold text-slate-800">Partenaires éligibles (60 prochains jours)</h3>
+      {/* Partenaires éligibles */}
+      <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
+        <h3 className="text-sm font-semibold text-slate-800">Prochains anniversaires (60 jours)</h3>
         {partners.length > 0 ? (
-          <table className="w-full text-sm">
-            <thead><tr className="border-b border-slate-100 bg-slate-50">
-              <th className="text-left p-2 text-xs text-slate-500">Partenaire</th>
-              <th className="text-left p-2 text-xs text-slate-500">Business Type</th>
-              <th className="text-left p-2 text-xs text-slate-500">Date anniversaire</th>
-              <th className="text-left p-2 text-xs text-slate-500">Statut</th>
-              <th className="text-right p-2 text-xs text-slate-500">Actions</th>
-            </tr></thead>
-            <tbody>
-              {partners.map(p => (
-                <tr key={p.id} className="border-b border-slate-50">
-                  <td className="p-2 text-slate-700 font-medium">{p.name}</td>
-                  <td className="p-2"><span className="text-xs px-1.5 py-0.5 rounded bg-orange-50 text-orange-600">{p.business_type || '—'}</span></td>
-                  <td className="p-2 text-slate-600">{p.anniversary_date ? new Date(p.anniversary_date).toLocaleDateString('fr-FR') : '—'}</td>
-                  <td className="p-2">
-                    {p.excluded ? <span className="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-500">Exclu</span>
-                    : p.already_sent ? <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">Envoyé</span>
-                    : <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">Programmé</span>}
-                  </td>
-                  <td className="p-2 text-right">
-                    {!readOnly && (
-                      p.excluded ? (
-                        <button onClick={() => toggleExclusion(p.id, true)} className="text-xs text-emerald-600 hover:text-emerald-800">Réintégrer</button>
-                      ) : !p.already_sent ? (
-                        <button onClick={() => toggleExclusion(p.id, false)} className="text-xs text-red-500 hover:text-red-700">Exclure</button>
-                      ) : null
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="space-y-2 max-h-80 overflow-y-auto">
+            {partners.map(p => (
+              <div key={p.id} className="flex items-center justify-between py-2 border-b border-slate-50">
+                <div className="flex items-center gap-3 min-w-0 flex-1">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-sm font-medium text-slate-800 truncate">{p.name}</div>
+                    <div className="text-xs text-slate-400">{p.business_type || '—'} · {p.anniversary_date ? new Date(p.anniversary_date).toLocaleDateString('fr-FR') : '—'} · J-{p.days_until}</div>
+                  </div>
+                </div>
+                <div className="flex items-center gap-2">
+                  {p.excluded ? <span className="text-xs px-1.5 py-0.5 rounded bg-red-50 text-red-500">Exclu</span>
+                  : p.already_sent ? <span className="text-xs px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600">Envoyé</span>
+                  : <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-600">Programmé</span>}
+                  {!readOnly && (
+                    p.excluded ? (
+                      <button onClick={() => toggleExclusion(p.id, true)} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100">Réintégrer</button>
+                    ) : !p.already_sent ? (
+                      <button onClick={() => toggleExclusion(p.id, false)} className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 hover:bg-red-100">Exclure</button>
+                    ) : null
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
         ) : (
           <div className="text-xs text-slate-400 py-4 text-center">Aucun anniversaire dans les 60 prochains jours</div>
         )}
       </div>
 
-      {/* Historique envois */}
+      {/* Historique */}
       {logs.length > 0 && (
         <div className="bg-white rounded-xl border border-slate-200 p-5 space-y-3">
           <h3 className="text-sm font-semibold text-slate-800">Historique des envois</h3>
-          <table className="w-full text-sm">
-            <thead><tr className="border-b border-slate-100 bg-slate-50">
-              <th className="text-left p-2 text-xs text-slate-500">Partenaire</th>
-              <th className="text-left p-2 text-xs text-slate-500">Email</th>
-              <th className="text-left p-2 text-xs text-slate-500">Template</th>
-              <th className="text-left p-2 text-xs text-slate-500">Date</th>
-            </tr></thead>
-            <tbody>
-              {logs.slice(0, 20).map(l => (
-                <tr key={l.id} className="border-b border-slate-50">
-                  <td className="p-2 text-slate-700">{l.partner_name || '—'}</td>
-                  <td className="p-2 text-slate-500">{l.contact_email || '—'}</td>
-                  <td className="p-2 text-slate-500">{l.template_name || '—'}</td>
-                  <td className="p-2 text-slate-400">{l.sent_at ? new Date(l.sent_at).toLocaleDateString('fr-FR') : '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <div className="max-h-64 overflow-y-auto">
+            <table className="w-full text-sm">
+              <thead><tr className="border-b border-slate-100 bg-slate-50">
+                <th className="text-left p-2 text-xs text-slate-500">Partenaire</th>
+                <th className="text-left p-2 text-xs text-slate-500">Email</th>
+                <th className="text-left p-2 text-xs text-slate-500">Date</th>
+              </tr></thead>
+              <tbody>
+                {logs.slice(0, 30).map(l => (
+                  <tr key={l.id} className="border-b border-slate-50">
+                    <td className="p-2 text-slate-700">{l.partner_name || '—'}</td>
+                    <td className="p-2 text-slate-500">{l.contact_email || '—'}</td>
+                    <td className="p-2 text-slate-400">{l.sent_at ? new Date(l.sent_at).toLocaleDateString('fr-FR') : '—'}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         </div>
       )}
+
+      {/* Modal éditeur de règle anniversaire */}
+      {showEditor && <ModalAnniversaryRuleEditor rule={editRule} templates={templates}
+        onClose={() => setShowEditor(false)} onSave={() => { setShowEditor(false); charger(); }} showToast={showToast} />}
+    </div>
+  );
+}
+
+function ModalAnniversaryRuleEditor({ rule, templates, onClose, onSave, showToast }) {
+  const [businessType, setBusinessType] = useState(rule?.business_type || '');
+  const [templateId, setTemplateId] = useState(rule?.template_id || '');
+  const [saving, setSaving] = useState(false);
+
+  const sauvegarder = async () => {
+    if (!businessType) { showToast('Business type requis', 'error'); return; }
+    setSaving(true);
+    try {
+      await api.post('/partner-center/anniversary-rules', { business_type: businessType, template_id: templateId || null });
+      showToast('Règle sauvegardée', 'success');
+      onSave();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    finally { setSaving(false); }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      <div className="bg-white rounded-2xl w-full max-w-md" onClick={e => e.stopPropagation()}>
+        <div className="p-5 border-b border-slate-100">
+          <h2 className="text-lg font-semibold text-slate-900">{rule ? 'Modifier la règle' : 'Nouvelle règle anniversaire'}</h2>
+          <p className="text-xs text-slate-500 mt-1">Assigner un template spécifique pour un type de partenaire</p>
+        </div>
+        <div className="p-5 space-y-4">
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Business Type</label>
+            <input value={businessType} onChange={e => setBusinessType(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="ex: Luxe, Resort, SPA, Boutique..." />
+          </div>
+          <div>
+            <label className="text-sm font-medium text-slate-700 block mb-1">Template email</label>
+            <select value={templateId} onChange={e => setTemplateId(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+              <option value="">(Utiliser le template par défaut)</option>
+              {templates.map(t => <option key={t.id} value={t.id}>{t.nom} — {t.sujet}</option>)}
+            </select>
+          </div>
+        </div>
+        <div className="p-4 border-t border-slate-100 flex justify-end gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm text-slate-600 hover:bg-slate-50 rounded-lg">Annuler</button>
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 text-sm bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50">
+            {saving ? 'Enregistrement...' : 'Enregistrer'}
+          </button>
+        </div>
+      </div>
     </div>
   );
 }
