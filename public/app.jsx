@@ -17982,16 +17982,8 @@ function ModalAnniversaryCampaignEditor({ campaign, onClose, onSave, showToast }
                       setLoadingPreview(true);
                       try {
                         const params = businessTypeFilter ? `?business_type=${encodeURIComponent(businessTypeFilter)}` : '';
-                        const r = await api.get(`/partner-center/anniversary-eligible${params}`);
-                        const contacts = [];
-                        for (const p of (Array.isArray(r) ? r : [])) {
-                          if (p.excluded || p.already_sent) continue;
-                          const cs = await api.get(`/partner-center/partners/${p.id}/contacts`).catch(() => []);
-                          for (const c of (Array.isArray(cs) ? cs : [])) {
-                            if (c.email) contacts.push({ email: c.email, firstname: c.firstname, lastname: c.lastname, partner_name: p.name, business_type: p.business_type, anniversary_date: p.anniversary_date });
-                          }
-                        }
-                        setPreviewContacts(contacts);
+                        const contacts = await api.get(`/partner-center/anniversary-eligible/contacts${params}`);
+                        setPreviewContacts(Array.isArray(contacts) ? contacts : []);
                         setExcludeEmails(new Set());
                       } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
                       finally { setLoadingPreview(false); }
@@ -18012,7 +18004,7 @@ function ModalAnniversaryCampaignEditor({ campaign, onClose, onSave, showToast }
                       <button onClick={async () => {
                         setLoadingPreview(true);
                         try {
-                          const r = await api.get(`/partner-center/segments/${sourceId}/contacts`);
+                          const r = await api.get(`/partner-center/segments/${sourceId}/resolve-contacts`);
                           setPreviewContacts(Array.isArray(r) ? r : []);
                           setExcludeEmails(new Set());
                         } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
@@ -18035,7 +18027,7 @@ function ModalAnniversaryCampaignEditor({ campaign, onClose, onSave, showToast }
                       <button onClick={async () => {
                         setLoadingPreview(true);
                         try {
-                          const r = await api.get(`/partner-center/contact-lists/${sourceId}/contacts`);
+                          const r = await api.get(`/partner-center/contact-lists/${sourceId}/members`);
                           setPreviewContacts(Array.isArray(r) ? r : []);
                           setExcludeEmails(new Set());
                         } catch (e) { showToast('Erreur: ' + e.message, 'error'); }

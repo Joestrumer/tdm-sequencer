@@ -1182,6 +1182,50 @@ module.exports = (db) => {
     } catch (e) { res.status(500).json({ erreur: e.message }); }
   });
 
+  // Contacts des partenaires éligibles (preview pour campagne anniversaire)
+  router.get('/anniversary-eligible/contacts', (req, res) => {
+    try {
+      const currentYear = new Date().getFullYear();
+      const { business_type } = req.query;
+      let btFilter = '';
+      const params = [];
+      if (business_type) { btFilter = ' AND hp.business_type = ?'; params.push(business_type); }
+
+      const partners = db.prepare(`
+        SELECT hp.id, hp.name, hp.business_type, hp.hubspot_company_id, hp.partner_since,
+          CASE
+            WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
+            THEN printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))
+            ELSE printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))
+          END as anniversary_date
+        FROM hubspot_partners hp
+        WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''${btFilter}
+          AND CASE
+            WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
+            THEN CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
+            ELSE CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
+          END <= 60
+        ORDER BY anniversary_date
+      `).all(...params);
+
+      const contacts = [];
+      for (const p of partners) {
+        // Vérifier exclusion
+        const excluded = db.prepare('SELECT 1 FROM partner_anniversary_exclusions WHERE partner_id = ?').get(p.id);
+        if (excluded) continue;
+        // Vérifier pas déjà envoyé
+        const sent = db.prepare('SELECT 1 FROM partner_anniversary_logs WHERE partner_id = ? AND year = ?').get(p.id, currentYear);
+        if (sent) continue;
+
+        const pContacts = db.prepare("SELECT * FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''").all(p.hubspot_company_id);
+        for (const c of pContacts) {
+          contacts.push({ email: c.email, firstname: c.firstname, lastname: c.lastname, partner_name: p.name, business_type: p.business_type, anniversary_date: p.anniversary_date });
+        }
+      }
+      res.json(contacts);
+    } catch (e) { res.status(500).json({ erreur: e.message }); }
+  });
+
   router.get('/anniversary-logs', (req, res) => {
     try {
       const logs = db.prepare(`
