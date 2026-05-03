@@ -1144,11 +1144,12 @@ module.exports = (db) => {
   router.get('/anniversary-eligible', (req, res) => {
     try {
       const currentYear = new Date().getFullYear();
+      const { business_type } = req.query;
+      let btFilter = '';
+      const params = [];
+      if (business_type) { btFilter = ' AND hp.business_type = ?'; params.push(business_type); }
       const partners = db.prepare(`
         SELECT hp.*,
-          CAST(strftime('%m', hp.partner_since) AS INTEGER) as ps_month,
-          CAST(strftime('%d', hp.partner_since) AS INTEGER) as ps_day,
-          CAST(strftime('%Y', 'now') AS INTEGER) as cur_year,
           CASE
             WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
             THEN printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))
@@ -1160,14 +1161,14 @@ module.exports = (db) => {
             ELSE CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
           END as days_until
         FROM hubspot_partners hp
-        WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''
+        WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''${btFilter}
           AND CASE
             WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
             THEN CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
             ELSE CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
           END <= 60
         ORDER BY days_until
-      `).all();
+      `).all(...params);
 
       // Enrich with exclusion/sent status
       for (const p of partners) {

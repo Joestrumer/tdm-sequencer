@@ -17787,8 +17787,15 @@ function ModalAnniversaryCampaignEditor({ campaign, onClose, onSave, showToast }
   const [corpsHtml, setCorpsHtml] = useState(campaign?.corps_html || '');
   const [businessTypeFilter, setBusinessTypeFilter] = useState(campaign?.business_type_filter || '');
   const [daysBefore, setDaysBefore] = useState(campaign?.days_before || 0);
+  const [sourceType, setSourceType] = useState(campaign?.source_type || 'anniversaire');
+  const [sourceId, setSourceId] = useState(campaign?.source_id || '');
   const [templates, setTemplates] = useState([]);
+  const [segments, setSegments] = useState([]);
+  const [lists, setLists] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [previewContacts, setPreviewContacts] = useState(null);
+  const [loadingPreview, setLoadingPreview] = useState(false);
+  const [excludeEmails, setExcludeEmails] = useState(new Set());
   const [pieceJointe, setPieceJointe] = useState(() => {
     if (!campaign?.piece_jointe) return null;
     try { return typeof campaign.piece_jointe === 'string' ? JSON.parse(campaign.piece_jointe) : campaign.piece_jointe; }
@@ -17801,7 +17808,15 @@ function ModalAnniversaryCampaignEditor({ campaign, onClose, onSave, showToast }
   corpsHtmlRef.current = corpsHtml;
 
   useEffect(() => {
-    api.get('/partner-center/templates').then(t => setTemplates(Array.isArray(t) ? t : [])).catch(() => {});
+    Promise.all([
+      api.get('/partner-center/templates'),
+      api.get('/partner-center/segments'),
+      api.get('/partner-center/contact-lists'),
+    ]).then(([t, s, l]) => {
+      setTemplates(Array.isArray(t) ? t : []);
+      setSegments(Array.isArray(s) ? s : []);
+      setLists(Array.isArray(l) ? l : []);
+    }).catch(() => {});
   }, []);
 
   const applyTemplate = (templateId) => {
@@ -17862,8 +17877,8 @@ function ModalAnniversaryCampaignEditor({ campaign, onClose, onSave, showToast }
         type: 'anniversaire',
         business_type_filter: businessTypeFilter || null,
         days_before: daysBefore,
-        source_type: 'anniversaire',
-        source_id: businessTypeFilter || 'all',
+        source_type: sourceType,
+        source_id: sourceType === 'anniversaire' ? (businessTypeFilter || 'all') : sourceId,
       };
       if (campaign?.id) {
         await api.put(`/partner-center/campaigns/${campaign.id}`, payload);
@@ -17944,19 +17959,139 @@ function ModalAnniversaryCampaignEditor({ campaign, onClose, onSave, showToast }
           {/* Step 2: Destinataires */}
           {step === 2 && (
             <>
-              <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
-                <h4 className="text-sm font-medium text-blue-800 mb-2">Ciblage par business type</h4>
-                <p className="text-xs text-blue-600 mb-3">Les destinataires seront automatiquement les contacts des partenaires dont l'anniversaire correspond, filtrés par business type.</p>
+              <div className="space-y-4">
                 <div>
-                  <label className="block text-xs font-medium text-slate-600 mb-1">Business Type (laisser vide = tous les partenaires)</label>
-                  <input value={businessTypeFilter} onChange={e => setBusinessTypeFilter(e.target.value)}
-                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="ex: Luxe, Resort, SPA, Boutique..." />
+                  <label className="block text-xs font-medium text-slate-600 mb-1">Source des destinataires</label>
+                  <select value={sourceType} onChange={e => { setSourceType(e.target.value); setSourceId(''); setPreviewContacts(null); }}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                    <option value="anniversaire">Automatique — anniversaires partenaires</option>
+                    <option value="segment">Segment</option>
+                    <option value="contact_list">Liste de contacts</option>
+                  </select>
                 </div>
-              </div>
-              <div className="text-xs text-slate-500 bg-slate-50 rounded-lg p-3">
-                <strong>Comment ça marche :</strong> Le scheduler envoie automatiquement cet email aux contacts de tous les partenaires
-                {businessTypeFilter ? ` de type "${businessTypeFilter}"` : ''} dont la date d'anniversaire de partenariat arrive.
-                Les destinataires sont déterminés dynamiquement — pas besoin de les ajouter manuellement.
+
+                {sourceType === 'anniversaire' && (
+                  <div className="bg-amber-50 border border-amber-200 rounded-lg p-4 space-y-3">
+                    <p className="text-xs text-amber-700">Les contacts seront sélectionnés automatiquement parmi les partenaires dont l'anniversaire arrive, filtrés par business type.</p>
+                    <div>
+                      <label className="block text-xs font-medium text-slate-600 mb-1">Filtrer par business type (vide = tous)</label>
+                      <input value={businessTypeFilter} onChange={e => setBusinessTypeFilter(e.target.value)}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" placeholder="ex: Luxe, Resort, SPA, Boutique..." />
+                    </div>
+                    <button onClick={async () => {
+                      setLoadingPreview(true);
+                      try {
+                        const params = businessTypeFilter ? `?business_type=${encodeURIComponent(businessTypeFilter)}` : '';
+                        const r = await api.get(`/partner-center/anniversary-eligible${params}`);
+                        const contacts = [];
+                        for (const p of (Array.isArray(r) ? r : [])) {
+                          if (p.excluded || p.already_sent) continue;
+                          const cs = await api.get(`/partner-center/partners/${p.id}/contacts`).catch(() => []);
+                          for (const c of (Array.isArray(cs) ? cs : [])) {
+                            if (c.email) contacts.push({ email: c.email, firstname: c.firstname, lastname: c.lastname, partner_name: p.name, business_type: p.business_type, anniversary_date: p.anniversary_date });
+                          }
+                        }
+                        setPreviewContacts(contacts);
+                        setExcludeEmails(new Set());
+                      } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+                      finally { setLoadingPreview(false); }
+                    }} disabled={loadingPreview} className="text-xs bg-amber-200 text-amber-800 px-3 py-1.5 rounded-lg hover:bg-amber-300 disabled:opacity-50">
+                      {loadingPreview ? 'Chargement...' : 'Prévisualiser les destinataires'}
+                    </button>
+                  </div>
+                )}
+
+                {sourceType === 'segment' && (
+                  <div className="space-y-2">
+                    <select value={sourceId} onChange={e => { setSourceId(e.target.value); setPreviewContacts(null); }}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                      <option value="">— Choisir un segment —</option>
+                      {segments.map(s => <option key={s.id} value={s.id}>{s.name} ({s.member_count})</option>)}
+                    </select>
+                    {sourceId && (
+                      <button onClick={async () => {
+                        setLoadingPreview(true);
+                        try {
+                          const r = await api.get(`/partner-center/segments/${sourceId}/contacts`);
+                          setPreviewContacts(Array.isArray(r) ? r : []);
+                          setExcludeEmails(new Set());
+                        } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+                        finally { setLoadingPreview(false); }
+                      }} disabled={loadingPreview} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-50">
+                        {loadingPreview ? 'Chargement...' : 'Prévisualiser les contacts'}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {sourceType === 'contact_list' && (
+                  <div className="space-y-2">
+                    <select value={sourceId} onChange={e => { setSourceId(e.target.value); setPreviewContacts(null); }}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm">
+                      <option value="">— Choisir une liste —</option>
+                      {lists.map(l => <option key={l.id} value={l.id}>{l.name} ({l.member_count})</option>)}
+                    </select>
+                    {sourceId && (
+                      <button onClick={async () => {
+                        setLoadingPreview(true);
+                        try {
+                          const r = await api.get(`/partner-center/contact-lists/${sourceId}/contacts`);
+                          setPreviewContacts(Array.isArray(r) ? r : []);
+                          setExcludeEmails(new Set());
+                        } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+                        finally { setLoadingPreview(false); }
+                      }} disabled={loadingPreview} className="text-xs bg-blue-50 text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-100 disabled:opacity-50">
+                        {loadingPreview ? 'Chargement...' : 'Prévisualiser les contacts'}
+                      </button>
+                    )}
+                  </div>
+                )}
+
+                {/* Preview contacts */}
+                {previewContacts && (
+                  <div className="border border-slate-200 rounded-lg overflow-hidden">
+                    <div className="bg-slate-50 px-3 py-2 flex items-center justify-between border-b border-slate-200">
+                      <span className="text-xs font-medium text-slate-700">
+                        {previewContacts.filter(c => !excludeEmails.has(c.email)).length} / {previewContacts.length} contact(s) sélectionnés
+                      </span>
+                      <div className="flex gap-2">
+                        <button onClick={() => setExcludeEmails(new Set())} className="text-xs text-blue-600 hover:text-blue-800">Tout sélectionner</button>
+                        <button onClick={() => setExcludeEmails(new Set(previewContacts.map(c => c.email)))} className="text-xs text-slate-500 hover:text-slate-700">Tout désélectionner</button>
+                      </div>
+                    </div>
+                    <div className="max-h-64 overflow-y-auto">
+                      <table className="w-full text-xs">
+                        <thead className="sticky top-0 bg-white">
+                          <tr className="border-b border-slate-100">
+                            <th className="p-2 text-left w-8"></th>
+                            <th className="p-2 text-left text-slate-500">Email</th>
+                            <th className="p-2 text-left text-slate-500">Nom</th>
+                            <th className="p-2 text-left text-slate-500">Partenaire</th>
+                            {sourceType === 'anniversaire' && <th className="p-2 text-left text-slate-500">Anniversaire</th>}
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {previewContacts.map((c, i) => (
+                            <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                              <td className="p-2">
+                                <input type="checkbox" checked={!excludeEmails.has(c.email)}
+                                  onChange={e => {
+                                    const next = new Set(excludeEmails);
+                                    e.target.checked ? next.delete(c.email) : next.add(c.email);
+                                    setExcludeEmails(next);
+                                  }} className="rounded border-slate-300" />
+                              </td>
+                              <td className="p-2 text-slate-600">{c.email}</td>
+                              <td className="p-2 text-slate-700">{c.firstname} {c.lastname}</td>
+                              <td className="p-2 text-slate-500">{c.partner_name}</td>
+                              {sourceType === 'anniversaire' && <td className="p-2 text-slate-400">{c.anniversary_date ? new Date(c.anniversary_date).toLocaleDateString('fr-FR') : '—'}</td>}
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
               </div>
             </>
           )}
