@@ -9841,6 +9841,7 @@ const FacturesSingle = ({ showToast }) => {
                   <th className="text-right py-2 px-2">Qté</th>
                   <th className="text-right py-2 px-2">Remise</th>
                   <th className="text-center py-2 px-2">Confiance</th>
+                  <th className="py-2 px-2 w-8"></th>
                 </tr>
               </thead>
               <tbody>
@@ -9885,6 +9886,10 @@ const FacturesSingle = ({ showToast }) => {
                     </td>
                     <td className="py-2 px-2 text-center">
                       <span className={`inline-block w-2 h-2 rounded-full ${p.confiance === 'exact' ? 'bg-emerald-500' : p.confiance === 'fuzzy' ? 'bg-amber-400' : 'bg-red-400'}`} />
+                    </td>
+                    <td className="py-2 px-2 text-center">
+                      <button onClick={() => setMatchedProducts(matchedProducts.filter((_, idx) => idx !== i))}
+                        className="text-red-400 hover:text-red-600 text-sm" title="Supprimer">✕</button>
                     </td>
                   </tr>
                 ))}
@@ -10831,6 +10836,7 @@ const FacturesBatch = ({ showToast }) => {
                             <th className="text-right px-3 py-1.5 text-xs font-semibold text-slate-500">P.U. HT</th>
                             <th className="text-right px-3 py-1.5 text-xs font-semibold text-slate-500">Remise</th>
                             <th className="text-right px-3 py-1.5 text-xs font-semibold text-slate-500">Total HT</th>
+                            <th className="px-2 py-1.5 w-8"></th>
                           </tr>
                         </thead>
                         <tbody className="divide-y divide-slate-100">
@@ -10875,6 +10881,15 @@ const FacturesBatch = ({ showToast }) => {
                                   </div>
                                 </td>
                                 <td className="px-3 py-1.5 text-right font-mono text-xs font-medium">{(p.total_ht || 0).toFixed(2)}€</td>
+                                <td className="px-2 py-1.5 text-center">
+                                  <button onClick={() => {
+                                    setOrders(prev => prev.map(o => {
+                                      if (o.id !== order.id || !o.calculation?.products) return o;
+                                      const newProducts = o.calculation.products.filter((_, idx) => idx !== i);
+                                      return { ...o, calculation: { ...o.calculation, products: newProducts } };
+                                    }));
+                                  }} className="text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
+                                </td>
                               </tr>
                             );
                           })}
