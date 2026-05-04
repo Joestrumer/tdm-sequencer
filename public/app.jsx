@@ -10566,7 +10566,7 @@ const FacturesBatch = ({ showToast }) => {
           logGSheets,
         });
         if (inv.erreur) throw new Error(inv.erreur);
-        allResults.push({ ok: true, orderId: order.id, ...inv });
+        allResults.push({ ok: true, orderId: order.id, partnerName: order.client?.name || order.client?.shortname || '', ...inv });
         // Ajouter automatiquement à la table shipments
         try {
           await api.post('/shipments', {
@@ -10588,7 +10588,7 @@ const FacturesBatch = ({ showToast }) => {
           console.warn('Erreur ajout shipment:', shipErr);
         }
       } catch (err) {
-        allResults.push({ ok: false, orderId: order.id, erreur: err.message });
+        allResults.push({ ok: false, orderId: order.id, partnerName: order.client?.name || order.client?.shortname || '', erreur: err.message });
       }
     }
     setResults(allResults);
@@ -10614,9 +10614,9 @@ const FacturesBatch = ({ showToast }) => {
           orderNumber: order.orderNumber || '',
         });
         if (res.erreur) throw new Error(res.erreur);
-        allResults.push({ ok: true, orderId: order.id, logOnly: true, ...res });
+        allResults.push({ ok: true, orderId: order.id, logOnly: true, partnerName: order.client?.name || order.client?.shortname || '', ...res });
       } catch (err) {
-        allResults.push({ ok: false, orderId: order.id, erreur: err.message });
+        allResults.push({ ok: false, orderId: order.id, partnerName: order.client?.name || order.client?.shortname || '', erreur: err.message });
       }
     }
     setResults(allResults);
@@ -11012,8 +11012,8 @@ const FacturesBatch = ({ showToast }) => {
                     {r.ok
                       ? (r.logOnly
                         ? `Log OK — ${r.writtenLines || 0} ligne(s) (${r.partnerName || ''})`
-                        : `Facture ${r.number || r.id} créée`)
-                      : `Erreur: ${r.erreur}`}
+                        : `Facture ${r.number || r.id} créée${r.partnerName ? ` — ${r.partnerName}` : ''}`)
+                      : `Erreur${r.partnerName ? ` (${r.partnerName})` : ''}: ${r.erreur}`}
                   </span>
                   <div className="flex items-center gap-1">
                     {r.ok && !r.logOnly && r.id && (
