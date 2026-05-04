@@ -67,6 +67,11 @@ function resolveCanonicalClientName(db, vfName) {
     // Pas de mapping DB trouvé, mais retourner la version sans contact
     return stripped;
   }
+  // Fallback: chercher dans vf_partners par correspondance partielle
+  try {
+    const partner = db.prepare("SELECT nom FROM vf_partners WHERE actif = 1 AND (LOWER(nom) LIKE '%' || LOWER(?) || '%' OR LOWER(?) LIKE '%' || LOWER(nom) || '%') LIMIT 1").get(vfName, vfName);
+    if (partner && partner.nom) return partner.nom;
+  } catch (_) {}
   return vfName;
 }
 

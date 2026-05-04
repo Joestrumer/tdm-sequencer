@@ -67,6 +67,11 @@ module.exports = (db) => {
       // Pas de mapping DB trouvé, mais retourner la version sans contact
       return stripped;
     }
+    // Fallback: chercher dans vf_partners par correspondance partielle (nom contient le vfName ou inversement)
+    try {
+      const partner = db.prepare("SELECT nom FROM vf_partners WHERE actif = 1 AND (LOWER(nom) LIKE '%' || LOWER(?) || '%' OR LOWER(?) LIKE '%' || LOWER(nom) || '%') LIMIT 1").get(vfName, vfName);
+      if (partner && partner.nom) return partner.nom;
+    } catch (_) {}
     return vfName;
   }
 
@@ -687,13 +692,15 @@ module.exports = (db) => {
         });
       }
 
-      // Ne pas passer partnerName, laisser logInvoice le résoudre avec mapPartnerNameToCanon
+      // Résoudre le nom canonique du client
+      const canonicalClientName = resolveCanonicalClientName(client.name);
+      const resolvedPartner = (canonicalClientName && canonicalClientName !== client.name) ? canonicalClientName : undefined;
       const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
         clientName: client.name,
         invoiceNumber: orderNumber || 'LOG-' + Date.now(),
         invoiceDate: new Date().toISOString().split('T')[0],
         products: gsProducts,
-      });
+      }, resolvedPartner);
 
       res.json(gsResult);
     } catch (e) {
