@@ -9848,9 +9848,41 @@ const FacturesSingle = ({ showToast }) => {
                   <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
                     <td className="py-2 px-2 font-mono text-xs">{p.ref}</td>
                     <td className="py-2 px-2">{p.nom}</td>
-                    <td className="py-2 px-2 text-right font-mono">{(p.prix_ht || 0).toFixed(2)}€</td>
-                    <td className="py-2 px-2 text-right">{p.quantite}</td>
-                    <td className="py-2 px-2 text-right">{p.discount ? `${p.discount}%` : '—'}</td>
+                    <td className="py-2 px-2 text-right">
+                      <input type="number" step="0.01" min="0" value={p.prix_ht || 0}
+                        onChange={e => {
+                          const val = parseFloat(e.target.value) || 0;
+                          const updated = [...matchedProducts];
+                          updated[i] = { ...updated[i], prix_ht: val };
+                          setMatchedProducts(updated);
+                        }}
+                        className="w-20 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      <input type="number" min="1" value={p.quantite || 1}
+                        onChange={e => {
+                          const val = Math.max(1, parseInt(e.target.value) || 1);
+                          const updated = [...matchedProducts];
+                          updated[i] = { ...updated[i], quantite: val };
+                          setMatchedProducts(updated);
+                        }}
+                        className="w-16 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                    </td>
+                    <td className="py-2 px-2 text-right">
+                      <div className="inline-flex items-center">
+                        <input type="number" step="0.5" min="0" max="100" value={p.discount || ''}
+                          placeholder="0"
+                          onChange={e => {
+                            const val = e.target.value;
+                            const nd = val === '' ? 0 : Math.min(100, Math.max(0, parseFloat(val) || 0));
+                            const updated = [...matchedProducts];
+                            updated[i] = { ...updated[i], discount: nd };
+                            setMatchedProducts(updated);
+                          }}
+                          className="w-14 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                        <span className="text-xs text-slate-400 ml-0.5">%</span>
+                      </div>
+                    </td>
                     <td className="py-2 px-2 text-center">
                       <span className={`inline-block w-2 h-2 rounded-full ${p.confiance === 'exact' ? 'bg-emerald-500' : p.confiance === 'fuzzy' ? 'bg-amber-400' : 'bg-red-400'}`} />
                     </td>
@@ -9980,7 +10012,16 @@ const FacturesSingle = ({ showToast }) => {
                               }}
                               className="w-16 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
                           </td>
-                          <td className="px-3 py-2 text-right font-mono text-slate-700">{unitPrice.toFixed(2)}€</td>
+                          <td className="px-3 py-2 text-right">
+                            <input type="number" step="0.01" min="0" value={unitPrice}
+                              onChange={e => {
+                                const newPrice = parseFloat(e.target.value) || 0;
+                                const newProducts = [...calculation.products];
+                                newProducts[i] = { ...newProducts[i], ...recalcLine(null, null, newPrice) };
+                                setCalculation({ ...calculation, products: newProducts });
+                              }}
+                              className="w-20 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                          </td>
                           <td className="px-3 py-2 text-right">
                             <div className="inline-flex items-center">
                               <input type="number" step="0.5" min="0" max="100"
@@ -10440,18 +10481,23 @@ const FacturesBatch = ({ showToast }) => {
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, [field]: value } : o));
   };
 
-  const updateOrderDiscount = (orderId, productIndex, newDiscount) => {
+  const updateOrderProduct = (orderId, productIndex, field, value) => {
     setOrders(prev => prev.map(o => {
       if (o.id !== orderId || !o.calculation?.products) return o;
       const newProducts = [...o.calculation.products];
-      const p = newProducts[productIndex];
+      const p = { ...newProducts[productIndex], [field]: value };
       const qty = p.quantite || p.quantity || 1;
       const priceHT = p.prix_ht || ((p.total_ht || 0) / qty / (1 - (p.discount || 0) / 100) || 0);
+      const discount = p.discount || 0;
       const tva = p.tva || 20;
-      const lineHT = priceHT * (1 - newDiscount / 100) * qty;
-      newProducts[productIndex] = { ...p, discount: newDiscount, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
+      const lineHT = priceHT * (1 - discount / 100) * qty;
+      newProducts[productIndex] = { ...p, prix_ht: priceHT, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
       return { ...o, calculation: { ...o.calculation, products: newProducts } };
     }));
+  };
+
+  const updateOrderDiscount = (orderId, productIndex, newDiscount) => {
+    updateOrderProduct(orderId, productIndex, 'discount', newDiscount);
   };
 
   const updateOrderFraisPort = (orderId, fraisIndex, field, value) => {
@@ -10798,8 +10844,22 @@ const FacturesBatch = ({ showToast }) => {
                                   <div className="font-medium text-slate-900 text-xs">{p.ref}</div>
                                   <div className="text-xs text-slate-400">{p.nom}</div>
                                 </td>
-                                <td className="px-3 py-1.5 text-right font-mono text-xs">{qty}</td>
-                                <td className="px-3 py-1.5 text-right font-mono text-xs">{unitPrice.toFixed(2)}€</td>
+                                <td className="px-3 py-1.5 text-right">
+                                  <input type="number" min="1" value={qty}
+                                    onChange={e => {
+                                      const val = Math.max(1, parseInt(e.target.value) || 1);
+                                      updateOrderProduct(order.id, i, 'quantite', val);
+                                    }}
+                                    className="w-14 border border-slate-200 rounded px-1 py-0.5 text-xs text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                                </td>
+                                <td className="px-3 py-1.5 text-right">
+                                  <input type="number" step="0.01" min="0" value={unitPrice}
+                                    onChange={e => {
+                                      const val = parseFloat(e.target.value) || 0;
+                                      updateOrderProduct(order.id, i, 'prix_ht', val);
+                                    }}
+                                    className="w-16 border border-slate-200 rounded px-1 py-0.5 text-xs text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                                </td>
                                 <td className="px-3 py-1.5 text-right">
                                   <div className="inline-flex items-center">
                                     <input type="number" step="0.5" min="0" max="100"
