@@ -10,6 +10,7 @@ const {
   inferPriceFromMappings,
 } = require('../services/productMatchingService');
 const logger = require('../config/logger');
+const hubspot = require('../services/hubspotService');
 
 module.exports = (db) => {
   const router = express.Router();
@@ -499,7 +500,23 @@ module.exports = (db) => {
         }
       }
 
-      res.json({ ...result, email_sent: emailSent });
+      // Créer deal HubSpot (async, non-bloquant)
+      let hubspot_deal_id = null;
+      try {
+        hubspot_deal_id = await hubspot.creerDealFromInvoice(db, {
+          clientName: client.name,
+          clientEmail: client.email,
+          montantHT: roundPrice(montantHT),
+          montantTTC: roundPrice(montantTTC),
+          orderNumber: orderNumber || '',
+          invoiceNumber: result.number || '',
+          closeDate: new Date().toISOString().split('T')[0],
+        });
+      } catch (hsErr) {
+        logger.warn('Erreur création deal HubSpot depuis facture', { error: hsErr.message, invoiceId: result.id });
+      }
+
+      res.json({ ...result, email_sent: emailSent, hubspot_deal_id });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
@@ -517,8 +534,30 @@ module.exports = (db) => {
       const results = [];
       for (const order of orders) {
         try {
-          const result = await req.vfService.creerFacture(order.invoiceData || order);
-          results.push({ ok: true, ...result });
+          const invoiceData = order.invoiceData || order;
+          const result = await req.vfService.creerFacture(invoiceData);
+
+          // Créer deal HubSpot (non-bloquant)
+          let hubspot_deal_id = null;
+          try {
+            const buyerEmail = invoiceData.buyer_email || order.client?.email || '';
+            const buyerName = invoiceData.buyer_name || order.client?.name || '';
+            if (buyerEmail) {
+              hubspot_deal_id = await hubspot.creerDealFromInvoice(db, {
+                clientName: buyerName,
+                clientEmail: buyerEmail,
+                montantHT: parseFloat(invoiceData.price_net || result.price_net || 0),
+                montantTTC: parseFloat(invoiceData.price_gross || result.price_gross || 0),
+                orderNumber: invoiceData.oid || order.orderNumber || '',
+                invoiceNumber: result.number || '',
+                closeDate: new Date().toISOString().split('T')[0],
+              });
+            }
+          } catch (hsErr) {
+            logger.warn('Erreur deal HubSpot batch', { error: hsErr.message });
+          }
+
+          results.push({ ok: true, ...result, hubspot_deal_id });
         } catch (e) {
           results.push({ ok: false, erreur: e.message, order: order.id });
         }

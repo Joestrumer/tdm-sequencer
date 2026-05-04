@@ -205,6 +205,16 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/hubspot/deal-properties — Découverte des propriétés deals
+  router.get('/deal-properties', async (req, res) => {
+    try {
+      const properties = await hubspot.getDealProperties();
+      res.json(properties);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // GET /api/hubspot/status
   router.get('/status', async (req, res) => {
     const status = await hubspot.verifierConnexion();

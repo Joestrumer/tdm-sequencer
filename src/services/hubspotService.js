@@ -519,6 +519,84 @@ async function getClosedWonDeals() {
   }
 }
 
+// ─── Créer un Deal depuis une facture VosFactures ───────────────────────────
+async function creerDealFromInvoice(db, { clientName, clientEmail, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate }) {
+  if (!getApiKey()) return null;
+  try {
+    // 1. Extraire le domaine email
+    const domaine = clientEmail?.split('@')[1];
+    if (!domaine) {
+      logger.warn('creerDealFromInvoice: pas de domaine email', { clientEmail });
+      return null;
+    }
+
+    // 2. Trouver la company HubSpot par domaine
+    const company = await trouverCompanyParDomaine(domaine);
+    if (!company) {
+      logger.warn('creerDealFromInvoice: aucune company HubSpot pour ce domaine', { domaine, clientName });
+      logHubspot(db, 'deal', 'skip', null, null, { reason: 'no_company', domaine, clientName });
+      return null;
+    }
+
+    // 3. Calculer commission 15%
+    const commission = roundMoney(montantHT * 0.15);
+
+    // 4. Nom du deal : nom company HS - orderNumber - invoiceNumber
+    const dealName = `${company.nom} - ${orderNumber || ''} - ${invoiceNumber || ''}`.replace(/ - $/,'').replace(/ - - /,' - ');
+
+    // 5. Créer le deal
+    const properties = {
+      dealname: dealName,
+      amount: String(montantTTC || 0),
+      dealtype: 'existingbusiness',
+      pipeline: 'default',
+      dealstage: 'closedwon',
+      hubspot_owner_id: HUGO_OWNER_ID,
+      closedate: closeDate || new Date().toISOString().split('T')[0],
+      amount_no_vat: String(montantHT || 0),
+      sales_commission_15_: String(commission),
+    };
+
+    const res = await hubspotFetch('/crm/v3/objects/deals', {
+      method: 'POST',
+      body: JSON.stringify({ properties }),
+    });
+    const dealId = res?.id;
+
+    // 6. Associer le deal à la company
+    if (dealId) {
+      await hubspotFetch('/crm/v3/associations/deals/companies/batch/create', {
+        method: 'POST',
+        body: JSON.stringify({
+          inputs: [{ from: { id: dealId }, to: { id: company.id }, type: 'deal_to_company' }]
+        }),
+      }).catch(e => logger.warn('HubSpot association deal→company échouée', { error: e.message, dealId, companyId: company.id }));
+    }
+
+    logHubspot(db, 'deal', 'create_from_invoice', null, dealId, { clientName, orderNumber, invoiceNumber, montantHT, montantTTC, commission, companyName: company.nom });
+    logger.info('💼 HubSpot Deal créé depuis facture', { dealId, dealName, companyId: company.id });
+    return dealId;
+  } catch (err) {
+    logger.error('❌ HubSpot creerDealFromInvoice', { error: err.message, clientName, orderNumber });
+    logHubspot(db, 'deal', 'error_from_invoice', null, null, { clientName, orderNumber }, err.message);
+    return null;
+  }
+}
+
+function roundMoney(n) { return Math.round(n * 100) / 100; }
+
+// ─── Récupérer les propriétés des deals ─────────────────────────────────────
+async function getDealProperties() {
+  if (!getApiKey()) return [];
+  try {
+    const res = await hubspotFetch('/crm/v3/properties/deals');
+    return (res?.results || []).map(p => ({ name: p.name, label: p.label, type: p.type, fieldType: p.fieldType }));
+  } catch (err) {
+    logger.error('HubSpot getDealProperties', { error: err.message });
+    return [];
+  }
+}
+
 module.exports = {
   syncContact,
   getDealsForContact,
@@ -526,6 +604,7 @@ module.exports = {
   logEmailTimeline,
   mettreAJourLifecycle,
   creerDeal,
+  creerDealFromInvoice,
   creerTaskFinSequence,
   creerTaskRelance,
   verifierConnexion,
@@ -535,6 +614,7 @@ module.exports = {
   contactsDeCompany,
   trouverCompanyParDomaine,
   fetchOwners,
+  getDealProperties,
 };
 
 // ─── Deals d'un contact ───────────────────────────────────────────────────────
