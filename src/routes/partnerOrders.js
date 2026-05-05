@@ -7,6 +7,7 @@ const {
   normalizeRef, findVFProduct, calculerRemise, calculerFraisPort, genererCSVLogisticien, parseAdresseExpedition,
 } = require('../services/productMatchingService');
 const logger = require('../config/logger');
+const hubspot = require('../services/hubspotService');
 
 const DEFAULT_FRANCO_SEUIL = 800;
 
@@ -156,7 +157,7 @@ module.exports = (db) => {
   // ─── Valider commande ─────────────────────────────────────────────────────
   router.post('/:id/validate', async (req, res) => {
     try {
-      const { documentType, shippingId, sendEmail = true, logGSheets = true, generateCsv = false } = req.body || {};
+      const { documentType, shippingId, sendEmail = true, logGSheets = true, generateCsv = false, createHubspotDeal = true } = req.body || {};
 
       const order = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.nom_normalise, vp.email as partner_email,
@@ -408,11 +409,28 @@ module.exports = (db) => {
         logger.warn('Erreur log GSheets commande partenaire', { error: gsErr.message });
       }
 
+      // Créer deal HubSpot si demandé
+      let hubspot_deal_id = null;
+      if (createHubspotDeal !== false) try {
+        hubspot_deal_id = await hubspot.creerDealFromInvoice(db, {
+          clientName: order.partner_nom,
+          clientEmail: order.partner_email || '',
+          montantHT: parseFloat(order.total_ht) || 0,
+          montantTTC: parseFloat(order.total_ttc) || 0,
+          orderNumber: order.id ? `PO-${order.id}` : '',
+          invoiceNumber: result.number || '',
+          closeDate: new Date().toISOString().split('T')[0],
+        });
+      } catch (hsErr) {
+        logger.warn('Erreur deal HubSpot commande partenaire', { error: hsErr.message });
+      }
+
       const response = {
         ok: true,
         order_id: order.id,
         vf_invoice_id: result.id,
         vf_invoice_number: result.number,
+        hubspot_deal_id,
         message: `Commande validée — ${(documentType || 'vat') === 'proforma' ? 'proforma' : 'facture'} créée`,
       };
       if (csv_base64) response.csv_base64 = csv_base64;

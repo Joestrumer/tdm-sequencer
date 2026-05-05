@@ -295,7 +295,7 @@ module.exports = (db) => {
 
   router.post('/invoices', async (req, res) => {
     try {
-      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts, logGSheets } = req.body;
+      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts, logGSheets, createHubspotDeal } = req.body;
 
       const catalog = getCatalogMap();
       const productIdMappings = getCodeMappings('product_id');
@@ -500,9 +500,9 @@ module.exports = (db) => {
         }
       }
 
-      // Créer deal HubSpot (async, non-bloquant)
+      // Créer deal HubSpot si demandé
       let hubspot_deal_id = null;
-      try {
+      if (createHubspotDeal !== false) try {
         hubspot_deal_id = await hubspot.creerDealFromInvoice(db, {
           clientName: client.name,
           clientEmail: client.email,

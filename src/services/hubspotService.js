@@ -553,8 +553,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, montantHT, mo
       dealstage: 'closedwon',
       hubspot_owner_id: HUGO_OWNER_ID,
       closedate: closeDate || new Date().toISOString().split('T')[0],
-      amount_no_vat: String(montantHT || 0),
-      sales_commission_15_: String(commission),
+      description: `Montant HT: ${montantHT}€ | Commission 15%: ${commission}€`,
     };
 
     const res = await hubspotFetch('/crm/v3/objects/deals', {

@@ -9432,6 +9432,7 @@ const FacturesSingle = ({ showToast }) => {
   const includeShipping = true; // Toujours inclure les frais de port
   const [sendEmail, setSendEmail] = useState(true);
   const [logGSheets, setLogGSheets] = useState(true);
+  const [createHubspotDeal, setCreateHubspotDeal] = useState(true);
   const [useCurrentPrices, setUseCurrentPrices] = useState(false);
   const [calculation, setCalculation] = useState(null);
   const [result, setResult] = useState(null);
@@ -9636,6 +9637,7 @@ const FacturesSingle = ({ showToast }) => {
         orderNumber,
         sendEmail,
         logGSheets,
+        createHubspotDeal,
       });
       if (res.erreur) throw new Error(res.erreur);
       setResult(res);
@@ -10174,6 +10176,10 @@ const FacturesSingle = ({ showToast }) => {
               <input type="checkbox" checked={logGSheets} onChange={e => setLogGSheets(e.target.checked)} className="rounded" />
               Logger dans Google Sheets
             </label>
+            <label className="flex items-center gap-2 cursor-pointer">
+              <input type="checkbox" checked={createHubspotDeal} onChange={e => setCreateHubspotDeal(e.target.checked)} className="rounded" />
+              Créer deal HubSpot
+            </label>
           </div>
 
           <div className="flex gap-2">
@@ -10364,6 +10370,7 @@ const FacturesBatch = ({ showToast }) => {
   const [documentType, setDocumentType] = useState('vat');
   const [sendEmail, setSendEmail] = useState(true);
   const [logGSheets, setLogGSheets] = useState(true);
+  const [createHubspotDeal, setCreateHubspotDeal] = useState(true);
 
   const addOrder = (products, client = null, orderNumber = '', deliveryAddr = '') => {
     const shippingId = client ? getShippingIdForClient(client, deliveryAddr) : '1302';
@@ -10564,6 +10571,7 @@ const FacturesBatch = ({ showToast }) => {
           orderNumber: order.orderNumber || '',
           sendEmail,
           logGSheets,
+          createHubspotDeal,
         });
         if (inv.erreur) throw new Error(inv.erreur);
         allResults.push({ ok: true, orderId: order.id, partnerName: order.client?.name || order.client?.shortname || '', ...inv });
@@ -10984,6 +10992,10 @@ const FacturesBatch = ({ showToast }) => {
                   <label className="flex items-center gap-2 cursor-pointer text-sm">
                     <input type="checkbox" checked={logGSheets} onChange={e => setLogGSheets(e.target.checked)} className="rounded" />
                     GSheets
+                  </label>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm">
+                    <input type="checkbox" checked={createHubspotDeal} onChange={e => setCreateHubspotDeal(e.target.checked)} className="rounded" />
+                    Deal HS
                   </label>
                 </div>
               </div>
@@ -14878,7 +14890,7 @@ const VueCommandes = ({ showToast }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [validating, setValidating] = useState(null);
   const [validateModal, setValidateModal] = useState(null);
-  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true });
+  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
   const [downloadingCsv, setDownloadingCsv] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
   const [batchCsvModal, setBatchCsvModal] = useState(false);
@@ -14905,7 +14917,7 @@ const VueCommandes = ({ showToast }) => {
   useEffect(() => { charger(); }, [filtre]);
 
   const openValidateModal = (commande) => {
-    setValidateOptions({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true });
+    setValidateOptions({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
     setValidateModal(commande);
   };
 
@@ -14922,6 +14934,7 @@ const VueCommandes = ({ showToast }) => {
         sendEmail: validateOptions.sendEmailVF,
         logGSheets: validateOptions.logGSheets,
         generateCsv: validateOptions.generateCsv,
+        createHubspotDeal: validateOptions.createHubspotDeal,
       });
       if (res.ok) {
         const invoiceNumber = res.vf_invoice_number || '';
@@ -15225,6 +15238,10 @@ const VueCommandes = ({ showToast }) => {
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
                   <input type="checkbox" checked={validateOptions.generateCsv} onChange={e => setValidateOptions(o => ({ ...o, generateCsv: e.target.checked }))} className="rounded" />
                   Générer CSV et email logisticien
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={validateOptions.createHubspotDeal} onChange={e => setValidateOptions(o => ({ ...o, createHubspotDeal: e.target.checked }))} className="rounded" />
+                  Créer deal HubSpot
                 </label>
               </div>
             </div>
