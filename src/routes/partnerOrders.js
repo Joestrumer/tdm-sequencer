@@ -415,6 +415,8 @@ module.exports = (db) => {
         hubspot_deal_id = await hubspot.creerDealFromInvoice(db, {
           clientName: order.partner_nom,
           clientEmail: order.partner_email || '',
+          vfClientName: order.partner_nom,
+          vfClientId: clientMapping?.vf_client_id,
           montantHT: parseFloat(order.total_ht) || 0,
           montantTTC: parseFloat(order.total_ttc) || 0,
           orderNumber: order.id ? `PO-${order.id}` : '',

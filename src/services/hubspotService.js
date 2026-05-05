@@ -520,29 +520,47 @@ async function getClosedWonDeals() {
 }
 
 // ─── Créer un Deal depuis une facture VosFactures ───────────────────────────
-async function creerDealFromInvoice(db, { clientName, clientEmail, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate }) {
+async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate }) {
   if (!getApiKey()) return null;
   try {
-    // 1. Extraire le domaine email
-    const domaine = clientEmail?.split('@')[1];
-    if (!domaine) {
-      logger.warn('creerDealFromInvoice: pas de domaine email', { clientEmail });
-      return null;
+    // 1. Chercher le mapping centralisé (par vf_client_id ou vf_name)
+    let mapping = null;
+    if (vfClientId) {
+      mapping = db.prepare('SELECT hubspot_company_id, file_name FROM vf_client_mappings WHERE vf_client_id = ? AND hubspot_company_id IS NOT NULL LIMIT 1').get(String(vfClientId));
+    }
+    if (!mapping && vfClientName) {
+      mapping = db.prepare('SELECT hubspot_company_id, file_name FROM vf_client_mappings WHERE vf_name = ? AND hubspot_company_id IS NOT NULL LIMIT 1').get(vfClientName);
+    }
+    if (!mapping && clientName) {
+      mapping = db.prepare('SELECT hubspot_company_id, file_name FROM vf_client_mappings WHERE vf_name = ? AND hubspot_company_id IS NOT NULL LIMIT 1').get(clientName);
     }
 
-    // 2. Trouver la company HubSpot par domaine
-    const company = await trouverCompanyParDomaine(domaine);
-    if (!company) {
-      logger.warn('creerDealFromInvoice: aucune company HubSpot pour ce domaine', { domaine, clientName });
-      logHubspot(db, 'deal', 'skip', null, null, { reason: 'no_company', domaine, clientName });
+    let companyId = mapping?.hubspot_company_id;
+    let companyName = mapping?.file_name || clientName;
+
+    // 2. Fallback : chercher par domaine email si pas de mapping
+    if (!companyId) {
+      const domaine = clientEmail?.split('@')[1];
+      if (domaine) {
+        const company = await trouverCompanyParDomaine(domaine);
+        if (company) {
+          companyId = company.id;
+          companyName = company.nom;
+        }
+      }
+    }
+
+    if (!companyId) {
+      logger.warn('creerDealFromInvoice: aucune company HubSpot trouvée', { clientName, vfClientName, vfClientId });
+      logHubspot(db, 'deal', 'skip', null, null, { reason: 'no_company', clientName, vfClientName, vfClientId });
       return null;
     }
 
     // 3. Calculer commission 15%
     const commission = roundMoney(montantHT * 0.15);
 
-    // 4. Nom du deal : nom company HS - orderNumber - invoiceNumber
-    const dealName = `${company.nom} - ${orderNumber || ''} - ${invoiceNumber || ''}`.replace(/ - $/,'').replace(/ - - /,' - ');
+    // 4. Nom du deal : nom canonique - orderNumber - invoiceNumber
+    const dealName = `${companyName} - ${orderNumber || ''} - ${invoiceNumber || ''}`.replace(/ - $/,'').replace(/ - - /,' - ');
 
     // 5. Créer le deal
     const properties = {
@@ -568,13 +586,13 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, montantHT, mo
       await hubspotFetch('/crm/v3/associations/deals/companies/batch/create', {
         method: 'POST',
         body: JSON.stringify({
-          inputs: [{ from: { id: dealId }, to: { id: company.id }, type: 'deal_to_company' }]
+          inputs: [{ from: { id: dealId }, to: { id: companyId }, type: 'deal_to_company' }]
         }),
-      }).catch(e => logger.warn('HubSpot association deal→company échouée', { error: e.message, dealId, companyId: company.id }));
+      }).catch(e => logger.warn('HubSpot association deal→company échouée', { error: e.message, dealId, companyId }));
     }
 
-    logHubspot(db, 'deal', 'create_from_invoice', null, dealId, { clientName, orderNumber, invoiceNumber, montantHT, montantTTC, commission, companyName: company.nom });
-    logger.info('💼 HubSpot Deal créé depuis facture', { dealId, dealName, companyId: company.id });
+    logHubspot(db, 'deal', 'create_from_invoice', null, dealId, { clientName, orderNumber, invoiceNumber, montantHT, montantTTC, commission, companyName });
+    logger.info('💼 HubSpot Deal créé depuis facture', { dealId, dealName, companyId });
     return dealId;
   } catch (err) {
     logger.error('❌ HubSpot creerDealFromInvoice', { error: err.message, clientName, orderNumber });

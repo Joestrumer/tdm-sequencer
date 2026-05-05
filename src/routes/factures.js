@@ -506,6 +506,8 @@ module.exports = (db) => {
         hubspot_deal_id = await hubspot.creerDealFromInvoice(db, {
           clientName: client.name,
           clientEmail: client.email,
+          vfClientName: client.name,
+          vfClientId: client.id,
           montantHT: roundPrice(montantHT),
           montantTTC: roundPrice(montantTTC),
           orderNumber: orderNumber || '',
@@ -546,6 +548,8 @@ module.exports = (db) => {
               hubspot_deal_id = await hubspot.creerDealFromInvoice(db, {
                 clientName: buyerName,
                 clientEmail: buyerEmail,
+                vfClientName: buyerName,
+                vfClientId: invoiceData.client_id || order.client?.id,
                 montantHT: parseFloat(invoiceData.price_net || result.price_net || 0),
                 montantTTC: parseFloat(invoiceData.price_gross || result.price_gross || 0),
                 orderNumber: invoiceData.oid || order.orderNumber || '',

@@ -891,6 +891,7 @@ const migrations = [
   "ALTER TABLE partner_campaigns ADD COLUMN type TEXT DEFAULT 'marketing'",
   'ALTER TABLE partner_campaigns ADD COLUMN business_type_filter TEXT',
   'ALTER TABLE partner_campaigns ADD COLUMN days_before INTEGER DEFAULT 0',
+  'ALTER TABLE vf_client_mappings ADD COLUMN hubspot_company_id TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
@@ -998,6 +999,163 @@ for (const m of missingClientMappings) {
       db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name) VALUES (?, ?)').run(m.vf_name, m.file_name);
     } catch (e) { /* ignore */ }
   }
+}
+
+// ─── Mapping centralisé HubSpot / Google Sheets / VosFactures ───────────────
+const centralMappings = [
+  { hs: '11064528604', gs: 'le Beau Moulin', vf: 'Beau Moulin SAS', vfId: '142842770' },
+  { hs: '9850052567', gs: 'Lodging Le Lac', vf: 'sarl LODGING LE LAC', vfId: '141898669' },
+  { hs: '11135098315', gs: 'Hôtel Restaurant des Iles', vf: 'Hôtel Restaurant des Iles', vfId: '146263477' },
+  { hs: '10196401607', gs: 'Domaine des Bidaudières', vf: 'SARL Château des ARPENTIS', vfId: '189916346' },
+  { hs: '10101542869', gs: 'Au Lion Rouge', vf: 'Au Lion Rouge - Christophe KOENIG', vfId: '153567611' },
+  { hs: '9289052109', gs: 'Domaine de Canaille', vf: 'Revestel Cap Canaille - attn: Marie Treppoz', vfId: '146176750' },
+  { hs: '34583453890', gs: 'Daroco 16', vf: 'SA TURQUOISE - Daroco 16', vfId: '161809265' },
+  { hs: '34583452869', gs: 'Daroco Bourse', vf: 'SAS DAROCO - Daroco Bourse', vfId: '161808883' },
+  { hs: '34425533639', gs: 'Daroco Soho', vf: 'DAROCO LTD - Daroco Soho', vfId: '158523505' },
+  { hs: '10466912193', gs: 'Omar Dhiab', vf: 'Restaurant Omar Dhiab', vfId: '170177412' },
+  { hs: '49757464780', gs: 'Le Domaine du Pech Eternel', vf: 'Guillaume JOLY', vfId: '171767114' },
+  { hs: '79622842574', gs: 'Chalet B', vf: 'Chalet B - SCI Ballovitch', vfId: '177724123' },
+  { hs: '41354947803', gs: 'IMMOBILIERE DU BOURGAGE', vf: 'Immobilere du Bourgage - Antoine Rousselet', vfId: '172408077' },
+  { hs: '7813509353', gs: 'Escale Blanche', vf: 'LANA VACANCES SAS - Escale Blanche', vfId: '140305806' },
+  { hs: '77541777626', gs: 'La Maison Normande', vf: 'La Maison Normande', vfId: '178704703' },
+  { hs: '10687480294', gs: 'La Source', vf: 'LA SOURCE', vfId: '180140790' },
+  { hs: '14347507700', gs: 'Relais de Saint-Preuil', vf: 'Relais de Saint-Preuil', vfId: '180507227' },
+  { hs: '79279474935', gs: 'DS_Niel et Franklin', vf: 'SJM - DS Café - Niel-Franklin & Défense-Lafayette', vfId: '182352633' },
+  { hs: '79279474935', gs: 'DS_Defense et Lafayette', vf: 'SJM - DS Café - Niel-Franklin & Défense-Lafayette', vfId: '182352633' },
+  { hs: '79279474935', gs: 'DS_Victor Hugo', vf: 'SOCIETE LOUMI - DS Café - Victor Hugo', vfId: '182352889' },
+  { hs: '79279474935', gs: 'DS_Boulogne', vf: 'Société MILOUBOU - DS Café - Boulogne', vfId: '182353153' },
+  { hs: '79279474935', gs: 'DS_Bordeaux', vf: 'SOCIETE DS CAFE BORDEAUX - DS Café - Bordeaux', vfId: '180733900' },
+  { hs: '7198934767', gs: 'Villa Beaumarchais', vf: 'Machefert - VILLA BEAUMARCHAIS', vfId: '106006848' },
+  { hs: '12981789882', gs: 'Les Chalets De La Clusaz', vf: 'POLLET IMMOBILIER 2022 - Chalet Caribou', vfId: '155144319' },
+  { hs: '85839606990', gs: 'Suite Balnéo Canet', vf: 'Suite Balnéo Canet - Erik Mullie', vfId: '179695087' },
+  { hs: '83324012763', gs: 'Conquer Your Day (Blanche)', vf: 'Conquer Your Day', vfId: '189526185' },
+  { hs: '8107699158', gs: 'Le Château de Cop Choux', vf: 'Chateau de Cop Choux', vfId: '116447938' },
+  { hs: '45034726627', gs: 'Château de Blanat', vf: 'SAS Chateau Blanat', vfId: '189668650' },
+  { hs: '121133183165', gs: 'Chalets Uto', vf: 'GLMZ', vfId: '186709706' },
+  { hs: '125103244497', gs: 'Le Mas Vidau', vf: 'Le Mas Vidau - Ana Archip', vfId: '187925398' },
+  { hs: '8890134728', gs: 'Kraft Hotel', vf: 'Kraft Hôtel', vfId: '126089818' },
+  { hs: '10101114845', gs: 'La Fraichette', vf: 'La Fraichette', vfId: '148537207' },
+  { hs: '10156749246', gs: 'Hotel Clairefontaine', vf: 'Hotel Clairefontaine', vfId: '138554535' },
+  { hs: '10458328259', gs: 'Hotel Marina Adelphia', vf: 'HOTEL MARINA ADELPHIA - attn : Christian Galice', vfId: '147321768' },
+  { hs: '6587092954', gs: 'Hôtel de La Groirie', vf: 'La Groirie', vfId: '103579962' },
+  { hs: '7030501102', gs: 'Holmes Place Austria', vf: 'Holmes Place Wien GmbH', vfId: '178071590' },
+  { hs: '6616981735', gs: 'Monsieur Alfred', vf: 'Monsieur Alfred', vfId: '123106664' },
+  { hs: '13421267673', gs: 'Manoir des Douets Fleuris', vf: 'SAS Hôtel le Manoir des Douets Fleuris - Émilie Léost', vfId: '158115820' },
+  { hs: '10608646135', gs: 'BAO Chambres d\'hôtes', vf: 'SAS BAO Chambres d\'hôtes', vfId: '140880747' },
+  { hs: '267283185854', gs: 'Jost Hotel Montpellier Gare', vf: 'MELT MONTPELLIER GARE', vfId: '202107270' },
+  { hs: '11289478107', gs: 'Hôtel La Résidence', vf: 'Hôtel La Résidence - attn : Magali Azam', vfId: '145301472' },
+  { hs: '11289156323', gs: 'Auberge Du Cabestan', vf: 'Auberge du Cabestan - Attn : Eric', vfId: '145519766' },
+  { hs: '116472911055', gs: 'Le Domaine de l\'Ecorcerie', vf: 'Le Domaine de l\'Ecorcerie', vfId: '185691418' },
+  { hs: '10155480004', gs: 'Hôtel de Mougins', vf: 'La Bastide de Mougins - OPCO MOUGINS', vfId: '188655831' },
+  { hs: '10172516050', gs: 'Hotel Nyx', vf: 'Hotel Nyx - MIVA SARL', vfId: '143859662' },
+  { hs: '9732720369', gs: 'Chateau des Arpentis', vf: 'SARL Château des ARPENTIS - Mr Suzanne', vfId: '138520089' },
+  { hs: '72811258075', gs: 'Hôtel au Coq Dort Spa', vf: 'Hôtel au Coq Dort Spa - Laura Cotillon', vfId: '1766214443' },
+  { hs: '428503187672', gs: 'Appart\'Hôtel Le Génépy', vf: 'Appart\'Hôtel Le Génépy', vfId: '213629620' },
+  { hs: '428582886599', gs: 'Hôtel Le Faucigny', vf: 'Hôtel Le Faucigny', vfId: '212464800' },
+  { hs: '428502469863', gs: 'Plan B Saint Gervais', vf: 'Plan B Saint Gervais', vfId: '194193320' },
+  { hs: '18685856974', gs: 'Hôtel Le Lyret', vf: 'Hôtel Le Lyret', vfId: '212465333' },
+  { hs: '262224605406', gs: 'Shd Invest Srl - Shams Demaret', vf: 'Shd Invest Srl - Shams Demaret', vfId: '207472711' },
+  { hs: '9675837160', gs: 'Hôtel Oré Saint Malo', vf: 'HOTEL ORE', vfId: '135095350' },
+  { hs: '125517683910', gs: 'Les Pins Blancs', vf: 'Les Pins Blancs', vfId: '214907101' },
+  { hs: '79279474935', gs: 'DS_Reims', vf: 'DS Café Reims - SAS Ed\'N', vfId: '219415419' },
+  { hs: '79279474935', gs: 'DS_Lyon', vf: 'SOCIETE DS CAFE LYON - DS Café - Lyon', vfId: '178139425' },
+  { hs: '306170559680', gs: 'Chalet APY', vf: 'SARL LA BANQUISE - Hôtel Igloo', vfId: '221924084' },
+  { hs: '12635214820', gs: 'Kyriad Prestige Residence & Spa Cabourg-Dives-sur-Mer', vf: 'Hotel Kyriad Prestige Residence & Spa Cabourg', vfId: '152850849' },
+  { hs: '8378206190', gs: 'HK Montparnasse', vf: 'HK Montparnasse', vfId: '120247990' },
+  { hs: '7905216193', gs: 'HK MONTMARTRE', vf: 'HK MONTMARTRE - Korner', vfId: '114150451' },
+  { hs: '12277638857', gs: 'Gustave Flaubert', vf: 'HOTEL LITTERAIRE FLAUBERT', vfId: '150115547' },
+  { hs: '9088782045', gs: 'Hôtel L\'Ormaie', vf: 'L\'ORMAIE', vfId: '156393263' },
+  { hs: '9714186978', gs: 'Le Château d\'Argens', vf: 'Le Château d\'Argens - Daphnée Godin', vfId: '148174343' },
+  { hs: '332188302572', gs: 'Chamkeys Prestige', vf: 'Angélique Dussollier - Chamkeys', vfId: '222461778' },
+  { hs: '6654029787', gs: 'KYRIAD PRESTIGE PERPIGNAN', vf: 'Hotel Kyriad Prestige Perpignan', vfId: '96053973' },
+  { hs: '359855035638', gs: 'La Trêve', vf: 'La Trêve - Ousmane Sow', vfId: '225255804' },
+  { hs: '6818052286', gs: 'Villa Panthéon', vf: 'Machefert Group - Villa Pantheon', vfId: '99051095' },
+  { hs: '116472966392', gs: 'Causse Comtal', vf: 'Hôtel Causse Comtal Rodez, The Originals Relais', vfId: '185680429' },
+  { hs: '9427207622', gs: 'HK OPERA', vf: 'HK OPERA - Korner', vfId: '133522653' },
+  { hs: '8430078454', gs: 'HK Eiffel', vf: 'HK Eiffel', vfId: '120902220' },
+  { hs: '7905770977', gs: 'Hôtel Elysées Bassano', vf: 'Hôtel Elysées Bassano', vfId: '147393359' },
+  { hs: '36287471819', gs: 'Escale Marine', vf: 'Escale Marine - Delphine Gaudin', vfId: '167992881' },
+  { hs: '428583602381', gs: 'Plan B Chamonix', vf: 'Plan B Chamonix', vfId: '213629513' },
+  { hs: '79279474935', gs: 'DS_Parly 2', vf: 'SOCIETE DS PARLY - DS Café - Parly 2', vfId: '182353071' },
+  { hs: '12277260754', gs: 'Alexandre Vialatte', vf: 'HOTEL LITTERAIRE VIALATTE', vfId: '150115357' },
+  { hs: '9638068469', gs: 'Château de Sannes', vf: 'Château de Sannes - MLGT Holding', vfId: '136087687' },
+  { hs: '346506158270', gs: 'L\'Hermitage', vf: 'L\'Hermitage - Florian Méheust', vfId: '226025543' },
+  { hs: '428583592122', gs: 'CAMPUS ENGIE', vf: 'CHATEAUFORM France – CAMPUS ENGIE', vfId: '211294381' },
+  { hs: '8433966556', gs: 'HK Saint Marcel', vf: 'HK Saint Marcel - Korner', vfId: '197877986' },
+  { hs: '428583598329', gs: 'Les Airelles', vf: 'Hôtel les Airelles - LES AIRELLES PLAGNAT ET FILS', vfId: '227442300' },
+  { hs: '11459840228', gs: 'HK CHÂTELET', vf: 'HK CHÂTELET - Korner', vfId: '145951345' },
+  { hs: '9776272831', gs: 'HK Etoile', vf: 'HK Etoile', vfId: '135846494' },
+  { hs: '11460248782', gs: 'HK LOUVRE', vf: 'HK LOUVRE - Korner', vfId: '146070420' },
+  { hs: '287075027143', gs: 'Maison Montgrand', vf: 'Hôtel Maison Montgrand Vieux Port - Fanny Sauvage', vfId: '218679803' },
+  { hs: '124461148348', gs: 'Hôtel Des Deux Gares', vf: 'Hôtel Des Deux Gares', vfId: '212465199' },
+  { hs: '6504755391', gs: '1K Paris', vf: '1K - Machefert', vfId: '112513649' },
+  { hs: '274780658904', gs: 'Hôtel Provençal Bandol', vf: 'HÔTEL PROVENÇAL BANDOL - SARL M A D Y S - Fabien VOCICOT', vfId: '214886795' },
+  { hs: '132194822358', gs: 'Hôtel le Portillo', vf: 'Hôtel le Portillo - Juliette Moreau Bonaldi', vfId: '189836312' },
+  { hs: '9673663196', gs: 'Hôtel Le Renaissance', vf: 'SARL SEHR - Renaissance', vfId: '136285729' },
+  { hs: '267122065602', gs: 'HK République', vf: 'HK République', vfId: '202808264' },
+  { hs: '274612176104', gs: 'Osmo Studio', vf: 'OSMO STUDIO SAS - Jihene Kasbi', vfId: '218956851' },
+  { hs: '12277260757', gs: 'Arthur Rimbaud', vf: 'HOTEL LITTERAIRE RIMBAUD', vfId: '150114897' },
+  { hs: '13351238853', gs: 'Les chalets Covarel', vf: 'MCOVAREL SA - Mathilde COVAREL', vfId: '157431383' },
+  { hs: '9109098174', gs: 'Le Saint Nicolas', vf: 'SAS St-Nicolas', vfId: '150910249' },
+  { hs: '56675877080', gs: 'Les Relais Du Capitole', vf: 'Les Relais Du Capitole', vfId: '173815575' },
+  { hs: '22685807831', gs: 'Mana Homes', vf: 'Mana homes - Aymeric Koenig', vfId: '203527558' },
+  { hs: '415037362402', gs: 'Pisco and co sas Le Manoir de la Campagne', vf: 'Pisco and co sas Le Manoir de la Campagne Tristan Philippon', vfId: '238087488' },
+  { hs: '51855073508', gs: 'HOTEL 96', vf: 'HOTEL 96 - Alice Denoix et William Racine', vfId: '172741666' },
+  { hs: '171829251285', gs: 'Hôtel Best Western Saint Antoine', vf: 'Hôtel Best Western Saint Antoine - Ksenia LISSINE', vfId: '196703321' },
+  { hs: '108362207445', gs: 'Hôtel Boronali (Le Rodrigue)', vf: 'Hotel Le Rodrigue (Boronali)', vfId: '183147362' },
+  { hs: '46943395013', gs: 'Loire Valley Lodges', vf: 'Loire Valley Lodges - Anne Caroline FREY', vfId: '171305487' },
+  { hs: '87649999057', gs: 'Globe et Cecil Hotel', vf: 'Globe et Cecil Hotel', vfId: '180342544' },
+  { hs: '229376638173', gs: 'Domaine de Biar', vf: 'Domaine de Biar - Stéphane SERRES', vfId: '207317649' },
+  { hs: '9675251697', gs: 'Hôtel La Balance', vf: 'Hotel La Balance', vfId: '137052934' },
+  { hs: '7905068006', gs: 'Hotel Claridge', vf: 'Nouvelle société hotel Bellman - claridge', vfId: '135357372' },
+  { hs: '8979080927', gs: 'HK Sorbonne', vf: 'HK Sorbonne', vfId: '127792862' },
+  { hs: '95968436462', gs: 'Les Rives Oceanik', vf: 'Les Rives Oceanik - Philippine BOULAY', vfId: '181560789' },
+  { hs: '9428369090', gs: 'Hôtel Grand Cœur Latin', vf: 'Hotel Grand Coeur Latin SAS Hoteliere Excelsior Latin', vfId: '136279629' },
+  { hs: '378365718751', gs: 'CLOS MARCAMPS', vf: 'CLOS MARCAMPS - Jean-Philippe Illarine', vfId: '229251784' },
+  { hs: '136893591752', gs: 'The Central (Loewe)', vf: 'Loewe Sarl', vfId: '190592719' },
+  { hs: '9170649033', gs: 'Barry\'s Bootcamp Paris', vf: 'Barry\'s Bootcamp Paris', vfId: '131149479' },
+  { hs: '6802535361', gs: 'Maison Eugenie', vf: 'Machefert Group - Villa Eugenie', vfId: '98761254' },
+  { hs: '415932920050', gs: 'Bread et Couette Chambres d\'hotes', vf: 'Bread et Couette Chambres d\'hotes', vfId: '237029341' },
+  { hs: '82477580498', gs: 'Pantoufle Hôtels', vf: 'SAS PH GROUPE - Pantoufle Hôtels', vfId: '178543549' },
+  { hs: '85839351994', gs: 'HILO Collection', vf: 'HILO Collection - Hélène WEISS', vfId: '193145449' },
+  { hs: '9474249923', gs: 'Sangha Hotels', vf: 'Sangha Toulouse', vfId: '146071675' },
+  { hs: '10688245752', gs: 'My Ginger', vf: 'My Ginger - attn : Candice', vfId: '145300324' },
+  { hs: '423026510067', gs: 'Hotel Snob', vf: 'Hotel Snob - Glenn Ricafrente', vfId: '238907600' },
+  { hs: '8357575104', gs: 'Life Hotels Bordeaux', vf: 'Life Hotels Bordeaux', vfId: '121254624' },
+  { hs: '11235978745', gs: 'Casa del Capitan', vf: 'DOMINI LA CAPITAINERIE', vfId: '190863056' },
+  { hs: '12096899832', gs: 'Hôtel Moderniste', vf: 'Hôtel Moderniste - Bertrand Mignard', vfId: '151284732' },
+  { hs: '9059531498', gs: 'Dream Hotel Opera (Théorème)', vf: 'Hotel Théorème Paris', vfId: '125549920' },
+  { hs: '12277638860', gs: 'Marcel Aymé', vf: 'HOTEL LITTERAIRE MARCEL AYME', vfId: '147749123' },
+  { hs: '12277260760', gs: 'Stendhal', vf: 'HOTEL LITTERAIRE STENDHAL', vfId: '147745856' },
+  { hs: '424330141906', gs: 'Château de Herces', vf: 'Château de Herces - Isabelle et Matthieu Poydenot', vfId: '236350864' },
+  { hs: '10608864198', gs: 'Le Swann', vf: 'HOTEL LITTERAIRE LE SWANN', vfId: '150114610' },
+  { hs: '6553940941', gs: 'MyNestinn', vf: 'Phillipe Bos - URL BOS', vfId: '95040122' },
+  { hs: '150657585388', gs: 'Jost Hotel Lille', vf: 'SAS Melt Lille', vfId: '190947835' },
+  { hs: '11838832374', gs: 'Hôtel Le Parc', vf: 'GROUPE FRANCK PUTELAT', vfId: '149178374' },
+  { hs: '125158430941', gs: 'PONT DU CHALON Hôtel', vf: 'PONT DU CHALON Hôtel - Catheryne Ginot', vfId: '214849985' },
+  { hs: '114687740133', gs: 'Hôtel des Mines', vf: 'Hôtel des Mines - Victor Forêt', vfId: '194301500' },
+  { hs: '374749174001', gs: 'Hôtel Le 10 Bis', vf: 'Hôtel Le 10 Bis - EMERAUDE HOTELS', vfId: '228994005' },
+];
+const upsertMapping = db.prepare(`
+  INSERT INTO vf_client_mappings (vf_name, file_name, vf_client_id, hubspot_company_id)
+  VALUES (?, ?, ?, ?)
+  ON CONFLICT(id) DO NOTHING
+`);
+// Use vf_name as lookup key to update existing or insert new
+for (const m of centralMappings) {
+  const existing = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(m.vf);
+  if (existing) {
+    db.prepare('UPDATE vf_client_mappings SET file_name = ?, vf_client_id = ?, hubspot_company_id = ? WHERE id = ?')
+      .run(m.gs, m.vfId, m.hs, existing.id);
+  } else {
+    db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name, vf_client_id, hubspot_company_id) VALUES (?, ?, ?, ?)')
+      .run(m.vf, m.gs, m.vfId, m.hs);
+  }
+}
+// Also ensure we can look up by vf_client_id → hubspot_company_id (for deals)
+// Update any existing mappings that have the same vf_client_id but no hubspot_company_id
+for (const m of centralMappings) {
+  db.prepare('UPDATE vf_client_mappings SET hubspot_company_id = ? WHERE vf_client_id = ? AND (hubspot_company_id IS NULL OR hubspot_company_id = ?)').run(m.hs, m.vfId, m.hs);
 }
 
 // ─── Sync partenaires canoniques manquants ──────────────────────────────────
