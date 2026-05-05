@@ -561,12 +561,42 @@ function parseOrderText(text) {
     { re: /porte.?flacon.*double/, ref: 'PFD' },
     { re: /porte.?flacon.*simple.*securi|porte.?flacon.*temperproof/, ref: 'SPFS' },
     { re: /porte.?flacon.*simple/, ref: 'PFS' },
+    { re: /\bsupports?\b/, ref: 'PFS' },
+    // Generic (sans marque) — résolution par nom de produit
+    { re: /(?=.*(gel|wash|lavant|nettoyant))(?=.*(corps|corporel|body))(?=.*(cheveu|cheveux|hair))(?=.*5\s*l)/, ref: 'P014-5000' },
+    { re: /(?=.*(gel|wash|lavant|nettoyant))(?=.*(corps|corporel|body))(?=.*(cheveu|cheveux|hair))/, ref: 'P014' },
+    { re: /(?=.*(apres|apr[eè]s).{0,3}(shampoo|shampoing))/, ref: 'P024' },
+    { re: /(?=.*(lait|lotion|nourrissant))(?=.*(corps|body|main|hand))(?=.*5\s*l)/, ref: 'P011-5000' },
+    { re: /(?=.*(lait|lotion|nourrissant))(?=.*(corps|body|main|hand))/, ref: 'P011' },
+    { re: /(?=.*hydroalcool)(?=.*5\s*l)/, ref: 'P018-5000' },
+    { re: /(?=.*hydroalcool)/, ref: 'P018' },
+    { re: /(?=.*diffus)(?=.*parfum)/, ref: 'P039' },
+    { re: /(?=.*(gel|savon|wash|lavant))(?=.*(main|hand))(?=.*5\s*l)/, ref: 'P007-5000' },
+    { re: /(?=.*(gel|savon|wash|lavant))(?=.*(main|hand))/, ref: 'P007' },
+    { re: /(?=.*(gel|nettoyant))(?=.*(corps|body|corporel|douche))(?=.*5\s*l)/, ref: 'P008-5000' },
+    { re: /(?=.*(gel|nettoyant))(?=.*(corps|body|corporel|douche))/, ref: 'P008' },
+    { re: /(?=.*\bgel\b)(?=.*\bdouche\b)(?=.*5\s*l)/, ref: 'P008-5000' },
+    { re: /(?=.*\bgel\b)(?=.*\bdouche\b)/, ref: 'P008' },
+    { re: /(?=.*(shampoo|shampoing))(?=.*5\s*l)/, ref: 'P010-5000' },
+    { re: /(?=.*(shampoo|shampoing))/, ref: 'P010' },
   ];
 
   const lines = cleaned.split('\n')
     .map(l => l.trim())
     .filter(Boolean)
-    .filter(l => !/^bonjour\b/i.test(l) && !/^j['']esp[eè]re\b/i.test(l));
+    .filter(l => {
+      const lt = l.toLowerCase();
+      if (/^(bonjour|bonsoir|cher |ch[eè]re |salut\b|hello\b)/i.test(l)) return false;
+      if (/^j['']esp[eè]re\b/i.test(l)) return false;
+      if (/^(cordialement|cdlt|bien [àa] vous|merci|un grand merci|bonne (semaine|journ|soir)|bien cordialement)/i.test(l)) return false;
+      if (/^(serait.il possible de commander|pouvons.nous|pourrais.je|j['']aimerais|est.ce possible de commander|vous trouverez ci.dessous)/i.test(l) && !/\d+\s*(bidons?|bouteilles?|flacons?|cartons?)\b/i.test(l)) return false;
+      if (/^merci\b.*\b(avance|retour|d'avance)\b/i.test(l)) return false;
+      return true;
+    })
+    // Split inline multi-products: "24 Gel corps et 12 gel lavant" → 2 lignes
+    .flatMap(l => l.split(/\s+et\s+(?=\d)/i))
+    .map(l => l.trim())
+    .filter(Boolean);
 
   // Refs accessoires reconnues (non-numériques)
   const accRefs = 'PFS|PFD|PFT|SPFS|PFDS|PFSS|PFTS|P500ml|P300ML|BAV|COFFRETS|SPRAY-VIDE';
@@ -604,7 +634,12 @@ function parseOrderText(text) {
   };
 
   lines.forEach(rawLine => {
-    const line = rawLine.replace(/^[-*•\u2022]+\s*/g, '').trim();
+    let line = rawLine.replace(/^[-*•\u2022]+\s*/g, '').trim();
+    // Normaliser les P-refs mal formatées : "P014 -5000" → "P014-5000", "P07" → "P007"
+    line = line.replace(/\bP\s*0*(\d{1,3})(?:\s*[-–—]\s*(\d{3,4}[A-Za-z]*)\s*[-–—.]?)?(?=[^A-Za-z0-9]|$)/gi, (m, n, s) => {
+      const base = `P${n.padStart(3, '0')}`;
+      return s ? `${base}-${s}` : base;
+    });
     const lineNorm = norm(line);
 
     let foundAny = false;
@@ -640,6 +675,79 @@ function parseOrderText(text) {
         else products.push({ ref, quantity: qty });
         foundAny = true;
         logger.debug(`📧 Format email simple détecté: ${ref} x${qty}`);
+        return;
+      }
+    }
+
+    // Format ref au début, quantité à la fin : "P014-5000 – Description – 6 bidons", "011- Lotion 500ml – 6"
+    const refStartMatch = line.match(/^\s*(?:(P\d{3}(?:-\d+[A-Za-z]*)?)|(0?\d{2,3}))\s*[-–—.]?\s+.+?[-–—:,]\s*(\d+)\s*(?:bidons?|pi[eè]ces?|flacons?|bouteilles?|unit[eé]s?|pompes?)?\s*$/i);
+    if (refStartMatch) {
+      let ref;
+      if (refStartMatch[1]) {
+        ref = localNormalizeRef(refStartMatch[1], lineNorm);
+      } else {
+        const codeNum = refStartMatch[2].replace(/^0+/, '').padStart(3, '0');
+        const is5L = /5\s*l/i.test(line);
+        ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
+      }
+      const qty = parseInt(refStartMatch[3], 10);
+      if (ref && qty > 0 && qty < 9999) {
+        const existing = products.find(p => p.ref === ref);
+        if (existing) existing.quantity += qty;
+        else products.push({ ref, quantity: qty });
+        foundAny = true;
+        logger.debug(`📧 Ref-début/qty-fin: ${ref} x${qty}`);
+        return;
+      }
+    }
+
+    // Format "Nom produit N cartons (M bidons)" : "Shampoing 2 cartons (donc 8 bidons)"
+    const nameCartonsMatch = line.match(/^(.+?)\s+\d+\s*cartons?\s*\(?(?:donc\s*)?(\d+)\s*(?:bidons?|unit[eé]s?|flacons?)\)?/i);
+    if (nameCartonsMatch) {
+      const qty = parseInt(nameCartonsMatch[2], 10);
+      let ref = null;
+      for (const r of nameRules) {
+        if (r.re.test(lineNorm)) { ref = r.ref; break; }
+      }
+      if (ref && qty > 0) {
+        const existing = products.find(p => p.ref === ref);
+        if (existing) existing.quantity += qty;
+        else products.push({ ref, quantity: qty });
+        foundAny = true;
+        logger.debug(`📧 Nom+cartons: ${ref} x${qty}`);
+        return;
+      }
+    }
+
+    // Format "N bidons/bouteilles/flacons [de] [5L] [de] description [code]"
+    // "8 bidons de 5L de shampoing", "36 bidons de 5 litres de gel douche 008.", "100 bouteilles de shampoing (noir)"
+    const qtyUnitMatch = line.match(/(\d+)\s*(?:bidons?|bouteilles?|flacons?|pi[eè]ces?|unit[eé]s?)\s+(?:de\s+)?(.+)/i);
+    if (qtyUnitMatch && !foundAny) {
+      const qty = parseInt(qtyUnitMatch[1], 10);
+      const rest = qtyUnitMatch[2].trim();
+      const is5L = /5\s*l/i.test(line);
+      let ref = null;
+      // Chercher un P-ref dans le texte
+      const pRefInRest = rest.match(/\b(P\d{3}(?:-\d+[A-Za-z]*)?)\b/i);
+      // Chercher un code nu à la fin : "gel douche 008."
+      const tailRef = rest.match(/\b0*(\d{2,3})\s*\.?\s*$/);
+      if (pRefInRest) {
+        ref = localNormalizeRef(pRefInRest[1], lineNorm);
+      } else if (tailRef && !/^\d+$/.test(rest.trim())) {
+        const codeNum = tailRef[1].padStart(3, '0');
+        ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
+      } else {
+        for (const r of nameRules) {
+          if (r.re.test(lineNorm)) { ref = r.ref; break; }
+        }
+        if (ref && is5L && !ref.includes('-')) ref += '-5000';
+      }
+      if (ref && qty > 0 && qty < 9999) {
+        const existing = products.find(p => p.ref === ref);
+        if (existing) existing.quantity += qty;
+        else products.push({ ref, quantity: qty });
+        foundAny = true;
+        logger.debug(`📧 Qty+unité+produit: ${ref} x${qty}`);
         return;
       }
     }
@@ -687,7 +795,16 @@ function parseOrderText(text) {
     }
     if (foundAny) return;
 
-    const qty = extractQty(line) || 0;
+    let qty = extractQty(line) || 0;
+    // Fallback : nombre au début de la ligne (ex: "24 Gel corps et cheveux")
+    if (!qty) {
+      const m = line.match(/^(\d{1,4})\s+(?!x\b)/i);
+      if (m) {
+        const n = parseInt(m[1], 10);
+        // Ignorer les codes produit zero-padded (008, 011, 040)
+        if (n > 0 && n < 9999 && !/^0\d{2}\b/.test(line)) qty = n;
+      }
+    }
     if (!qty) return;
 
     let refFromName = null;
