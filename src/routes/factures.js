@@ -462,6 +462,7 @@ module.exports = (db) => {
       }
 
       // Log Google Sheets automatique si demandé
+      let gsOrderNumber = null;
       if (logGSheets !== false) {
         try {
           repairGSheetsCredentials();
@@ -498,6 +499,7 @@ module.exports = (db) => {
 
             if (gsResult.ok) {
               db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));
+              gsOrderNumber = gsResult.orderNumber;
             }
           }
         } catch (gsErr) {
@@ -515,7 +517,7 @@ module.exports = (db) => {
           vfClientId: client.id,
           montantHT: roundPrice(montantHT),
           montantTTC: roundPrice(montantTTC),
-          orderNumber: orderNumber || '',
+          orderNumber: gsOrderNumber != null ? String(gsOrderNumber) : '',
           invoiceNumber: result.number || '',
           closeDate: new Date().toISOString().split('T')[0],
         });

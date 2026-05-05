@@ -368,6 +368,7 @@ module.exports = (db) => {
       }
 
       // Log Google Sheets
+      let gsOrderNumber = null;
       if (logGSheets === false) {
         // Skip GSheets logging
       } else try {
@@ -403,6 +404,7 @@ module.exports = (db) => {
 
           if (gsResult.ok) {
             db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));
+            gsOrderNumber = gsResult.orderNumber;
           }
         }
       } catch (gsErr) {
@@ -419,7 +421,7 @@ module.exports = (db) => {
           vfClientId: clientMapping?.vf_client_id,
           montantHT: (parseFloat(order.total_ht) || 0) + fraisPort.reduce((s, f) => s + (f.prix_ht || 0) * (f.quantite || 1), 0),
           montantTTC: (parseFloat(order.total_ttc) || 0) + fraisPort.reduce((s, f) => s + (f.prix_ht || 0) * (f.quantite || 1) * 1.2, 0),
-          orderNumber: order.id ? `PO-${order.id}` : '',
+          orderNumber: gsOrderNumber != null ? String(gsOrderNumber) : '',
           invoiceNumber: result.number || '',
           closeDate: new Date().toISOString().split('T')[0],
         });
