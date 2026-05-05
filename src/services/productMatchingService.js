@@ -609,6 +609,41 @@ function parseOrderText(text) {
 
     let foundAny = false;
 
+    // Format email: "008 Gel Nettoyant Corporel Reddition - 5L :  5 cartons (20 bidons)"
+    // Code nu (3 chiffres) + description + ":" + N cartons (M bidons/unités)
+    const emailMatch = line.match(/^0*(\d{1,3})\s+.+?:\s*(\d+)\s*cartons?\s*\((\d+)\s*(?:bidons?|unit[eé]s?|pi[eè]ces?|flacons?)\)/i);
+    if (emailMatch) {
+      const codeNum = emailMatch[1].padStart(3, '0');
+      const unitQty = parseInt(emailMatch[3], 10);
+      const is5L = /5\s*l\b/i.test(line);
+      const ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
+      if (unitQty > 0) {
+        const existing = products.find(p => p.ref === ref);
+        if (existing) existing.quantity += unitQty;
+        else products.push({ ref, quantity: unitQty });
+        foundAny = true;
+        logger.debug(`📧 Format email détecté: ${ref} x${unitQty}`);
+        return;
+      }
+    }
+
+    // Format email sans parenthèses: "008 Gel ... - 5L : 20"
+    const emailSimpleMatch = line.match(/^0*(\d{1,3})\s+.+?:\s*(\d+)\s*$/);
+    if (emailSimpleMatch) {
+      const codeNum = emailSimpleMatch[1].padStart(3, '0');
+      const qty = parseInt(emailSimpleMatch[2], 10);
+      const is5L = /5\s*l\b/i.test(line);
+      const ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
+      if (qty > 0 && qty < 9999) {
+        const existing = products.find(p => p.ref === ref);
+        if (existing) existing.quantity += qty;
+        else products.push({ ref, quantity: qty });
+        foundAny = true;
+        logger.debug(`📧 Format email simple détecté: ${ref} x${qty}`);
+        return;
+      }
+    }
+
     // Format tabulaire: P039 Description... 12 ( 24,00)
     // Ligne commence par une référence, quantité plus loin
     const tabularMatch = line.match(new RegExp(`^([Pp]\\d{3}(?:-\\d+[A-Za-z]*)?|P5L|${accRefs}|[HhNn]\\s*-?\\s*\\d{3})\\s+(.+?)(\\d{1,4})\\s+[\\(\\[]?\\s*[\\d,\\.]+\\s*[\\)\\]]?\\s*€`, 'i'));
