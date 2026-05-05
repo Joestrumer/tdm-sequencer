@@ -421,7 +421,7 @@ module.exports = (db) => {
       const result = await req.vfService.creerFacture(invoiceData);
 
       // Logger dans la DB
-      const montantHT = (products || []).reduce((s, p) => {
+      let montantHT = (products || []).reduce((s, p) => {
         const ref = normalizeRef(p.ref);
         const catEntry = catalog[ref];
         const priceHT = p.prix_ht || catEntry?.prix_ht || 0;
@@ -429,6 +429,11 @@ module.exports = (db) => {
         const discount = p.discount || 0;
         return s + priceHT * (1 - discount / 100) * qty;
       }, 0);
+      // Inclure frais de port/préparation dans le total
+      for (const f of (fraisPort || [])) {
+        const qty = f.quantite || f.quantity || 1;
+        montantHT += (f.prix_ht || 0) * qty;
+      }
       const montantTTC = montantHT * 1.2;
       db.prepare(`
         INSERT INTO vf_invoice_logs (vf_invoice_id, vf_invoice_number, client_name, mode, montant_ht, montant_ttc, meta)
