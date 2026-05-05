@@ -575,7 +575,7 @@ module.exports = (db) => {
               segment,
               isGeneric ? null : (hotel.contact_fonction || null),
               'fr',
-              'Prospection automatique',
+              'Scrap AtoutFR Generique',
               'Nouveau'
             );
 
@@ -680,7 +680,7 @@ module.exports = (db) => {
   // GET /api/prospection/emails-generiques — Liste des emails génériques scrappés
   router.get('/emails-generiques', (req, res) => {
     try {
-      const { search, limit = 100, offset = 0 } = req.query;
+      const { search, classement, type, limit = 100, offset = 0 } = req.query;
 
       // Condition WHERE commune à la base query et count query
       let whereClause = 'WHERE h.contact_email IS NOT NULL AND h.contact_email != \'\'';
@@ -691,14 +691,26 @@ module.exports = (db) => {
         const s = `%${search}%`;
         params.push(s, s, s);
       }
+      if (classement) {
+        whereClause += ' AND h.classement = ?';
+        params.push(classement);
+      }
+      if (type) {
+        whereClause += ' AND h.type_hebergement = ?';
+        params.push(type);
+      }
 
       // Comptage total (requête simple sans JOIN)
       const total = db.prepare(`SELECT COUNT(*) as total FROM hotels_france h ${whereClause}`).get(...params).total;
 
+      // Valeurs distinctes pour les filtres
+      const classements = db.prepare("SELECT DISTINCT classement FROM hotels_france WHERE contact_email IS NOT NULL AND contact_email != '' AND classement IS NOT NULL AND classement != '' ORDER BY classement").all().map(r => r.classement);
+      const types = db.prepare("SELECT DISTINCT type_hebergement FROM hotels_france WHERE contact_email IS NOT NULL AND contact_email != '' AND type_hebergement IS NOT NULL AND type_hebergement != '' ORDER BY type_hebergement").all().map(r => r.type_hebergement);
+
       let query = `
         SELECT h.id, h.nom_commercial, h.commune, h.code_postal, h.site_internet,
                h.contact_email, h.scraping_date, h.classement, h.capacite_accueil,
-               h.imported_as_lead, h.lead_id,
+               h.type_hebergement, h.imported_as_lead, h.lead_id,
                r.is_lead as registry_is_lead,
                r.lead_id as registry_lead_id,
                l.statut as lead_statut
@@ -708,15 +720,22 @@ module.exports = (db) => {
         ${whereClause}
       `;
 
-      // Pagination
-      query += ' ORDER BY h.scraping_date DESC LIMIT ? OFFSET ?';
-      params.push(parseInt(limit), parseInt(offset));
+      // Pagination (limit=0 → tout récupérer)
+      const parsedLimit = parseInt(limit);
+      if (parsedLimit > 0) {
+        query += ' ORDER BY h.scraping_date DESC LIMIT ? OFFSET ?';
+        params.push(parsedLimit, parseInt(offset));
+      } else {
+        query += ' ORDER BY h.scraping_date DESC';
+      }
 
       const emails = db.prepare(query).all(...params);
 
       res.json({
         emails,
         total,
+        classements,
+        types,
         stats: {
           total_emails: total,
           total_hotels: db.prepare('SELECT COUNT(*) as count FROM hotels_france WHERE contact_email IS NOT NULL AND contact_email != \'\'').get().count

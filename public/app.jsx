@@ -3873,8 +3873,9 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [emailsGeneriques, setEmailsGeneriques] = useState([]);
   const [emailsStats, setEmailsStats] = useState(null);
   const [emailsTotal, setEmailsTotal] = useState(0);
-  const [emailsFilter, setEmailsFilter] = useState({ search: '' });
+  const [emailsFilter, setEmailsFilter] = useState({ search: '', classement: '', type: '' });
   const [emailsPagination, setEmailsPagination] = useState({ limit: 100, offset: 0 });
+  const [emailsFilterOptions, setEmailsFilterOptions] = useState({ classements: [], types: [] });
   const [selectedEmails, setSelectedEmails] = useState(new Set());
   const [showEmailsSequenceModal, setShowEmailsSequenceModal] = useState(false);
   const [showEmailsCampaignModal, setShowEmailsCampaignModal] = useState(false);
@@ -4334,6 +4335,8 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       setEmailsGeneriques(res.emails || []);
       setEmailsTotal(res.total || 0);
       setEmailsStats(res.stats || null);
+      if (res.classements) setEmailsFilterOptions(prev => ({ ...prev, classements: res.classements }));
+      if (res.types) setEmailsFilterOptions(prev => ({ ...prev, types: res.types }));
     } catch (err) {
       showToast('Erreur chargement emails: ' + err.message, 'error');
     }
@@ -4345,7 +4348,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       chargerEmailsGeneriques();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, emailsFilter.search, emailsPagination]);
+  }, [activeTab, emailsFilter.search, emailsFilter.classement, emailsFilter.type, emailsPagination]);
 
   // Fermer modal campagne avec Escape
   useEffect(() => {
@@ -5491,9 +5494,35 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
                 type="text"
                 placeholder="Rechercher par nom, ville, email..."
                 value={emailsFilter.search}
-                onChange={(e) => setEmailsFilter({ search: e.target.value })}
-                className="flex-1 min-w-[300px] px-3 py-2 rounded-lg border border-slate-300 text-sm"
+                onChange={(e) => setEmailsFilter(prev => ({ ...prev, search: e.target.value }))}
+                className="flex-1 min-w-[200px] px-3 py-2 rounded-lg border border-slate-300 text-sm"
               />
+              <select
+                value={emailsFilter.classement}
+                onChange={(e) => { setEmailsFilter(prev => ({ ...prev, classement: e.target.value })); setEmailsPagination(prev => ({ ...prev, offset: 0 })); setSelectedEmails(new Set()); }}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
+              >
+                <option value="">Tous classements</option>
+                {emailsFilterOptions.classements.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select
+                value={emailsFilter.type}
+                onChange={(e) => { setEmailsFilter(prev => ({ ...prev, type: e.target.value })); setEmailsPagination(prev => ({ ...prev, offset: 0 })); setSelectedEmails(new Set()); }}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
+              >
+                <option value="">Tous types</option>
+                {emailsFilterOptions.types.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <select
+                value={emailsPagination.limit}
+                onChange={(e) => { setEmailsPagination({ limit: parseInt(e.target.value), offset: 0 }); setSelectedEmails(new Set()); }}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
+              >
+                <option value={100}>100 / page</option>
+                <option value={200}>200 / page</option>
+                <option value={500}>500 / page</option>
+                <option value={0}>Tout afficher</option>
+              </select>
               <button
                 onClick={() => {
                   const csv = [
@@ -5528,7 +5557,17 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
           {selectedEmails.size > 0 && (
             <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6">
               <div className="flex items-center justify-between flex-wrap gap-3">
-                <p className="text-sm font-medium text-blue-900">{selectedEmails.size} email(s) sélectionné(s)</p>
+                <div className="flex items-center gap-3">
+                  <p className="text-sm font-medium text-blue-900">{selectedEmails.size} email(s) sélectionné(s) sur {emailsTotal}</p>
+                  {selectedEmails.size < emailsTotal && (
+                    <button
+                      onClick={() => setSelectedEmails(new Set(emailsGeneriques.filter(e => !e.imported_as_lead && !e.lead_statut).map(e => e.id)))}
+                      className="text-xs text-blue-600 hover:text-blue-800 underline"
+                    >
+                      Sélectionner les {emailsGeneriques.filter(e => !e.imported_as_lead && !e.lead_statut).length} non-convertis de la page
+                    </button>
+                  )}
+                </div>
                 <div className="flex gap-2">
                   <button
                     onClick={handleConvertEmailsToLeads}
