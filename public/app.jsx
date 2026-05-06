@@ -11423,14 +11423,16 @@ const FacturesSamples = ({ showToast }) => {
             <label className="text-xs font-medium text-slate-500 mb-1 block">Type d'établissement</label>
             <select value={businessType} onChange={e => setBusinessType(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
-              <option value="Hotel 3*">Hotel 3*</option>
               <option value="Hotel 4*">Hotel 4*</option>
+              <option value="Hotel 3*">Hotel 3*</option>
               <option value="Hotel 5*">Hotel 5*</option>
-              <option value="Palace">Palace</option>
-              <option value="Boutique Hotel">Boutique Hotel</option>
-              <option value="Resort">Resort</option>
-              <option value="Spa">Spa</option>
-              <option value="Autre">Autre</option>
+              <option value="B2B Business">B2B Business</option>
+              <option value="CE">CE</option>
+              <option value="Co-Working">Co-Working</option>
+              <option value="Conciergerie">Conciergerie</option>
+              <option value="Groupe Hôtellerie">Groupe Hôtellerie</option>
+              <option value="Groupe Restauration">Groupe Restauration</option>
+              <option value="Hospitality Suppliers">Hospitality Suppliers</option>
             </select>
           </div>
         </div>
