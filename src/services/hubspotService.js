@@ -559,8 +559,9 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName,
     // 3. Calculer commission 15%
     const commission = roundMoney(montantHT * 0.15);
 
-    // 4. Nom du deal : nom canonique - orderNumber - invoiceNumber
-    const dealName = `${companyName} - ${orderNumber || ''} - ${invoiceNumber || ''}`.replace(/ - $/,'').replace(/ - - /,' - ');
+    // 4. Nom du deal : nom canonique - type - invoiceNumber
+    const dealLabel = isSample ? 'echantillons' : (orderNumber || '');
+    const dealName = `${companyName} - ${dealLabel} - ${invoiceNumber || ''}`.replace(/ - $/,'').replace(/ - - /,' - ');
 
     // 5. Créer le deal
     const properties = {
@@ -597,7 +598,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName,
       try {
         const patchRes = await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
           method: 'PATCH',
-          body: JSON.stringify({ properties: { envoi_echantillons: 'Yes' } }),
+          body: JSON.stringify({ properties: { envoi_echantillons: 'true' } }),
         });
         logger.info('HubSpot envoi_echantillons mis à jour', { companyId, response: JSON.stringify(patchRes?.properties?.envoi_echantillons) });
       } catch (e) {
