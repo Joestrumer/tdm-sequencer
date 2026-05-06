@@ -520,7 +520,7 @@ async function getClosedWonDeals() {
 }
 
 // ─── Créer un Deal depuis une facture VosFactures ───────────────────────────
-async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate, isSample }) {
+async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, clientAddress, clientCity, clientCountry, clientZip, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate, isSample }) {
   if (!getApiKey()) return null;
   try {
     // 1. Chercher le mapping centralisé (par vf_client_id ou vf_name)
@@ -537,33 +537,114 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName,
 
     let companyId = mapping?.hubspot_company_id;
     let companyName = mapping?.file_name || clientName;
+    let contactId = null;
 
     // 2. Fallback : chercher par domaine email si pas de mapping
-    if (!companyId) {
-      const domaine = clientEmail?.split('@')[1];
-      if (domaine) {
-        const company = await trouverCompanyParDomaine(domaine);
-        if (company) {
-          companyId = company.id;
-          companyName = company.nom;
+    const domaine = clientEmail?.split('@')[1];
+    if (!companyId && domaine) {
+      const company = await trouverCompanyParDomaine(domaine);
+      if (company) {
+        companyId = company.id;
+        companyName = company.nom;
+      }
+    }
+
+    // 3. Si aucune company trouvée et c'est un échantillon → créer company + contact
+    if (!companyId && isSample) {
+      // Parser le clientName au format "Nom Hotel - Prenom Nom"
+      let hotelName = clientName;
+      let prenom = '';
+      let nom = '';
+      const dashIndex = clientName.lastIndexOf(' - ');
+      if (dashIndex > 0) {
+        hotelName = clientName.substring(0, dashIndex).trim();
+        const fullName = clientName.substring(dashIndex + 3).trim();
+        const nameParts = fullName.split(/\s+/);
+        if (nameParts.length >= 2) {
+          prenom = nameParts[0];
+          nom = nameParts.slice(1).join(' ');
+        } else {
+          nom = fullName;
+        }
+      }
+
+      // Créer la company avec toutes les infos disponibles
+      const companyProps = { name: hotelName };
+      if (domaine) companyProps.domain = domaine;
+      if (clientCity) companyProps.city = clientCity;
+      if (clientCountry) companyProps.country = clientCountry;
+      if (clientAddress) companyProps.address = clientAddress;
+      if (clientZip) companyProps.zip = clientZip;
+      if (clientPhone) companyProps.phone = clientPhone;
+
+      try {
+        const companyRes = await hubspotFetch('/crm/v3/objects/companies', {
+          method: 'POST',
+          body: JSON.stringify({ properties: companyProps }),
+        });
+        companyId = companyRes?.id;
+        companyName = hotelName;
+        logger.info('🏨 HubSpot company créée (échantillon)', { companyId, hotelName, domaine });
+      } catch (e) {
+        logger.error('HubSpot création company échouée', { error: e.message, hotelName });
+      }
+
+      // Créer le contact
+      if (clientEmail) {
+        const contactProps = { email: clientEmail };
+        if (prenom) contactProps.firstname = prenom;
+        if (nom) contactProps.lastname = nom;
+        if (clientPhone) contactProps.phone = clientPhone;
+
+        try {
+          const contactRes = await hubspotFetch('/crm/v3/objects/contacts', {
+            method: 'POST',
+            body: JSON.stringify({ properties: contactProps }),
+          });
+          contactId = contactRes?.id;
+          logger.info('👤 HubSpot contact créé (échantillon)', { contactId, email: clientEmail, prenom, nom });
+        } catch (e) {
+          // Contact existe déjà → le retrouver
+          if (e.message.includes('409') || e.message.includes('CONTACT_EXISTS')) {
+            const search = await hubspotFetch('/crm/v3/objects/contacts/search', {
+              method: 'POST',
+              body: JSON.stringify({
+                filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: clientEmail }] }],
+                limit: 1,
+              }),
+            });
+            contactId = search?.results?.[0]?.id;
+          } else {
+            logger.error('HubSpot création contact échouée', { error: e.message, clientEmail });
+          }
+        }
+
+        // Associer contact → company
+        if (contactId && companyId) {
+          await hubspotFetch('/crm/v3/associations/contacts/companies/batch/create', {
+            method: 'POST',
+            body: JSON.stringify({
+              inputs: [{ from: { id: contactId }, to: { id: companyId }, type: 'contact_to_company' }]
+            }),
+          }).catch(e => logger.warn('HubSpot association contact→company échouée', { error: e.message, contactId, companyId }));
         }
       }
     }
 
     if (!companyId) {
-      logger.warn('creerDealFromInvoice: aucune company HubSpot trouvée', { clientName, vfClientName, vfClientId });
+      logger.warn('creerDealFromInvoice: aucune company HubSpot trouvée/créée', { clientName, vfClientName, vfClientId });
       logHubspot(db, 'deal', 'skip', null, null, { reason: 'no_company', clientName, vfClientName, vfClientId });
       return null;
     }
 
-    // 3. Calculer commission 15%
+    // 4. Calculer commission 15%
     const commission = roundMoney(montantHT * 0.15);
 
-    // 4. Nom du deal : nom canonique - type - invoiceNumber
+    // 5. Nom du deal : nom canonique - type - invoiceNumber
     const dealLabel = isSample ? 'echantillons' : (orderNumber || '');
     const dealName = `${companyName} - ${dealLabel} - ${invoiceNumber || ''}`.replace(/ - $/,'').replace(/ - - /,' - ');
 
-    // 5. Créer le deal
+    // 6. Créer le deal
     const properties = {
       dealname: dealName,
       amount: String(montantTTC || 0),
@@ -582,7 +663,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName,
     });
     const dealId = res?.id;
 
-    // 6. Associer le deal à la company
+    // 7. Associer le deal à la company
     if (dealId) {
       await hubspotFetch('/crm/v3/associations/deals/companies/batch/create', {
         method: 'POST',
@@ -592,18 +673,47 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName,
       }).catch(e => logger.warn('HubSpot association deal→company échouée', { error: e.message, dealId, companyId }));
     }
 
-    // Mettre à jour envoi_echantillons sur la company si c'est un échantillon
-    logger.info('creerDealFromInvoice: isSample=' + isSample + ', companyId=' + companyId);
+    // 8. Mettre à jour envoi_echantillons sur la company si c'est un échantillon
     if (isSample && companyId) {
-      try {
-        const patchRes = await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
-          method: 'PATCH',
-          body: JSON.stringify({ properties: { envoi_echantillons: 'true' } }),
-        });
-        logger.info('HubSpot envoi_echantillons mis à jour', { companyId, response: JSON.stringify(patchRes?.properties?.envoi_echantillons) });
-      } catch (e) {
-        logger.error('HubSpot update envoi_echantillons échoué', { error: e.message, companyId, stack: e.stack });
-      }
+      await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ properties: { envoi_echantillons: 'true' } }),
+      }).catch(e => logger.error('HubSpot update envoi_echantillons échoué', { error: e.message, companyId }));
+    }
+
+    // 9. Créer task "retour echantillons" à J+7 (skip weekends)
+    if (isSample && dealId) {
+      let taskDate = new Date(Date.now() + 7 * 24 * 3600 * 1000);
+      const day = taskDate.getDay();
+      if (day === 6) taskDate.setDate(taskDate.getDate() + 2); // samedi → lundi
+      if (day === 0) taskDate.setDate(taskDate.getDate() + 1); // dimanche → lundi
+      const taskTimestamp = taskDate.getTime();
+
+      const associations = { dealIds: [parseInt(dealId)] };
+      if (contactId) associations.contactIds = [parseInt(contactId)];
+
+      await hubspotFetch('/engagements/v1/engagements', {
+        method: 'POST',
+        body: JSON.stringify({
+          engagement: {
+            active: true,
+            type: 'TASK',
+            timestamp: Date.now(),
+            ownerId: parseInt(HUGO_OWNER_ID),
+          },
+          associations,
+          metadata: {
+            subject: 'retour echantillons',
+            body: `Relancer ${companyName} suite à l'envoi d'échantillons (${invoiceNumber || ''}).`,
+            status: 'NOT_STARTED',
+            priority: 'HIGH',
+            taskType: 'TODO',
+            reminders: [taskTimestamp],
+            completionDate: taskTimestamp,
+          }
+        }),
+      }).catch(e => logger.error('HubSpot création task retour echantillons échouée', { error: e.message, dealId }));
+      logger.info('📋 HubSpot task "retour echantillons" créée', { dealId, taskDate: taskDate.toISOString().split('T')[0] });
     }
 
     logHubspot(db, 'deal', 'create_from_invoice', null, dealId, { clientName, orderNumber, invoiceNumber, montantHT, montantTTC, commission, companyName });

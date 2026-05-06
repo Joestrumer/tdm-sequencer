@@ -513,6 +513,11 @@ module.exports = (db) => {
         hubspot_deal_id = await hubspot.creerDealFromInvoice(db, {
           clientName: client.name,
           clientEmail: client.email,
+          clientPhone: client.phone || '',
+          clientAddress: client.street || '',
+          clientCity: client.city || '',
+          clientCountry: client.country || '',
+          clientZip: client.zip || client.post_code || '',
           vfClientName: client.name,
           vfClientId: client.id,
           montantHT: roundPrice(montantHT),
