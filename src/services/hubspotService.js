@@ -592,11 +592,17 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName,
     }
 
     // Mettre à jour envoi_echantillons sur la company si c'est un échantillon
+    logger.info('creerDealFromInvoice: isSample=' + isSample + ', companyId=' + companyId);
     if (isSample && companyId) {
-      await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
-        method: 'PATCH',
-        body: JSON.stringify({ properties: { envoi_echantillons: 'Yes' } }),
-      }).catch(e => logger.warn('HubSpot update envoi_echantillons échoué', { error: e.message, companyId }));
+      try {
+        const patchRes = await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
+          method: 'PATCH',
+          body: JSON.stringify({ properties: { envoi_echantillons: 'Yes' } }),
+        });
+        logger.info('HubSpot envoi_echantillons mis à jour', { companyId, response: JSON.stringify(patchRes?.properties?.envoi_echantillons) });
+      } catch (e) {
+        logger.error('HubSpot update envoi_echantillons échoué', { error: e.message, companyId, stack: e.stack });
+      }
     }
 
     logHubspot(db, 'deal', 'create_from_invoice', null, dealId, { clientName, orderNumber, invoiceNumber, montantHT, montantTTC, commission, companyName });
