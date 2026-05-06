@@ -520,7 +520,7 @@ async function getClosedWonDeals() {
 }
 
 // ─── Créer un Deal depuis une facture VosFactures ───────────────────────────
-async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, clientAddress, clientCity, clientCountry, clientZip, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate, isSample }) {
+async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, clientAddress, clientCity, clientCountry, clientZip, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate, isSample, businessType }) {
   if (!getApiKey()) return null;
   try {
     // 1. Chercher le mapping centralisé (par vf_client_id ou vf_name)
@@ -569,7 +569,13 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
       }
 
       // Créer la company avec toutes les infos disponibles
-      const companyProps = { name: hotelName };
+      const companyProps = {
+        name: hotelName,
+        account_source: 'outbound',
+        type: 'PROSPECT',
+        hubspot_owner_id: HUGO_OWNER_ID,
+      };
+      if (businessType) companyProps.business_type = businessType;
       if (domaine) companyProps.domain = domaine;
       if (clientCity) companyProps.city = clientCity;
       if (clientCountry) companyProps.country = clientCountry;

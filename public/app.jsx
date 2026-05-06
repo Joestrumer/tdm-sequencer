@@ -11163,6 +11163,7 @@ const FacturesSamples = ({ showToast }) => {
   const [result, setResult] = useState(null);
   const [searchRef, setSearchRef] = useState('');
   const [shippingId, setShippingId] = useState('300');
+  const [businessType, setBusinessType] = useState('Hotel 4*');
   const [clientSearch, setClientSearch] = useState('');
   const [clientResults, setClientResults] = useState([]);
   const [searchingClient, setSearchingClient] = useState(false);
@@ -11232,6 +11233,7 @@ const FacturesSamples = ({ showToast }) => {
         documentType: 'proforma',
         logGSheets: false,
         isSample: true,
+        businessType,
       });
       if (res.erreur) throw new Error(res.erreur);
       setResult(res);
@@ -11410,11 +11412,25 @@ const FacturesSamples = ({ showToast }) => {
             <input value={clientPhone} onChange={e => setClientPhone(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
           </div>
-          <div className="md:col-span-2">
+          <div>
             <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
             <select value={shippingId} onChange={e => setShippingId(e.target.value)}
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
               {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+            </select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Type d'établissement</label>
+            <select value={businessType} onChange={e => setBusinessType(e.target.value)}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm bg-white">
+              <option value="Hotel 3*">Hotel 3*</option>
+              <option value="Hotel 4*">Hotel 4*</option>
+              <option value="Hotel 5*">Hotel 5*</option>
+              <option value="Palace">Palace</option>
+              <option value="Boutique Hotel">Boutique Hotel</option>
+              <option value="Resort">Resort</option>
+              <option value="Spa">Spa</option>
+              <option value="Autre">Autre</option>
             </select>
           </div>
         </div>
@@ -11427,6 +11443,10 @@ const FacturesSamples = ({ showToast }) => {
         {result && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center space-y-2">
             <p className="text-sm font-medium text-emerald-700">Proforma N° {result.number || result.id} créée !</p>
+            {result.hubspot_deal_id
+              ? <p className="text-xs text-emerald-600">HubSpot : Deal + Company + Task "retour echantillons" J+7</p>
+              : <p className="text-xs text-amber-600">HubSpot : non loggé (aucune company trouvée/créée)</p>
+            }
             <div className="flex gap-2 justify-center flex-wrap">
               {result.id && (
                 <a href={`https://terredemars.vosfactures.fr/invoices/${result.id}`} target="_blank" rel="noopener"
