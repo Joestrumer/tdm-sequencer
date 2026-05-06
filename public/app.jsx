@@ -1096,7 +1096,22 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
                   <div className={`text-xs ${activeEtape === i ? "text-slate-300" : "text-slate-500"}`}>
                     <span className="font-medium">J+{e.jour || 0}</span> · {e.sujet ? e.sujet.substring(0, 25) + (e.sujet.length > 25 ? '...' : '') : 'Sans objet'}
                   </div>
-                  {e.piece_jointe && <div className={`text-xs mt-1 ${activeEtape === i ? "text-amber-300" : "text-amber-600"}`}>📎 Pièce jointe</div>}
+                  {(() => {
+                    const htmlSize = (e.corps_html || e.corps || '').length;
+                    const pjSize = e.piece_jointe?.data?.length || 0;
+                    const totalBytes = htmlSize + pjSize;
+                    const totalKo = Math.round(totalBytes / 1024);
+                    const totalMo = (totalBytes / (1024 * 1024)).toFixed(1);
+                    const isLarge = totalBytes > 2 * 1024 * 1024;
+                    const isMedium = totalBytes > 1 * 1024 * 1024;
+                    if (totalBytes > 10000) return (
+                      <div className={`text-xs mt-1 ${isLarge ? 'text-red-500 font-semibold' : isMedium ? (activeEtape === i ? 'text-amber-300' : 'text-amber-600') : (activeEtape === i ? 'text-slate-400' : 'text-slate-500')}`}>
+                        {e.piece_jointe ? '📎 ' : ''}{totalBytes > 1024 * 1024 ? `${totalMo} Mo` : `${totalKo} ko`}
+                        {isLarge ? ' ⚠️' : ''}
+                      </div>
+                    );
+                    return e.piece_jointe ? <div className={`text-xs mt-1 ${activeEtape === i ? "text-amber-300" : "text-amber-600"}`}>📎 PJ</div> : null;
+                  })()}
                 </button>
                 {seq?.id && (
                   <button
