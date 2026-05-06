@@ -11231,6 +11231,7 @@ const FacturesSamples = ({ showToast }) => {
         fraisPort: [{ ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20 }],
         documentType: 'proforma',
         logGSheets: false,
+        isSample: true,
       });
       if (res.erreur) throw new Error(res.erreur);
       setResult(res);

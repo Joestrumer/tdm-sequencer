@@ -295,7 +295,7 @@ module.exports = (db) => {
 
   router.post('/invoices', async (req, res) => {
     try {
-      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts, logGSheets, createHubspotDeal } = req.body;
+      const { client, products, documentType, orderNumber, fraisPort, sendEmail, emailOpts, logGSheets, createHubspotDeal, isSample } = req.body;
 
       const catalog = getCatalogMap();
       const productIdMappings = getCodeMappings('product_id');
@@ -520,6 +520,7 @@ module.exports = (db) => {
           orderNumber: gsOrderNumber != null ? String(gsOrderNumber) : '',
           invoiceNumber: result.number || '',
           closeDate: new Date().toISOString().split('T')[0],
+          isSample: !!isSample,
         });
       } catch (hsErr) {
         logger.warn('Erreur création deal HubSpot depuis facture', { error: hsErr.message, invoiceId: result.id });

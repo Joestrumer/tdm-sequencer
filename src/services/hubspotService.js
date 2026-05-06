@@ -520,7 +520,7 @@ async function getClosedWonDeals() {
 }
 
 // ─── Créer un Deal depuis une facture VosFactures ───────────────────────────
-async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate }) {
+async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate, isSample }) {
   if (!getApiKey()) return null;
   try {
     // 1. Chercher le mapping centralisé (par vf_client_id ou vf_name)
@@ -568,7 +568,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName,
       amount: String(montantTTC || 0),
       dealtype: 'existingbusiness',
       pipeline: 'default',
-      dealstage: 'closedwon',
+      dealstage: isSample ? 'appointmentscheduled' : 'closedwon',
       hubspot_owner_id: HUGO_OWNER_ID,
       closedate: closeDate || new Date().toISOString().split('T')[0],
       no_vat_amount: String(montantHT || 0),
@@ -589,6 +589,14 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, vfClientName,
           inputs: [{ from: { id: dealId }, to: { id: companyId }, type: 'deal_to_company' }]
         }),
       }).catch(e => logger.warn('HubSpot association deal→company échouée', { error: e.message, dealId, companyId }));
+    }
+
+    // Mettre à jour envoi_echantillons sur la company si c'est un échantillon
+    if (isSample && companyId) {
+      await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ properties: { envoi_echantillons: 'Yes' } }),
+      }).catch(e => logger.warn('HubSpot update envoi_echantillons échoué', { error: e.message, companyId }));
     }
 
     logHubspot(db, 'deal', 'create_from_invoice', null, dealId, { clientName, orderNumber, invoiceNumber, montantHT, montantTTC, commission, companyName });
