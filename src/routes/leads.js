@@ -133,6 +133,39 @@ module.exports = (db) => {
     }
   });
 
+  // PATCH /api/leads/bulk-statut — Changer le statut de plusieurs leads
+  router.patch('/bulk-statut', (req, res) => {
+    try {
+      const { lead_ids, statut } = req.body;
+      if (!lead_ids || !Array.isArray(lead_ids) || !statut) {
+        return res.status(400).json({ erreur: 'lead_ids (array) et statut requis' });
+      }
+      const validStatuts = ['Nouveau', 'En séquence', 'Répondu', 'Converti', 'Fin de séquence', 'Closed Lost', 'Désabonné'];
+      if (!validStatuts.includes(statut)) {
+        return res.status(400).json({ erreur: 'Statut invalide' });
+      }
+
+      const update = db.prepare(`UPDATE leads SET statut = ?, updated_at = datetime('now') WHERE id = ?`);
+      const stopSeq = db.prepare(`UPDATE inscriptions SET statut = 'terminé', prochain_envoi = NULL WHERE lead_id = ? AND statut = 'actif'`);
+
+      let changed = 0;
+      db.transaction(() => {
+        for (const id of lead_ids) {
+          const r = update.run(statut, id);
+          if (r.changes > 0) {
+            changed++;
+            if (statut !== 'En séquence') stopSeq.run(id);
+          }
+        }
+      })();
+
+      logger.info(`📝 Bulk statut: ${changed} lead(s) → "${statut}"`);
+      res.json({ changed, statut });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // PATCH /api/leads/:id — Mettre à jour un lead
   router.patch('/:id', (req, res) => {
     try {

@@ -2393,6 +2393,30 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             <span className="font-medium">{selectedIds.size} lead{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
             <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer</button>
             <button onClick={async () => { if(!await confirmDialog(`Arrêter les séquences de ${selectedIds.size} lead(s) ?`, { danger: true, confirmLabel: 'Arrêter' })) return; try { await api.post('/sequences/stop-batch', { lead_ids: Array.from(selectedIds) }); showToast('Séquences arrêtées','success'); setSelectedIds(new Set()); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600">⏹ Arrêter</button>
+            <select
+              defaultValue=""
+              onChange={async (e) => {
+                const newStatut = e.target.value;
+                if (!newStatut) return;
+                e.target.value = '';
+                if (!await confirmDialog(`Changer le statut de ${selectedIds.size} lead(s) → "${newStatut}" ?`, { confirmLabel: 'Confirmer' })) return;
+                try {
+                  await api.patch('/leads/bulk-statut', { lead_ids: Array.from(selectedIds), statut: newStatut });
+                  showToast(`${selectedIds.size} lead(s) → ${newStatut}`, 'success');
+                  setSelectedIds(new Set());
+                  if (onRefresh) onRefresh();
+                } catch (err) { showToast('Erreur: ' + err.message, 'error'); }
+              }}
+              className="px-3 py-1.5 bg-white text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
+            >
+              <option value="">Changer statut...</option>
+              <option value="Nouveau">Nouveau</option>
+              <option value="En séquence">En séquence</option>
+              <option value="Répondu">Répondu</option>
+              <option value="Converti">Converti</option>
+              <option value="Fin de séquence">Fin de séquence</option>
+              <option value="Closed Lost">Closed Lost</option>
+            </select>
             <button onClick={async () => { const ids = Array.from(selectedIds); if(!await confirmDialog('Supprimer ' + ids.length + ' leads ?', { danger: true, confirmLabel: 'Supprimer' })) return; const results = await Promise.allSettled(ids.map(id => api.delete('/leads/' + id))); const errCount = results.filter(r => r.status === 'rejected').length; setSelectedIds(new Set()); if(onRefresh) onRefresh(); showToast(errCount ? `${ids.length - errCount} supprimé(s), ${errCount} erreur(s)` : `${ids.length} lead(s) supprimé(s)`, errCount ? 'error' : 'success'); }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50">✕ Supprimer</button>
             <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-blue-200 hover:text-white text-xs">Annuler</button>
           </div>
