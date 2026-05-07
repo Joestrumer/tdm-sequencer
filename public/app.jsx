@@ -11171,6 +11171,7 @@ const FacturesSamples = ({ showToast }) => {
     { ref: 'P035-30', quantity: 1 }, { ref: 'P011-30', quantity: 1 },
     { ref: 'P008-30', quantity: 1 }, { ref: 'P007-30', quantity: 1 },
     { ref: 'P042-30', quantity: 1 }, { ref: 'P010-30', quantity: 1 },
+    { ref: 'P044-30', quantity: 1 }, { ref: 'P047-30', quantity: 1 },
   ]);
   const [clientName, setClientName] = useState('');
   const [clientAddress, setClientAddress] = useState('');
