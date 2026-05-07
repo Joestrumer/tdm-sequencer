@@ -1838,14 +1838,9 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
   const [taskRelance, setTaskRelance] = useState(0);
   const [status, setStatus] = useState(null);
   const [errMsg, setErrMsg] = useState("");
-  const handleLaunch = async (sendNow) => {
+  const handleLaunch = (sendNow) => {
     if (!selected) return;
-    setStatus("loading");
-    try {
-      await onLaunch(selected, sendNow, taskRelance);
-      setStatus("done");
-      setTimeout(() => onClose(), 1200);
-    } catch(e) { setStatus("error"); setErrMsg(e.message || "Erreur"); }
+    onLaunch(selected, sendNow, taskRelance);
   };
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
@@ -2226,15 +2221,20 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
       {showLaunch && <ModalLaunchSequence lead={showLaunch} sequences={sequences} onClose={() => setShowLaunch(null)} onLaunch={onLaunch} />}
       {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow, taskRelance) => {
         const ids = Array.from(selectedIds);
-        try {
-          await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids, task_relance_mois: taskRelance || 0 });
-          if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(e => console.error(e));
-          showToast(`${ids.length} lead(s) inscrits à la séquence`, 'success');
-          setSelectedIds(new Set());
-          if (onRefresh) onRefresh();
-        } catch (e) {
-          showToast(e.message || 'Erreur inscription batch', 'error');
-        }
+        setSelectedIds(new Set());
+        setShowBulkLaunch(false);
+        showToast(`Inscription de ${ids.length} lead(s) en cours...`, 'success');
+        // Lancer en arrière-plan
+        (async () => {
+          try {
+            await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids, task_relance_mois: taskRelance || 0 });
+            if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(e => console.error(e));
+            showToast(`${ids.length} lead(s) inscrits et ${sendNow ? '1er email envoyé' : 'planifiés'}`, 'success');
+            if (onRefresh) onRefresh();
+          } catch (e) {
+            showToast(e.message || 'Erreur inscription batch', 'error');
+          }
+        })();
       }} />}
       {editLead && <ModalEditLead lead={editLead} onClose={() => setEditLead(null)} onSave={() => { setEditLead(null); if(onRefresh) onRefresh(); }} campaigns={campaigns.filter(c => c !== "Tous")} sequences={sequences} />}
 
