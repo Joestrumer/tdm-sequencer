@@ -12406,7 +12406,7 @@ const VueProduitsCatalog = () => {
 
   const startEdit = (p) => {
     setEditingRef(p.ref);
-    setEditForm({ nom: p.nom || '', prix_ht: p.prix_ht ?? '', csv_ref: p.csv_ref || '', vf_ref: p.vf_ref || '', moq: p.moq ?? 1, categorie: p.categorie || '' });
+    setEditForm({ nom: p.nom || '', prix_ht: p.prix_ht ?? '', csv_ref: p.csv_ref || '', vf_ref: p.vf_ref || '', moq: p.moq ?? 1, categorie: p.categorie || '', vf_product_id: p.vf_product_id || '' });
   };
 
   const cancelEdit = () => { setEditingRef(null); setEditForm({}); };
@@ -12422,6 +12422,7 @@ const VueProduitsCatalog = () => {
         vf_ref: editForm.vf_ref || null,
         moq: parseInt(editForm.moq) || 1,
         categorie: editForm.categorie || null,
+        vf_product_id: editForm.vf_product_id || null,
       });
       setEditingRef(null);
       charger();
@@ -12452,6 +12453,7 @@ const VueProduitsCatalog = () => {
                   <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">Ref</th>
                   <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">Nom</th>
                   <th className="text-right text-xs text-slate-400 font-medium px-4 py-3">Prix HT</th>
+                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">ID VF</th>
                   <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">CSV Ref</th>
                   <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">VF Ref</th>
                   <th className="text-right text-xs text-slate-400 font-medium px-4 py-3">MOQ</th>
@@ -12467,6 +12469,7 @@ const VueProduitsCatalog = () => {
                         <td className="px-4 py-2 font-mono text-xs text-slate-600">{p.ref}</td>
                         <td className="px-4 py-2"><input type="text" value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
                         <td className="px-4 py-2"><input type="number" step="0.01" value={editForm.prix_ht} onChange={e => setEditForm(f => ({ ...f, prix_ht: e.target.value }))} className="w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
+                        <td className="px-4 py-2"><input type="text" value={editForm.vf_product_id} onChange={e => setEditForm(f => ({ ...f, vf_product_id: e.target.value }))} placeholder="ID VosFactures" className="w-28 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
                         <td className="px-4 py-2"><input type="text" value={editForm.csv_ref} onChange={e => setEditForm(f => ({ ...f, csv_ref: e.target.value }))} className="w-24 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
                         <td className="px-4 py-2"><input type="text" value={editForm.vf_ref} onChange={e => setEditForm(f => ({ ...f, vf_ref: e.target.value }))} className="w-24 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
                         <td className="px-4 py-2"><input type="number" value={editForm.moq} onChange={e => setEditForm(f => ({ ...f, moq: e.target.value }))} className="w-16 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
@@ -12483,6 +12486,7 @@ const VueProduitsCatalog = () => {
                         <td className="px-4 py-2 font-mono text-xs text-slate-600">{p.ref}</td>
                         <td className="px-4 py-2 text-slate-800">{p.nom}</td>
                         <td className="px-4 py-2 text-right text-slate-700">{p.prix_ht != null ? Number(p.prix_ht).toFixed(2) + ' \u20AC' : '—'}</td>
+                        <td className="px-4 py-2 font-mono text-xs">{p.vf_product_id ? <a href={`https://terredemars.vosfactures.fr/products/${p.vf_product_id}`} target="_blank" rel="noopener" className="text-blue-500 hover:text-blue-700 underline">{p.vf_product_id}</a> : <span className="text-amber-500">—</span>}</td>
                         <td className="px-4 py-2 text-slate-500 font-mono text-xs">{p.csv_ref || '—'}</td>
                         <td className="px-4 py-2 text-slate-500 font-mono text-xs">{p.vf_ref || '—'}</td>
                         <td className="px-4 py-2 text-right text-slate-700">{p.moq ?? 1}</td>
@@ -12495,7 +12499,7 @@ const VueProduitsCatalog = () => {
                   </tr>
                 ))}
                 {filtered.length === 0 && (
-                  <tr><td colSpan={8} className="px-4 py-6 text-center text-xs text-slate-400">Aucun produit{search ? ' trouvé' : ''}</td></tr>
+                  <tr><td colSpan={9} className="px-4 py-6 text-center text-xs text-slate-400">Aucun produit{search ? ' trouvé' : ''}</td></tr>
                 )}
               </tbody>
             </table>

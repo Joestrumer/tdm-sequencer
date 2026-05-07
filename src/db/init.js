@@ -1242,6 +1242,17 @@ const MISSING_PRODUCTS = [
   { ref: 'PFT', nom: 'Porte flacon triple (305 Stainless Steel black)', prix_ht: 0, moq: 1 },
   { ref: 'P5L', nom: 'POMPE 5L', prix_ht: 0, moq: 1 },
   { ref: 'P500ml', nom: 'Pompe 500ML', prix_ht: 0.5, moq: 1 },
+  { ref: 'P044', nom: 'Shampoing Brillance Revelation Flacon 500ml', prix_ht: 7.50, moq: 6 },
+  { ref: 'P044-30', nom: 'Shampoing Brillance Revelation Flacon 30ml', prix_ht: 0.65, moq: 6 },
+  { ref: 'P044-5000', nom: 'Shampoing Brillance Revelation Recharge 5L', prix_ht: 41.00, moq: 4 },
+  { ref: 'P045', nom: 'Gel lavant corps et mains Revelation Flacon 500ml', prix_ht: 7.50, moq: 6 },
+  { ref: 'P045-5000', nom: 'Gel lavant corps et mains Revelation Recharge 5L', prix_ht: 41.00, moq: 4 },
+  { ref: 'P046', nom: 'Shampoing Purifiant Radiance Flacon 500ml', prix_ht: 7.50, moq: 6 },
+  { ref: 'P046-150', nom: 'Shampoing Purifiant Radiance Flacon 30ml', prix_ht: 2.00, moq: 6 },
+  { ref: 'P046-5000', nom: 'Shampoing Purifiant Radiance Flacon 5L', prix_ht: 41.00, moq: 4 },
+  { ref: 'P047', nom: 'Gel lavant corps et mains Radiance Flacon 500ml', prix_ht: 7.50, moq: 6 },
+  { ref: 'P047-30', nom: 'Gel lavant corps et mains Radiance Flacon 30ml', prix_ht: 0.65, moq: 6 },
+  { ref: 'P047-5000', nom: 'Gel lavant corps et mains Radiance Recharge 5L', prix_ht: 41.00, moq: 4 },
 ];
 
 const stmtInsertProduct = db.prepare('INSERT OR IGNORE INTO vf_catalog (ref, nom, prix_ht, moq) VALUES (?, ?, ?, ?)');
