@@ -10799,8 +10799,14 @@ const FacturesBatch = ({ showToast }) => {
         showToast('CSV groupé téléchargé', 'success');
       }
 
+      const orderLines = okResults.map((r, i) => {
+        const order = orders.find(o => o.id === r.orderId);
+        const num = order?.orderNumber || r.number || '?';
+        const partner = r.partnerName || order?.client?.name || '';
+        return `${i + 1}. ${partner} — N°${num} (facture ${r.number || '?'})`;
+      }).join('\n');
       const subject = encodeURIComponent(`Commandes batch — ${okResults.length} commande(s)`);
-      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV groupé pour ${okResults.length} commande(s).\n\nCordialement`);
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV groupé pour ${okResults.length} commande(s) :\n\n${orderLines}\n\nCordialement`);
       const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
       window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
     } catch (err) {
