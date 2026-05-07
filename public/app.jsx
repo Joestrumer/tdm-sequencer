@@ -2391,6 +2391,13 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         {selectedIds.size > 0 && (
           <div className="flex flex-wrap items-center gap-2 md:gap-3 bg-blue-600 text-white px-4 py-2.5 rounded-xl text-sm">
             <span className="font-medium">{selectedIds.size} lead{selectedIds.size > 1 ? "s" : ""} sélectionné{selectedIds.size > 1 ? "s" : ""}</span>
+            <button onClick={() => {
+              const currentIds = new Set(selectedIds);
+              const unselected = filtered.filter(l => !currentIds.has(l.id));
+              unselected.slice(0, 10).forEach(l => currentIds.add(l.id));
+              setSelectedIds(currentIds);
+            }} disabled={selectedIds.size >= filtered.length} className="px-3 py-1.5 bg-white/20 text-white rounded-lg text-xs font-semibold hover:bg-white/30 disabled:opacity-40">+10</button>
+            <button onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 bg-white/20 text-white rounded-lg text-xs font-semibold hover:bg-white/30">Désélectionner</button>
             <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer</button>
             <button onClick={async () => { if(!await confirmDialog(`Arrêter les séquences de ${selectedIds.size} lead(s) ?`, { danger: true, confirmLabel: 'Arrêter' })) return; try { await api.post('/sequences/stop-batch', { lead_ids: Array.from(selectedIds) }); showToast('Séquences arrêtées','success'); setSelectedIds(new Set()); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600">⏹ Arrêter</button>
             <select
@@ -2463,7 +2470,10 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
             <thead>
               <tr className="border-b border-slate-100 bg-slate-50/60">
                 <th className="px-2 py-2 relative" style={{ width: columnWidths.checkbox + 'px' }}>
-                  <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={e => setSelectedIds(e.target.checked ? new Set(filtered.map(l => l.id)) : new Set())} />
+                  <div className="flex items-center gap-1">
+                    <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.size === filtered.length && filtered.length > 0} onChange={e => setSelectedIds(e.target.checked ? new Set(filtered.map(l => l.id)) : new Set())} />
+                    <button onClick={() => { const s = new Set(selectedIds); filtered.filter(l => !s.has(l.id)).slice(0, 10).forEach(l => s.add(l.id)); setSelectedIds(s); }} className="text-[9px] text-blue-500 hover:text-blue-700 font-semibold whitespace-nowrap" title="Sélectionner 10 de plus">+10</button>
+                  </div>
                   <div className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-blue-400 transition-colors group" onMouseDown={e => handleResizeStart(e, 'checkbox')}>
                     <div className="absolute right-0 top-0 h-full w-3 -translate-x-1"></div>
                   </div>
