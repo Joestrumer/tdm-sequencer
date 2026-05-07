@@ -17501,15 +17501,21 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
   const [previewContacts, setPreviewContacts] = useState(null);
   const [excludeEmails, setExcludeEmails] = useState(new Set());
   const [loadingPreview, setLoadingPreview] = useState(false);
+  const [upcoming, setUpcoming] = useState([]);
 
   useEffect(() => {
     (async () => {
       try {
-        const [r, s] = await Promise.all([
+        const promises = [
           api.get(`/partner-center/campaigns/${campaign.id}/recipients`),
           api.get(`/partner-center/campaigns/${campaign.id}/stats`),
-        ]);
+        ];
+        if (campaign.type === 'anniversaire' && campaign.statut !== 'brouillon') {
+          promises.push(api.get(`/partner-center/campaigns/${campaign.id}/upcoming`));
+        }
+        const [r, s, u] = await Promise.all(promises);
         setRecipients(r); setStats(s);
+        if (u) setUpcoming(u);
       } catch (e) { showToast('Erreur chargement', 'error'); }
       finally { setLoading(false); }
     })();
@@ -17669,36 +17675,78 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
                 </div>
               )}
 
-              {/* Recipients */}
-              <div className="max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
-                <table className="w-full text-xs">
-                  <thead className="sticky top-0 bg-slate-50">
-                    <tr className="border-b border-slate-200">
-                      <th className="p-2 text-left text-slate-500">Email</th>
-                      <th className="p-2 text-left text-slate-500">Nom</th>
-                      <th className="p-2 text-left text-slate-500">Partenaire</th>
-                      <th className="p-2 text-left text-slate-500">Statut</th>
-                      {!readOnly && campaign.statut === 'brouillon' && <th className="p-2 text-right text-slate-500"></th>}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {recipients.map(r => (
-                      <tr key={r.id} className="border-b border-slate-50">
-                        <td className="p-2 text-slate-600">{r.email}</td>
-                        <td className="p-2 text-slate-700">{r.firstname} {r.lastname}</td>
-                        <td className="p-2 text-slate-500">{r.partner_name}</td>
-                        <td className="p-2"><span className={`px-1.5 py-0.5 rounded ${r.statut === 'envoyé' ? 'bg-emerald-50 text-emerald-600' : r.statut === 'erreur' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-500'}`}>{r.statut}</span></td>
-                        {!readOnly && campaign.statut === 'brouillon' && (
-                          <td className="p-2 text-right">
-                            <button onClick={() => deleteRecipient(r.id)} className="text-xs text-red-400 hover:text-red-600">&times;</button>
-                          </td>
-                        )}
+              {/* Upcoming sends (anniversary campaigns) */}
+              {campaign.type === 'anniversaire' && upcoming.length > 0 && (
+                <div>
+                  <h4 className="text-xs font-semibold text-slate-700 mb-2">Prochains envois prévus ({upcoming.length})</h4>
+                  <div className="max-h-64 overflow-y-auto border border-amber-200 rounded-lg bg-amber-50/30">
+                    <table className="w-full text-xs">
+                      <thead className="sticky top-0 bg-amber-50">
+                        <tr className="border-b border-amber-200">
+                          <th className="p-2 text-left text-slate-600">Date envoi</th>
+                          <th className="p-2 text-left text-slate-600">Partenaire</th>
+                          <th className="p-2 text-left text-slate-600">Contact</th>
+                          <th className="p-2 text-left text-slate-600">Email</th>
+                          <th className="p-2 text-left text-slate-600">Anniversaire</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {upcoming.map((u, i) => {
+                          const isToday = u.send_date === new Date().toISOString().split('T')[0];
+                          return (
+                            <tr key={i} className={`border-b border-amber-50 ${isToday ? 'bg-amber-100/50 font-medium' : ''}`}>
+                              <td className="p-2 text-slate-700">{new Date(u.send_date + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}{isToday && <span className="ml-1 text-amber-600">(aujourd'hui)</span>}</td>
+                              <td className="p-2 text-slate-700">{u.partner_name}</td>
+                              <td className="p-2 text-slate-600">{u.firstname} {u.lastname}</td>
+                              <td className="p-2 text-slate-500">{u.email}</td>
+                              <td className="p-2 text-slate-500">{u.years} an{u.years > 1 ? 's' : ''} — {new Date(u.anniversary_date + 'T00:00:00').toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}</td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+              {campaign.type === 'anniversaire' && upcoming.length === 0 && !loading && (
+                <div className="text-center py-3 text-xs text-slate-400 border border-dashed border-slate-200 rounded-lg">Aucun envoi prévu dans les 90 prochains jours</div>
+              )}
+
+              {/* Recipients (already sent / manual) */}
+              {(recipients.length > 0 || campaign.type !== 'anniversaire') && (
+              <div>
+                {campaign.type === 'anniversaire' && recipients.length > 0 && <h4 className="text-xs font-semibold text-slate-700 mb-2">Déjà envoyés ({recipients.length})</h4>}
+                <div className="max-h-64 overflow-y-auto border border-slate-100 rounded-lg">
+                  <table className="w-full text-xs">
+                    <thead className="sticky top-0 bg-slate-50">
+                      <tr className="border-b border-slate-200">
+                        <th className="p-2 text-left text-slate-500">Email</th>
+                        <th className="p-2 text-left text-slate-500">Nom</th>
+                        <th className="p-2 text-left text-slate-500">Partenaire</th>
+                        <th className="p-2 text-left text-slate-500">Statut</th>
+                        {!readOnly && campaign.statut === 'brouillon' && <th className="p-2 text-right text-slate-500"></th>}
                       </tr>
-                    ))}
-                    {recipients.length === 0 && <tr><td colSpan={!readOnly && campaign.statut === 'brouillon' ? 5 : 4} className="p-4 text-center text-slate-400">Aucun destinataire</td></tr>}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {recipients.map(r => (
+                        <tr key={r.id} className="border-b border-slate-50">
+                          <td className="p-2 text-slate-600">{r.email}</td>
+                          <td className="p-2 text-slate-700">{r.firstname} {r.lastname}</td>
+                          <td className="p-2 text-slate-500">{r.partner_name}</td>
+                          <td className="p-2"><span className={`px-1.5 py-0.5 rounded ${r.statut === 'envoyé' ? 'bg-emerald-50 text-emerald-600' : r.statut === 'erreur' ? 'bg-red-50 text-red-600' : 'bg-slate-50 text-slate-500'}`}>{r.statut}</span></td>
+                          {!readOnly && campaign.statut === 'brouillon' && (
+                            <td className="p-2 text-right">
+                              <button onClick={() => deleteRecipient(r.id)} className="text-xs text-red-400 hover:text-red-600">&times;</button>
+                            </td>
+                          )}
+                        </tr>
+                      ))}
+                      {recipients.length === 0 && <tr><td colSpan={!readOnly && campaign.statut === 'brouillon' ? 5 : 4} className="p-4 text-center text-slate-400">Aucun destinataire</td></tr>}
+                    </tbody>
+                  </table>
+                </div>
               </div>
+              )}
             </>
           )}
         </div>

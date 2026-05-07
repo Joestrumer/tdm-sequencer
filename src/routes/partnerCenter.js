@@ -690,6 +690,74 @@ module.exports = (db) => {
     }
   });
 
+  // Prochains envois prévus pour une campagne anniversaire active
+  router.get('/campaigns/:id/upcoming', (req, res) => {
+    try {
+      const campaign = db.prepare('SELECT * FROM partner_campaigns WHERE id = ?').get(req.params.id);
+      if (!campaign) return res.status(404).json({ erreur: 'Campagne introuvable' });
+      if (campaign.type !== 'anniversaire') return res.json([]);
+
+      const currentYear = new Date().getFullYear();
+      const daysBefore = campaign.days_before != null ? campaign.days_before : 0;
+
+      let btFilter = '';
+      const params = [];
+      if (campaign.business_type_filter) { btFilter = ' AND hp.business_type = ?'; params.push(campaign.business_type_filter); }
+
+      // Trouver partenaires avec anniversaire dans les 90 prochains jours
+      const partners = db.prepare(`
+        SELECT hp.id, hp.name, hp.business_type, hp.hubspot_company_id, hp.partner_since,
+          CAST(strftime('%Y', 'now') AS INTEGER) - CAST(strftime('%Y', hp.partner_since) AS INTEGER) as years_at_anniversary,
+          CASE
+            WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
+            THEN printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))
+            ELSE printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))
+          END as anniversary_date
+        FROM hubspot_partners hp
+        WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''${btFilter}
+          AND CASE
+            WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
+            THEN CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
+            ELSE CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
+          END <= 90
+        ORDER BY anniversary_date
+      `).all(...params);
+
+      const upcoming = [];
+      for (const p of partners) {
+        const excluded = db.prepare('SELECT 1 FROM partner_anniversary_exclusions WHERE partner_id = ?').get(p.id);
+        if (excluded) continue;
+        const sent = db.prepare('SELECT 1 FROM partner_anniversary_logs WHERE partner_id = ? AND year = ? AND template_id = ?').get(p.id, currentYear, campaign.id);
+        if (sent) continue;
+
+        const contacts = db.prepare("SELECT email, firstname, lastname FROM hubspot_partner_contacts WHERE hubspot_company_id = ? AND email IS NOT NULL AND email != ''").all(p.hubspot_company_id);
+        if (contacts.length === 0) continue;
+
+        // Date d'envoi = anniversary_date - days_before
+        const annivDate = new Date(p.anniversary_date + 'T00:00:00');
+        const sendDate = new Date(annivDate.getTime() - daysBefore * 24 * 3600 * 1000);
+        const sendDateStr = sendDate.toISOString().split('T')[0];
+
+        for (const c of contacts) {
+          upcoming.push({
+            email: c.email,
+            firstname: c.firstname,
+            lastname: c.lastname,
+            partner_name: p.name,
+            anniversary_date: p.anniversary_date,
+            send_date: sendDateStr,
+            years: p.years_at_anniversary,
+          });
+        }
+      }
+
+      upcoming.sort((a, b) => a.send_date.localeCompare(b.send_date));
+      res.json(upcoming);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // Supprimer un destinataire
   router.delete('/campaigns/:id/recipients/:recipientId', (req, res) => {
     try {
