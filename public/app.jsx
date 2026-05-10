@@ -3874,7 +3874,7 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
   );
 };
 
-const VueProspection = ({ showToast, readOnly, sequences }) => {
+const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [activeTab, setActiveTab] = useState('hotels'); // 'hotels', 'contacts' ou 'emails-generiques'
 
@@ -4445,6 +4445,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
         showToast(`${res.created} lead(s) créé(s)`, 'success');
         setSelectedEmails(new Set());
         chargerEmailsGeneriques();
+        if (onRefreshLeads) onRefreshLeads();
       } else if (res.errors?.length > 0) {
         showToast(`Aucun nouveau lead créé (${res.errors.length} déjà existant(s))`, 'info');
       } else {
@@ -4471,6 +4472,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
 
       if (res.created > 0 || res.lead_ids?.length > 0) {
         setCreatedLeadIds(res.lead_ids || []);
+        if (onRefreshLeads) onRefreshLeads();
         // Charger les campagnes brouillon
         const campaignsData = await api.get('/campaigns?statut=brouillon');
         setCampaigns(Array.isArray(campaignsData) ? campaignsData : []);
@@ -19734,7 +19736,7 @@ function App() {
           {vue === "partenaires" && <VuePartenaires showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "account-mgmt" && <VuePartnerCenter showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}
-          {vue === "prospection" && <VueProspection showToast={showToast} readOnly={!canWrite('leads')} sequences={sequencesNorm} />}
+          {vue === "prospection" && <VueProspection showToast={showToast} readOnly={!canWrite('leads')} sequences={sequencesNorm} onRefreshLeads={charger} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "templates" && <VueTemplates showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "email-campaigns" && <VueCampagnes showToast={showToast} readOnly={!canWrite('campagnes')} />}
