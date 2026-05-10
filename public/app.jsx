@@ -3922,7 +3922,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
   const [emailsGeneriques, setEmailsGeneriques] = useState([]);
   const [emailsStats, setEmailsStats] = useState(null);
   const [emailsTotal, setEmailsTotal] = useState(0);
-  const [emailsFilter, setEmailsFilter] = useState({ search: '', classement: '', type: '' });
+  const [emailsFilter, setEmailsFilter] = useState({ search: '', classement: '', type: '', statut: '' });
   const [emailsPagination, setEmailsPagination] = useState({ limit: 100, offset: 0 });
   const [emailsFilterOptions, setEmailsFilterOptions] = useState({ classements: [], types: [] });
   const [selectedEmails, setSelectedEmails] = useState(new Set());
@@ -4397,7 +4397,7 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
       chargerEmailsGeneriques();
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [activeTab, emailsFilter.search, emailsFilter.classement, emailsFilter.type, emailsPagination]);
+  }, [activeTab, emailsFilter.search, emailsFilter.classement, emailsFilter.type, emailsFilter.statut, emailsPagination]);
 
   // Fermer modal campagne avec Escape
   useEffect(() => {
@@ -5561,6 +5561,15 @@ const VueProspection = ({ showToast, readOnly, sequences }) => {
               >
                 <option value="">Tous types</option>
                 {emailsFilterOptions.types.map(t => <option key={t} value={t}>{t}</option>)}
+              </select>
+              <select
+                value={emailsFilter.statut}
+                onChange={(e) => { setEmailsFilter(prev => ({ ...prev, statut: e.target.value })); setEmailsPagination(prev => ({ ...prev, offset: 0 })); setSelectedEmails(new Set()); }}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm bg-white"
+              >
+                <option value="">Tous statuts</option>
+                <option value="non_importe">Non ajouté aux contacts</option>
+                <option value="importe">Déjà ajouté</option>
               </select>
               <select
                 value={emailsPagination.limit}

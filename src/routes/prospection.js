@@ -680,7 +680,7 @@ module.exports = (db) => {
   // GET /api/prospection/emails-generiques — Liste des emails génériques scrappés
   router.get('/emails-generiques', (req, res) => {
     try {
-      const { search, classement, type, limit = 100, offset = 0 } = req.query;
+      const { search, classement, type, statut, limit = 100, offset = 0 } = req.query;
 
       // Condition WHERE commune à la base query et count query
       let whereClause = 'WHERE h.contact_email IS NOT NULL AND h.contact_email != \'\'';
@@ -698,6 +698,11 @@ module.exports = (db) => {
       if (type) {
         whereClause += ' AND h.type_hebergement = ?';
         params.push(type);
+      }
+      if (statut === 'non_importe') {
+        whereClause += ' AND (h.imported_as_lead = 0 OR h.imported_as_lead IS NULL) AND NOT EXISTS (SELECT 1 FROM leads l2 WHERE l2.email = h.contact_email)';
+      } else if (statut === 'importe') {
+        whereClause += ' AND (h.imported_as_lead = 1 OR EXISTS (SELECT 1 FROM leads l2 WHERE l2.email = h.contact_email))';
       }
 
       // Comptage total (requête simple sans JOIN)
