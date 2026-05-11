@@ -9600,18 +9600,38 @@ const FacturesSingle = ({ showToast }) => {
       if (file.name.endsWith('.xlsx') || file.name.endsWith('.xls')) {
         const data = new Uint8Array(await file.arrayBuffer());
         const workbook = XLSX.read(data, { type: 'array' });
-        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        // Préférer la feuille "Bon de commande" si elle existe
+        const sheetName = workbook.SheetNames.find(n => /bon de commande/i.test(n)) || workbook.SheetNames[0];
+        const sheet = workbook.Sheets[sheetName];
         const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
 
+        // Détecter les indices de colonnes via les headers
+        let colRef = 0, colPriceHT = 3, colCartons = 5, colUnits = 6, colDiscount = 9;
+        const headerRow = json.find(r => r && r.some && r.some(c => /SKU|Ref\b/i.test(String(c || ''))));
+        if (headerRow) {
+          headerRow.forEach((cell, idx) => {
+            const s = String(cell || '').trim().toLowerCase();
+            if (/^sku$/i.test(s) || /^ref\s*(500ml|$)/i.test(s)) colRef = idx;
+            if (/prix.*unit.*ht|prix ht/i.test(s) && !/total/i.test(s)) colPriceHT = idx;
+            if (/nb.*carton|carton/i.test(s)) colCartons = idx;
+            if (/nb.*unit|unité/i.test(s)) colUnits = idx;
+            if (/discount|remise/i.test(s)) colDiscount = idx;
+          });
+        }
+
         const products = [];
+        const skipPatterns = /^(Ref\s|Menu|TOTAL|Gamme|$)/i;
         for (const row of json) {
-          if (!row[0] || row[0] === 'Ref 500ml' || row[0] === 'Menu Déroulant' || row[0] === 'TOTAL') continue;
-          const rawRef = String(row[0] || '').trim();
-          const qtyUnits = parseFloat(row[6]) || 0;
-          const qtyCartons = parseFloat(row[5]) || 0;
+          const refCell = String(row[colRef] || '').trim();
+          if (!refCell || skipPatterns.test(refCell)) continue;
+          // Ignorer les lignes de section headers (pas de ref type P###)
+          if (!/^P\d|^PF|^DD|^CB|^CC/i.test(refCell)) continue;
+          const rawRef = refCell;
+          const qtyUnits = parseFloat(row[colUnits]) || 0;
+          const qtyCartons = parseFloat(row[colCartons]) || 0;
           const quantity = qtyUnits > 0 ? qtyUnits : qtyCartons;
-          let priceHT = parseFloat(String(row[3] || '0').replace(/[€\s]/g, '').replace(',', '.')) || 0;
-          const discountStr = row[9] ? String(row[9]).trim() : '';
+          let priceHT = parseFloat(String(row[colPriceHT] || '0').replace(/[€\s]/g, '').replace(',', '.')) || 0;
+          const discountStr = row[colDiscount] ? String(row[colDiscount]).trim() : '';
           let discount = 0;
           if (discountStr && discountStr !== '-') {
             discount = parseFloat(discountStr.replace('%', '').replace(',', '.')) || 0;
