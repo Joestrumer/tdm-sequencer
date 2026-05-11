@@ -9615,7 +9615,7 @@ const FacturesSingle = ({ showToast }) => {
             if (/prix.*unit.*ht|prix ht/i.test(s) && !/total/i.test(s)) colPriceHT = idx;
             if (/nb.*carton|carton/i.test(s)) colCartons = idx;
             if (/nb.*unit|unité/i.test(s)) colUnits = idx;
-            if (/discount|remise/i.test(s)) colDiscount = idx;
+            if (/^discount$|^remise$/i.test(s)) colDiscount = idx;
           });
         }
 
