@@ -519,6 +519,7 @@ module.exports = (db) => {
         WHERE id IN (${placeholders})
           AND contact_email IS NOT NULL
           AND imported_as_lead = 0
+          AND (email_excluded = 0 OR email_excluded IS NULL)
       `).all(...hotel_ids);
 
       if (hotels.length === 0) {
@@ -703,6 +704,13 @@ module.exports = (db) => {
         whereClause += ' AND (h.imported_as_lead = 0 OR h.imported_as_lead IS NULL) AND NOT EXISTS (SELECT 1 FROM leads l2 WHERE l2.email = h.contact_email)';
       } else if (statut === 'importe') {
         whereClause += ' AND (h.imported_as_lead = 1 OR EXISTS (SELECT 1 FROM leads l2 WHERE l2.email = h.contact_email))';
+      } else if (statut === 'exclu') {
+        whereClause += ' AND h.email_excluded = 1';
+      }
+
+      // Par défaut, masquer les emails exclus (sauf si on filtre explicitement dessus)
+      if (statut !== 'exclu') {
+        whereClause += ' AND (h.email_excluded = 0 OR h.email_excluded IS NULL)';
       }
 
       // Comptage total (requête simple sans JOIN)
@@ -715,7 +723,7 @@ module.exports = (db) => {
       let query = `
         SELECT h.id, h.nom_commercial, h.commune, h.code_postal, h.site_internet,
                h.contact_email, h.scraping_date, h.classement, h.capacite_accueil,
-               h.type_hebergement, h.imported_as_lead, h.lead_id,
+               h.type_hebergement, h.imported_as_lead, h.lead_id, h.email_excluded,
                r.is_lead as registry_is_lead,
                r.lead_id as registry_lead_id,
                l.statut as lead_statut
@@ -743,13 +751,53 @@ module.exports = (db) => {
         types,
         stats: {
           total_emails: total,
-          total_hotels: db.prepare('SELECT COUNT(*) as count FROM hotels_france WHERE contact_email IS NOT NULL AND contact_email != \'\'').get().count
+          total_hotels: db.prepare('SELECT COUNT(*) as count FROM hotels_france WHERE contact_email IS NOT NULL AND contact_email != \'\'').get().count,
+          total_excluded: db.prepare('SELECT COUNT(*) as count FROM hotels_france WHERE contact_email IS NOT NULL AND contact_email != \'\' AND email_excluded = 1').get().count
         }
       });
 
     } catch (err) {
       logger.error('Erreur GET /emails-generiques:', err);
       res.status(500).json({ erreur: 'Erreur lors de la récupération des emails génériques' });
+    }
+  });
+
+  // POST /api/prospection/emails-generiques/exclude — Exclure/restaurer des emails en batch
+  router.post('/emails-generiques/exclude', (req, res) => {
+    try {
+      const { hotel_ids, exclude = true } = req.body;
+      if (!hotel_ids || !Array.isArray(hotel_ids) || hotel_ids.length === 0) {
+        return res.status(400).json({ erreur: 'hotel_ids requis (array)' });
+      }
+      const placeholders = hotel_ids.map(() => '?').join(',');
+      const stmt = db.prepare(`UPDATE hotels_france SET email_excluded = ? WHERE id IN (${placeholders})`);
+      const result = stmt.run(exclude ? 1 : 0, ...hotel_ids);
+      logger.info(`${exclude ? '🚫' : '✅'} ${result.changes} email(s) ${exclude ? 'exclu(s)' : 'restauré(s)'}`);
+      res.json({ success: true, updated: result.changes });
+    } catch (err) {
+      logger.error('Erreur POST /emails-generiques/exclude:', err);
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // DELETE /api/prospection/emails-generiques/:id — Supprimer l'email d'un hôtel (efface le champ)
+  router.delete('/emails-generiques/:id', (req, res) => {
+    try {
+      const { id } = req.params;
+      const result = db.prepare(`
+        UPDATE hotels_france
+        SET contact_email = NULL, contact_nom = NULL, contact_prenom = NULL, contact_fonction = NULL,
+            scraping_status = 'pending', scraping_date = NULL
+        WHERE id = ?
+      `).run(id);
+      if (result.changes === 0) {
+        return res.status(404).json({ erreur: 'Hôtel non trouvé' });
+      }
+      logger.info(`🗑️ Email supprimé pour hôtel #${id}`);
+      res.json({ success: true });
+    } catch (err) {
+      logger.error('Erreur DELETE /emails-generiques/:id:', err);
+      res.status(500).json({ erreur: err.message });
     }
   });
 

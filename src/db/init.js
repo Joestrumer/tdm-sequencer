@@ -892,6 +892,8 @@ const migrations = [
   'ALTER TABLE partner_campaigns ADD COLUMN business_type_filter TEXT',
   'ALTER TABLE partner_campaigns ADD COLUMN days_before INTEGER DEFAULT 0',
   'ALTER TABLE vf_client_mappings ADD COLUMN hubspot_company_id TEXT',
+  // Emails génériques — exclusion des mauvais emails
+  'ALTER TABLE hotels_france ADD COLUMN email_excluded INTEGER DEFAULT 0',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

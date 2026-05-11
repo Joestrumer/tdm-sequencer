@@ -4457,6 +4457,33 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     setConvertingEmails(false);
   };
 
+  // Exclure des emails génériques (batch)
+  const handleExcludeEmails = async (ids, exclude = true) => {
+    try {
+      const res = await api.post('/prospection/emails-generiques/exclude', {
+        hotel_ids: Array.from(ids),
+        exclude,
+      });
+      showToast(`${res.updated} email(s) ${exclude ? 'exclu(s)' : 'restauré(s)'}`, 'success');
+      setSelectedEmails(new Set());
+      chargerEmailsGeneriques();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  // Supprimer l'email d'un hôtel (efface le champ)
+  const handleDeleteEmail = async (hotelId) => {
+    if (!confirm('Supprimer cet email ? L\'hôtel pourra être re-scrappé.')) return;
+    try {
+      await api.delete(`/prospection/emails-generiques/${hotelId}`);
+      showToast('Email supprimé', 'success');
+      chargerEmailsGeneriques();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
   const handleAddToCampaign = async () => {
     if (selectedEmails.size === 0) {
       showToast('Aucun email sélectionné', 'error');
@@ -5526,7 +5553,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
         <>
           {/* Stats */}
           {emailsStats && (
-            <div className="grid grid-cols-2 gap-3 mb-6">
+            <div className="grid grid-cols-3 gap-3 mb-6">
               <div className="bg-white rounded-xl border border-slate-200 p-4">
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total emails</p>
                 <p className="text-2xl font-bold text-slate-900">{emailsStats.total_emails?.toLocaleString()}</p>
@@ -5534,6 +5561,10 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
               <div className="bg-white rounded-xl border border-blue-200 p-4">
                 <p className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Hôtels avec email</p>
                 <p className="text-2xl font-bold text-blue-700">{emailsStats.total_hotels?.toLocaleString()}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-red-200 p-4">
+                <p className="text-xs font-medium text-red-600 uppercase tracking-wide mb-1">Exclus</p>
+                <p className="text-2xl font-bold text-red-700">{emailsStats.total_excluded?.toLocaleString() || 0}</p>
               </div>
             </div>
           )}
@@ -5572,6 +5603,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 <option value="">Tous statuts</option>
                 <option value="non_importe">Non ajouté aux contacts</option>
                 <option value="importe">Déjà ajouté</option>
+                <option value="exclu">Exclus</option>
               </select>
               <select
                 value={emailsPagination.limit}
@@ -5628,7 +5660,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                     </button>
                   )}
                 </div>
-                <div className="flex gap-2">
+                <div className="flex gap-2 flex-wrap">
                   <button
                     onClick={handleConvertEmailsToLeads}
                     disabled={convertingEmails || readOnly}
@@ -5643,6 +5675,23 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                   >
                     {convertingEmails ? '⏳ Préparation...' : '📢 Ajouter à une campagne'}
                   </button>
+                  {emailsFilter.statut === 'exclu' ? (
+                    <button
+                      onClick={() => handleExcludeEmails(selectedEmails, false)}
+                      disabled={readOnly}
+                      className="px-4 py-2 rounded-lg bg-emerald-600 text-white text-sm font-medium hover:bg-emerald-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      Restaurer
+                    </button>
+                  ) : (
+                    <button
+                      onClick={() => handleExcludeEmails(selectedEmails, true)}
+                      disabled={readOnly}
+                      className="px-4 py-2 rounded-lg bg-red-600 text-white text-sm font-medium hover:bg-red-700 disabled:opacity-50 flex items-center gap-2"
+                    >
+                      Exclure
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -5668,24 +5717,25 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Site web</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Classement</th>
                     <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Capacité</th>
+                    <th className="px-4 py-3 text-right text-xs font-semibold text-slate-700 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {loading ? (
                     <tr>
-                      <td colSpan="7" className="px-4 py-12 text-center text-sm text-slate-500">
+                      <td colSpan="8" className="px-4 py-12 text-center text-sm text-slate-500">
                         <div className="flex justify-center"><div className="w-6 h-6 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" /></div>
                       </td>
                     </tr>
                   ) : emailsGeneriques.length === 0 ? (
                     <tr>
-                      <td colSpan="7" className="px-4 py-12 text-center text-sm text-slate-500">
-                        Aucun email générique trouvé. Utilisez le bouton "🔍 Scraper" pour extraire les emails des sites web.
+                      <td colSpan="8" className="px-4 py-12 text-center text-sm text-slate-500">
+                        {emailsFilter.statut === 'exclu' ? 'Aucun email exclu.' : 'Aucun email générique trouvé. Utilisez le bouton "🔍 Scraper" pour extraire les emails des sites web.'}
                       </td>
                     </tr>
                   ) : (
                     emailsGeneriques.map((email) => (
-                      <tr key={email.id} className="hover:bg-slate-50">
+                      <tr key={email.id} className={`hover:bg-slate-50 ${email.email_excluded ? 'bg-red-50/50 opacity-75' : ''}`}>
                         <td className="px-4 py-3">
                           <input
                             type="checkbox"
@@ -5747,6 +5797,34 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                         </td>
                         <td className="px-4 py-3">
                           <span className="text-sm text-slate-700">{email.capacite_accueil ? `${email.capacite_accueil} pers.` : '-'}</span>
+                        </td>
+                        <td className="px-4 py-3 text-right">
+                          <div className="flex items-center justify-end gap-1">
+                            {email.email_excluded ? (
+                              <button
+                                onClick={() => handleExcludeEmails([email.id], false)}
+                                className="px-2 py-1 rounded text-xs font-medium bg-emerald-50 text-emerald-700 hover:bg-emerald-100"
+                                title="Restaurer"
+                              >
+                                Restaurer
+                              </button>
+                            ) : (
+                              <button
+                                onClick={() => handleExcludeEmails([email.id], true)}
+                                className="px-2 py-1 rounded text-xs font-medium bg-red-50 text-red-700 hover:bg-red-100"
+                                title="Exclure cet email"
+                              >
+                                Exclure
+                              </button>
+                            )}
+                            <button
+                              onClick={() => handleDeleteEmail(email.id)}
+                              className="px-2 py-1 rounded text-xs font-medium bg-slate-50 text-slate-500 hover:bg-slate-100 hover:text-red-600"
+                              title="Supprimer l'email (l'hôtel sera re-scrappable)"
+                            >
+                              Suppr.
+                            </button>
+                          </div>
                         </td>
                       </tr>
                     ))
