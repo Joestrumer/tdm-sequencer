@@ -288,17 +288,31 @@ module.exports = (db) => {
           stats.byClient[invoice.client].count++;
         }
 
-        // Factures récentes
-        if (stats.recentInvoices.length < 10) {
-          stats.recentInvoices.push({
-            number: invoice.number,
-            client: invoice.client,
-            date: invoice.date || (invoice.year && invoice.month ? `${invoice.month}/${invoice.year}` : ''),
-            amount_ht: invoice.totalHT,
-            amount_ttc: invoice.totalTTC,
-          });
-        }
+        // Collecter toutes les factures pour tri ultérieur
+        stats.recentInvoices.push({
+          number: invoice.number,
+          client: invoice.client,
+          date: invoice.date || (invoice.year && invoice.month ? `${invoice.month}/${invoice.year}` : ''),
+          amount_ht: invoice.totalHT,
+          amount_ttc: invoice.totalTTC,
+          orderNumber: invoice.orderNumber,
+        });
       }
+
+      // Trier les factures récentes par date décroissante et garder les 10 premières
+      const parseInvoiceDate = (d) => {
+        if (!d) return 0;
+        if (d.includes('/')) {
+          const parts = d.split('/');
+          if (parts.length === 3) return new Date(`${parts[2]}-${parts[1]}-${parts[0]}`).getTime() || 0;
+          if (parts.length === 2) return new Date(`${parts[1]}-${parts[0]}-01`).getTime() || 0;
+        }
+        if (d.includes('-')) return new Date(d).getTime() || 0;
+        return 0;
+      };
+      stats.totalInvoiceCount = stats.recentInvoices.length;
+      stats.recentInvoices.sort((a, b) => parseInvoiceDate(b.date) - parseInvoiceDate(a.date));
+      stats.recentInvoices = stats.recentInvoices.slice(0, 10);
 
       // Top 10 clients
       stats.topClients = Object.entries(stats.byClient)
@@ -329,7 +343,9 @@ module.exports = (db) => {
   router.get('/analytics/client/:clientName', async (req, res) => {
     try {
       const { clientName } = req.params;
-      const { year } = req.query;
+      const { year, years } = req.query;
+      // Support multi-years: ?years=2024,2025 (comma-separated)
+      const yearFilter = years ? years.split(',').map(y => y.trim()) : (year ? [String(year)] : []);
       const spreadsheetId = getSpreadsheetId();
       if (!spreadsheetId) {
         return res.status(400).json({ erreur: 'Spreadsheet ID non configuré' });
@@ -344,9 +360,9 @@ module.exports = (db) => {
 
       const data = result.data || [];
 
-      // Première passe: identifier les factures de l'année demandée pour ce client
+      // Première passe: identifier les factures des années demandées pour ce client
       const validInvoices = new Set();
-      if (year) {
+      if (yearFilter.length > 0) {
         for (const row of data) {
           const rowClient = (row['Hotel name'] || '').trim();
           if (rowClient.toLowerCase() !== clientName.toLowerCase()) continue;
@@ -364,7 +380,7 @@ module.exports = (db) => {
             if (parts.length === 3 && parts[0].length === 4) invoiceYear = parts[0];
           }
 
-          if (invoiceYear == year) {
+          if (yearFilter.includes(invoiceYear)) {
             validInvoices.add(invoiceNumber);
           }
         }
@@ -382,7 +398,7 @@ module.exports = (db) => {
         if (!invoiceNumber) continue;
 
         // Si filtre année actif, vérifier que la facture est dans la liste valide
-        if (year && !validInvoices.has(invoiceNumber)) continue;
+        if (yearFilter.length > 0 && !validInvoices.has(invoiceNumber)) continue;
 
         const dateFacturation = (row['Date facturation'] || '').trim();
         const productRef = (row['Ref'] || '').trim();
