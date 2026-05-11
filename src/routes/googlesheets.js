@@ -467,6 +467,30 @@ module.exports = (db) => {
         totalCommission += inv.totalCommission;
       }
 
+      // Trier les factures par date (plus récente en premier)
+      invoices.sort((a, b) => {
+        const parseDate = (d) => {
+          if (!d) return 0;
+          if (d.includes('/')) { const [dd, mm, yy] = d.split('/'); return new Date(`${yy}-${mm}-${dd}`).getTime() || 0; }
+          return new Date(d).getTime() || 0;
+        };
+        return parseDate(b.date) - parseDate(a.date);
+      });
+
+      // Calculer les stats par année pour le résumé
+      const byYear = {};
+      for (const inv of invoices) {
+        let y = '';
+        if (inv.date && inv.date.includes('/')) { const parts = inv.date.split('/'); if (parts.length === 3) y = parts[2]; }
+        else if (inv.date && inv.date.includes('-')) { const parts = inv.date.split('-'); if (parts[0].length === 4) y = parts[0]; }
+        if (!y) continue;
+        if (!byYear[y]) byYear[y] = { ca_ht: 0, ca_ttc: 0, commission: 0, count: 0 };
+        byYear[y].ca_ht += inv.totalHT;
+        byYear[y].ca_ttc += inv.totalTTC;
+        byYear[y].commission += inv.totalCommission;
+        byYear[y].count++;
+      }
+
       res.json({
         clientName,
         total: {
@@ -475,6 +499,12 @@ module.exports = (db) => {
           ca_ttc: Math.round(totalTTC * 100) / 100,
           commission: Math.round(totalCommission * 100) / 100,
         },
+        byYear: Object.fromEntries(Object.entries(byYear).map(([y, v]) => [y, {
+          ca_ht: Math.round(v.ca_ht * 100) / 100,
+          ca_ttc: Math.round(v.ca_ttc * 100) / 100,
+          commission: Math.round(v.commission * 100) / 100,
+          count: v.count,
+        }])),
         topProducts,
         invoices: invoices.map(i => ({
           number: i.number,
@@ -483,6 +513,13 @@ module.exports = (db) => {
           totalTTC: Math.round(i.totalTTC * 100) / 100,
           totalCommission: Math.round(i.totalCommission * 100) / 100,
           productCount: i.products.length,
+          products: i.products.map(p => ({
+            ref: p.ref,
+            name: p.name,
+            quantity: p.quantity,
+            amountHT: Math.round(p.amountHT * 100) / 100,
+            amountTTC: Math.round(p.amountTTC * 100) / 100,
+          })),
         })),
       });
     } catch (e) {

@@ -7436,6 +7436,7 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
   const [searchTerm, setSearchTerm] = useState('');
   const [selectedClient, setSelectedClient] = useState(null);
   const [clientDetails, setClientDetails] = useState(null);
+  const [clientYear, setClientYear] = useState(''); // '' = toutes les années
 
   // Years comparison state
   const [yearsComparison, setYearsComparison] = useState(null);
@@ -7470,10 +7471,12 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
   };
 
   // Load client details
-  const loadClientDetails = async (clientName) => {
+  const loadClientDetails = async (clientName, yr) => {
     setLoading(true);
     try {
-      const data = await api.get(`/gsheets/analytics/client/${encodeURIComponent(clientName)}?year=${year}`);
+      const yearParam = yr !== undefined ? yr : clientYear;
+      const url = yearParam ? `/gsheets/analytics/client/${encodeURIComponent(clientName)}?year=${yearParam}` : `/gsheets/analytics/client/${encodeURIComponent(clientName)}`;
+      const data = await api.get(url);
       setClientDetails(data);
       setSelectedClient(clientName);
     } catch (err) {
@@ -8310,6 +8313,22 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
                 </button>
               </>
             )}
+            {viewMode === 'client' && selectedClient && (
+              <>
+                <label className="text-sm font-medium text-slate-700">Année:</label>
+                <select
+                  value={clientYear}
+                  onChange={(e) => { setClientYear(e.target.value); loadClientDetails(selectedClient, e.target.value); }}
+                  className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm"
+                >
+                  <option value="">Toutes</option>
+                  {[0, 1, 2, 3, 4].map(offset => {
+                    const y = new Date().getFullYear() - offset;
+                    return <option key={y} value={y}>{y}</option>;
+                  })}
+                </select>
+              </>
+            )}
             <div className="text-xs text-emerald-600 font-medium">
               Source: Google Sheets "log sold"
             </div>
@@ -8468,145 +8487,257 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
                 <p className="text-sm text-slate-500 mt-2">Aucun client trouvé</p>
               )}
             </div>
-          ) : clientDetails ? (
+          ) : clientDetails ? (() => {
+            const clientReportRef = React.createRef();
+            const handlePrintReport = () => {
+              const el = document.getElementById('client-report');
+              if (!el) return;
+              const win = window.open('', '_blank');
+              win.document.write(`<!DOCTYPE html><html><head><title>Compte-rendu - ${selectedClient}</title>
+                <style>
+                  * { margin: 0; padding: 0; box-sizing: border-box; }
+                  body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; color: #1e293b; padding: 40px; max-width: 1000px; margin: 0 auto; }
+                  .header { border-bottom: 3px solid #0f172a; padding-bottom: 20px; margin-bottom: 30px; }
+                  .header h1 { font-size: 24px; font-weight: 700; }
+                  .header .subtitle { color: #64748b; font-size: 13px; margin-top: 4px; }
+                  .kpi-row { display: flex; gap: 16px; margin-bottom: 30px; }
+                  .kpi { flex: 1; background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px; padding: 16px; }
+                  .kpi .label { font-size: 11px; text-transform: uppercase; letter-spacing: 0.5px; color: #64748b; font-weight: 600; }
+                  .kpi .value { font-size: 22px; font-weight: 700; margin-top: 4px; }
+                  .section { margin-bottom: 28px; }
+                  .section h2 { font-size: 14px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.5px; color: #334155; border-bottom: 1px solid #e2e8f0; padding-bottom: 8px; margin-bottom: 12px; }
+                  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+                  th { text-align: left; padding: 8px 12px; background: #f1f5f9; font-weight: 600; font-size: 11px; text-transform: uppercase; letter-spacing: 0.3px; color: #475569; border-bottom: 2px solid #e2e8f0; }
+                  td { padding: 7px 12px; border-bottom: 1px solid #f1f5f9; }
+                  .text-right { text-align: right; }
+                  .font-mono { font-family: 'SF Mono', monospace; font-size: 12px; }
+                  .subtotal { background: #f8fafc; font-weight: 600; }
+                  .inv-header { background: #f1f5f9; font-weight: 600; }
+                  .inv-product td { padding-left: 24px; color: #64748b; font-size: 12px; }
+                  .footer { margin-top: 40px; padding-top: 16px; border-top: 1px solid #e2e8f0; font-size: 11px; color: #94a3b8; text-align: center; }
+                  @media print { body { padding: 20px; } @page { margin: 15mm; } }
+                </style></head><body>${el.innerHTML}
+                <div class="footer">Terre de Mars — Compte-rendu généré le ${new Date().toLocaleDateString('fr-FR')}</div>
+                </body></html>`);
+              win.document.close();
+              setTimeout(() => win.print(), 300);
+            };
+            return (
             <div className="space-y-6">
               {/* Header */}
               <div className="bg-white rounded-xl border border-slate-100 p-4">
-                <div className="flex items-center gap-3">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={() => { setSelectedClient(null); setClientDetails(null); setSearchTerm(''); }}
+                      className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200"
+                    >
+                      Retour
+                    </button>
+                    <h2 className="text-lg font-semibold text-slate-900">{selectedClient}</h2>
+                    {clientYear && <span className="text-sm text-slate-500">({clientYear})</span>}
+                    {!clientYear && <span className="text-sm text-slate-500">(toutes années)</span>}
+                  </div>
                   <button
-                    onClick={() => {
-                      setSelectedClient(null);
-                      setClientDetails(null);
-                      setSearchTerm('');
-                    }}
-                    className="px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-sm hover:bg-slate-200"
+                    onClick={handlePrintReport}
+                    className="px-4 py-2 bg-slate-900 text-white rounded-lg text-sm hover:bg-slate-800 flex items-center gap-2"
                   >
-                    Retour
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 17h2a2 2 0 002-2v-4a2 2 0 00-2-2H5a2 2 0 00-2 2v4a2 2 0 002 2h2m2 4h6a2 2 0 002-2v-4a2 2 0 00-2-2H9a2 2 0 00-2 2v4a2 2 0 002 2zm8-12V5a2 2 0 00-2-2H9a2 2 0 00-2 2v4h10z" /></svg>
+                    Imprimer / Exporter
                   </button>
-                  <h2 className="text-lg font-semibold text-slate-900">{selectedClient}</h2>
                 </div>
               </div>
 
-              {/* KPIs Client */}
-              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-                <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-6 border border-blue-200">
-                  <div className="text-xs font-medium text-blue-600 mb-2 uppercase tracking-wide">CA Total HT</div>
-                  <div className="text-3xl font-bold text-blue-900">
-                    {(clientDetails.total?.ca_ht || 0).toLocaleString('fr-FR')}€
-                  </div>
-                  <div className="text-sm text-blue-700 mt-2">
-                    {clientDetails.total?.invoices || 0} factures
+              <div id="client-report">
+                {/* Print header (hidden on screen) */}
+                <div className="hidden print:block" style={{display:'none'}}>
+                  <div className="header">
+                    <h1>Compte-rendu commercial — {selectedClient}</h1>
+                    <div className="subtitle">Période : {clientYear || 'Toutes les années'} — Généré le {new Date().toLocaleDateString('fr-FR')}</div>
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-6 border border-emerald-200">
-                  <div className="text-xs font-medium text-emerald-600 mb-2 uppercase tracking-wide">CA Total TTC</div>
-                  <div className="text-3xl font-bold text-emerald-900">
-                    {(clientDetails.total?.ca_ttc || 0).toLocaleString('fr-FR')}€
+                {/* KPIs Client */}
+                <div className="kpi-row grid grid-cols-1 md:grid-cols-5 gap-4">
+                  <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl p-5 border border-blue-200">
+                    <div className="label text-xs font-medium text-blue-600 uppercase tracking-wide">CA Total HT</div>
+                    <div className="value text-2xl font-bold text-blue-900 mt-1">
+                      {(clientDetails.total?.ca_ht || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl p-5 border border-emerald-200">
+                    <div className="label text-xs font-medium text-emerald-600 uppercase tracking-wide">CA Total TTC</div>
+                    <div className="value text-2xl font-bold text-emerald-900 mt-1">
+                      {(clientDetails.total?.ca_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-5 border border-amber-200">
+                    <div className="label text-xs font-medium text-amber-600 uppercase tracking-wide">Nb Commandes</div>
+                    <div className="value text-2xl font-bold text-amber-900 mt-1">
+                      {clientDetails.total?.invoices || 0}
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-5 border border-purple-200">
+                    <div className="label text-xs font-medium text-purple-600 uppercase tracking-wide">Panier Moyen HT</div>
+                    <div className="value text-2xl font-bold text-purple-900 mt-1">
+                      {clientDetails.total?.invoices > 0
+                        ? (clientDetails.total.ca_ht / clientDetails.total.invoices).toLocaleString('fr-FR', {minimumFractionDigits: 2})
+                        : '0,00'}€
+                    </div>
+                  </div>
+                  <div className="bg-gradient-to-br from-rose-50 to-rose-100 rounded-xl p-5 border border-rose-200">
+                    <div className="label text-xs font-medium text-rose-600 uppercase tracking-wide">Tendance</div>
+                    <div className={`value text-2xl font-bold mt-1 ${calculateClientGrowth() >= 0 ? 'text-emerald-700' : 'text-red-700'}`}>
+                      {calculateClientGrowth() > 0 ? '+' : ''}{calculateClientGrowth().toFixed(1)}%
+                    </div>
                   </div>
                 </div>
 
-                <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl p-6 border border-amber-200">
-                  <div className="text-xs font-medium text-amber-600 mb-2 uppercase tracking-wide">Commission</div>
-                  <div className="text-3xl font-bold text-amber-900">
-                    {(clientDetails.total?.commission || 0).toLocaleString('fr-FR')}€
-                  </div>
-                </div>
-
-                <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl p-6 border border-purple-200">
-                  <div className="text-xs font-medium text-purple-600 mb-2 uppercase tracking-wide">Panier Moyen</div>
-                  <div className="text-3xl font-bold text-purple-900">
-                    {clientDetails.total?.invoices > 0
-                      ? Math.round(clientDetails.total.ca_ht / clientDetails.total.invoices).toLocaleString('fr-FR')
-                      : 0}€
-                  </div>
-                  <div className="text-sm text-purple-700 mt-2">
-                    Tendance: {calculateClientGrowth() > 0 ? '+' : ''}{calculateClientGrowth().toFixed(1)}%
-                  </div>
-                </div>
-              </div>
-
-              {/* Client monthly chart */}
-              <div className="bg-white rounded-xl border border-slate-100 p-6">
-                <h3 className="text-sm font-semibold text-slate-800 mb-4">Évolution mensuelle du CA client</h3>
-                <div className="h-64">
-                  <canvas ref={clientMonthlyChartRef}></canvas>
-                </div>
-              </div>
-
-              {/* Top products */}
-              {clientDetails.topProducts && clientDetails.topProducts.length > 0 && (
-                <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-                  <div className="p-6 border-b border-slate-100">
-                    <h3 className="text-sm font-semibold text-slate-800">Produits consommés</h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Référence</th>
-                          <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Produit</th>
-                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Quantité</th>
-                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
-                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Factures</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {clientDetails.topProducts.map((p, i) => (
-                          <tr key={i} className="hover:bg-slate-50">
-                            <td className="px-6 py-3 text-sm font-mono text-slate-700">{p.ref}</td>
-                            <td className="px-6 py-3 text-sm text-slate-900">{p.name}</td>
-                            <td className="px-6 py-3 text-sm text-right text-slate-600">{p.totalQuantity}</td>
-                            <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
-                              {(p.totalHT || 0).toLocaleString('fr-FR')}€
-                            </td>
-                            <td className="px-6 py-3 text-sm text-right text-slate-600">{p.invoiceCount}</td>
+                {/* Résumé par année (si toutes années) */}
+                {!clientYear && clientDetails.byYear && Object.keys(clientDetails.byYear).length > 1 && (
+                  <div className="section bg-white rounded-xl border border-slate-100 overflow-hidden">
+                    <div className="p-5 border-b border-slate-100">
+                      <h2 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">Récapitulatif par année</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Année</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Nb Commandes</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">CA TTC</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Panier Moyen HT</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
-                </div>
-              )}
-
-              {/* Invoices history */}
-              {clientDetails.invoices && clientDetails.invoices.length > 0 && (
-                <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
-                  <div className="p-6 border-b border-slate-100">
-                    <h3 className="text-sm font-semibold text-slate-800">Historique factures</h3>
-                  </div>
-                  <div className="overflow-x-auto">
-                    <table className="w-full">
-                      <thead className="bg-slate-50">
-                        <tr>
-                          <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Numéro</th>
-                          <th className="text-left px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
-                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Produits</th>
-                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant HT</th>
-                          <th className="text-right px-6 py-3 text-xs font-semibold text-slate-500 uppercase">Montant TTC</th>
-                        </tr>
-                      </thead>
-                      <tbody className="divide-y divide-slate-100">
-                        {clientDetails.invoices.map((inv, i) => (
-                          <tr key={i} className="hover:bg-slate-50">
-                            <td className="px-6 py-3 text-sm font-medium text-slate-900">{inv.number}</td>
-                            <td className="px-6 py-3 text-sm text-slate-500">{inv.date}</td>
-                            <td className="px-6 py-3 text-sm text-right text-slate-600">{inv.productCount}</td>
-                            <td className="px-6 py-3 text-sm text-right font-medium text-slate-900">
-                              {(inv.totalHT || 0).toLocaleString('fr-FR')}€
-                            </td>
-                            <td className="px-6 py-3 text-sm text-right text-slate-600">
-                              {(inv.totalTTC || 0).toLocaleString('fr-FR')}€
-                            </td>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {Object.entries(clientDetails.byYear).sort((a, b) => b[0].localeCompare(a[0])).map(([yr, stats]) => (
+                            <tr key={yr} className="hover:bg-slate-50">
+                              <td className="px-5 py-3 text-sm font-semibold text-slate-900">{yr}</td>
+                              <td className="px-5 py-3 text-sm text-right text-slate-600">{stats.count}</td>
+                              <td className="px-5 py-3 text-sm text-right font-medium text-slate-900">{stats.ca_ht.toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                              <td className="px-5 py-3 text-sm text-right text-slate-600">{stats.ca_ttc.toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                              <td className="px-5 py-3 text-sm text-right text-slate-600">{stats.count > 0 ? (stats.ca_ht / stats.count).toLocaleString('fr-FR', {minimumFractionDigits: 2}) : '0,00'}€</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-slate-50 font-semibold">
+                            <td className="px-5 py-3 text-sm text-slate-900">TOTAL</td>
+                            <td className="px-5 py-3 text-sm text-right">{clientDetails.total?.invoices}</td>
+                            <td className="px-5 py-3 text-sm text-right">{(clientDetails.total?.ca_ht || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                            <td className="px-5 py-3 text-sm text-right">{(clientDetails.total?.ca_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                            <td className="px-5 py-3 text-sm text-right">{clientDetails.total?.invoices > 0 ? (clientDetails.total.ca_ht / clientDetails.total.invoices).toLocaleString('fr-FR', {minimumFractionDigits: 2}) : '0,00'}€</td>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Client monthly chart */}
+                <div className="bg-white rounded-xl border border-slate-100 p-6">
+                  <h3 className="text-sm font-semibold text-slate-800 mb-4 uppercase tracking-wide">Évolution mensuelle du CA</h3>
+                  <div className="h-64">
+                    <canvas ref={clientMonthlyChartRef}></canvas>
                   </div>
                 </div>
-              )}
+
+                {/* Top products */}
+                {clientDetails.topProducts && clientDetails.topProducts.length > 0 && (
+                  <div className="section bg-white rounded-xl border border-slate-100 overflow-hidden">
+                    <div className="p-5 border-b border-slate-100">
+                      <h2 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">Produits commandés</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Référence</th>
+                            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Produit</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Qté totale</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">CA HT</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">CA TTC</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Nb Commandes</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {clientDetails.topProducts.map((p, i) => (
+                            <tr key={i} className="hover:bg-slate-50">
+                              <td className="px-5 py-3 text-sm font-mono text-slate-700">{p.ref}</td>
+                              <td className="px-5 py-3 text-sm text-slate-900">{p.name}</td>
+                              <td className="px-5 py-3 text-sm text-right text-slate-600">{p.totalQuantity}</td>
+                              <td className="px-5 py-3 text-sm text-right font-medium text-slate-900">{(p.totalHT || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                              <td className="px-5 py-3 text-sm text-right text-slate-600">{(p.totalTTC || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                              <td className="px-5 py-3 text-sm text-right text-slate-600">{p.invoiceCount}</td>
+                            </tr>
+                          ))}
+                          <tr className="bg-slate-50 font-semibold">
+                            <td className="px-5 py-3 text-sm" colSpan={2}>TOTAL</td>
+                            <td className="px-5 py-3 text-sm text-right">{clientDetails.topProducts.reduce((s, p) => s + p.totalQuantity, 0)}</td>
+                            <td className="px-5 py-3 text-sm text-right">{clientDetails.topProducts.reduce((s, p) => s + (p.totalHT || 0), 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                            <td className="px-5 py-3 text-sm text-right">{clientDetails.topProducts.reduce((s, p) => s + (p.totalTTC || 0), 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                            <td className="px-5 py-3"></td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+
+                {/* Détail des commandes avec produits */}
+                {clientDetails.invoices && clientDetails.invoices.length > 0 && (
+                  <div className="section bg-white rounded-xl border border-slate-100 overflow-hidden">
+                    <div className="p-5 border-b border-slate-100">
+                      <h2 className="text-sm font-semibold text-slate-800 uppercase tracking-wide">Détail des commandes ({clientDetails.invoices.length})</h2>
+                    </div>
+                    <div className="overflow-x-auto">
+                      <table className="w-full">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase">N° / Réf</th>
+                            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Date</th>
+                            <th className="text-left px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Produit</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Qté</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Montant HT</th>
+                            <th className="text-right px-5 py-3 text-xs font-semibold text-slate-500 uppercase">Montant TTC</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {clientDetails.invoices.map((inv, i) => (
+                            <React.Fragment key={i}>
+                              <tr className="bg-slate-50 border-t-2 border-slate-200">
+                                <td className="px-5 py-3 text-sm font-semibold text-slate-900">{inv.number}</td>
+                                <td className="px-5 py-3 text-sm font-medium text-slate-700">{inv.date}</td>
+                                <td className="px-5 py-3 text-sm text-slate-500">{inv.productCount} produit{inv.productCount > 1 ? 's' : ''}</td>
+                                <td className="px-5 py-3"></td>
+                                <td className="px-5 py-3 text-sm text-right font-semibold text-slate-900">{(inv.totalHT || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                                <td className="px-5 py-3 text-sm text-right font-semibold text-slate-700">{(inv.totalTTC || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                              </tr>
+                              {inv.products && inv.products.map((p, j) => (
+                                <tr key={j} className="border-b border-slate-50">
+                                  <td className="pl-10 pr-5 py-2 text-xs font-mono text-slate-400">{p.ref}</td>
+                                  <td className="px-5 py-2"></td>
+                                  <td className="px-5 py-2 text-xs text-slate-500">{p.name}</td>
+                                  <td className="px-5 py-2 text-xs text-right text-slate-500">{p.quantity}</td>
+                                  <td className="px-5 py-2 text-xs text-right text-slate-500">{(p.amountHT || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                                  <td className="px-5 py-2 text-xs text-right text-slate-400">{(p.amountTTC || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                                </tr>
+                              ))}
+                            </React.Fragment>
+                          ))}
+                          <tr className="bg-slate-100 border-t-2 border-slate-300 font-bold">
+                            <td className="px-5 py-3 text-sm" colSpan={4}>TOTAL GÉNÉRAL</td>
+                            <td className="px-5 py-3 text-sm text-right">{(clientDetails.total?.ca_ht || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                            <td className="px-5 py-3 text-sm text-right">{(clientDetails.total?.ca_ttc || 0).toLocaleString('fr-FR', {minimumFractionDigits: 2})}€</td>
+                          </tr>
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
-          ) : null}
+            );
+          })() : null}
         </div>
       )}
 
