@@ -9,7 +9,7 @@
 const cron    = require('node-cron');
 const { v4: uuidv4 } = require('uuid');
 const logger  = require('../config/logger');
-const { envoyerEmail, estDansLaFenetreEnvoi, substituerVariables } = require('../services/brevoService');
+const { envoyerEmail, estDansLaFenetreEnvoi, substituerVariables, getConfigVal, parseHeurMinute } = require('../services/brevoService');
 const hubspot = require('../services/hubspotService');
 const { addOrUpdateTag } = require('../utils/leadTags');
 
@@ -37,9 +37,17 @@ function formatSQLite(date) {
 
 // ─── Calcul de la prochaine date d'envoi ──────────────────────────────────────
 function prochaineDateEnvoi(joursDelai) {
-  const heureDebut  = parseInt(process.env.SEND_HOUR_START) || 8;
-  const heureFin    = parseInt(process.env.SEND_HOUR_END) || 18;
-  const joursActifs = (process.env.ACTIVE_DAYS || '1,2,3,4,5').split(',').map(Number);
+  const rawDebut = db ? getConfigVal(db, 'heure_debut', 'SEND_HOUR_START', '8') : (process.env.SEND_HOUR_START || '8');
+  const rawFin = db ? getConfigVal(db, 'heure_fin', 'SEND_HOUR_END', '18') : (process.env.SEND_HOUR_END || '18');
+  const [hD, mD] = parseHeurMinute(rawDebut, 8, 0);
+  const [hF, mF] = parseHeurMinute(rawFin, 18, 0);
+  const debutMin = hD * 60 + mD;
+  const finMin = hF * 60 + mF;
+  const plageMin = Math.max(finMin - debutMin, 60); // plage en minutes
+
+  const rawJours = db ? getConfigVal(db, 'jours_actifs', 'ACTIVE_DAYS', '1,2,3,4,5') : (process.env.ACTIVE_DAYS || '1,2,3,4,5');
+  const jourMap = { lun: 1, mar: 2, mer: 3, jeu: 4, ven: 5, sam: 6, dim: 0 };
+  const joursActifs = rawJours.split(',').map(j => jourMap[j.trim()] !== undefined ? jourMap[j.trim()] : Number(j));
 
   const now = maintenant_paris();
   let date = new Date(now.getTime());
@@ -52,12 +60,14 @@ function prochaineDateEnvoi(joursDelai) {
     tentatives++;
   }
 
-  // Heure de début + variation aléatoire (0–120 min) pour paraître naturel
-  date.setHours(heureDebut, Math.floor(Math.random() * 120), 0, 0);
+  // Heure de début + variation aléatoire dans la plage, mais max 120 min après le début
+  const randomMin = Math.floor(Math.random() * Math.min(plageMin, 120));
+  const totalMin = debutMin + randomMin;
+  date.setHours(Math.floor(totalMin / 60), totalMin % 60, 0, 0);
 
-  // Si l'heure calculée est déjà passée et qu'on est encore dans la fenêtre d'envoi,
-  // programmer dans 2-5 minutes
-  if (date <= now && joursActifs.includes(now.getDay()) && now.getHours() >= heureDebut && now.getHours() < heureFin) {
+  // Si l'heure calculée est déjà passée et qu'on est encore dans la fenêtre d'envoi
+  const nowMin = now.getHours() * 60 + now.getMinutes();
+  if (date <= now && joursActifs.includes(now.getDay()) && nowMin >= debutMin && nowMin < finMin) {
     date = new Date(now.getTime());
     date.setMinutes(date.getMinutes() + 2 + Math.floor(Math.random() * 3));
   }
@@ -70,7 +80,9 @@ function prochaineDateEnvoi(joursDelai) {
       date.setDate(date.getDate() + 1);
       tentatives++;
     }
-    date.setHours(heureDebut, Math.floor(Math.random() * 120), 0, 0);
+    const randomMin2 = Math.floor(Math.random() * Math.min(plageMin, 120));
+    const totalMin2 = debutMin + randomMin2;
+    date.setHours(Math.floor(totalMin2 / 60), totalMin2 % 60, 0, 0);
   }
 
   return formatSQLite(date);
@@ -194,7 +206,7 @@ async function traiterInscriptionDirect(inscription) {
 
 // ─── Boucle principale du scheduler ──────────────────────────────────────────
 async function lancerVerification() {
-  if (!estDansLaFenetreEnvoi()) {
+  if (!estDansLaFenetreEnvoi(db)) {
     logger.debug("⏰ Hors fenêtre d'envoi");
     return;
   }

@@ -254,9 +254,17 @@ function todayParis() {
   return `${d.getFullYear()}-${pad(d.getMonth()+1)}-${pad(d.getDate())}`;
 }
 
+function getConfigVal(db, cle, envKey, defaut) {
+  try {
+    const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get(cle);
+    if (row && row.valeur) return row.valeur;
+  } catch(e) {}
+  return process.env[envKey] || defaut;
+}
+
 function verifierQuotaJournalier(db) {
   const today = todayParis();
-  const maxParJour = parseInt(process.env.MAX_EMAILS_PER_DAY) || 50;
+  const maxParJour = parseInt(getConfigVal(db, 'max_emails_par_jour', 'MAX_EMAILS_PER_DAY', '50'));
 
   // Vérifier ET réserver le slot atomiquement (évite les race conditions)
   return db.transaction(() => {
@@ -425,23 +433,36 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
 }
 
 // ─── Vérifier si on est dans la fenêtre d'envoi ──────────────────────────────
-function estDansLaFenetreEnvoi() {
-  const fuseau = process.env.FUSEAU || 'Europe/Paris';
+function parseHeurMinute(val, defautH, defautM) {
+  const s = String(val || '');
+  if (s.includes(':')) { const [h, m] = s.split(':').map(Number); return [h || defautH, m || 0]; }
+  return [parseInt(s) || defautH, defautM || 0];
+}
+
+function estDansLaFenetreEnvoi(db) {
+  const fuseau = (db ? getConfigVal(db, 'fuseau', 'FUSEAU', 'Europe/Paris') : process.env.FUSEAU) || 'Europe/Paris';
   const nowLocal = new Date(new Date().toLocaleString('en-US', { timeZone: fuseau }));
-  const heure = nowLocal.getHours();
-  const jourSemaine = nowLocal.getDay(); // 0=dim, 1=lun, ..., 6=sam
+  const nowMinutes = nowLocal.getHours() * 60 + nowLocal.getMinutes();
+  const jourSemaine = nowLocal.getDay();
 
-  const heureDebut = parseInt(process.env.SEND_HOUR_START) || 8;
-  const heureFin = parseInt(process.env.SEND_HOUR_END) || 18;
-  const joursActifs = (process.env.ACTIVE_DAYS || '1,2,3,4,5').split(',').map(Number);
+  const rawDebut = db ? getConfigVal(db, 'heure_debut', 'SEND_HOUR_START', '8') : (process.env.SEND_HOUR_START || '8');
+  const rawFin = db ? getConfigVal(db, 'heure_fin', 'SEND_HOUR_END', '18') : (process.env.SEND_HOUR_END || '18');
+  const [hD, mD] = parseHeurMinute(rawDebut, 8, 0);
+  const [hF, mF] = parseHeurMinute(rawFin, 18, 0);
+  const debutMin = hD * 60 + mD;
+  const finMin = hF * 60 + mF;
 
-  return heure >= heureDebut && heure < heureFin && joursActifs.includes(jourSemaine);
+  const rawJours = db ? getConfigVal(db, 'jours_actifs', 'ACTIVE_DAYS', '1,2,3,4,5') : (process.env.ACTIVE_DAYS || '1,2,3,4,5');
+  const jourMap = { lun: 1, mar: 2, mer: 3, jeu: 4, ven: 5, sam: 6, dim: 0 };
+  const joursActifs = rawJours.split(',').map(j => jourMap[j.trim()] !== undefined ? jourMap[j.trim()] : Number(j));
+
+  return nowMinutes >= debutMin && nowMinutes < finMin && joursActifs.includes(jourSemaine);
 }
 
 // ─── Quota restant aujourd'hui ───────────────────────────────────────────────
 function getQuotaRestant(db) {
   const today = todayParis();
-  const maxParJour = parseInt(process.env.MAX_EMAILS_PER_DAY) || 50;
+  const maxParJour = parseInt(getConfigVal(db, 'max_emails_par_jour', 'MAX_EMAILS_PER_DAY', '50'));
   const row = db.prepare('SELECT count FROM envoi_quota WHERE date_jour = ?').get(today);
   return { envoyes: row?.count || 0, max: maxParJour, restant: maxParJour - (row?.count || 0) };
 }
@@ -534,4 +555,6 @@ module.exports = {
   PUBLIC_URL,
   SENDER,
   SIGNATURE_HUGO,
+  getConfigVal,
+  parseHeurMinute,
 };
