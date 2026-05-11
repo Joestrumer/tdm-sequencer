@@ -20,9 +20,47 @@ function extractEmails(text) {
     '@sentry.', '@google-analytics.', '@facebook.', '@doubleclick.'
   ];
 
+  // Extensions de fichiers images/médias (faux positifs courants dans les attributs HTML src/href)
+  const imageExtensions = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico|tiff|avif|mp4|mp3|pdf|zip|css|js|woff|woff2|ttf|eot)$/i;
+
+  // TLDs valides courants (rejeter les TLD inexistants type .GZM, .XYZ aléatoire)
+  const validTlds = /\.(com|fr|net|org|eu|co|io|info|biz|de|uk|es|it|be|ch|nl|at|pt|lu|ca|us|email|online|pro|hotel|travel|club|site|world|app|dev|tech|store|shop|xyz|me)$/i;
+
   return emails.filter(email => {
     const lower = email.toLowerCase();
-    return !blacklist.some(term => lower.includes(term));
+
+    // Blacklist classique
+    if (blacklist.some(term => lower.includes(term))) return false;
+
+    // Rejeter si ça ressemble à un nom de fichier image/média
+    if (imageExtensions.test(lower)) return false;
+
+    // Rejeter si le domaine a une extension de fichier image dans le chemin
+    // Ex: photo@2x.png, cb@2x.25df64da.png
+    const domain = lower.split('@')[1] || '';
+    if (/^\dx\b/i.test(domain)) return false; // @2x.xxx patterns (retina images)
+    if (imageExtensions.test(domain)) return false;
+
+    // Rejeter les domaines qui ressemblent à des dimensions d'image
+    // Ex: @murielarie-3-1500x430.jpg, @lesley-Willimason-6-1024x683.jpg
+    if (/\d+x\d+/i.test(domain)) return false;
+
+    // Rejeter les TLD invalides / gibberish
+    if (!validTlds.test(lower)) return false;
+
+    // Rejeter les local parts trop courts (1 char) ou trop longs (>64)
+    const localPart = lower.split('@')[0];
+    if (localPart.length < 2 || localPart.length > 64) return false;
+
+    // Rejeter les domaines trop courts ou sans point
+    if (domain.length < 4 || !domain.includes('.')) return false;
+
+    // Rejeter les local parts avec que des caractères aléatoires (ratio majuscules/minuscules incohérent, trop de consonnes consécutives)
+    const originalLocal = email.split('@')[0];
+    const consonants = originalLocal.replace(/[^bcdfghjklmnpqrstvwxzBCDFGHJKLMNPQRSTVWXZ]/g, '');
+    if (consonants.length > 8 && consonants.length / originalLocal.length > 0.85) return false;
+
+    return true;
   });
 }
 

@@ -801,6 +801,82 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/prospection/emails-generiques/auto-clean — Détecte et exclut automatiquement les mauvais emails
+  router.post('/emails-generiques/auto-clean', (req, res) => {
+    try {
+      const { dry_run = false } = req.body;
+
+      // Extensions de fichiers images/médias
+      const imageExtensions = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico|tiff|avif|mp4|mp3|pdf|zip|css|js|woff|woff2|ttf|eot)$/i;
+      // TLDs valides
+      const validTlds = /\.(com|fr|net|org|eu|co|io|info|biz|de|uk|es|it|be|ch|nl|at|pt|lu|ca|us|email|online|pro|hotel|travel|club|site|world|app|dev|tech|store|shop|xyz|me)$/i;
+
+      const allEmails = db.prepare(`
+        SELECT id, contact_email, nom_commercial FROM hotels_france
+        WHERE contact_email IS NOT NULL AND contact_email != ''
+          AND (email_excluded = 0 OR email_excluded IS NULL)
+          AND (imported_as_lead = 0 OR imported_as_lead IS NULL)
+      `).all();
+
+      const badEmails = [];
+
+      for (const row of allEmails) {
+        const email = row.contact_email.toLowerCase();
+        const domain = email.split('@')[1] || '';
+        const localPart = email.split('@')[0];
+        let reason = null;
+
+        if (imageExtensions.test(email)) {
+          reason = 'extension fichier image/media';
+        } else if (imageExtensions.test(domain)) {
+          reason = 'domaine = fichier image';
+        } else if (/^\dx/i.test(domain)) {
+          reason = 'pattern retina @2x';
+        } else if (/\d+x\d+/.test(domain)) {
+          reason = 'dimensions image dans domaine';
+        } else if (!validTlds.test(email)) {
+          reason = 'TLD invalide';
+        } else if (localPart.length < 2 || localPart.length > 64) {
+          reason = 'local part trop court/long';
+        } else if (domain.length < 4 || !domain.includes('.')) {
+          reason = 'domaine invalide';
+        } else {
+          // Vérifier gibberish : trop de consonnes
+          const consonants = localPart.replace(/[^bcdfghjklmnpqrstvwxz]/gi, '');
+          if (consonants.length > 8 && consonants.length / localPart.length > 0.85) {
+            reason = 'local part gibberish';
+          }
+        }
+
+        if (reason) {
+          badEmails.push({ id: row.id, email: row.contact_email, hotel: row.nom_commercial, reason });
+        }
+      }
+
+      if (!dry_run && badEmails.length > 0) {
+        const stmt = db.prepare('UPDATE hotels_france SET email_excluded = 1 WHERE id = ?');
+        const transaction = db.transaction(() => {
+          for (const bad of badEmails) {
+            stmt.run(bad.id);
+          }
+        });
+        transaction();
+        logger.info(`🧹 Auto-clean: ${badEmails.length} mauvais email(s) exclu(s)`);
+      }
+
+      res.json({
+        success: true,
+        dry_run,
+        total_checked: allEmails.length,
+        bad_emails: badEmails.length,
+        details: badEmails,
+      });
+    } catch (err) {
+      logger.error('Erreur POST /emails-generiques/auto-clean:', err);
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // GET /api/prospection/contacts — Liste de tous les contacts LinkedIn trouvés
   router.get('/contacts', (req, res) => {
     try {

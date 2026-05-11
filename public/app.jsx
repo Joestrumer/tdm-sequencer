@@ -5616,6 +5616,28 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 <option value={0}>Tout afficher</option>
               </select>
               <button
+                onClick={async () => {
+                  try {
+                    const res = await api.post('/prospection/emails-generiques/auto-clean', { dry_run: true });
+                    if (res.bad_emails === 0) {
+                      showToast('Aucun mauvais email detecte', 'success');
+                      return;
+                    }
+                    const exemples = res.details.slice(0, 5).map(d => d.email + ' (' + d.reason + ')').join('\n');
+                    if (confirm(res.bad_emails + ' mauvais email(s) detecte(s) :\n\n' + exemples + (res.bad_emails > 5 ? '\n... et ' + (res.bad_emails - 5) + ' autre(s)' : '') + '\n\nExclure tous ?')) {
+                      const res2 = await api.post('/prospection/emails-generiques/auto-clean', { dry_run: false });
+                      showToast(res2.bad_emails + ' email(s) exclu(s) automatiquement', 'success');
+                      chargerEmailsGeneriques();
+                    }
+                  } catch (err) {
+                    showToast('Erreur: ' + err.message, 'error');
+                  }
+                }}
+                className="px-4 py-2 rounded-lg bg-amber-500 text-white text-sm font-medium hover:bg-amber-600 flex items-center gap-2"
+              >
+                Nettoyage auto
+              </button>
+              <button
                 onClick={() => {
                   const csv = [
                     ['Nom commercial', 'Email', 'Commune', 'Code postal', 'Site web', 'Classement', 'Capacité'].join(';'),
