@@ -1465,7 +1465,7 @@ const VueDashboard = ({ showToast }) => {
                 <div key={i} className={`flex items-start gap-3 p-2.5 rounded-lg ${isPast ? 'bg-amber-50 border border-amber-200' : 'bg-slate-50'}`}>
                   <div className="flex-1 min-w-0">
                     <div className="text-xs font-medium text-slate-900 truncate">
-                      {envoi.prenom} {envoi.nom}
+                      {envoi.prenom && envoi.prenom.trim() ? `${envoi.prenom} ${envoi.nom || ''}`.trim() : (envoi.email || envoi.nom || '—')}
                     </div>
                     <div className="text-xs text-slate-500 truncate">{envoi.hotel}</div>
                     <div className="text-xs text-slate-400 mt-0.5">
