@@ -20060,6 +20060,14 @@ function App() {
 
   useEffect(() => { charger(); }, []);
 
+  // Rafraîchir les leads silencieusement toutes les 60s (détection IMAP, etc.)
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!document.hidden) charger();
+    }, 60000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Normaliser les séquences (memoïsé pour éviter les recalculs)
   const sequencesNorm = useMemo(() => sequences.map(s => {
     let opts = {};
