@@ -1473,12 +1473,18 @@ const VueDashboard = ({ showToast }) => {
                     </div>
                   </div>
                   <div className="text-right flex-shrink-0">
-                    <div className={`text-xs font-medium ${isPast ? 'text-amber-600' : 'text-slate-600'}`}>
-                      {prochainDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
-                    </div>
-                    <div className="text-xs text-slate-400">
-                      {prochainDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
-                    </div>
+                    {isPast ? (
+                      <div className="text-xs font-medium text-amber-600">⏳ En attente</div>
+                    ) : (
+                      <>
+                        <div className="text-xs font-medium text-slate-600">
+                          {prochainDate.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' })}
+                        </div>
+                        <div className="text-xs text-slate-400">
+                          {prochainDate.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}
+                        </div>
+                      </>
+                    )}
                   </div>
                 </div>
               );
