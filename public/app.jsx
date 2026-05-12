@@ -11776,6 +11776,7 @@ const FacturesSamples = ({ showToast }) => {
   const [searchRef, setSearchRef] = useState('');
   const [shippingId, setShippingId] = useState('300');
   const [businessType, setBusinessType] = useState('Hotel 4*');
+  const [deliveryComment, setDeliveryComment] = useState('');
   const [clientSearch, setClientSearch] = useState('');
   const [clientResults, setClientResults] = useState([]);
   const [searchingClient, setSearchingClient] = useState(false);
@@ -11864,14 +11865,46 @@ const FacturesSamples = ({ showToast }) => {
           client_city: clientCity || '',
           client_country: clientCountry || 'FR',
           shipping_id: shippingId,
-          shipping_name: '', // Sera rempli si nécessaire
+          shipping_name: '',
           montant_ht: res.price_net || 0,
           montant_ttc: res.price_gross || 0,
-          notes: 'Proforma échantillon',
+          notes: deliveryComment || 'Proforma échantillon',
         });
       } catch (shipErr) {
         console.warn('Erreur ajout shipment:', shipErr);
-        // Ne pas bloquer si l'ajout échoue
+      }
+
+      // Lancer automatiquement CSV + Email logisticien
+      try {
+        const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+        const invoiceData = {
+          ...res,
+          notes: deliveryComment || '',
+          products: products.map(p => {
+            const cat = catalog.find(c => c.ref === p.ref);
+            return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
+          }),
+        };
+        const client = { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone };
+        const csvRes = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
+          method: 'POST',
+          headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ invoiceData, client, shippingId }),
+        });
+        if (!csvRes.ok) throw new Error('Erreur CSV: ' + csvRes.status);
+        const blob = await csvRes.blob();
+        const fileName = `logisticien-${res.number || 'proforma'}.csv`;
+        const dirName = await saveFileWithPicker(blob, fileName);
+        if (dirName) showToast(`CSV sauvé: ${dirName}/${fileName}`, 'success');
+        else { downloadFallback(blob, fileName); showToast('CSV téléchargé', 'success'); }
+
+        const invoiceNum = res.number || '';
+        const subject = encodeURIComponent(`Échantillons : ${clientName} ${invoiceNum}`);
+        const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la demande d'échantillons ${invoiceNum} (${clientName}).\n\nCordialement`);
+        const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+        window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
+      } catch (csvErr) {
+        showToast('Proforma créée mais erreur CSV: ' + csvErr.message, 'error');
       }
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
@@ -11889,6 +11922,7 @@ const FacturesSamples = ({ showToast }) => {
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
       const invoiceData = {
         ...result,
+        notes: deliveryComment || '',
         products: products.map(p => {
           const cat = catalog.find(c => c.ref === p.ref);
           return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
@@ -12046,6 +12080,12 @@ const FacturesSamples = ({ showToast }) => {
               <option value="Groupe Restauration">Groupe Restauration</option>
               <option value="Hospitality Suppliers">Hospitality Suppliers</option>
             </select>
+          </div>
+          <div className="md:col-span-2">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Commentaire de livraison</label>
+            <textarea value={deliveryComment} onChange={e => setDeliveryComment(e.target.value)}
+              placeholder="Instructions particulières pour le logisticien..."
+              rows={2} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-none" />
           </div>
         </div>
 
