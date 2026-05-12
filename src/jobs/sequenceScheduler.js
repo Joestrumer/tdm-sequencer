@@ -12,6 +12,7 @@ const logger  = require('../config/logger');
 const { envoyerEmail, estDansLaFenetreEnvoi, substituerVariables, getConfigVal, parseHeurMinute } = require('../services/brevoService');
 const hubspot = require('../services/hubspotService');
 const { addOrUpdateTag } = require('../utils/leadTags');
+const { checkImapReplies } = require('../services/imapReplyService');
 
 let db; // Injecté par initialiser()
 
@@ -295,6 +296,15 @@ function initialiser(database) {
   cron.schedule('*/15 * * * *', async () => {
     try { await lancerVerification(); }
     catch (err) { logger.error('Erreur scheduler', { error: err.message }); }
+  });
+
+  cron.schedule('*/5 * * * *', async () => {
+    try {
+      logger.info('📩 Vérification IMAP...');
+      await checkImapReplies(db);
+    } catch (err) {
+      logger.error('Erreur polling IMAP', { error: err.message });
+    }
   });
 
   logger.info('⏱️  Scheduler initialisé — vérification toutes les 15 minutes');
