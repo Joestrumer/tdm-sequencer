@@ -6,6 +6,36 @@ const Imap = require('imap');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
 
+const AUTO_REPLY_SUBJECTS = [
+  /^(re:\s*)?(out of office|absence|automatic reply|auto[- ]?reply|autoreply)/i,
+  /^(re:\s*)?(message automatique|réponse automatique|hors du bureau|en dehors du bureau)/i,
+  /^(re:\s*)?(vacation|congé|indisponible|undeliverable|non remis|delivery|returned mail)/i,
+  /^(re:\s*)?(mail delivery|failure notice|postmaster|mailer-daemon)/i,
+];
+
+function isAutoReply(headerData) {
+  // Header Auto-Submitted (RFC 3834)
+  const autoSubmitted = headerData.match(/^Auto-Submitted:\s*(.+)$/mi);
+  if (autoSubmitted && autoSubmitted[1].trim().toLowerCase() !== 'no') return true;
+
+  // Header X-Auto-Response-Suppress (Microsoft)
+  if (/^X-Auto-Response-Suppress:/mi.test(headerData)) return true;
+
+  // Header Precedence: bulk/auto_reply/junk
+  const precedence = headerData.match(/^Precedence:\s*(.+)$/mi);
+  if (precedence && /^(bulk|auto_reply|junk|list)$/i.test(precedence[1].trim())) return true;
+
+  // Expéditeur mailer-daemon / postmaster / noreply
+  const from = headerData.match(/^From:\s*(.+)$/mi);
+  if (from && /mailer-daemon|postmaster|noreply|no-reply/i.test(from[1])) return true;
+
+  // Sujet typique de réponse automatique
+  const subject = headerData.match(/^Subject:\s*(.+)$/mi);
+  if (subject && AUTO_REPLY_SUBJECTS.some(rx => rx.test(subject[1].trim()))) return true;
+
+  return false;
+}
+
 function parseAddress(header) {
   const match = header.match(/<([^>]+)>/);
   if (match) return match[1].toLowerCase().trim();
@@ -74,7 +104,7 @@ function checkImapReplies(db) {
 
           logger.info(`📩 Vérification IMAP... ${uids.length} email(s) non lu(s) trouvé(s)`);
 
-          const fetch = imap.fetch(uids, { bodies: 'HEADER.FIELDS (FROM SUBJECT)', markSeen: false });
+          const fetch = imap.fetch(uids, { bodies: 'HEADER.FIELDS (FROM SUBJECT AUTO-SUBMITTED X-AUTO-RESPONSE-SUPPRESS PRECEDENCE)', markSeen: false });
           const processed = [];
 
           fetch.on('message', (msg) => {
@@ -96,6 +126,11 @@ function checkImapReplies(db) {
 
                 const emailAddr = parseAddress(fromMatch[1]);
                 const subject = subjectMatch ? subjectMatch[1].trim() : '';
+
+                if (isAutoReply(headerData)) {
+                  logger.debug('📩 Réponse automatique ignorée', { from: emailAddr, sujet: subject });
+                  continue;
+                }
 
                 const lead = db.prepare('SELECT * FROM leads WHERE LOWER(email) = ?').get(emailAddr);
                 if (!lead) continue;
