@@ -707,7 +707,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
           engagement: {
             active: true,
             type: 'TASK',
-            timestamp: Date.now(),
+            timestamp: taskTimestamp,
             ownerId: parseInt(HUGO_OWNER_ID),
           },
           associations,
@@ -717,8 +717,6 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
             status: 'NOT_STARTED',
             priority: 'HIGH',
             taskType: 'TODO',
-            reminders: [taskTimestamp],
-            completionDate: taskTimestamp,
           }
         }),
       }).catch(e => logger.error('HubSpot création task retour echantillons échouée', { error: e.message, companyId }));
