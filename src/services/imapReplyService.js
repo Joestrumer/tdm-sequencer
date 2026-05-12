@@ -16,9 +16,9 @@ function getImapConfig(db) {
   const keys = ['imap_host', 'imap_port', 'imap_user', 'imap_password', 'imap_secure'];
   const config = {};
   for (const key of keys) {
-    const row = db.prepare('SELECT value FROM config WHERE key = ?').get(key);
-    if (!row || !row.value) return null;
-    config[key] = row.value;
+    const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get(key);
+    if (!row || !row.valeur) return null;
+    config[key] = row.valeur;
   }
   return config;
 }
