@@ -77,22 +77,18 @@ function checkImapReplies(db) {
           const fetch = imap.fetch(uids, { bodies: 'HEADER.FIELDS (FROM SUBJECT)', markSeen: false });
           const processed = [];
 
-          fetch.on('message', (msg, seqno) => {
+          fetch.on('message', (msg) => {
             let headerData = '';
-            let uid = null;
             msg.on('body', (stream) => {
               stream.on('data', (chunk) => { headerData += chunk.toString('utf8'); });
             });
-            msg.once('attributes', (attrs) => { uid = attrs.uid; });
             msg.once('end', () => {
-              processed.push({ headerData, uid });
+              processed.push(headerData);
             });
           });
 
           fetch.once('end', () => {
-            const uidsToMarkSeen = [];
-
-            for (const { headerData, uid } of processed) {
+            for (const headerData of processed) {
               try {
                 const fromMatch = headerData.match(/^From:\s*(.+)$/mi);
                 const subjectMatch = headerData.match(/^Subject:\s*(.+)$/mi);
@@ -103,9 +99,6 @@ function checkImapReplies(db) {
 
                 const lead = db.prepare('SELECT * FROM leads WHERE LOWER(email) = ?').get(emailAddr);
                 if (!lead) continue;
-
-                // Marquer comme lu même si déjà "Répondu" (pour ne pas re-traiter)
-                if (uid) uidsToMarkSeen.push(uid);
 
                 if (lead.statut === 'Répondu') continue;
 
@@ -124,17 +117,8 @@ function checkImapReplies(db) {
               }
             }
 
-            // Marquer comme lus uniquement les emails provenant de leads connus
-            if (uidsToMarkSeen.length > 0) {
-              imap.addFlags(uidsToMarkSeen, ['\\Seen'], (err) => {
-                if (err) logger.warn('Erreur marquage SEEN IMAP', { error: err.message });
-                imap.end();
-                resolve();
-              });
-            } else {
-              imap.end();
-              resolve();
-            }
+            imap.end();
+            resolve();
           });
 
           fetch.once('error', (err) => {
