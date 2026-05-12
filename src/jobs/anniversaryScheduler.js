@@ -110,7 +110,7 @@ async function traiterAnniversaires() {
               subject: sujet,
               htmlContent: html,
               replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
-            }, _db);
+            });
 
             _db.prepare('INSERT INTO partner_anniversary_logs (id, partner_id, contact_email, template_id, year) VALUES (?, ?, ?, ?, ?)').run(
               randomUUID(), partner.id, contact.email, campaign.id, currentYear
