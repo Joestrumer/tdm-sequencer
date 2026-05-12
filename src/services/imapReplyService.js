@@ -74,24 +74,28 @@ function checkImapReplies(db) {
 
           logger.info(`📩 Vérification IMAP... ${uids.length} email(s) non lu(s) trouvé(s)`);
 
-          const fetch = imap.fetch(uids, { bodies: 'HEADER.FIELDS (FROM SUBJECT)', markSeen: true });
+          const fetch = imap.fetch(uids, { bodies: 'HEADER.FIELDS (FROM SUBJECT)', markSeen: false });
           const processed = [];
 
-          fetch.on('message', (msg) => {
+          fetch.on('message', (msg, seqno) => {
             let headerData = '';
+            let uid = null;
             msg.on('body', (stream) => {
               stream.on('data', (chunk) => { headerData += chunk.toString('utf8'); });
             });
+            msg.once('attributes', (attrs) => { uid = attrs.uid; });
             msg.once('end', () => {
-              processed.push(headerData);
+              processed.push({ headerData, uid });
             });
           });
 
           fetch.once('end', () => {
-            for (const header of processed) {
+            const uidsToMarkSeen = [];
+
+            for (const { headerData, uid } of processed) {
               try {
-                const fromMatch = header.match(/^From:\s*(.+)$/mi);
-                const subjectMatch = header.match(/^Subject:\s*(.+)$/mi);
+                const fromMatch = headerData.match(/^From:\s*(.+)$/mi);
+                const subjectMatch = headerData.match(/^Subject:\s*(.+)$/mi);
                 if (!fromMatch) continue;
 
                 const emailAddr = parseAddress(fromMatch[1]);
@@ -99,6 +103,9 @@ function checkImapReplies(db) {
 
                 const lead = db.prepare('SELECT * FROM leads WHERE LOWER(email) = ?').get(emailAddr);
                 if (!lead) continue;
+
+                // Marquer comme lu même si déjà "Répondu" (pour ne pas re-traiter)
+                if (uid) uidsToMarkSeen.push(uid);
 
                 if (lead.statut === 'Répondu') continue;
 
@@ -116,8 +123,18 @@ function checkImapReplies(db) {
                 logger.error('Erreur traitement email IMAP', { error: e.message });
               }
             }
-            imap.end();
-            resolve();
+
+            // Marquer comme lus uniquement les emails provenant de leads connus
+            if (uidsToMarkSeen.length > 0) {
+              imap.addFlags(uidsToMarkSeen, ['\\Seen'], (err) => {
+                if (err) logger.warn('Erreur marquage SEEN IMAP', { error: err.message });
+                imap.end();
+                resolve();
+              });
+            } else {
+              imap.end();
+              resolve();
+            }
           });
 
           fetch.once('error', (err) => {
