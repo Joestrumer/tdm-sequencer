@@ -637,6 +637,55 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
       }
     }
 
+    // Créer ou retrouver le contact (même si la company existait déjà)
+    if (!contactId && isSample && clientEmail) {
+      const dashIndex2 = clientName.lastIndexOf(' - ');
+      let prenom2 = '', nom2 = '';
+      if (dashIndex2 > 0) {
+        const fullName2 = clientName.substring(dashIndex2 + 3).trim();
+        const nameParts2 = fullName2.split(/\s+/);
+        if (nameParts2.length >= 2) { prenom2 = nameParts2[0]; nom2 = nameParts2.slice(1).join(' '); }
+        else { nom2 = fullName2; }
+      }
+
+      const contactProps = { email: clientEmail };
+      if (prenom2) contactProps.firstname = prenom2;
+      if (nom2) contactProps.lastname = nom2;
+      if (clientPhone) contactProps.phone = clientPhone;
+
+      try {
+        const contactRes = await hubspotFetch('/crm/v3/objects/contacts', {
+          method: 'POST',
+          body: JSON.stringify({ properties: contactProps }),
+        });
+        contactId = contactRes?.id;
+        logger.info('👤 HubSpot contact créé (échantillon)', { contactId, email: clientEmail });
+      } catch (e) {
+        if (e.message.includes('409') || e.message.includes('CONTACT_EXISTS')) {
+          const search = await hubspotFetch('/crm/v3/objects/contacts/search', {
+            method: 'POST',
+            body: JSON.stringify({
+              filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: clientEmail }] }],
+              limit: 1,
+            }),
+          });
+          contactId = search?.results?.[0]?.id;
+          logger.info('👤 HubSpot contact existant retrouvé', { contactId, email: clientEmail });
+        } else {
+          logger.error('HubSpot création contact échouée', { error: e.message, clientEmail });
+        }
+      }
+
+      if (contactId && companyId) {
+        await hubspotFetch('/crm/v3/associations/contacts/companies/batch/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            inputs: [{ from: { id: contactId }, to: { id: companyId }, type: 'contact_to_company' }]
+          }),
+        }).catch(e => logger.warn('HubSpot association contact→company échouée', { error: e.message, contactId, companyId }));
+      }
+    }
+
     if (!companyId) {
       logger.warn('creerDealFromInvoice: aucune company HubSpot trouvée/créée', { clientName, vfClientName, vfClientId });
       logHubspot(db, 'deal', 'skip', null, null, { reason: 'no_company', clientName, vfClientName, vfClientId });
