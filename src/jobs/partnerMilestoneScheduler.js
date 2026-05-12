@@ -71,7 +71,7 @@ async function traiterMilestones() {
               subject: sujet,
               htmlContent: html,
               replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
-            });
+            }, _db);
 
             _db.prepare('INSERT INTO partner_milestone_logs (id, milestone_id, partner_id, contact_id, statut) VALUES (?, ?, ?, ?, ?)').run(
               randomUUID(), milestone.id, partner.id, contact.id, 'envoyé'

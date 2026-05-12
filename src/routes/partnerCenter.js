@@ -819,7 +819,7 @@ module.exports = (db) => {
         } catch (_) {}
       }
 
-      await brevoService.brevoSendEmail(emailPayload);
+      await brevoService.brevoSendEmail(emailPayload, db);
 
       res.json({ ok: true, message: `Email test envoyé à ${email}` });
     } catch (e) {
@@ -898,7 +898,7 @@ module.exports = (db) => {
           } catch (_) {}
         }
 
-        await brevoService.brevoSendEmail(emailPayload);
+        await brevoService.brevoSendEmail(emailPayload, db);
 
         db.prepare("UPDATE partner_campaign_recipients SET statut = 'envoyé', sent_at = datetime('now') WHERE id = ?").run(r.id);
         sentCount++;

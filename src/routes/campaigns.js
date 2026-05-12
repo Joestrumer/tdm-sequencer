@@ -492,7 +492,7 @@ module.exports = (db) => {
       }
 
       if (process.env.BREVO_API_KEY) {
-        await bse(payload);
+        await bse(payload, db);
       }
 
       res.json({ ok: true, message: `Email test envoyé à ${email}` });

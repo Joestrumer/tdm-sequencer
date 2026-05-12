@@ -272,7 +272,7 @@ module.exports = (db) => {
 
           let brevoMessageId = null;
           if (process.env.BREVO_API_KEY) {
-            const result = await brevoService.brevoSendEmail(payload);
+            const result = await brevoService.brevoSendEmail(payload, db);
             brevoMessageId = result?.messageId || null;
           } else {
             brevoMessageId = `demo-${Date.now()}`;
@@ -341,7 +341,7 @@ module.exports = (db) => {
 
           let brevoMessageId = null;
           if (process.env.BREVO_API_KEY) {
-            const result = await brevoService.brevoSendEmail(payload);
+            const result = await brevoService.brevoSendEmail(payload, db);
             brevoMessageId = result?.messageId || null;
           } else {
             brevoMessageId = `demo-${Date.now()}`;

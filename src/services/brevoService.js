@@ -39,7 +39,14 @@ function getTransporter() {
   return _transporter;
 }
 
-async function brevoSendEmail(payload) {
+async function brevoSendEmail(payload, db) {
+  // Vérifier la blocklist si db disponible
+  if (db && payload.to && payload.to.length) {
+    for (const dest of payload.to) {
+      if (dest.email) verifierBlocklist(db, dest.email);
+    }
+  }
+
   // SMTP si BREVO_SMTP_KEY défini ET nodemailer disponible
   if (process.env.BREVO_SMTP_KEY) {
     try {

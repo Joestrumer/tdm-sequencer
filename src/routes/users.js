@@ -129,7 +129,7 @@ module.exports = (db) => {
         to: [{ email: user.email, name: user.nom }],
         subject: 'Vos identifiants TDM Sequencer',
         htmlContent,
-      });
+      }, db);
 
       res.json({ ok: true, message: 'Identifiants envoyés par email' });
     } catch (e) {
