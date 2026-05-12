@@ -688,14 +688,17 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
     }
 
     // 9. Créer task "retour echantillons" à J+7 (skip weekends)
-    if (isSample && dealId) {
-      let taskDate = new Date(Date.now() + 7 * 24 * 3600 * 1000);
-      const day = taskDate.getDay();
-      if (day === 6) taskDate.setDate(taskDate.getDate() + 2); // samedi → lundi
-      if (day === 0) taskDate.setDate(taskDate.getDate() + 1); // dimanche → lundi
+    if (isSample && companyId) {
+      let taskDate = new Date();
+      let businessDays = 0;
+      while (businessDays < 7) {
+        taskDate.setDate(taskDate.getDate() + 1);
+        const dow = taskDate.getDay();
+        if (dow !== 0 && dow !== 6) businessDays++;
+      }
       const taskTimestamp = taskDate.getTime();
 
-      const associations = { dealIds: [parseInt(dealId)] };
+      const associations = { companyIds: [parseInt(companyId)] };
       if (contactId) associations.contactIds = [parseInt(contactId)];
 
       await hubspotFetch('/engagements/v1/engagements', {
@@ -718,8 +721,8 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
             completionDate: taskTimestamp,
           }
         }),
-      }).catch(e => logger.error('HubSpot création task retour echantillons échouée', { error: e.message, dealId }));
-      logger.info('📋 HubSpot task "retour echantillons" créée', { dealId, taskDate: taskDate.toISOString().split('T')[0] });
+      }).catch(e => logger.error('HubSpot création task retour echantillons échouée', { error: e.message, companyId }));
+      logger.info('📋 HubSpot task "retour echantillons" créée', { companyId, taskDate: taskDate.toISOString().split('T')[0] });
     }
 
     logHubspot(db, 'deal', 'create_from_invoice', null, dealId, { clientName, orderNumber, invoiceNumber, montantHT, montantTTC, commission, companyName });
