@@ -484,6 +484,53 @@ db.exec(`
 
   CREATE INDEX IF NOT EXISTS idx_veille_gsnap_place ON veille_google_snapshots(hotel_place_id);
 
+  -- ─── Contacts décideurs (Phase 2 Refonte Veille) ──────────────────────────
+
+  CREATE TABLE IF NOT EXISTS veille_contacts (
+    id TEXT PRIMARY KEY,
+    opportunity_id TEXT REFERENCES veille_opportunities(id) ON DELETE SET NULL,
+    hotel_name TEXT,
+    full_name TEXT,
+    first_name TEXT,
+    last_name TEXT,
+    role TEXT,
+    role_relevance INTEGER DEFAULT 50,
+    linkedin_url TEXT,
+    email TEXT,
+    email_pattern TEXT,
+    email_status TEXT DEFAULT 'unverified',
+    email_score INTEGER,
+    email_source TEXT,
+    phone TEXT,
+    phone_status TEXT,
+    domain TEXT,
+    siren TEXT,
+    enrichment_date TEXT,
+    last_verified_at TEXT,
+    raw_payload TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_ct_opp ON veille_contacts(opportunity_id);
+  CREATE INDEX IF NOT EXISTS idx_veille_ct_email ON veille_contacts(email);
+  CREATE INDEX IF NOT EXISTS idx_veille_ct_name ON veille_contacts(full_name);
+
+  -- ─── Tentatives d'enrichissement contact (audit trail) ─────────────────────
+
+  CREATE TABLE IF NOT EXISTS veille_contact_attempts (
+    id TEXT PRIMARY KEY,
+    contact_id TEXT REFERENCES veille_contacts(id) ON DELETE CASCADE,
+    opportunity_id TEXT,
+    attempt_type TEXT NOT NULL,
+    status TEXT DEFAULT 'pending',
+    payload TEXT,
+    credits_used INTEGER DEFAULT 0,
+    attempted_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_ca_contact ON veille_contact_attempts(contact_id);
+  CREATE INDEX IF NOT EXISTS idx_veille_ca_opp ON veille_contact_attempts(opportunity_id);
+
   -- ─── Table Prospection Hôtels France (import CSV officiel) ──────────────────
 
   CREATE TABLE IF NOT EXISTS hotels_france (

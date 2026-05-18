@@ -435,9 +435,24 @@ function initialiser(database) {
   });
 
   logger.info('Veille: crons détecteurs de signaux planifiés');
+
+  // ─── Pipeline contacts : 1x/semaine (mercredi 10h) ─────────────────────
+  cron.schedule('0 10 * * 3', async () => {
+    try {
+      logger.info('Veille: cron pipeline contacts');
+      const { runBatch } = require('../services/contacts/contactPipeline');
+      await runBatch(db, { scoreThreshold: 50, limit: 15 });
+    } catch (err) {
+      logger.error(`Veille pipeline contacts cron erreur: ${err.message}`);
+    }
+  });
+
+  logger.info('Veille: cron pipeline contacts planifié (mercredi 10h)');
 }
 
 // ─── Status (pour debug / API) ──────────────────────────────────────────────
+
+let contactPipelineRunning = false;
 
 function getStatus() {
   return {
@@ -446,6 +461,7 @@ function getStatus() {
     cronExpressions: [...scheduledJobs.keys()],
     detectorsRunning,
     enrichmentRunning,
+    contactPipelineRunning,
   };
 }
 

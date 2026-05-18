@@ -12,6 +12,10 @@
 const { Router } = require('express');
 const { randomUUID } = require('crypto');
 const { scraperUneSource, scraperToutesSources, planifierCrons, runEnrichmentPipeline, runAllDetectors, getStatus } = require('../jobs/veilleScraper');
+const { runPipelineForOpportunity, runBatch: runContactBatch } = require('../services/contacts/contactPipeline');
+const { exportToHubspot } = require('../services/contacts/hubspotExport');
+const { getZeroBounceCredits, getZeroBounceKey } = require('../services/contacts/emailPatternService');
+const { getApiKey: getPappersKey } = require('../services/contacts/pappersService');
 
 module.exports = (db) => {
   const router = Router();
@@ -1021,6 +1025,261 @@ module.exports = (db) => {
       }
 
       res.json({ ...signal, opportunity });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Contacts (Phase 2) ────────────────────────────────────────────────────
+
+  /**
+   * GET /contacts — Liste paginée des contacts avec filtres
+   */
+  router.get('/contacts', (req, res) => {
+    try {
+      const {
+        opportunity_id, email_status, role, min_relevance,
+        page = 1, limit = 50, search
+      } = req.query;
+
+      let where = ['1=1'];
+      const params = [];
+
+      if (opportunity_id) { where.push('c.opportunity_id = ?'); params.push(opportunity_id); }
+      if (email_status) { where.push('c.email_status = ?'); params.push(email_status); }
+      if (role) { where.push('c.role LIKE ?'); params.push(`%${role}%`); }
+      if (min_relevance) { where.push('c.role_relevance >= ?'); params.push(parseInt(min_relevance)); }
+      if (search) {
+        where.push('(c.full_name LIKE ? OR c.hotel_name LIKE ? OR c.email LIKE ?)');
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      const whereClause = where.join(' AND ');
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+
+      const total = db.prepare(`SELECT COUNT(*) as n FROM veille_contacts c WHERE ${whereClause}`).get(...params).n;
+
+      const contacts = db.prepare(`
+        SELECT c.*,
+          o.hotel_name as opp_hotel_name, o.business_score as opp_business_score, o.city as opp_city
+        FROM veille_contacts c
+        LEFT JOIN veille_opportunities o ON o.id = c.opportunity_id
+        WHERE ${whereClause}
+        ORDER BY c.role_relevance DESC, c.created_at DESC
+        LIMIT ? OFFSET ?
+      `).all(...params, parseInt(limit), offset);
+
+      res.json({
+        contacts: contacts.map(c => ({
+          ...c,
+          raw_payload: typeof c.raw_payload === 'string' ? JSON.parse(c.raw_payload || '{}') : c.raw_payload,
+        })),
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / parseInt(limit)),
+      });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /contacts/stats — Statistiques contacts
+   */
+  router.get('/contacts/stats', (req, res) => {
+    try {
+      const total = db.prepare('SELECT COUNT(*) as n FROM veille_contacts').get().n;
+      const withEmail = db.prepare("SELECT COUNT(*) as n FROM veille_contacts WHERE email IS NOT NULL AND email_status != 'invalid'").get().n;
+      const valid = db.prepare("SELECT COUNT(*) as n FROM veille_contacts WHERE email_status = 'valid'").get().n;
+      const catchAll = db.prepare("SELECT COUNT(*) as n FROM veille_contacts WHERE email_status = 'catch_all'").get().n;
+      const unverified = db.prepare("SELECT COUNT(*) as n FROM veille_contacts WHERE email_status = 'unverified'").get().n;
+
+      const byRole = db.prepare(`
+        SELECT role, COUNT(*) as count, AVG(role_relevance) as avg_relevance
+        FROM veille_contacts
+        WHERE role IS NOT NULL
+        GROUP BY role
+        ORDER BY count DESC
+      `).all();
+
+      const bySource = db.prepare(`
+        SELECT email_source, COUNT(*) as count
+        FROM veille_contacts
+        WHERE email_source IS NOT NULL
+        GROUP BY email_source
+        ORDER BY count DESC
+      `).all();
+
+      // Crédits API consommés
+      const pappersCredits = db.prepare(`
+        SELECT COALESCE(SUM(credits_used), 0) as total
+        FROM veille_contact_attempts
+        WHERE attempt_type = 'pappers_lookup'
+      `).get().total;
+
+      const zbCredits = db.prepare(`
+        SELECT COALESCE(SUM(credits_used), 0) as total
+        FROM veille_contact_attempts
+        WHERE attempt_type = 'zerobounce_verify'
+      `).get().total;
+
+      res.json({
+        total, withEmail, valid, catchAll, unverified,
+        byRole, bySource,
+        credits: { pappers_used: pappersCredits, zerobounce_used: zbCredits },
+      });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /contacts/:id — Détail d'un contact avec ses tentatives
+   */
+  router.get('/contacts/:id', (req, res) => {
+    try {
+      const contact = db.prepare('SELECT * FROM veille_contacts WHERE id = ?').get(req.params.id);
+      if (!contact) return res.status(404).json({ erreur: 'Contact introuvable' });
+
+      contact.raw_payload = typeof contact.raw_payload === 'string' ? JSON.parse(contact.raw_payload || '{}') : contact.raw_payload;
+
+      const attempts = db.prepare(`
+        SELECT * FROM veille_contact_attempts
+        WHERE contact_id = ?
+        ORDER BY attempted_at DESC
+      `).all(req.params.id);
+
+      res.json({
+        ...contact,
+        attempts: attempts.map(a => ({
+          ...a,
+          payload: typeof a.payload === 'string' ? JSON.parse(a.payload || '{}') : a.payload,
+        })),
+      });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * PATCH /contacts/:id — Modifier un contact (email manuel, rôle, etc.)
+   */
+  router.patch('/contacts/:id', (req, res) => {
+    try {
+      const { email, email_status, role, role_relevance, phone, linkedin_url } = req.body;
+      const updates = [];
+      const params = [];
+
+      if (email !== undefined) { updates.push('email = ?'); params.push(email); updates.push("email_source = 'manual'"); }
+      if (email_status !== undefined) { updates.push('email_status = ?'); params.push(email_status); }
+      if (role !== undefined) { updates.push('role = ?'); params.push(role); }
+      if (role_relevance !== undefined) { updates.push('role_relevance = ?'); params.push(parseInt(role_relevance)); }
+      if (phone !== undefined) { updates.push('phone = ?'); params.push(phone); }
+      if (linkedin_url !== undefined) { updates.push('linkedin_url = ?'); params.push(linkedin_url); }
+
+      if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à modifier' });
+
+      params.push(req.params.id);
+      db.prepare(`UPDATE veille_contacts SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * DELETE /contacts/:id — Supprimer un contact
+   */
+  router.delete('/contacts/:id', (req, res) => {
+    try {
+      db.prepare('DELETE FROM veille_contacts WHERE id = ?').run(req.params.id);
+      res.json({ ok: true });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * POST /contacts/run-pipeline — Lancer le pipeline contact en batch
+   * Body optionnel: { scoreThreshold, limit, skipPappers, skipLinkedin, skipEmail, forceRerun }
+   */
+  router.post('/contacts/run-pipeline', async (req, res) => {
+    req.setTimeout(600000);
+    res.setTimeout(600000);
+    try {
+      const result = await runContactBatch(db, req.body || {});
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * POST /opportunities/:id/run-contacts — Pipeline contact pour une seule opportunité
+   */
+  router.post('/opportunities/:id/run-contacts', async (req, res) => {
+    req.setTimeout(300000);
+    res.setTimeout(300000);
+    try {
+      const opp = db.prepare('SELECT * FROM veille_opportunities WHERE id = ?').get(req.params.id);
+      if (!opp) return res.status(404).json({ erreur: 'Opportunité introuvable' });
+
+      const result = await runPipelineForOpportunity(db, opp, req.body || {});
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Export HubSpot ────────────────────────────────────────────────────────
+
+  /**
+   * POST /opportunities/:id/export-hubspot — Exporter une opportunité vers HubSpot
+   */
+  router.post('/opportunities/:id/export-hubspot', async (req, res) => {
+    try {
+      const result = await exportToHubspot(db, req.params.id);
+      if (result.error) {
+        return res.status(400).json({ ok: false, erreur: result.error });
+      }
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /contacts/api-credits — Crédits API restants (ZeroBounce, Pappers)
+   */
+  router.get('/contacts/api-credits', async (req, res) => {
+    try {
+      const result = {};
+
+      // ZeroBounce
+      const zbKey = getZeroBounceKey(db);
+      if (zbKey) {
+        const zb = await getZeroBounceCredits(zbKey);
+        result.zerobounce = { configured: true, credits_remaining: zb.credits };
+      } else {
+        result.zerobounce = { configured: false };
+      }
+
+      // Pappers (pas d'endpoint crédits, on compte les appels du jour)
+      const pKey = getPappersKey(db);
+      const todayUsed = db.prepare(`
+        SELECT COALESCE(SUM(credits_used), 0) as n
+        FROM veille_contact_attempts
+        WHERE attempt_type = 'pappers_lookup' AND date(attempted_at) = date('now')
+      `).get().n;
+      result.pappers = {
+        configured: !!pKey,
+        today_used: todayUsed,
+        daily_limit: 100,
+        remaining_estimate: Math.max(0, 100 - todayUsed),
+      };
+
+      res.json(result);
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
