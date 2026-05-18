@@ -12144,7 +12144,7 @@ const FacturesSamples = ({ showToast }) => {
                 // ── Step 0: Extract email & phone from raw text (can be anywhere) ──
                 const emailMatch = rawText.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
                 if (emailMatch) parsedEmail = emailMatch[0];
-                const phoneMatch = rawText.match(/(?:\+33|0033|0)\s*[1-9](?:[\s.()-]*\d){8}/);
+                const phoneMatch = rawText.match(/(?:\+33|0033)\s*\(?0?\)?\s*[1-9](?:[\s.()-]*\d){8}|0\s*[1-9](?:[\s.()-]*\d){8}/);
                 if (phoneMatch) parsedPhone = phoneMatch[0].trim();
 
                 // Remove email & phone from text, then split into clean lines
@@ -12178,7 +12178,7 @@ const FacturesSamples = ({ showToast }) => {
                   }
                   // "14 rue Pétel, 75015 Paris" — address with embedded zip+city (comma or space separated)
                   const hasAddr = addressKw.test(lines[i]) || /^\d+[\s,]/.test(lines[i]);
-                  const embZip = lines[i].match(/[,\s]\s*(\d{5})\s+([A-Za-zÀ-ÿ][\w\s.'-]*?)(?:\s*,?\s*(?:France|FR)?)?$/i);
+                  const embZip = lines[i].match(/[,\s]\s*(\d{5})\s+([A-Za-zÀ-ÿ][a-zA-ZÀ-ÿ0-9\s.'-]*?)(?:\s*,?\s*(?:France|FR)?)?$/i);
                   if (hasAddr && embZip) {
                     const zipIdx = lines[i].indexOf(embZip[1]);
                     parsedAddress = lines[i].substring(0, zipIdx).replace(/[,\s-]+$/, '').trim();
@@ -12204,7 +12204,7 @@ const FacturesSamples = ({ showToast }) => {
                     if (/^\d{5}$/.test(lines[i].trim())) { parsedZip = lines[i].trim(); usedLines.add(i); break; }
                     const zipCity = lines[i].match(/^(\d{5})\s+(.+)/);
                     if (zipCity) { parsedZip = zipCity[1]; parsedCity = zipCity[2].replace(/,?\s*(France|FR)$/i, '').trim(); usedLines.add(i); break; }
-                    const cityZip = lines[i].match(/^([A-Za-zÀ-ÿ][\w\s.'-]+?)\s+(\d{5})$/);
+                    const cityZip = lines[i].match(/^([A-Za-zÀ-ÿ][a-zA-ZÀ-ÿ0-9\s.'-]+?)\s+(\d{5})$/);
                     if (cityZip) { parsedCity = cityZip[1].trim(); parsedZip = cityZip[2]; usedLines.add(i); break; }
                   }
                 }
