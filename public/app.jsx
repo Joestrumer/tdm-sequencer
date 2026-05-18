@@ -12092,16 +12092,62 @@ const FacturesSamples = ({ showToast }) => {
                   }
                 }
 
-                // 6) Skip title/function lines (Directeur, Gérant, etc.)
+                // 6) Mark title/function lines + detect person name (line before or after title)
+                const hotelKeywords = /\b(h[oô]tel|château|domaine|maison|villa|auberge|résidence|chalet|lodge|resort|relais|manoir|bastide|g[iî]te|restaurant|bistrot|brasserie|palace|appart.?h[oô]tel|club|spa|camp|camping|centre|ferme|moulin|prieuré|abbaye|clos|mas)\b/i;
+                let personName = '', hotelName = '';
+                const titleLineIndexes = [];
+
+                // Find title lines first
                 for (let i = 0; i < lines.length; i++) {
                   if (usedLines.has(i)) continue;
-                  if (titleKeywords.test(lines[i])) { usedLines.add(i); }
+                  if (titleKeywords.test(lines[i])) {
+                    titleLineIndexes.push(i);
+                    usedLines.add(i);
+                  }
                 }
 
-                // 7) First remaining unused line = name
+                // 7) Among remaining unused lines, separate hotel name vs person name
+                const remainingLines = [];
                 for (let i = 0; i < lines.length; i++) {
-                  if (!usedLines.has(i)) { parsedName = lines[i]; usedLines.add(i); break; }
+                  if (!usedLines.has(i)) remainingLines.push({ idx: i, text: lines[i] });
                 }
+
+                for (const line of remainingLines) {
+                  if (hotelKeywords.test(line.text)) {
+                    // Line contains hotel keyword → hotel name
+                    if (!hotelName) hotelName = line.text;
+                    usedLines.add(line.idx);
+                  } else if (titleLineIndexes.length > 0 && titleLineIndexes.some(ti => Math.abs(ti - line.idx) === 1)) {
+                    // Line adjacent to a title line (Directeur) → person name
+                    if (!personName) personName = line.text;
+                    usedLines.add(line.idx);
+                  }
+                }
+
+                // If person or hotel still not found, use heuristics on remaining
+                for (const line of remainingLines) {
+                  if (usedLines.has(line.idx)) continue;
+                  // All-caps 2-4 words = likely person name
+                  const isAllCaps = line.text === line.text.toUpperCase() && /^[A-ZÀ-Ÿ\s-]{2,}$/.test(line.text) && line.text.split(/\s+/).length <= 4;
+                  // Title case 2-3 words without special chars = likely person name
+                  const isTitleCase = /^[A-ZÀ-Ÿ][a-zà-ÿ]+(\s+[A-ZÀ-Ÿ][a-zà-ÿ]+){0,2}$/.test(line.text);
+
+                  if (!personName && (isAllCaps || isTitleCase)) {
+                    personName = line.text;
+                    usedLines.add(line.idx);
+                  } else if (!hotelName) {
+                    hotelName = line.text;
+                    usedLines.add(line.idx);
+                  } else if (!personName) {
+                    personName = line.text;
+                    usedLines.add(line.idx);
+                  }
+                }
+
+                // Build clientName as "Hotel - Prénom Nom"
+                if (hotelName && personName) parsedName = `${hotelName} - ${personName}`;
+                else if (hotelName) parsedName = hotelName;
+                else if (personName) parsedName = personName;
 
                 // Apply only non-empty parsed values (don't overwrite existing)
                 if (parsedName) setClientName(parsedName);
