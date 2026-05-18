@@ -11780,6 +11780,8 @@ const FacturesSamples = ({ showToast }) => {
   const [clientSearch, setClientSearch] = useState('');
   const [clientResults, setClientResults] = useState([]);
   const [searchingClient, setSearchingClient] = useState(false);
+  const [queue, setQueue] = useState([]);
+  const [queueProcessing, setQueueProcessing] = useState(false);
   const clientSearchTimer = useRef(null);
   const clientAbortRef = useRef(null);
 
@@ -11816,6 +11818,124 @@ const FacturesSamples = ({ showToast }) => {
     setClientPhone(c.phone || '');
     setClientSearch('');
     setClientResults([]);
+  };
+
+  const resetClientFields = () => {
+    setClientName(''); setClientEmail(''); setClientAddress('');
+    setClientCity(''); setClientZip(''); setClientCountry('FR');
+    setClientPhone(''); setClientSearch(''); setClientResults([]);
+    setShippingId('300'); setBusinessType('Hotel 4*'); setDeliveryComment('');
+    setResult(null);
+  };
+
+  const addToQueue = async () => {
+    if (!clientName.trim() || products.length === 0) {
+      showToast('Nom du destinataire et produits requis', 'error'); return;
+    }
+    setQueueProcessing(true);
+    const entryIndex = queue.length;
+    const pendingEntry = { clientName, status: 'processing' };
+    setQueue(q => [...q, pendingEntry]);
+    try {
+      const res = await api.post('/factures/invoices', {
+        client: { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone },
+        products: products.map(p => {
+          const cat = catalog.find(c => c.ref === p.ref);
+          return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
+        }),
+        fraisPort: [{ ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20 }],
+        documentType: 'proforma',
+        logGSheets: false,
+        isSample: true,
+        businessType,
+      });
+      if (res.erreur) throw new Error(res.erreur);
+
+      // Shipment
+      try {
+        await api.post('/shipments', {
+          type: 'echantillon',
+          order_ref: res.number || `ECH-${Date.now()}`,
+          invoice_id: res.id,
+          invoice_number: res.number,
+          client_name: clientName,
+          client_email: clientEmail || '',
+          client_address: clientAddress || '',
+          client_city: clientCity || '',
+          client_country: clientCountry || 'FR',
+          shipping_id: shippingId,
+          shipping_name: '',
+          montant_ht: res.price_net || 0,
+          montant_ttc: res.price_gross || 0,
+          notes: deliveryComment || 'Proforma échantillon',
+        });
+      } catch (shipErr) {
+        console.warn('Erreur ajout shipment:', shipErr);
+      }
+
+      const entry = {
+        clientName,
+        client: { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone },
+        products: products.map(p => {
+          const cat = catalog.find(c => c.ref === p.ref);
+          return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
+        }),
+        shippingId,
+        deliveryComment,
+        result: res,
+        status: 'ok',
+        hubspot_deal_id: res.hubspot_deal_id || null,
+      };
+      setQueue(q => q.map((item, i) => i === entryIndex ? entry : item));
+      showToast(`Proforma ${res.number} créée — ajoutée à la file`, 'success');
+      resetClientFields();
+    } catch (err) {
+      setQueue(q => q.map((item, i) => i === entryIndex ? { ...item, status: 'error', error: err.message } : item));
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    setQueueProcessing(false);
+  };
+
+  const removeFromQueue = (index) => {
+    setQueue(q => q.filter((_, i) => i !== index));
+  };
+
+  const sendAllBatch = async () => {
+    const okEntries = queue.filter(e => e.status === 'ok');
+    if (okEntries.length === 0) { showToast('Aucun envoi valide dans la file', 'error'); return; }
+    setQueueProcessing(true);
+    try {
+      const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const batchOrders = okEntries.map(e => ({
+        invoiceData: { ...e.result, notes: e.deliveryComment || '', products: e.products },
+        client: e.client,
+        shippingId: e.shippingId,
+      }));
+      const res = await fetch(window.location.origin + '/api/factures/csv-logisticien-batch', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: batchOrders }),
+      });
+      if (!res.ok) throw new Error('Erreur CSV batch: ' + res.status);
+      const blob = await res.blob();
+      const fileName = `logisticien-batch-${okEntries.length}-echantillons.csv`;
+      const dirName = await saveFileWithPicker(blob, fileName);
+      if (dirName) showToast(`CSV batch sauvé: ${dirName}/${fileName}`, 'success');
+      else { downloadFallback(blob, fileName); showToast('CSV batch téléchargé', 'success'); }
+
+      // Email récapitulatif
+      const listeNoms = okEntries.map(e => e.clientName).join(', ');
+      const recap = okEntries.map((e, i) => `${i + 1}. ${e.clientName} — Proforma ${e.result.number || '?'}`).join('\n');
+      const subject = encodeURIComponent(`Échantillons : ${okEntries.length} envois — ${listeNoms}`);
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV groupé pour ${okEntries.length} envoi(s) d'échantillons :\n\n${recap}\n\nCordialement`);
+      const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+      window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
+
+      setQueue([]);
+    } catch (err) {
+      showToast('Erreur batch: ' + err.message, 'error');
+    }
+    setQueueProcessing(false);
   };
 
   const addProduct = (ref) => {
@@ -12230,12 +12350,20 @@ const FacturesSamples = ({ showToast }) => {
           </div>
         </div>
 
-        <button onClick={createProforma} disabled={processing || !clientName.trim()}
-          className="w-full py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50">
-          {processing ? 'Création...' : 'Créer proforma échantillons'}
-        </button>
+        <div className="flex gap-3">
+          <button onClick={addToQueue} disabled={processing || queueProcessing || !clientName.trim()}
+            className="flex-1 py-3 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-500 disabled:opacity-50">
+            {queueProcessing ? 'Ajout...' : `Ajouter à la file${queue.length > 0 ? ` (${queue.length})` : ''}`}
+          </button>
+          {queue.length === 0 && (
+            <button onClick={createProforma} disabled={processing || !clientName.trim()}
+              className="flex-1 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50">
+              {processing ? 'Création...' : 'Créer & envoyer'}
+            </button>
+          )}
+        </div>
 
-        {result && (
+        {result && queue.length === 0 && (
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center space-y-2">
             <p className="text-sm font-medium text-emerald-700">Proforma N° {result.number || result.id} créée !</p>
             {result.hubspot_deal_id
@@ -12255,6 +12383,33 @@ const FacturesSamples = ({ showToast }) => {
           </div>
         )}
       </div>
+
+      {queue.length > 0 && (
+        <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-3">
+          <h4 className="text-sm font-semibold text-slate-800">File d'attente ({queue.filter(e => e.status === 'ok').length} destinataire{queue.filter(e => e.status === 'ok').length > 1 ? 's' : ''})</h4>
+          <div className="space-y-2">
+            {queue.map((entry, i) => (
+              <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${entry.status === 'ok' ? 'bg-emerald-50 border border-emerald-100' : entry.status === 'error' ? 'bg-red-50 border border-red-100' : 'bg-slate-50 border border-slate-100'}`}>
+                <span className="text-base">{entry.status === 'ok' ? '\u2705' : entry.status === 'error' ? '\u274C' : '\u23F3'}</span>
+                <span className="flex-1 font-medium text-slate-700">{entry.clientName}</span>
+                {entry.result?.number && <span className="text-xs font-mono text-slate-500">#{entry.result.number}</span>}
+                {entry.status === 'ok' && entry.hubspot_deal_id && <span className="text-xs text-emerald-600">HubSpot</span>}
+                {entry.status === 'ok' && !entry.hubspot_deal_id && <span className="text-xs text-amber-500">pas HubSpot</span>}
+                {entry.status === 'error' && <span className="text-xs text-red-600">{entry.error}</span>}
+                {entry.result?.id && (
+                  <a href={`https://terredemars.vosfactures.fr/invoices/${entry.result.id}`} target="_blank" rel="noopener"
+                    className="text-xs text-blue-600 hover:underline">Voir</a>
+                )}
+                <button onClick={() => removeFromQueue(i)} className="text-slate-400 hover:text-red-500 text-xs" title="Retirer de la file">\u2716</button>
+              </div>
+            ))}
+          </div>
+          <button onClick={sendAllBatch} disabled={queueProcessing || queue.filter(e => e.status === 'ok').length === 0}
+            className="w-full py-3 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-500 disabled:opacity-50">
+            {queueProcessing ? 'Envoi en cours...' : `Envoyer tout — CSV global + Email (${queue.filter(e => e.status === 'ok').length} envoi${queue.filter(e => e.status === 'ok').length > 1 ? 's' : ''})`}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
