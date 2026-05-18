@@ -531,6 +531,21 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_veille_ca_contact ON veille_contact_attempts(contact_id);
   CREATE INDEX IF NOT EXISTS idx_veille_ca_opp ON veille_contact_attempts(opportunity_id);
 
+  -- ─── Feedback scoring (boucle d'apprentissage Phase 3) ─────────────────────
+
+  CREATE TABLE IF NOT EXISTS veille_scoring_feedback (
+    id TEXT PRIMARY KEY,
+    opportunity_id TEXT REFERENCES veille_opportunities(id) ON DELETE CASCADE,
+    feedback_type TEXT NOT NULL,
+    feedback_reason TEXT,
+    business_score_at_time INTEGER,
+    signals_snapshot TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_fb_opp ON veille_scoring_feedback(opportunity_id);
+  CREATE INDEX IF NOT EXISTS idx_veille_fb_type ON veille_scoring_feedback(feedback_type);
+
   -- ─── Table Prospection Hôtels France (import CSV officiel) ──────────────────
 
   CREATE TABLE IF NOT EXISTS hotels_france (

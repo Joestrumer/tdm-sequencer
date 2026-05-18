@@ -16,6 +16,8 @@ const { runPipelineForOpportunity, runBatch: runContactBatch } = require('../ser
 const { exportToHubspot } = require('../services/contacts/hubspotExport');
 const { getZeroBounceCredits, getZeroBounceKey } = require('../services/contacts/emailPatternService');
 const { getApiKey: getPappersKey } = require('../services/contacts/pappersService');
+const { computeCalibration, saveCalibrationReport, getLastCalibrationReport } = require('../jobs/scoringCalibration');
+const { checkAlerts, getRecentAlerts } = require('../services/veilleAlerts');
 
 module.exports = (db) => {
   const router = Router();
@@ -1279,6 +1281,121 @@ module.exports = (db) => {
         remaining_estimate: Math.max(0, 100 - todayUsed),
       };
 
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Feedback scoring (Phase 3) ───────────────────────────────────────────
+
+  /**
+   * POST /opportunities/:id/feedback — Enregistrer un feedback won/lost/not_relevant/wrong_contact
+   */
+  router.post('/opportunities/:id/feedback', (req, res) => {
+    try {
+      const { feedback_type, feedback_reason } = req.body;
+      const validTypes = ['won', 'lost', 'not_relevant', 'wrong_contact'];
+      if (!feedback_type || !validTypes.includes(feedback_type)) {
+        return res.status(400).json({ erreur: `Type invalide. Valeurs: ${validTypes.join(', ')}` });
+      }
+
+      const opp = db.prepare('SELECT * FROM veille_opportunities WHERE id = ?').get(req.params.id);
+      if (!opp) return res.status(404).json({ erreur: 'Opportunité introuvable' });
+
+      // Snapshot des signaux actuels
+      let signalsSnapshot = null;
+      try {
+        const signals = db.prepare(
+          'SELECT signal_type, signal_strength, source, detected_at FROM veille_signals WHERE opportunity_id = ?'
+        ).all(req.params.id);
+        signalsSnapshot = JSON.stringify(signals);
+      } catch (_) { /* ignore */ }
+
+      const id = require('crypto').randomUUID();
+      db.prepare(`
+        INSERT INTO veille_scoring_feedback (id, opportunity_id, feedback_type, feedback_reason, business_score_at_time, signals_snapshot)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(id, req.params.id, feedback_type, feedback_reason || null, opp.business_score, signalsSnapshot);
+
+      // Mettre à jour le statut de l'opportunité
+      const statusMap = { won: 'won', lost: 'lost', not_relevant: 'archived' };
+      if (statusMap[feedback_type]) {
+        db.prepare("UPDATE veille_opportunities SET status = ?, updated_at = datetime('now') WHERE id = ?")
+          .run(statusMap[feedback_type], req.params.id);
+      }
+
+      res.json({ ok: true, id });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /opportunities/:id/feedback — Historique des feedbacks d'une opportunité
+   */
+  router.get('/opportunities/:id/feedback', (req, res) => {
+    try {
+      const feedbacks = db.prepare(`
+        SELECT * FROM veille_scoring_feedback
+        WHERE opportunity_id = ?
+        ORDER BY created_at DESC
+      `).all(req.params.id);
+
+      res.json(feedbacks.map(f => ({
+        ...f,
+        signals_snapshot: typeof f.signals_snapshot === 'string' ? JSON.parse(f.signals_snapshot || '[]') : f.signals_snapshot,
+      })));
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Calibration scoring ──────────────────────────────────────────────────
+
+  /**
+   * GET /scoring/calibration — Rapport de calibration du scoring
+   */
+  router.get('/scoring/calibration', (req, res) => {
+    try {
+      if (req.query.refresh === '1') {
+        const report = saveCalibrationReport(db);
+        return res.json(report);
+      }
+      const cached = getLastCalibrationReport(db);
+      if (cached) return res.json(cached);
+      // Pas de rapport en cache, en générer un
+      const report = computeCalibration(db);
+      return res.json(report);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Alertes ──────────────────────────────────────────────────────────────
+
+  /**
+   * GET /veille-alerts — Alertes récentes (dernières 48h)
+   */
+  router.get('/veille-alerts', (req, res) => {
+    try {
+      const { hours = 48, scoreThreshold } = req.query;
+      const result = getRecentAlerts(db, {
+        hours: parseInt(hours),
+        scoreThreshold: scoreThreshold ? parseInt(scoreThreshold) : undefined,
+      });
+      res.json(result);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * POST /veille-alerts/check — Forcer la vérification des alertes
+   */
+  router.post('/veille-alerts/check', (req, res) => {
+    try {
+      const result = checkAlerts(db, req.body || {});
       res.json(result);
     } catch (err) {
       res.status(500).json({ erreur: err.message });

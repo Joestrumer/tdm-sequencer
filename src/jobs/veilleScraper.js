@@ -448,6 +448,29 @@ function initialiser(database) {
   });
 
   logger.info('Veille: cron pipeline contacts planifié (mercredi 10h)');
+
+  // ─── Calibration scoring : 1x/semaine (dimanche 22h) ───────────────────
+  cron.schedule('0 22 * * 0', () => {
+    try {
+      logger.info('Veille: cron calibration scoring');
+      const { saveCalibrationReport } = require('../jobs/scoringCalibration');
+      saveCalibrationReport(db);
+    } catch (err) {
+      logger.error(`Veille calibration cron erreur: ${err.message}`);
+    }
+  });
+
+  // ─── Alertes : vérification toutes les heures (8h-20h) ─────────────────
+  cron.schedule('0 8-20 * * *', () => {
+    try {
+      const { checkAlerts } = require('../services/veilleAlerts');
+      checkAlerts(db);
+    } catch (err) {
+      logger.warn(`Veille alerts cron erreur: ${err.message}`);
+    }
+  });
+
+  logger.info('Veille: crons calibration + alertes planifiés');
 }
 
 // ─── Status (pour debug / API) ──────────────────────────────────────────────

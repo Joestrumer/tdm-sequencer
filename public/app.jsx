@@ -19361,20 +19361,31 @@ function getDefaultVue(user) {
 }
 
 // ─── VueVeille — Veille web hôtelière Terre de Mars ─────────────────────────
-// Onglets : Opportunités (principal) / Articles / Sources & Santé
+// 5 onglets : Dashboard / Opportunités / Signaux / Sources & Santé / Paramètres
 
 const SIGNAL_LABELS = {
   renovation: { label: 'Rénovation', color: 'bg-red-100 text-red-700' },
+  press_renovation: { label: 'Rénovation (presse)', color: 'bg-red-100 text-red-700' },
   ouverture: { label: 'Ouverture', color: 'bg-emerald-100 text-emerald-700' },
+  press_ouverture: { label: 'Ouverture (presse)', color: 'bg-emerald-100 text-emerald-700' },
   nomination: { label: 'Nomination', color: 'bg-purple-100 text-purple-700' },
   acquisition: { label: 'Acquisition', color: 'bg-blue-100 text-blue-700' },
   conversion: { label: 'Conversion', color: 'bg-amber-100 text-amber-700' },
   spa_wellness: { label: 'Spa/Wellness', color: 'bg-pink-100 text-pink-700' },
   fermeture_temp: { label: 'Fermeture temp.', color: 'bg-amber-100 text-amber-700' },
   boamp_travaux: { label: 'BOAMP Travaux', color: 'bg-indigo-100 text-indigo-700' },
+  boamp_marche: { label: 'BOAMP Marché', color: 'bg-indigo-100 text-indigo-700' },
+  bodacc_movement: { label: 'BODACC', color: 'bg-violet-100 text-violet-700' },
   architecte: { label: 'Architecte', color: 'bg-teal-100 text-teal-700' },
   vente: { label: 'Vente', color: 'bg-orange-100 text-orange-700' },
   recrutement: { label: 'Recrutement', color: 'bg-cyan-100 text-cyan-700' },
+  google_review_drop: { label: 'Chute avis', color: 'bg-rose-100 text-rose-700' },
+  google_review_keyword: { label: 'Avis travaux', color: 'bg-rose-100 text-rose-700' },
+  google_hours_change: { label: 'Horaires modifiés', color: 'bg-amber-100 text-amber-700' },
+  booking_unavailable_long: { label: 'Indisponible Booking', color: 'bg-red-100 text-red-700' },
+  permis_construire: { label: 'Permis construire', color: 'bg-blue-100 text-blue-800' },
+  linkedin_preopening_job: { label: 'Pré-ouverture', color: 'bg-sky-100 text-sky-700' },
+  repositionnement: { label: 'Repositionnement', color: 'bg-fuchsia-100 text-fuchsia-700' },
   autre: { label: 'Autre', color: 'bg-slate-100 text-slate-600' },
 };
 
@@ -19388,9 +19399,14 @@ const OPP_STATUSES = {
 };
 
 const VueVeille = ({ showToast }) => {
-  const [tab, setTab] = useState('opportunities');
+  const [tab, setTab] = useState('dashboard');
   const [loading, setLoading] = useState(true);
   const [scraping, setScraping] = useState(false);
+
+  // Dashboard state
+  const [dashboardData, setDashboardData] = useState(null);
+  const [alertsData, setAlertsData] = useState(null);
+  const [calibrationData, setCalibrationData] = useState(null);
 
   // Opportunities state
   const [opportunities, setOpportunities] = useState([]);
@@ -19400,9 +19416,22 @@ const VueVeille = ({ showToast }) => {
   const [oppPage, setOppPage] = useState(1);
   const [oppSignalFilter, setOppSignalFilter] = useState('');
   const [oppStrengthFilter, setOppStrengthFilter] = useState('');
+  const [oppStatusFilter, setOppStatusFilter] = useState('');
   const [oppSearch, setOppSearch] = useState('');
   const [oppSearchDebounced, setOppSearchDebounced] = useState('');
   const [selectedOpp, setSelectedOpp] = useState(null);
+  const [oppContacts, setOppContacts] = useState([]);
+  const [oppSignals, setOppSignals] = useState([]);
+
+  // Signaux state
+  const [signals, setSignals] = useState([]);
+  const [sigTotal, setSigTotal] = useState(0);
+  const [sigPage, setSigPage] = useState(1);
+  const [sigPages, setSigPages] = useState(0);
+  const [sigTypeFilter, setSigTypeFilter] = useState('');
+  const [sigSourceFilter, setSigSourceFilter] = useState('');
+  const [sigStats, setSigStats] = useState(null);
+  const [detectorsRunning, setDetectorsRunning] = useState(false);
 
   // Articles state
   const [articles, setArticles] = useState([]);
@@ -19424,6 +19453,10 @@ const VueVeille = ({ showToast }) => {
   const [sourceForm, setSourceForm] = useState({ nom: '', url: '', type: 'brave_search', mots_cles: '' });
   const [recentRuns, setRecentRuns] = useState([]);
 
+  // Contacts pipeline state
+  const [contactsStats, setContactsStats] = useState(null);
+  const [pipelineRunning, setPipelineRunning] = useState(false);
+
   // Scanner fermetures state
   const [regions, setRegions] = useState([]);
   const [selectedRegion, setSelectedRegion] = useState('');
@@ -19433,6 +19466,9 @@ const VueVeille = ({ showToast }) => {
   const [scanResults, setScanResults] = useState(null);
   const [scanLog, setScanLog] = useState([]);
   const [leadsOffset, setLeadsOffset] = useState(0);
+
+  // Feedback state
+  const [feedbackReason, setFeedbackReason] = useState('');
 
   useEffect(() => { const t = setTimeout(() => setSearchDebounced(search), 400); return () => clearTimeout(t); }, [search]);
   useEffect(() => { const t = setTimeout(() => setOppSearchDebounced(oppSearch), 400); return () => clearTimeout(t); }, [oppSearch]);
@@ -19479,16 +19515,36 @@ const VueVeille = ({ showToast }) => {
   const loadSourceHealth = async () => { try { setSourceHealth(await api.get('/veille/sources/health')); } catch (e) { console.warn('Source health:', e.message); } };
   const loadRecentRuns = async () => { try { setRecentRuns(await api.get('/veille/runs?limit=20') || []); } catch (e) { console.warn('Runs:', e.message); } };
 
+  const loadSignals = async (p = 1) => {
+    try {
+      const params = new URLSearchParams({ page: p, limit: 30 });
+      if (sigTypeFilter) params.set('signal_type', sigTypeFilter);
+      if (sigSourceFilter) params.set('source', sigSourceFilter);
+      const res = await api.get(`/veille/signals?${params}`);
+      if (p === 1) setSignals(res.signals || []);
+      else setSignals(prev => [...prev, ...(res.signals || [])]);
+      setSigTotal(res.total || 0);
+      setSigPages(res.pages || 0);
+      setSigPage(p);
+    } catch (e) { console.warn('Signals:', e.message); }
+  };
+  const loadSignalStats = async () => { try { setSigStats(await api.get('/veille/signals/stats')); } catch (e) { console.warn('Signal stats:', e.message); } };
+  const loadContactsStats = async () => { try { setContactsStats(await api.get('/veille/contacts/stats')); } catch (e) { console.warn('Contacts stats:', e.message); } };
+  const loadAlerts = async () => { try { setAlertsData(await api.get('/veille/veille-alerts?hours=168')); } catch (e) { console.warn('Alerts:', e.message); } };
+  const loadCalibration = async () => { try { setCalibrationData(await api.get('/veille/scoring/calibration')); } catch (e) { console.warn('Calibration:', e.message); } };
+
   const charger = async () => {
     setLoading(true);
-    await Promise.all([loadOpportunities(1), loadOppDashboard(), loadStats(), loadSources()]);
+    await Promise.all([loadOpportunities(1), loadOppDashboard(), loadStats(), loadSources(), loadSignalStats(), loadContactsStats()]);
     setLoading(false);
   };
 
   useEffect(() => { charger(); api.get('/veille/scan-fermetures/regions').then(setRegions).catch(e => console.warn('Régions:', e.message)); }, []);
   useEffect(() => { if (tab === 'articles') { loadArticles(1); } }, [filtre, prioFiltre, sourceFiltre, searchDebounced]);
-  useEffect(() => { if (tab === 'opportunities') { loadOpportunities(1); } }, [oppSignalFilter, oppStrengthFilter, oppSearchDebounced]);
+  useEffect(() => { if (tab === 'opportunities') { loadOpportunities(1); } }, [oppSignalFilter, oppStrengthFilter, oppStatusFilter, oppSearchDebounced]);
   useEffect(() => { if (tab === 'health') { loadSourceHealth(); loadRecentRuns(); } }, [tab]);
+  useEffect(() => { if (tab === 'signals') { loadSignals(1); loadSignalStats(); } }, [tab, sigTypeFilter, sigSourceFilter]);
+  useEffect(() => { if (tab === 'dashboard') { loadAlerts(); loadCalibration(); loadContactsStats(); } }, [tab]);
 
   // ─── Actions ─────────────────────────────────────────────────────────────
 
@@ -19646,7 +19702,71 @@ const VueVeille = ({ showToast }) => {
     try {
       const opp = await api.get(`/veille/opportunities/${oppId}`);
       setSelectedOpp(opp);
+      setOppSignals(opp.signals || []);
+      // Charger les contacts
+      try {
+        const cRes = await api.get(`/veille/contacts?opportunity_id=${oppId}&limit=20`);
+        setOppContacts(cRes.contacts || []);
+      } catch (_) { setOppContacts([]); }
     } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
+  };
+
+  const handleFeedback = async (oppId, feedbackType) => {
+    try {
+      await api.post(`/veille/opportunities/${oppId}/feedback`, { feedback_type: feedbackType, feedback_reason: feedbackReason || null });
+      showToast?.(`Feedback "${feedbackType}" enregistré`, 'success');
+      setFeedbackReason('');
+      if (['won', 'lost'].includes(feedbackType)) {
+        setOpportunities(prev => prev.map(o => o.id === oppId ? { ...o, status: feedbackType } : o));
+        if (selectedOpp?.id === oppId) setSelectedOpp(prev => ({ ...prev, status: feedbackType }));
+      }
+      if (feedbackType === 'not_relevant') {
+        setOpportunities(prev => prev.map(o => o.id === oppId ? { ...o, status: 'archived' } : o));
+        if (selectedOpp?.id === oppId) setSelectedOpp(prev => ({ ...prev, status: 'archived' }));
+      }
+    } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
+  };
+
+  const handleExportHubspot = async (oppId) => {
+    try {
+      const res = await api.post(`/veille/opportunities/${oppId}/export-hubspot`);
+      if (res.ok) {
+        showToast?.(`Export HubSpot: Company ${res.company?.created ? 'créée' : 'mise à jour'}, ${res.contacts?.length || 0} contact(s), Deal ${res.deal?.id ? 'créé' : 'erreur'}`, 'success');
+        handleViewOpp(oppId);
+      } else {
+        showToast?.(res.erreur || 'Erreur export', 'error');
+      }
+    } catch (err) { showToast?.('Erreur HubSpot: ' + (err.erreur || err.message), 'error'); }
+  };
+
+  const handleRunContacts = async (oppId) => {
+    setPipelineRunning(true);
+    try {
+      const res = await api.post(`/veille/opportunities/${oppId}/run-contacts`);
+      showToast?.(`Pipeline contacts: ${res.contacts_total} contact(s), ${res.contacts_with_email} avec email`, 'success');
+      handleViewOpp(oppId);
+    } catch (err) { showToast?.('Erreur pipeline: ' + (err.erreur || err.message), 'error'); }
+    setPipelineRunning(false);
+  };
+
+  const handleRunDetectors = async () => {
+    setDetectorsRunning(true);
+    try {
+      const res = await api.post('/veille/signals/run-detectors');
+      if (res.skipped) { showToast?.('Détecteurs déjà en cours', 'info'); }
+      else { showToast?.('Détecteurs terminés', 'success'); loadSignalStats(); loadSignals(1); }
+    } catch (err) { showToast?.('Erreur détecteurs: ' + (err.erreur || err.message), 'error'); }
+    setDetectorsRunning(false);
+  };
+
+  const handleRunContactsBatch = async () => {
+    setPipelineRunning(true);
+    try {
+      const res = await api.post('/veille/contacts/run-pipeline', { scoreThreshold: 50, limit: 10 });
+      if (res.skipped) { showToast?.('Pipeline déjà en cours', 'info'); }
+      else { showToast?.(`Pipeline terminé: ${res.total_contacts} contacts, ${res.total_emails} emails`, 'success'); loadContactsStats(); }
+    } catch (err) { showToast?.('Erreur pipeline: ' + (err.erreur || err.message), 'error'); }
+    setPipelineRunning(false);
   };
 
   const toggleLu = async (a) => {
@@ -19682,6 +19802,10 @@ const VueVeille = ({ showToast }) => {
   const healthColor = (h) => h === 'healthy' ? 'bg-emerald-500' : h === 'degraded' ? 'bg-amber-500' : h === 'failing' ? 'bg-red-500' : 'bg-slate-300';
   const catLabel = (cat) => cat === 'quotidien' ? { text: 'Quotidien', cls: 'bg-blue-50 text-blue-600' } : cat === 'hebdo' ? { text: '2-3x/sem', cls: 'bg-amber-50 text-amber-600' } : { text: 'Radar', cls: 'bg-slate-50 text-slate-500' };
 
+  const sigLabel = (t) => SIGNAL_LABELS[t] || SIGNAL_LABELS.autre;
+  const scoreColor = (s) => s >= 70 ? 'text-emerald-700 bg-emerald-50' : s >= 40 ? 'text-amber-700 bg-amber-50' : 'text-slate-600 bg-slate-50';
+  const emailStatusBadge = (s) => s === 'valid' ? 'bg-emerald-100 text-emerald-700' : s === 'catch_all' ? 'bg-amber-100 text-amber-700' : s === 'unverified' ? 'bg-slate-100 text-slate-600' : 'bg-red-100 text-red-600';
+
   if (loading) return (
     <div className="flex items-center justify-center py-20">
       <div className="text-center">
@@ -19693,50 +19817,15 @@ const VueVeille = ({ showToast }) => {
 
   return (
     <div className="space-y-4">
-      {/* KPIs opportunités */}
-      {oppDashboard && (
-        <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
-          <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setTab('opportunities'); setOppStrengthFilter(oppStrengthFilter === 'A' ? '' : 'A'); }}>
-            <div className="text-xs font-bold text-red-600 mb-0.5">PRIO A</div>
-            <div className="text-2xl font-bold text-red-900">{oppDashboard.prioA || 0}</div>
-            <div className="text-xs text-red-600 mt-0.5">Opportunités fortes</div>
-          </div>
-          <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setTab('opportunities'); setOppStrengthFilter(oppStrengthFilter === 'B' ? '' : 'B'); }}>
-            <div className="text-xs font-bold text-amber-600 mb-0.5">PRIO B</div>
-            <div className="text-2xl font-bold text-amber-900">{oppDashboard.prioB || 0}</div>
-            <div className="text-xs text-amber-600 mt-0.5">Angle crédible</div>
-          </div>
-          <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-3">
-            <div className="text-xs font-medium text-blue-600 mb-0.5">NOUVELLES</div>
-            <div className="text-2xl font-bold text-blue-900">{oppDashboard.newCount || 0}</div>
-            <div className="text-xs text-blue-600 mt-0.5">A qualifier</div>
-          </div>
-          <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-3">
-            <div className="text-xs font-medium text-purple-600 mb-0.5">MULTI-SOURCES</div>
-            <div className="text-2xl font-bold text-purple-900">{oppDashboard.multiSource || 0}</div>
-            <div className="text-xs text-purple-600 mt-0.5">Confirmées</div>
-          </div>
-          <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-3">
-            <div className="text-xs font-medium text-emerald-600 mb-0.5">ENRICHIS</div>
-            <div className="text-2xl font-bold text-emerald-900">{oppDashboard.enrichment?.enriched || 0}</div>
-            <div className="text-xs text-emerald-600 mt-0.5">{oppDashboard.enrichment?.pending || 0} en attente</div>
-          </div>
-          <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl border border-slate-200 p-3">
-            <div className="text-xs font-medium text-slate-500 mb-0.5">TOTAL OPP</div>
-            <div className="text-2xl font-bold text-slate-900">{oppDashboard.total || 0}</div>
-            <div className="text-xs text-slate-500 mt-0.5">{sources.filter(s => s.actif).length} sources</div>
-          </div>
-        </div>
-      )}
-
       {/* Onglets + Actions */}
       <div className="bg-white rounded-xl border border-slate-100 p-4">
         <div className="flex flex-wrap items-center gap-3">
-          <div className="flex bg-slate-100 rounded-lg p-0.5">
+          <div className="flex bg-slate-100 rounded-lg p-0.5 flex-wrap">
             {[
+              { id: 'dashboard', label: 'Dashboard' },
               { id: 'opportunities', label: `Opportunités${oppDashboard ? ` (${oppDashboard.total || 0})` : ''}` },
+              { id: 'signals', label: `Signaux${sigStats ? ` (${sigStats.total || 0})` : ''}` },
               { id: 'articles', label: `Articles${stats ? ` (${stats.nonLus})` : ''}` },
-              { id: 'scanner', label: 'Scanner fermetures' },
               { id: 'health', label: 'Sources & Santé' },
             ].map(t => (
               <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'articles' && articles.length === 0) loadArticles(1); }}
@@ -19755,6 +19844,157 @@ const VueVeille = ({ showToast }) => {
           </button>
         </div>
       </div>
+
+      {/* ─── Onglet Dashboard ──────────────────────────────────────────────── */}
+      {tab === 'dashboard' && (
+        <div className="space-y-4">
+          {/* KPIs */}
+          {oppDashboard && (
+            <div className="grid grid-cols-2 lg:grid-cols-6 gap-3">
+              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setTab('opportunities'); setOppStrengthFilter('A'); }}>
+                <div className="text-xs font-bold text-red-600 mb-0.5">PRIO A</div>
+                <div className="text-2xl font-bold text-red-900">{oppDashboard.prioA || 0}</div>
+              </div>
+              <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setTab('opportunities'); setOppStrengthFilter('B'); }}>
+                <div className="text-xs font-bold text-amber-600 mb-0.5">PRIO B</div>
+                <div className="text-2xl font-bold text-amber-900">{oppDashboard.prioB || 0}</div>
+              </div>
+              <div className="bg-gradient-to-br from-blue-50 to-blue-100 rounded-xl border border-blue-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => { setTab('opportunities'); setOppStatusFilter('new'); }}>
+                <div className="text-xs font-medium text-blue-600 mb-0.5">NOUVELLES</div>
+                <div className="text-2xl font-bold text-blue-900">{oppDashboard.newCount || 0}</div>
+              </div>
+              <div className="bg-gradient-to-br from-purple-50 to-purple-100 rounded-xl border border-purple-200 p-3">
+                <div className="text-xs font-medium text-purple-600 mb-0.5">MULTI-SOURCES</div>
+                <div className="text-2xl font-bold text-purple-900">{oppDashboard.multiSource || 0}</div>
+              </div>
+              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setTab('signals')}>
+                <div className="text-xs font-medium text-emerald-600 mb-0.5">SIGNAUX</div>
+                <div className="text-2xl font-bold text-emerald-900">{sigStats?.total || 0}</div>
+              </div>
+              <div className="bg-gradient-to-br from-sky-50 to-sky-100 rounded-xl border border-sky-200 p-3">
+                <div className="text-xs font-medium text-sky-600 mb-0.5">CONTACTS</div>
+                <div className="text-2xl font-bold text-sky-900">{contactsStats?.total || 0}</div>
+                <div className="text-xs text-sky-600">{contactsStats?.valid || 0} emails valides</div>
+              </div>
+            </div>
+          )}
+
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+            {/* Signaux par type */}
+            {sigStats && sigStats.byType?.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-100 p-4">
+                <h3 className="text-sm font-semibold text-slate-800 mb-3">Signaux par type</h3>
+                <div className="space-y-2">
+                  {sigStats.byType.map(s => (
+                    <div key={s.signal_type} className="flex items-center justify-between text-xs">
+                      <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${sigLabel(s.signal_type).color}`}>{sigLabel(s.signal_type).label}</span>
+                      <div className="flex items-center gap-3">
+                        <div className="w-24 bg-slate-100 rounded-full h-2">
+                          <div className="bg-blue-500 rounded-full h-2" style={{ width: `${Math.min(100, (s.count / (sigStats.total || 1)) * 100 * 3)}%` }} />
+                        </div>
+                        <span className="text-slate-700 font-medium w-8 text-right">{s.count}</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Opportunités récentes haute valeur */}
+            {alertsData && alertsData.high_opportunities?.length > 0 && (
+              <div className="bg-white rounded-xl border border-slate-100 p-4">
+                <h3 className="text-sm font-semibold text-slate-800 mb-3">Opportunités haute valeur (7j)</h3>
+                <div className="space-y-2">
+                  {alertsData.high_opportunities.slice(0, 8).map(o => (
+                    <div key={o.id} className="flex items-center justify-between text-xs cursor-pointer hover:bg-slate-50 rounded-lg p-1.5 -mx-1.5" onClick={() => { setTab('opportunities'); handleViewOpp(o.id); }}>
+                      <div className="flex items-center gap-2 min-w-0">
+                        <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${scoreColor(o.business_score)}`}>{o.business_score}</span>
+                        <span className="truncate font-medium text-slate-800">{o.hotel_name || 'Inconnu'}</span>
+                        {o.city && <span className="text-slate-400 truncate">{o.city}</span>}
+                      </div>
+                      <span className={`px-2 py-0.5 rounded-full text-xs ${sigLabel(o.signal_type).color}`}>{sigLabel(o.signal_type).label}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Taux de conversion (calibration) */}
+            {calibrationData && calibrationData.overallMetrics && (
+              <div className="bg-white rounded-xl border border-slate-100 p-4">
+                <h3 className="text-sm font-semibold text-slate-800 mb-3">Calibration scoring</h3>
+                <div className="grid grid-cols-4 gap-3 mb-3">
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-emerald-600">{calibrationData.overallMetrics.won || 0}</div>
+                    <div className="text-xs text-slate-500">Won</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-red-600">{calibrationData.overallMetrics.lost || 0}</div>
+                    <div className="text-xs text-slate-500">Lost</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-slate-400">{calibrationData.overallMetrics.not_relevant || 0}</div>
+                    <div className="text-xs text-slate-500">Non pertinent</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-blue-600">{calibrationData.overallMetrics.win_rate != null ? `${calibrationData.overallMetrics.win_rate}%` : '—'}</div>
+                    <div className="text-xs text-slate-500">Win rate</div>
+                  </div>
+                </div>
+                {!calibrationData.overallMetrics.statistically_significant && (
+                  <div className="text-xs text-amber-600 bg-amber-50 rounded-lg p-2">Pas assez de feedbacks ({calibrationData.overallMetrics.total_feedback}/20 min) pour des recommandations fiables.</div>
+                )}
+                {calibrationData.recommendations?.length > 0 && (
+                  <div className="space-y-1 mt-2">
+                    {calibrationData.recommendations.map((r, i) => (
+                      <div key={i} className={`text-xs p-2 rounded-lg ${r.type === 'increase' ? 'bg-emerald-50 text-emerald-700' : r.type === 'decrease' ? 'bg-red-50 text-red-700' : 'bg-amber-50 text-amber-700'}`}>
+                        {r.message}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* Contacts stats */}
+            {contactsStats && (
+              <div className="bg-white rounded-xl border border-slate-100 p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <h3 className="text-sm font-semibold text-slate-800">Pipeline contacts</h3>
+                  <button onClick={handleRunContactsBatch} disabled={pipelineRunning}
+                    className="text-xs px-3 py-1 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-50">
+                    {pipelineRunning ? 'En cours...' : 'Lancer pipeline'}
+                  </button>
+                </div>
+                <div className="grid grid-cols-4 gap-3">
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-slate-800">{contactsStats.total}</div>
+                    <div className="text-xs text-slate-500">Total</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-emerald-600">{contactsStats.valid}</div>
+                    <div className="text-xs text-slate-500">Emails valides</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-amber-600">{contactsStats.catchAll}</div>
+                    <div className="text-xs text-slate-500">Catch-all</div>
+                  </div>
+                  <div className="text-center">
+                    <div className="text-lg font-bold text-slate-400">{contactsStats.unverified}</div>
+                    <div className="text-xs text-slate-500">Non vérifiés</div>
+                  </div>
+                </div>
+                {contactsStats.credits && (
+                  <div className="mt-3 pt-3 border-t border-slate-100 flex gap-4 text-xs text-slate-500">
+                    <span>Pappers: {contactsStats.credits.pappers_used} appels</span>
+                    <span>ZeroBounce: {contactsStats.credits.zerobounce_used} crédits</span>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* ─── Onglet Opportunités ─────────────────────────────────────────────── */}
       {tab === 'opportunities' && (
@@ -19831,15 +20071,20 @@ const VueVeille = ({ showToast }) => {
                           <div>
                             <div className="flex items-center gap-2 mb-1">
                               <span className={`text-xs px-2 py-0.5 rounded font-bold ${PRIO[selectedOpp.signal_strength]?.color || 'bg-slate-100'}`}>{selectedOpp.signal_strength}</span>
-                              <span className={`text-xs px-2 py-0.5 rounded ${SIGNAL_LABELS[selectedOpp.signal_type]?.color || 'bg-slate-100'}`}>{SIGNAL_LABELS[selectedOpp.signal_type]?.label || selectedOpp.signal_type}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded ${sigLabel(selectedOpp.signal_type).color}`}>{sigLabel(selectedOpp.signal_type).label}</span>
                               <span className={`text-xs px-2 py-0.5 rounded ${OPP_STATUSES[selectedOpp.status]?.color || 'bg-slate-100'}`}>{OPP_STATUSES[selectedOpp.status]?.label || selectedOpp.status}</span>
+                              {selectedOpp.stars && <span className="text-xs text-amber-500">{selectedOpp.stars}</span>}
                             </div>
                             <h3 className="text-lg font-bold text-slate-900">{selectedOpp.hotel_name || 'Établissement inconnu'}</h3>
-                            <p className="text-sm text-slate-500">{[selectedOpp.city, selectedOpp.region, selectedOpp.group_name ? `Groupe: ${selectedOpp.group_name}` : ''].filter(Boolean).join(' · ')}</p>
+                            <p className="text-sm text-slate-500">
+                              {[selectedOpp.city, selectedOpp.region, selectedOpp.group_name ? `Groupe: ${selectedOpp.group_name}` : ''].filter(Boolean).join(' · ')}
+                              {selectedOpp.website && <> · <a href={selectedOpp.website.startsWith('http') ? selectedOpp.website : `https://${selectedOpp.website}`} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">{selectedOpp.website}</a></>}
+                            </p>
                           </div>
-                          <button onClick={(e) => { e.stopPropagation(); setSelectedOpp(null); }} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
+                          <button onClick={(e) => { e.stopPropagation(); setSelectedOpp(null); setOppContacts([]); setOppSignals([]); }} className="text-slate-400 hover:text-slate-600 p-1">✕</button>
                         </div>
 
+                        {/* Métriques */}
                         <div className="grid grid-cols-4 gap-3 mb-3">
                           <div className="bg-slate-50 rounded-lg p-2 text-center">
                             <div className="text-xl font-bold text-slate-900">{selectedOpp.business_score}</div>
@@ -19866,6 +20111,70 @@ const VueVeille = ({ showToast }) => {
                           </div>
                         )}
 
+                        {/* Timeline des signaux */}
+                        {oppSignals.length > 0 && (
+                          <div className="mb-3">
+                            <div className="text-xs font-semibold text-slate-600 mb-2">Signaux ({oppSignals.length})</div>
+                            <div className="border-l-2 border-slate-200 ml-2 space-y-2">
+                              {oppSignals.map((s, i) => (
+                                <div key={s.id || i} className="flex items-start gap-2 ml-3 relative">
+                                  <div className="absolute -left-[19px] top-1 w-2 h-2 rounded-full bg-blue-400" />
+                                  <div className="flex-1 bg-slate-50 rounded-lg px-3 py-1.5">
+                                    <div className="flex items-center gap-2">
+                                      <span className={`text-xs px-1.5 py-0.5 rounded ${sigLabel(s.signal_type).color}`}>{sigLabel(s.signal_type).label}</span>
+                                      <span className="text-xs text-slate-500 font-medium">force {s.signal_strength}</span>
+                                      <span className="text-xs text-slate-400">{s.source}</span>
+                                    </div>
+                                    <div className="text-xs text-slate-400 mt-0.5">
+                                      {s.signal_date ? new Date(s.signal_date).toLocaleDateString('fr-FR') : s.detected_at ? new Date(s.detected_at).toLocaleDateString('fr-FR') : ''}
+                                      {s.source_url && <> · <a href={s.source_url} target="_blank" rel="noopener noreferrer" className="text-blue-500 hover:underline">source</a></>}
+                                    </div>
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Contacts */}
+                        <div className="mb-3">
+                          <div className="flex items-center justify-between mb-2">
+                            <span className="text-xs font-semibold text-slate-600">Contacts ({oppContacts.length})</span>
+                            <button onClick={(e) => { e.stopPropagation(); handleRunContacts(selectedOpp.id); }} disabled={pipelineRunning}
+                              className="text-xs px-2 py-1 rounded border border-slate-200 hover:bg-slate-50 text-slate-600 disabled:opacity-50">
+                              {pipelineRunning ? 'En cours...' : 'Enrichir contacts'}
+                            </button>
+                          </div>
+                          {oppContacts.length > 0 ? (
+                            <div className="space-y-1.5">
+                              {oppContacts.map(c => (
+                                <div key={c.id} className="bg-slate-50 rounded-lg px-3 py-2">
+                                  <div className="flex items-center justify-between">
+                                    <div className="flex items-center gap-2">
+                                      <span className="text-xs font-medium text-slate-800">{c.full_name}</span>
+                                      {c.role && <span className="text-xs text-slate-500">— {c.role}</span>}
+                                      {c.role_relevance >= 90 && <span className="text-xs px-1 py-0.5 rounded bg-emerald-100 text-emerald-700">pertinence {c.role_relevance}</span>}
+                                    </div>
+                                    {c.linkedin_url && <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline" onClick={e => e.stopPropagation()}>LinkedIn</a>}
+                                  </div>
+                                  {c.email && (
+                                    <div className="flex items-center gap-2 mt-1">
+                                      <span className="text-xs text-slate-600 font-mono">{c.email}</span>
+                                      <span className={`text-xs px-1.5 py-0.5 rounded ${emailStatusBadge(c.email_status)}`}>{c.email_status}</span>
+                                      <button onClick={(e) => { e.stopPropagation(); navigator.clipboard.writeText(c.email); showToast?.('Email copié', 'success'); }}
+                                        className="text-xs text-blue-500 hover:underline">Copier</button>
+                                    </div>
+                                  )}
+                                </div>
+                              ))}
+                            </div>
+                          ) : (
+                            <div className="text-xs text-slate-400 bg-slate-50 rounded-lg p-3 text-center">
+                              Aucun contact. Cliquez "Enrichir contacts" pour lancer le pipeline.
+                            </div>
+                          )}
+                        </div>
+
                         {/* Pipeline statut */}
                         <div className="flex items-center gap-1 mb-3">
                           <span className="text-xs text-slate-500 mr-2">Statut :</span>
@@ -19875,6 +20184,22 @@ const VueVeille = ({ showToast }) => {
                               {OPP_STATUSES[s].label}
                             </button>
                           ))}
+                        </div>
+
+                        {/* Actions : HubSpot + Feedback */}
+                        <div className="flex flex-wrap items-center gap-2 mb-3 pt-2 border-t border-slate-100">
+                          <button onClick={(e) => { e.stopPropagation(); handleExportHubspot(selectedOpp.id); }}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-orange-500 text-white hover:bg-orange-600">
+                            {selectedOpp.hubspot_deal_id ? 'Mettre à jour HubSpot' : 'Envoyer vers HubSpot'}
+                          </button>
+                          <button onClick={(e) => { e.stopPropagation(); handleFeedback(selectedOpp.id, 'won'); }}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-emerald-100 text-emerald-700 hover:bg-emerald-200">Won</button>
+                          <button onClick={(e) => { e.stopPropagation(); handleFeedback(selectedOpp.id, 'lost'); }}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-red-100 text-red-700 hover:bg-red-200">Lost</button>
+                          <button onClick={(e) => { e.stopPropagation(); handleFeedback(selectedOpp.id, 'not_relevant'); }}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-slate-100 text-slate-600 hover:bg-slate-200">Pas pertinent</button>
+                          <button onClick={(e) => { e.stopPropagation(); handleFeedback(selectedOpp.id, 'wrong_contact'); }}
+                            className="text-xs px-3 py-1.5 rounded-lg bg-amber-100 text-amber-700 hover:bg-amber-200">Mauvais contact</button>
                         </div>
 
                         {/* Articles liés */}
@@ -19986,6 +20311,103 @@ const VueVeille = ({ showToast }) => {
               {artPage < artPages && (
                 <div className="text-center py-4">
                   <button onClick={() => loadArticles(artPage + 1)} className="text-xs px-6 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">Charger plus ({artTotal - articles.length} restants)</button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
+      )}
+
+      {/* ─── Onglet Signaux ────────────────────────────────────────────────── */}
+      {tab === 'signals' && (
+        <>
+          <div className="flex flex-wrap items-center gap-2 mb-3">
+            <select value={sigTypeFilter} onChange={e => setSigTypeFilter(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white">
+              <option value="">Tous les types</option>
+              {Object.entries(SIGNAL_LABELS).filter(([k]) => k !== 'autre').map(([k, v]) => (
+                <option key={k} value={k}>{v.label}</option>
+              ))}
+            </select>
+            <select value={sigSourceFilter} onChange={e => setSigSourceFilter(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white">
+              <option value="">Toutes les sources</option>
+              {['google_maps', 'booking', 'data_gouv', 'linkedin', 'boamp', 'bodacc', 'brave_search', 'rss', 'html'].map(s => (
+                <option key={s} value={s}>{s}</option>
+              ))}
+            </select>
+            <div className="flex-1" />
+            <span className="text-xs text-slate-400">{sigTotal} signal(aux)</span>
+            <button onClick={handleRunDetectors} disabled={detectorsRunning}
+              className="text-xs px-3 py-1.5 rounded-lg bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 flex items-center gap-1.5">
+              {detectorsRunning ? <><span className="w-3 h-3 border-2 border-white/30 border-t-white rounded-full animate-spin inline-block" /> Détection...</> : 'Lancer détecteurs'}
+            </button>
+          </div>
+
+          {/* Stats rapides */}
+          {sigStats && sigStats.by_type && (
+            <div className="bg-white rounded-xl border border-slate-100 p-4 mb-3">
+              <h3 className="text-xs font-semibold text-slate-500 uppercase mb-2">Répartition par type</h3>
+              <div className="flex flex-wrap gap-1.5">
+                {sigStats.by_type.map(st => {
+                  const sl = sigLabel(st.signal_type);
+                  return (
+                    <button key={st.signal_type}
+                      onClick={() => setSigTypeFilter(sigTypeFilter === st.signal_type ? '' : st.signal_type)}
+                      className={`text-xs px-2 py-1 rounded-full transition-colors ${sigTypeFilter === st.signal_type ? 'ring-2 ring-offset-1 ring-slate-400' : ''} ${sl.color}`}>
+                      {sl.label} ({st.count})
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {signals.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
+              <div className="text-3xl mb-3">📡</div>
+              <p className="text-sm text-slate-500">Aucun signal trouvé</p>
+              <p className="text-xs text-slate-400 mt-1">Lancez les détecteurs ou ajustez les filtres</p>
+            </div>
+          ) : (
+            <div className="space-y-2">
+              {signals.map(sig => {
+                const sl = sigLabel(sig.signal_type);
+                return (
+                  <div key={sig.id} className="bg-white rounded-xl border border-slate-100 p-4 hover:shadow-sm transition-shadow">
+                    <div className="flex items-start gap-3">
+                      <div className={`flex-shrink-0 w-2 h-full rounded-full self-stretch ${sig.signal_strength >= 80 ? 'bg-red-400' : sig.signal_strength >= 60 ? 'bg-amber-400' : 'bg-slate-300'}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1 flex-wrap">
+                          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${sl.color}`}>{sl.label}</span>
+                          <span className="text-xs text-slate-400">Force {sig.signal_strength || '—'}</span>
+                          {sig.hotel_name && <span className="text-xs font-medium text-slate-700">{sig.hotel_name}</span>}
+                          {sig.city && <span className="text-xs text-slate-400">({sig.city})</span>}
+                        </div>
+                        {sig.description && <p className="text-xs text-slate-600 mb-1 line-clamp-2">{sig.description}</p>}
+                        <div className="flex items-center gap-2 text-xs text-slate-400">
+                          {sig.source && <span>Source: {sig.source}</span>}
+                          {sig.detected_at && <span>· {new Date(sig.detected_at).toLocaleDateString('fr-FR')}</span>}
+                          {sig.opportunity_id && (
+                            <button onClick={() => { setTab('opportunities'); handleViewOpp(sig.opportunity_id); }}
+                              className="text-blue-500 hover:text-blue-700 underline">Voir opportunité</button>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex-shrink-0 text-right">
+                        <div className={`text-lg font-bold ${sig.signal_strength >= 80 ? 'text-red-600' : sig.signal_strength >= 60 ? 'text-amber-600' : 'text-slate-400'}`}>
+                          {sig.signal_strength || '—'}
+                        </div>
+                        <div className="text-xs text-slate-400">force</div>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+              {sigPage < sigPages && (
+                <div className="text-center py-4">
+                  <button onClick={() => loadSignals(sigPage + 1)}
+                    className="text-xs px-6 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">
+                    Charger plus ({sigTotal - signals.length} restants)
+                  </button>
                 </div>
               )}
             </div>
