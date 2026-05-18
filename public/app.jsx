@@ -11776,7 +11776,7 @@ const FacturesSamples = ({ showToast }) => {
   const [searchRef, setSearchRef] = useState('');
   const [shippingId, setShippingId] = useState('300');
   const [businessType, setBusinessType] = useState('Hotel 4*');
-  const [deliveryComment, setDeliveryComment] = useState('');
+  const [deliveryComment, setDeliveryComment] = useState('Joindre lettre accompagnement FR');
   const [clientSearch, setClientSearch] = useState('');
   const [clientResults, setClientResults] = useState([]);
   const [searchingClient, setSearchingClient] = useState(false);
@@ -11824,7 +11824,7 @@ const FacturesSamples = ({ showToast }) => {
     setClientName(''); setClientEmail(''); setClientAddress('');
     setClientCity(''); setClientZip(''); setClientCountry('FR');
     setClientPhone(''); setClientSearch(''); setClientResults([]);
-    setShippingId('300'); setBusinessType('Hotel 4*'); setDeliveryComment('');
+    setShippingId('300'); setBusinessType('Hotel 4*'); setDeliveryComment('Joindre lettre accompagnement FR');
     setResult(null);
   };
 
