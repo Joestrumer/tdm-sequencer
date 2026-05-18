@@ -12902,13 +12902,13 @@ const FacturesShipments = ({ showToast }) => {
       />
 
       {/* Liste des envois */}
-      <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+      <div className="bg-white rounded-xl border border-slate-100">
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-400">Chargement...</div>
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-400">Aucun envoi trouvé</div>
         ) : (
-          <div className="overflow-x-auto">
+          <div className="overflow-x-auto rounded-xl">
             <table className="w-full">
               <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
