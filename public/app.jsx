@@ -12902,15 +12902,15 @@ const FacturesShipments = ({ showToast }) => {
       />
 
       {/* Liste des envois */}
-      <div className="bg-white rounded-xl border border-slate-100 overflow-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
+      <div className="bg-white rounded-xl border border-slate-100">
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-400">Chargement...</div>
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-400">Aucun envoi trouvé</div>
         ) : (
-          <div className="rounded-xl">
+          <div className="overflow-x-auto rounded-xl">
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
+              <thead className="bg-slate-50 border-b border-slate-100">
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Type</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Référence</th>
@@ -20608,8 +20608,8 @@ function App() {
       </div>
 
       {/* Main */}
-      <div className="md:ml-56 min-h-screen">
-        <header className="bg-white border-b border-slate-100 shadow-sm px-4 py-3 md:px-8 md:py-4 flex items-center justify-between sticky top-0 z-30">
+      <div className="md:ml-56 h-screen flex flex-col">
+        <header className="bg-white border-b border-slate-100 shadow-sm px-4 py-3 md:px-8 md:py-4 flex items-center justify-between flex-shrink-0 z-30">
           <div>
             <div className="flex items-center gap-2">
               <h1 className="text-base font-semibold text-slate-900">{headerLabel}</h1>
@@ -20655,7 +20655,7 @@ function App() {
           </div>
         </header>
 
-        <main className="p-4 pb-24 md:p-8 md:pb-8">
+        <main className="p-4 pb-24 md:p-8 md:pb-8 flex-1 overflow-y-auto">
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
           {vue === "dashboard" && <VueDashboard showToast={showToast} />}
           {vue === "dashboard-marketing" && <VueDashboardMarketing showToast={showToast} />}
