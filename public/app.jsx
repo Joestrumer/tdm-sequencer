@@ -12010,146 +12010,136 @@ const FacturesSamples = ({ showToast }) => {
               className="w-full border border-dashed border-emerald-300 bg-emerald-50/30 rounded-lg px-3 py-2 text-sm resize-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200"
               onKeyDown={(e) => {
                 if (e.key !== 'Enter' || e.shiftKey) return;
-                const text = e.target.value;
-                if (!text.trim()) return;
+                const rawText = e.target.value;
+                if (!rawText.trim()) return;
                 e.preventDefault();
 
-                const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
-                let parsedName = '', parsedEmail = '', parsedPhone = '', parsedAddress = '', parsedCity = '', parsedZip = '', parsedCountry = '';
+                let parsedEmail = '', parsedPhone = '', parsedAddress = '', parsedCity = '', parsedZip = '', parsedCountry = '';
+                const addressKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|square|résidence|lot|lotissement|zi|zone|voie|sentier|hameau|lieu.dit|lieudit|faubourg|parvis|promenade|esplanade)\b/i;
+                const titleKw = /^(directeur|directrice|gérant|gérante|manager|general manager|chef|responsable|président|pdg|dg|ceo|cfo|coo|propriétaire|réceptionniste|receptionist|concierge|maître d'hôtel|sommelier|cost controller|front desk|revenue manager|sales manager|food & beverage|f&b|housekeeping|guest relation|assistant|adjoint|coordinat)/i;
+                const hotelKw = /\b(h[oô]tel|château|domaine|maison|villa|auberge|résidence|chalet|lodge|resort|relais|manoir|bastide|g[iî]te|restaurant|bistrot|brasserie|palace|appart.?h[oô]tel|club|spa|camp|camping|centre|ferme|moulin|prieuré|abbaye|clos|mas|inn|hostel)\b/i;
+                const countryMap = { france: 'FR', belgique: 'BE', be: 'BE', suisse: 'CH', ch: 'CH', luxembourg: 'LU', lu: 'LU', allemagne: 'DE', espagne: 'ES', italie: 'IT', portugal: 'PT', 'royaume-uni': 'GB', uk: 'GB', gb: 'GB' };
+
+                // ── Step 0: Extract email & phone from raw text (can be mixed in any line) ──
+                const emailRx = /[\w.+-]+@[\w.-]+\.\w{2,}/;
+                const phoneRx = /(?:\+33|0033|0)\s*[1-9](?:[\s.()-]*\d){8}/;
+                const emailMatch = rawText.match(emailRx);
+                if (emailMatch) parsedEmail = emailMatch[0];
+                const phoneMatch = rawText.match(phoneRx);
+                if (phoneMatch) parsedPhone = phoneMatch[0].trim();
+
+                // Remove extracted email & phone from text, then split into clean lines
+                let cleaned = rawText;
+                if (parsedEmail) cleaned = cleaned.replace(parsedEmail, ' ');
+                if (parsedPhone) cleaned = cleaned.replace(phoneMatch[0], ' ');
+
+                // Split into lines, then further split segments separated by " - " if a line has address+hotel mixed
+                let lines = cleaned.split(/\n/).map(l => l.trim()).filter(Boolean);
+
+                // ── Step 1: Expand lines that contain " - " with mixed content (hotel - address - zip - city) ──
+                const expanded = [];
+                for (const line of lines) {
+                  // If line has " - " separators and contains both hotel keyword and address/zip
+                  const dashParts = line.split(/\s*-\s*/);
+                  if (dashParts.length >= 3 && (hotelKw.test(line) || addressKw.test(line) || /\d{5}/.test(line))) {
+                    dashParts.forEach(p => { if (p.trim()) expanded.push(p.trim()); });
+                  } else {
+                    expanded.push(line);
+                  }
+                }
+                lines = expanded;
+
                 const usedLines = new Set();
-                const addressKeywords = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|square|résidence|lot|lotissement|zi|zone|voie|sentier|hameau|lieu.dit|lieudit|faubourg|parvis)\b/i;
-                const titleKeywords = /^(directeur|directrice|gérant|gérante|manager|chef|responsable|président|pdg|dg|propriétaire|réceptionniste|concierge|maître d'hôtel|sommelier)/i;
 
-                // 1) Detect email
+                // ── Step 2: Detect title/function lines ──
                 for (let i = 0; i < lines.length; i++) {
-                  const emailMatch = lines[i].match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
-                  if (emailMatch) { parsedEmail = emailMatch[0]; usedLines.add(i); break; }
+                  if (titleKw.test(lines[i])) usedLines.add(i);
                 }
 
-                // 2) Detect phone (French patterns) — also handle lines that start with phone
+                // ── Step 3: Detect address lines with embedded zip+city ──
                 for (let i = 0; i < lines.length; i++) {
                   if (usedLines.has(i)) continue;
-                  const phoneMatch = lines[i].match(/(?:\+33|0033|0)\s*[1-9](?:[\s.()-]*\d){8}/);
-                  if (phoneMatch) { parsedPhone = phoneMatch[0].trim(); usedLines.add(i); break; }
-                  const digitsOnly = lines[i].replace(/\D/g, '');
-                  if (digitsOnly.length >= 10 && digitsOnly.length <= 13 && /^[\d\s.+()-]+$/.test(lines[i].trim())) {
-                    parsedPhone = lines[i].trim(); usedLines.add(i); break;
-                  }
-                }
-
-                // 3) Detect address lines with embedded zip+city (e.g. "14 rue Pétel, 75015 Paris")
-                const addressLines = [];
-                for (let i = 0; i < lines.length; i++) {
-                  if (usedLines.has(i)) continue;
-                  // Check if this line contains both address keywords AND a zip code
-                  const hasAddress = addressKeywords.test(lines[i]) || /^\d+[\s,]/.test(lines[i]);
-                  const embeddedZip = lines[i].match(/[,\s]\s*(\d{5})\s+([A-Za-zÀ-ÿ][\w\s-]*?)(?:\s*,?\s*(?:France|FR)?)?$/i);
-                  if (hasAddress && embeddedZip) {
-                    // Split: address part before the zip, zip, city
-                    const zipIdx = lines[i].indexOf(embeddedZip[1]);
-                    parsedAddress = lines[i].substring(0, zipIdx).replace(/[,\s]+$/, '').trim();
-                    parsedZip = embeddedZip[1];
-                    parsedCity = embeddedZip[2].replace(/,?\s*(France|FR)$/i, '').trim();
+                  const hasAddr = addressKw.test(lines[i]) || /^\d+[\s,]/.test(lines[i]);
+                  // "14 rue Pétel, 75015 Paris" or "8 chemin des Vendanges 83990 St Tropez"
+                  const embZip = lines[i].match(/[,\s]\s*(\d{5})\s+([A-Za-zÀ-ÿ][\w\s.'-]*?)(?:\s*,?\s*(?:France|FR)?)?$/i);
+                  if (hasAddr && embZip) {
+                    const zipIdx = lines[i].indexOf(embZip[1]);
+                    parsedAddress = lines[i].substring(0, zipIdx).replace(/[,\s-]+$/, '').trim();
+                    parsedZip = embZip[1];
+                    parsedCity = embZip[2].replace(/,?\s*(France|FR)$/i, '').trim();
                     usedLines.add(i);
-                  } else if (hasAddress) {
-                    addressLines.push(lines[i]);
+                  } else if (hasAddr && !parsedAddress) {
+                    parsedAddress = lines[i];
                     usedLines.add(i);
                   }
                 }
-                if (addressLines.length > 0 && !parsedAddress) {
-                  parsedAddress = addressLines.join('\n');
-                } else if (addressLines.length > 0) {
-                  parsedAddress += '\n' + addressLines.join('\n');
-                }
 
-                // 4) Detect standalone postal code + city (e.g. "75015 Paris")
+                // ── Step 4: Detect standalone zip (could be "83990" alone after dash-split) ──
                 if (!parsedZip) {
                   for (let i = 0; i < lines.length; i++) {
                     if (usedLines.has(i)) continue;
-                    const zipCityMatch = lines[i].match(/^(\d{5})\s+(.+)/);
-                    if (zipCityMatch) {
-                      parsedZip = zipCityMatch[1];
-                      parsedCity = zipCityMatch[2].replace(/,?\s*(France|FR)$/i, '').trim();
-                      usedLines.add(i); break;
+                    // Pure zip code "83990"
+                    if (/^\d{5}$/.test(lines[i].trim())) {
+                      parsedZip = lines[i].trim();
+                      usedLines.add(i);
+                      break;
                     }
-                    const cityZipMatch = lines[i].match(/^([A-Za-zÀ-ÿ][\w\s-]+?)\s+(\d{5})$/);
-                    if (cityZipMatch) {
-                      parsedCity = cityZipMatch[1].trim();
-                      parsedZip = cityZipMatch[2];
+                    // "75015 Paris" or "Paris 75015"
+                    const zipCity = lines[i].match(/^(\d{5})\s+(.+)/);
+                    if (zipCity) { parsedZip = zipCity[1]; parsedCity = zipCity[2].replace(/,?\s*(France|FR)$/i, '').trim(); usedLines.add(i); break; }
+                    const cityZip = lines[i].match(/^([A-Za-zÀ-ÿ][\w\s.'-]+?)\s+(\d{5})$/);
+                    if (cityZip) { parsedCity = cityZip[1].trim(); parsedZip = cityZip[2]; usedLines.add(i); break; }
+                  }
+                }
+
+                // ── Step 5: Detect city (remaining short line after zip was found, near zip line) ──
+                if (parsedZip && !parsedCity) {
+                  for (let i = 0; i < lines.length; i++) {
+                    if (usedLines.has(i)) continue;
+                    // Short text without digits = likely city
+                    if (/^[A-Za-zÀ-ÿ][\w\s.'-]{1,30}$/.test(lines[i]) && !/\d/.test(lines[i]) && !titleKw.test(lines[i]) && !hotelKw.test(lines[i])) {
+                      parsedCity = lines[i].trim();
                       usedLines.add(i); break;
                     }
                   }
                 }
 
-                // 5) Detect country
+                // ── Step 6: Detect country ──
                 for (let i = 0; i < lines.length; i++) {
                   if (usedLines.has(i)) continue;
                   const lower = lines[i].toLowerCase().trim();
-                  const countryMap = { france: 'FR', belgique: 'BE', be: 'BE', suisse: 'CH', ch: 'CH', luxembourg: 'LU', lu: 'LU', allemagne: 'DE', espagne: 'ES', italie: 'IT', portugal: 'PT', 'royaume-uni': 'GB', uk: 'GB', gb: 'GB' };
-                  if (countryMap[lower]) {
-                    parsedCountry = countryMap[lower];
-                    usedLines.add(i);
-                  }
+                  if (countryMap[lower]) { parsedCountry = countryMap[lower]; usedLines.add(i); }
                 }
 
-                // 6) Mark title/function lines + detect person name (line before or after title)
-                const hotelKeywords = /\b(h[oô]tel|château|domaine|maison|villa|auberge|résidence|chalet|lodge|resort|relais|manoir|bastide|g[iî]te|restaurant|bistrot|brasserie|palace|appart.?h[oô]tel|club|spa|camp|camping|centre|ferme|moulin|prieuré|abbaye|clos|mas)\b/i;
+                // ── Step 7: Among remaining lines, separate hotel name vs person name ──
                 let personName = '', hotelName = '';
-                const titleLineIndexes = [];
-
-                // Find title lines first
                 for (let i = 0; i < lines.length; i++) {
                   if (usedLines.has(i)) continue;
-                  if (titleKeywords.test(lines[i])) {
-                    titleLineIndexes.push(i);
-                    usedLines.add(i);
+                  if (hotelKw.test(lines[i])) {
+                    if (!hotelName) { hotelName = lines[i]; usedLines.add(i); }
                   }
                 }
-
-                // 7) Among remaining unused lines, separate hotel name vs person name
-                const remainingLines = [];
+                // Person = remaining lines that look like a name (2-4 words, letters only)
                 for (let i = 0; i < lines.length; i++) {
-                  if (!usedLines.has(i)) remainingLines.push({ idx: i, text: lines[i] });
+                  if (usedLines.has(i)) continue;
+                  const words = lines[i].split(/\s+/);
+                  const looksLikeName = words.length >= 2 && words.length <= 4 && /^[A-Za-zÀ-ÿ\s.'-]+$/.test(lines[i]);
+                  if (!personName && looksLikeName) { personName = lines[i]; usedLines.add(i); }
                 }
-
-                for (const line of remainingLines) {
-                  if (hotelKeywords.test(line.text)) {
-                    // Line contains hotel keyword → hotel name
-                    if (!hotelName) hotelName = line.text;
-                    usedLines.add(line.idx);
-                  } else if (titleLineIndexes.length > 0 && titleLineIndexes.some(ti => Math.abs(ti - line.idx) === 1)) {
-                    // Line adjacent to a title line (Directeur) → person name
-                    if (!personName) personName = line.text;
-                    usedLines.add(line.idx);
-                  }
-                }
-
-                // If person or hotel still not found, use heuristics on remaining
-                for (const line of remainingLines) {
-                  if (usedLines.has(line.idx)) continue;
-                  // All-caps 2-4 words = likely person name
-                  const isAllCaps = line.text === line.text.toUpperCase() && /^[A-ZÀ-Ÿ\s-]{2,}$/.test(line.text) && line.text.split(/\s+/).length <= 4;
-                  // Title case 2-3 words without special chars = likely person name
-                  const isTitleCase = /^[A-ZÀ-Ÿ][a-zà-ÿ]+(\s+[A-ZÀ-Ÿ][a-zà-ÿ]+){0,2}$/.test(line.text);
-
-                  if (!personName && (isAllCaps || isTitleCase)) {
-                    personName = line.text;
-                    usedLines.add(line.idx);
-                  } else if (!hotelName) {
-                    hotelName = line.text;
-                    usedLines.add(line.idx);
-                  } else if (!personName) {
-                    personName = line.text;
-                    usedLines.add(line.idx);
+                // If still no person, take first remaining
+                if (!personName) {
+                  for (let i = 0; i < lines.length; i++) {
+                    if (!usedLines.has(i)) { personName = lines[i]; usedLines.add(i); break; }
                   }
                 }
 
                 // Build clientName as "Hotel - Prénom Nom"
+                let parsedName = '';
                 if (hotelName && personName) parsedName = `${hotelName} - ${personName}`;
                 else if (hotelName) parsedName = hotelName;
                 else if (personName) parsedName = personName;
 
-                // Apply only non-empty parsed values (don't overwrite existing)
+                // Apply only non-empty parsed values
                 if (parsedName) setClientName(parsedName);
                 if (parsedEmail) setClientEmail(parsedEmail);
                 if (parsedPhone) setClientPhone(parsedPhone);
