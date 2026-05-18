@@ -549,6 +549,30 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
       }
     }
 
+    // 2b. Si company existante trouvée et échantillon → mettre à jour les infos du compte
+    if (companyId && isSample) {
+      const updateProps = { hubspot_owner_id: HUGO_OWNER_ID };
+      if (clientCity) updateProps.city = clientCity;
+      if (clientCountry) updateProps.country = clientCountry;
+      if (clientAddress) updateProps.address = clientAddress;
+      if (clientZip) updateProps.zip = clientZip;
+      if (clientPhone) updateProps.phone = clientPhone;
+      if (domaine) updateProps.domain = domaine;
+      await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ properties: updateProps }),
+      }).catch(e => logger.warn('HubSpot update company existante échoué', { error: e.message, companyId }));
+      // Props custom séparément
+      const customProps = {};
+      if (businessType) customProps.business_type = businessType;
+      customProps.account_source = 'Outbound';
+      await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ properties: customProps }),
+      }).catch(e => logger.warn('HubSpot props custom company existante ignorées', { error: e.message, companyId }));
+      logger.info('🏨 HubSpot company existante mise à jour (échantillon)', { companyId, companyName });
+    }
+
     // 3. Si aucune company trouvée et c'est un échantillon → créer company + contact
     if (!companyId && isSample) {
       // Parser le clientName au format "Nom Hotel - Prenom Nom"
