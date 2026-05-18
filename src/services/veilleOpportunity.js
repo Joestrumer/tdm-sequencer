@@ -60,7 +60,7 @@ function buildFingerprint({ hotel_name, city, project_date }) {
  * - combo_bonus              : 0-15 pts (combos spécifiques)
  * - fraîcheur                : 0-15 pts (décroissance exponentielle 6 mois)
  * - entité_detectée          : 0-10 pts (hotel +5, city +3, group +2)
- * - segment_premium          : 0-10 pts (palace/5*/luxe)
+ * - segment_premium          : 0-10 pts (palace, 5 étoiles, luxe)
  *
  * Plafonné à 100.
  *
