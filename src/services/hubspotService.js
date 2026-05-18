@@ -594,7 +594,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
         if (companyId) {
           const customProps = {};
           if (businessType) customProps.business_type = businessType;
-          customProps.account_source = 'outbound';
+          customProps.account_source = 'Outbound';
           await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
             method: 'PATCH',
             body: JSON.stringify({ properties: customProps }),

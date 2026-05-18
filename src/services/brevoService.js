@@ -338,6 +338,12 @@ function verifierBlocklist(db, email) {
 
 // ─── Envoi principal ─────────────────────────────────────────────────────────
 async function envoyerEmail(db, { lead, etape, inscriptionId }) {
+  // 0. Nettoyer et valider l'email
+  if (lead.email) lead.email = lead.email.trim();
+  if (!lead.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
+    throw new Error(`Email invalide ou corrompu : ${lead.email}`);
+  }
+
   // 1. Vérifier que le lead n'est pas désabonné (avant réservation quota)
   if (lead.unsubscribed) {
     throw new Error(`Lead désabonné : ${lead.email}`);
@@ -376,7 +382,7 @@ async function envoyerEmail(db, { lead, etape, inscriptionId }) {
   // 7. Préparer le payload Brevo
   const payload = {
     sender: SENDER,
-    to: [{ email: lead.email, name: `${lead.prenom} ${lead.nom}`.trim() }],
+    to: [{ email: lead.email, name: `${lead.prenom || ''} ${lead.nom || ''}`.trim() || lead.hotel || lead.email }],
     subject: sujet,
     htmlContent: corpsHtml,
     textContent: corpsTexte,

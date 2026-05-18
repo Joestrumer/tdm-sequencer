@@ -185,6 +185,13 @@ async function _traiter(inscription) {
 
     if (err.message.includes('Quota journalier')) throw new Error('QUOTA_ATTEINT');
 
+    // Erreurs permanentes → terminer l'inscription (ne pas retenter indéfiniment)
+    const permanent = err.message.includes('Email invalide') || err.message.includes('blocklist') || err.message.includes('désabonné');
+    if (permanent) {
+      db.prepare(`UPDATE inscriptions SET statut='terminé' WHERE id=?`).run(inscription.id);
+      logger.warn(`⛔ Inscription ${inscription.id} terminée (erreur permanente)`, { email: lead.email, reason: err.message });
+    }
+
     // Enregistrer l'erreur sans bloquer les autres
     db.prepare(`INSERT INTO emails (id,inscription_id,lead_id,etape_id,sujet,statut,erreur) VALUES (?,?,?,?,?,'erreur',?)`)
       .run(uuidv4(), inscription.id, lead.id, etape.id, etape.sujet, err.message);
