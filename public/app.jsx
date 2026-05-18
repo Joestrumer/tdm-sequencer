@@ -12015,52 +12015,47 @@ const FacturesSamples = ({ showToast }) => {
                 e.preventDefault();
 
                 let parsedEmail = '', parsedPhone = '', parsedAddress = '', parsedCity = '', parsedZip = '', parsedCountry = '';
-                const addressKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|square|résidence|lot|lotissement|zi|zone|voie|sentier|hameau|lieu.dit|lieudit|faubourg|parvis|promenade|esplanade)\b/i;
-                const titleKw = /^(directeur|directrice|gérant|gérante|manager|general manager|chef|responsable|président|pdg|dg|ceo|cfo|coo|propriétaire|réceptionniste|receptionist|concierge|maître d'hôtel|sommelier|cost controller|front desk|revenue manager|sales manager|food & beverage|f&b|housekeeping|guest relation|assistant|adjoint|coordinat)/i;
-                const hotelKw = /\b(h[oô]tel|château|domaine|maison|villa|auberge|résidence|chalet|lodge|resort|relais|manoir|bastide|g[iî]te|restaurant|bistrot|brasserie|palace|appart.?h[oô]tel|club|spa|camp|camping|centre|ferme|moulin|prieuré|abbaye|clos|mas|inn|hostel)\b/i;
+                let personName = '', hotelName = '';
+                const addressKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|square|lot|lotissement|zi|zone|voie|sentier|hameau|lieu.dit|lieudit|faubourg|parvis|promenade|esplanade|rond.point|rte|chem)\b/i;
+                const titleKw = /^(directeur|directrice|gérant|gérante|manager|general manager|chef|responsable|président|pdg|dg|ceo|cfo|coo|propriétaire|réceptionniste|receptionist|concierge|maître d'hôtel|sommelier|cost controller|front desk|revenue manager|sales manager|food & beverage|f&b|housekeeping|guest relation|assistant|adjoint|coordinat|founder|co-founder|fondateur|fondatrice|chargée?|commercial|attaché)/i;
+                const hotelKw = /\b(h[oô]tel|château|domaine|maison|villa|auberge|résidence|chalet|lodge|resort|relais|manoir|bastide|g[iî]te|restaurant|bistrot|brasserie|palace|appart.?h[oô]tel|club|spa|camp|camping|centre|ferme|moulin|prieuré|abbaye|clos|mas|inn|hostel|chalets)\b/i;
                 const countryMap = { france: 'FR', belgique: 'BE', be: 'BE', suisse: 'CH', ch: 'CH', luxembourg: 'LU', lu: 'LU', allemagne: 'DE', espagne: 'ES', italie: 'IT', portugal: 'PT', 'royaume-uni': 'GB', uk: 'GB', gb: 'GB' };
 
-                // ── Step 0: Extract email & phone from raw text (can be mixed in any line) ──
-                const emailRx = /[\w.+-]+@[\w.-]+\.\w{2,}/;
-                const phoneRx = /(?:\+33|0033|0)\s*[1-9](?:[\s.()-]*\d){8}/;
-                const emailMatch = rawText.match(emailRx);
+                // ── Step 0: Extract email & phone from raw text (can be anywhere) ──
+                const emailMatch = rawText.match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
                 if (emailMatch) parsedEmail = emailMatch[0];
-                const phoneMatch = rawText.match(phoneRx);
+                const phoneMatch = rawText.match(/(?:\+33|0033|0)\s*[1-9](?:[\s.()-]*\d){8}/);
                 if (phoneMatch) parsedPhone = phoneMatch[0].trim();
 
-                // Remove extracted email & phone from text, then split into clean lines
+                // Remove email & phone from text, then split into clean lines
                 let cleaned = rawText;
                 if (parsedEmail) cleaned = cleaned.replace(parsedEmail, ' ');
                 if (parsedPhone) cleaned = cleaned.replace(phoneMatch[0], ' ');
-
-                // Split into lines, then further split segments separated by " - " if a line has address+hotel mixed
                 let lines = cleaned.split(/\n/).map(l => l.trim()).filter(Boolean);
-
-                // ── Step 1: Expand lines that contain " - " with mixed content (hotel - address - zip - city) ──
-                const expanded = [];
-                for (const line of lines) {
-                  // If line has " - " separators and contains both hotel keyword and address/zip
-                  const dashParts = line.split(/\s*-\s*/);
-                  if (dashParts.length >= 3 && (hotelKw.test(line) || addressKw.test(line) || /\d{5}/.test(line))) {
-                    dashParts.forEach(p => { if (p.trim()) expanded.push(p.trim()); });
-                  } else {
-                    expanded.push(line);
-                  }
-                }
-                lines = expanded;
-
                 const usedLines = new Set();
 
-                // ── Step 2: Detect title/function lines ──
+                // ── Step 1: Parse dash-separated lines as structured blocks ──
+                // "AREV HOTEL - 8 CHEMIN DES VENDANGES - 83990 - ST. TROPEZ"
+                // → hotel / adresse / CP / ville parsed as a unit
                 for (let i = 0; i < lines.length; i++) {
-                  if (titleKw.test(lines[i])) usedLines.add(i);
-                }
-
-                // ── Step 3: Detect address lines with embedded zip+city ──
-                for (let i = 0; i < lines.length; i++) {
-                  if (usedLines.has(i)) continue;
+                  const parts = lines[i].split(/\s*-\s*/);
+                  if (parts.length >= 3 && /\d{5}/.test(lines[i])) {
+                    // This line has 3+ dash-segments with a zip code → structured address block
+                    for (const part of parts) {
+                      const p = part.trim();
+                      if (!p) continue;
+                      if (/^\d{5}$/.test(p)) { parsedZip = p; }
+                      else if (hotelKw.test(p)) { hotelName = p; }
+                      else if (addressKw.test(p) || /^\d+\s/.test(p)) { parsedAddress = parsedAddress ? parsedAddress + '\n' + p : p; }
+                      else if (parsedZip && !parsedCity) { parsedCity = p; }
+                      else if (!parsedZip && !hotelName) { hotelName = p; }
+                      else if (!parsedCity) { parsedCity = p; }
+                    }
+                    usedLines.add(i);
+                    continue;
+                  }
+                  // "14 rue Pétel, 75015 Paris" — address with embedded zip+city (comma or space separated)
                   const hasAddr = addressKw.test(lines[i]) || /^\d+[\s,]/.test(lines[i]);
-                  // "14 rue Pétel, 75015 Paris" or "8 chemin des Vendanges 83990 St Tropez"
                   const embZip = lines[i].match(/[,\s]\s*(\d{5})\s+([A-Za-zÀ-ÿ][\w\s.'-]*?)(?:\s*,?\s*(?:France|FR)?)?$/i);
                   if (hasAddr && embZip) {
                     const zipIdx = lines[i].indexOf(embZip[1]);
@@ -12074,17 +12069,17 @@ const FacturesSamples = ({ showToast }) => {
                   }
                 }
 
-                // ── Step 4: Detect standalone zip (could be "83990" alone after dash-split) ──
+                // ── Step 2: Detect title/function lines ──
+                for (let i = 0; i < lines.length; i++) {
+                  if (usedLines.has(i)) continue;
+                  if (titleKw.test(lines[i])) usedLines.add(i);
+                }
+
+                // ── Step 3: Detect standalone zip+city if not yet found ──
                 if (!parsedZip) {
                   for (let i = 0; i < lines.length; i++) {
                     if (usedLines.has(i)) continue;
-                    // Pure zip code "83990"
-                    if (/^\d{5}$/.test(lines[i].trim())) {
-                      parsedZip = lines[i].trim();
-                      usedLines.add(i);
-                      break;
-                    }
-                    // "75015 Paris" or "Paris 75015"
+                    if (/^\d{5}$/.test(lines[i].trim())) { parsedZip = lines[i].trim(); usedLines.add(i); break; }
                     const zipCity = lines[i].match(/^(\d{5})\s+(.+)/);
                     if (zipCity) { parsedZip = zipCity[1]; parsedCity = zipCity[2].replace(/,?\s*(France|FR)$/i, '').trim(); usedLines.add(i); break; }
                     const cityZip = lines[i].match(/^([A-Za-zÀ-ÿ][\w\s.'-]+?)\s+(\d{5})$/);
@@ -12092,41 +12087,30 @@ const FacturesSamples = ({ showToast }) => {
                   }
                 }
 
-                // ── Step 5: Detect city (remaining short line after zip was found, near zip line) ──
-                if (parsedZip && !parsedCity) {
-                  for (let i = 0; i < lines.length; i++) {
-                    if (usedLines.has(i)) continue;
-                    // Short text without digits = likely city
-                    if (/^[A-Za-zÀ-ÿ][\w\s.'-]{1,30}$/.test(lines[i]) && !/\d/.test(lines[i]) && !titleKw.test(lines[i]) && !hotelKw.test(lines[i])) {
-                      parsedCity = lines[i].trim();
-                      usedLines.add(i); break;
-                    }
-                  }
-                }
-
-                // ── Step 6: Detect country ──
+                // ── Step 4: Detect country ──
                 for (let i = 0; i < lines.length; i++) {
                   if (usedLines.has(i)) continue;
                   const lower = lines[i].toLowerCase().trim();
                   if (countryMap[lower]) { parsedCountry = countryMap[lower]; usedLines.add(i); }
                 }
 
-                // ── Step 7: Among remaining lines, separate hotel name vs person name ──
-                let personName = '', hotelName = '';
-                for (let i = 0; i < lines.length; i++) {
-                  if (usedLines.has(i)) continue;
-                  if (hotelKw.test(lines[i])) {
-                    if (!hotelName) { hotelName = lines[i]; usedLines.add(i); }
+                // ── Step 5: Detect hotel name (if not already found from dash-block) ──
+                if (!hotelName) {
+                  for (let i = 0; i < lines.length; i++) {
+                    if (usedLines.has(i)) continue;
+                    if (hotelKw.test(lines[i])) { hotelName = lines[i]; usedLines.add(i); break; }
                   }
                 }
-                // Person = remaining lines that look like a name (2-4 words, letters only)
+
+                // ── Step 6: Person name = remaining unused line (2-4 words, letters only) ──
                 for (let i = 0; i < lines.length; i++) {
                   if (usedLines.has(i)) continue;
-                  const words = lines[i].split(/\s+/);
-                  const looksLikeName = words.length >= 2 && words.length <= 4 && /^[A-Za-zÀ-ÿ\s.'-]+$/.test(lines[i]);
-                  if (!personName && looksLikeName) { personName = lines[i]; usedLines.add(i); }
+                  const w = lines[i].split(/\s+/).length;
+                  if (w >= 2 && w <= 4 && /^[A-Za-zÀ-ÿ\s.'-]+$/.test(lines[i])) {
+                    personName = lines[i]; usedLines.add(i); break;
+                  }
                 }
-                // If still no person, take first remaining
+                // Fallback: first remaining unused line
                 if (!personName) {
                   for (let i = 0; i < lines.length; i++) {
                     if (!usedLines.has(i)) { personName = lines[i]; usedLines.add(i); break; }
