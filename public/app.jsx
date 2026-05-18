@@ -12001,99 +12001,120 @@ const FacturesSamples = ({ showToast }) => {
 
         {/* Smart paste - collage rapide */}
         <div>
-          <label className="text-xs font-medium text-slate-500 mb-1 block">Collage rapide (coller toutes les infos d'un coup)</label>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Collage rapide — tapez ou collez les infos puis Entree pour valider</label>
           <div className="relative">
             <textarea
-              placeholder={"Collez ici toutes les infos du destinataire...\nEx:\nHotel Le Beau Moulin\n12 rue de la Paix\n75001 Paris\ncontact@hotel.com\n01 23 45 67 89"}
+              id="smartPasteField"
+              placeholder={"Collez ou tapez les infos ligne par ligne, puis Entree :\nHotel Le Beau Moulin\n14 rue Pétel, 75015 Paris\ncontact@hotel.com\n+33 1 48 28 53 96"}
               rows={4}
               className="w-full border border-dashed border-emerald-300 bg-emerald-50/30 rounded-lg px-3 py-2 text-sm resize-none focus:border-emerald-500 focus:ring-1 focus:ring-emerald-200"
-              onPaste={(e) => {
-                setTimeout(() => {
-                  const text = e.target.value;
-                  if (!text.trim()) return;
-                  const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
-                  let parsedName = '', parsedEmail = '', parsedPhone = '', parsedAddress = '', parsedCity = '', parsedZip = '', parsedCountry = 'FR';
-                  const usedLines = new Set();
+              onKeyDown={(e) => {
+                if (e.key !== 'Enter' || e.shiftKey) return;
+                const text = e.target.value;
+                if (!text.trim()) return;
+                e.preventDefault();
 
-                  // 1) Detect email
-                  for (let i = 0; i < lines.length; i++) {
-                    const emailMatch = lines[i].match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
-                    if (emailMatch) { parsedEmail = emailMatch[0]; usedLines.add(i); break; }
+                const lines = text.split(/\n/).map(l => l.trim()).filter(Boolean);
+                let parsedName = '', parsedEmail = '', parsedPhone = '', parsedAddress = '', parsedCity = '', parsedZip = '', parsedCountry = '';
+                const usedLines = new Set();
+                const addressKeywords = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|square|résidence|lot|lotissement|zi|zone|voie|sentier|hameau|lieu.dit|lieudit|faubourg|parvis)\b/i;
+                const titleKeywords = /^(directeur|directrice|gérant|gérante|manager|chef|responsable|président|pdg|dg|propriétaire|réceptionniste|concierge|maître d'hôtel|sommelier)/i;
+
+                // 1) Detect email
+                for (let i = 0; i < lines.length; i++) {
+                  const emailMatch = lines[i].match(/[\w.+-]+@[\w.-]+\.\w{2,}/);
+                  if (emailMatch) { parsedEmail = emailMatch[0]; usedLines.add(i); break; }
+                }
+
+                // 2) Detect phone (French patterns) — also handle lines that start with phone
+                for (let i = 0; i < lines.length; i++) {
+                  if (usedLines.has(i)) continue;
+                  const phoneMatch = lines[i].match(/(?:\+33|0033|0)\s*[1-9](?:[\s.()-]*\d){8}/);
+                  if (phoneMatch) { parsedPhone = phoneMatch[0].trim(); usedLines.add(i); break; }
+                  const digitsOnly = lines[i].replace(/\D/g, '');
+                  if (digitsOnly.length >= 10 && digitsOnly.length <= 13 && /^[\d\s.+()-]+$/.test(lines[i].trim())) {
+                    parsedPhone = lines[i].trim(); usedLines.add(i); break;
                   }
+                }
 
-                  // 2) Detect phone (French patterns)
+                // 3) Detect address lines with embedded zip+city (e.g. "14 rue Pétel, 75015 Paris")
+                const addressLines = [];
+                for (let i = 0; i < lines.length; i++) {
+                  if (usedLines.has(i)) continue;
+                  // Check if this line contains both address keywords AND a zip code
+                  const hasAddress = addressKeywords.test(lines[i]) || /^\d+[\s,]/.test(lines[i]);
+                  const embeddedZip = lines[i].match(/[,\s]\s*(\d{5})\s+([A-Za-zÀ-ÿ][\w\s-]*?)(?:\s*,?\s*(?:France|FR)?)?$/i);
+                  if (hasAddress && embeddedZip) {
+                    // Split: address part before the zip, zip, city
+                    const zipIdx = lines[i].indexOf(embeddedZip[1]);
+                    parsedAddress = lines[i].substring(0, zipIdx).replace(/[,\s]+$/, '').trim();
+                    parsedZip = embeddedZip[1];
+                    parsedCity = embeddedZip[2].replace(/,?\s*(France|FR)$/i, '').trim();
+                    usedLines.add(i);
+                  } else if (hasAddress) {
+                    addressLines.push(lines[i]);
+                    usedLines.add(i);
+                  }
+                }
+                if (addressLines.length > 0 && !parsedAddress) {
+                  parsedAddress = addressLines.join('\n');
+                } else if (addressLines.length > 0) {
+                  parsedAddress += '\n' + addressLines.join('\n');
+                }
+
+                // 4) Detect standalone postal code + city (e.g. "75015 Paris")
+                if (!parsedZip) {
                   for (let i = 0; i < lines.length; i++) {
                     if (usedLines.has(i)) continue;
-                    const phoneLine = lines[i].replace(/[^0-9+() .-]/g, '').trim();
-                    const phoneMatch = lines[i].match(/(?:\+33|0033|0)\s*[1-9](?:[\s.()-]*\d){8}/);
-                    if (phoneMatch) { parsedPhone = phoneMatch[0].trim(); usedLines.add(i); break; }
-                    // Also detect standalone phone-like lines (mostly digits)
-                    if (phoneLine.length >= 10 && (phoneLine.replace(/\D/g, '').length >= 10)) {
-                      parsedPhone = lines[i].trim(); usedLines.add(i); break;
-                    }
-                  }
-
-                  // 3) Detect postal code + city (French: 5 digits + city)
-                  for (let i = 0; i < lines.length; i++) {
-                    if (usedLines.has(i)) continue;
-                    const zipCityMatch = lines[i].match(/(\d{5})\s+(.+)/);
+                    const zipCityMatch = lines[i].match(/^(\d{5})\s+(.+)/);
                     if (zipCityMatch) {
                       parsedZip = zipCityMatch[1];
                       parsedCity = zipCityMatch[2].replace(/,?\s*(France|FR)$/i, '').trim();
-                      usedLines.add(i);
-                      break;
+                      usedLines.add(i); break;
                     }
-                    // Also check for city then zip: "Paris 75001"
-                    const cityZipMatch = lines[i].match(/^([A-Za-zÀ-ÿ\s-]+?)\s+(\d{5})$/);
+                    const cityZipMatch = lines[i].match(/^([A-Za-zÀ-ÿ][\w\s-]+?)\s+(\d{5})$/);
                     if (cityZipMatch) {
                       parsedCity = cityZipMatch[1].trim();
                       parsedZip = cityZipMatch[2];
-                      usedLines.add(i);
-                      break;
+                      usedLines.add(i); break;
                     }
                   }
+                }
 
-                  // 4) Detect address (lines with street keywords or starting with a number)
-                  const addressKeywords = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|square|résidence|lot|lotissement|zi|zone|voie|sentier|hameau|lieu.dit|lieudit)\b/i;
-                  const addressLines = [];
-                  for (let i = 0; i < lines.length; i++) {
-                    if (usedLines.has(i)) continue;
-                    if (addressKeywords.test(lines[i]) || /^\d+[\s,]/.test(lines[i])) {
-                      addressLines.push(lines[i]);
-                      usedLines.add(i);
-                    }
+                // 5) Detect country
+                for (let i = 0; i < lines.length; i++) {
+                  if (usedLines.has(i)) continue;
+                  const lower = lines[i].toLowerCase().trim();
+                  const countryMap = { france: 'FR', belgique: 'BE', be: 'BE', suisse: 'CH', ch: 'CH', luxembourg: 'LU', lu: 'LU', allemagne: 'DE', espagne: 'ES', italie: 'IT', portugal: 'PT', 'royaume-uni': 'GB', uk: 'GB', gb: 'GB' };
+                  if (countryMap[lower]) {
+                    parsedCountry = countryMap[lower];
+                    usedLines.add(i);
                   }
-                  parsedAddress = addressLines.join('\n');
+                }
 
-                  // 5) Detect country if mentioned
-                  for (let i = 0; i < lines.length; i++) {
-                    if (usedLines.has(i)) continue;
-                    const lower = lines[i].toLowerCase().trim();
-                    if (['france', 'fr', 'belgique', 'be', 'suisse', 'ch', 'luxembourg', 'lu', 'allemagne', 'de', 'espagne', 'es', 'italie', 'it', 'portugal', 'pt', 'royaume-uni', 'uk', 'gb'].includes(lower)) {
-                      const countryMap = { france: 'FR', fr: 'FR', belgique: 'BE', be: 'BE', suisse: 'CH', ch: 'CH', luxembourg: 'LU', lu: 'LU', allemagne: 'DE', de: 'DE', espagne: 'ES', es: 'ES', italie: 'IT', it: 'IT', portugal: 'PT', pt: 'PT', 'royaume-uni': 'GB', uk: 'GB', gb: 'GB' };
-                      parsedCountry = countryMap[lower] || 'FR';
-                      usedLines.add(i);
-                    }
-                  }
+                // 6) Skip title/function lines (Directeur, Gérant, etc.)
+                for (let i = 0; i < lines.length; i++) {
+                  if (usedLines.has(i)) continue;
+                  if (titleKeywords.test(lines[i])) { usedLines.add(i); }
+                }
 
-                  // 6) Remaining lines → first unused = name
-                  for (let i = 0; i < lines.length; i++) {
-                    if (!usedLines.has(i)) { parsedName = lines[i]; usedLines.add(i); break; }
-                  }
+                // 7) First remaining unused line = name
+                for (let i = 0; i < lines.length; i++) {
+                  if (!usedLines.has(i)) { parsedName = lines[i]; usedLines.add(i); break; }
+                }
 
-                  // Apply parsed values
-                  if (parsedName) setClientName(parsedName);
-                  if (parsedEmail) setClientEmail(parsedEmail);
-                  if (parsedPhone) setClientPhone(parsedPhone);
-                  if (parsedAddress) setClientAddress(parsedAddress);
-                  if (parsedCity) setClientCity(parsedCity);
-                  if (parsedZip) setClientZip(parsedZip);
-                  if (parsedCountry) setClientCountry(parsedCountry);
+                // Apply only non-empty parsed values (don't overwrite existing)
+                if (parsedName) setClientName(parsedName);
+                if (parsedEmail) setClientEmail(parsedEmail);
+                if (parsedPhone) setClientPhone(parsedPhone);
+                if (parsedAddress) setClientAddress(parsedAddress);
+                if (parsedCity) setClientCity(parsedCity);
+                if (parsedZip) setClientZip(parsedZip);
+                if (parsedCountry) setClientCountry(parsedCountry);
 
-                  // Clear the paste field after parsing
-                  e.target.value = '';
-                  showToast('Infos détectées et remplies automatiquement', 'success');
-                }, 50);
+                e.target.value = '';
+                const filled = [parsedName && 'nom', parsedEmail && 'email', parsedPhone && 'tel', parsedAddress && 'adresse', parsedZip && 'CP', parsedCity && 'ville'].filter(Boolean);
+                showToast(filled.length ? `Rempli : ${filled.join(', ')}` : 'Aucune info détectée', filled.length ? 'success' : 'error');
               }}
             />
           </div>
