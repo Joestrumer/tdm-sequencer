@@ -12902,15 +12902,15 @@ const FacturesShipments = ({ showToast }) => {
       />
 
       {/* Liste des envois */}
-      <div className="bg-white rounded-xl border border-slate-100">
+      <div className="bg-white rounded-xl border border-slate-100 overflow-auto" style={{ maxHeight: 'calc(100vh - 280px)' }}>
         {loading ? (
           <div className="p-8 text-center text-sm text-slate-400">Chargement...</div>
         ) : filtered.length === 0 ? (
           <div className="p-8 text-center text-sm text-slate-400">Aucun envoi trouvé</div>
         ) : (
-          <div className="overflow-x-auto rounded-xl">
+          <div className="rounded-xl">
             <table className="w-full">
-              <thead className="bg-slate-50 border-b border-slate-100">
+              <thead className="bg-slate-50 border-b border-slate-100 sticky top-0 z-10">
                 <tr>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Type</th>
                   <th className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase">Référence</th>
