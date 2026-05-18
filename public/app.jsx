@@ -12160,7 +12160,7 @@ const FacturesSamples = ({ showToast }) => {
                 // "AREV HOTEL - 8 CHEMIN DES VENDANGES - 83990 - ST. TROPEZ"
                 // → hotel / adresse / CP / ville parsed as a unit
                 for (let i = 0; i < lines.length; i++) {
-                  const parts = lines[i].split(/\s*-\s*/);
+                  const parts = lines[i].split(/\s+-\s+/);
                   if (parts.length >= 3 && /\d{5}/.test(lines[i])) {
                     // This line has 3+ dash-segments with a zip code → structured address block
                     for (const part of parts) {

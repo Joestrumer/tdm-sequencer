@@ -810,6 +810,7 @@ module.exports = (db) => {
       const imageExtensions = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico|tiff|avif|mp4|mp3|pdf|zip|css|js|woff|woff2|ttf|eot)$/i;
       // TLDs valides
       const validTlds = /\.(com|fr|net|org|eu|co|io|info|biz|de|uk|es|it|be|ch|nl|at|pt|lu|ca|us|email|online|pro|hotel|travel|club|site|world|app|dev|tech|store|shop|xyz|me)$/i;
+      const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/;
 
       const allEmails = db.prepare(`
         SELECT id, contact_email, nom_commercial FROM hotels_france
@@ -819,14 +820,30 @@ module.exports = (db) => {
       `).all();
 
       const badEmails = [];
+      const fixedEmails = [];
 
       for (const row of allEmails) {
-        const email = row.contact_email.toLowerCase();
+        let email = row.contact_email;
+
+        // Tenter de nettoyer les emails corrompus (URL-encoded, préfixes LDIF, espaces)
+        let decoded = email;
+        try { decoded = decodeURIComponent(email); } catch (_) {}
+        decoded = decoded.replace(/[\r\n\t]/g, ' ').trim();
+        const extracted = decoded.match(emailRegex);
+        if (extracted && extracted[0].toLowerCase() !== email.toLowerCase().trim()) {
+          // On peut récupérer un email valide depuis la chaîne corrompue
+          fixedEmails.push({ id: row.id, original: email, fixed: extracted[0].toLowerCase(), hotel: row.nom_commercial });
+          email = extracted[0].toLowerCase();
+        }
+
+        email = email.toLowerCase().trim();
         const domain = email.split('@')[1] || '';
         const localPart = email.split('@')[0];
         let reason = null;
 
-        if (imageExtensions.test(email)) {
+        if (!emailRegex.test(email)) {
+          reason = 'format email invalide';
+        } else if (imageExtensions.test(email)) {
           reason = 'extension fichier image/media';
         } else if (imageExtensions.test(domain)) {
           reason = 'domaine = fichier image';
@@ -853,21 +870,33 @@ module.exports = (db) => {
         }
       }
 
-      if (!dry_run && badEmails.length > 0) {
-        const stmt = db.prepare('UPDATE hotels_france SET email_excluded = 1 WHERE id = ?');
-        const transaction = db.transaction(() => {
-          for (const bad of badEmails) {
-            stmt.run(bad.id);
-          }
-        });
-        transaction();
-        logger.info(`🧹 Auto-clean: ${badEmails.length} mauvais email(s) exclu(s)`);
+      if (!dry_run) {
+        // Corriger les emails récupérables
+        if (fixedEmails.length > 0) {
+          const fixStmt = db.prepare('UPDATE hotels_france SET contact_email = ? WHERE id = ?');
+          const fixTransaction = db.transaction(() => {
+            for (const fix of fixedEmails) fixStmt.run(fix.fixed, fix.id);
+          });
+          fixTransaction();
+          logger.info(`🔧 Auto-clean: ${fixedEmails.length} email(s) corrigé(s)`);
+        }
+        // Exclure les emails irrécupérables
+        if (badEmails.length > 0) {
+          const stmt = db.prepare('UPDATE hotels_france SET email_excluded = 1 WHERE id = ?');
+          const transaction = db.transaction(() => {
+            for (const bad of badEmails) stmt.run(bad.id);
+          });
+          transaction();
+          logger.info(`🧹 Auto-clean: ${badEmails.length} mauvais email(s) exclu(s)`);
+        }
       }
 
       res.json({
         success: true,
         dry_run,
         total_checked: allEmails.length,
+        fixed_emails: fixedEmails.length,
+        fixed_details: fixedEmails,
         bad_emails: badEmails.length,
         details: badEmails,
       });

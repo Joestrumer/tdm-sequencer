@@ -338,8 +338,14 @@ function verifierBlocklist(db, email) {
 
 // ─── Envoi principal ─────────────────────────────────────────────────────────
 async function envoyerEmail(db, { lead, etape, inscriptionId }) {
-  // 0. Nettoyer et valider l'email
-  if (lead.email) lead.email = lead.email.trim();
+  // 0. Nettoyer et valider l'email (URL-encoded, préfixes LDIF, espaces)
+  if (lead.email) {
+    let cleaned = lead.email;
+    try { cleaned = decodeURIComponent(cleaned); } catch (_) {}
+    cleaned = cleaned.replace(/[\r\n\t]/g, ' ').trim();
+    const match = cleaned.match(/[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/);
+    lead.email = match ? match[0].toLowerCase() : cleaned.trim();
+  }
   if (!lead.email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(lead.email)) {
     throw new Error(`Email invalide ou corrompu : ${lead.email}`);
   }
