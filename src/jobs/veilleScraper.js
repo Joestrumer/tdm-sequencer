@@ -14,7 +14,13 @@ const { randomUUID } = require('crypto');
 const logger = require('../config/logger');
 const { scraperSource, filtrerParMotsCles, sauvegarderArticles } = require('../services/veilleService');
 const { enrichBatch } = require('../services/veilleEnrichment');
-const { processEnrichedArticles } = require('../services/veilleOpportunity');
+const { processEnrichedArticles, buildSignalSummary } = require('../services/veilleOpportunity');
+const { linkOrphanSignals } = require('../services/signals/signalUtils');
+const googleMapsDetector = require('../services/signals/googleMapsSignalDetector');
+const bookingDetector = require('../services/signals/bookingSignalDetector');
+const dataGouvDetector = require('../services/signals/dataGouvSignalDetector');
+const linkedinDetector = require('../services/signals/linkedinJobsDetector');
+const boampBodaccDetector = require('../services/signals/boampBodaccDetector');
 
 let db;
 const scheduledJobs = new Map();
@@ -275,6 +281,115 @@ async function runEnrichmentPipeline() {
   }
 }
 
+// ─── Détecteurs de signaux multi-sources ─────────────────────────────────────
+
+let detectorsRunning = false;
+
+/**
+ * Lance tous les détecteurs de signaux.
+ * Appelé manuellement ou via cron.
+ */
+async function runAllDetectors(options = {}) {
+  if (detectorsRunning) {
+    logger.warn('Veille détecteurs: déjà en cours, skip');
+    return { skipped: true };
+  }
+  detectorsRunning = true;
+  const results = {};
+  const only = options.detectors; // Filtre optionnel : ['google_maps', 'linkedin', ...]
+  const shouldRun = (name) => !only || only.includes(name);
+
+  try {
+    // 1. Google Maps (delta reviews, keywords, hours)
+    if (shouldRun('google_maps')) {
+      logger.info('Veille détecteurs: lancement Google Maps...');
+      try {
+        results.googleMaps = await googleMapsDetector.runBatch(db, { batchSize: options.batchSize || 50 });
+      } catch (err) {
+        logger.error(`Détecteur Google Maps: ${err.message}`);
+        results.googleMaps = { error: err.message };
+      }
+    }
+
+    // 2. LinkedIn jobs pré-ouverture
+    if (shouldRun('linkedin')) {
+      logger.info('Veille détecteurs: lancement LinkedIn...');
+      try {
+        results.linkedin = await linkedinDetector.runBatch(db);
+      } catch (err) {
+        logger.error(`Détecteur LinkedIn: ${err.message}`);
+        results.linkedin = { error: err.message };
+      }
+    }
+
+    // 3. BOAMP / BODACC
+    if (shouldRun('boamp_bodacc')) {
+      logger.info('Veille détecteurs: lancement BOAMP/BODACC...');
+      try {
+        results.boampBodacc = await boampBodaccDetector.runBatch(db);
+      } catch (err) {
+        logger.error(`Détecteur BOAMP/BODACC: ${err.message}`);
+        results.boampBodacc = { error: err.message };
+      }
+    }
+
+    // 4. Data.gouv (permis de construire)
+    if (shouldRun('data_gouv')) {
+      logger.info('Veille détecteurs: lancement data.gouv...');
+      try {
+        results.dataGouv = await dataGouvDetector.runBatch(db);
+      } catch (err) {
+        logger.error(`Détecteur data.gouv: ${err.message}`);
+        results.dataGouv = { error: err.message };
+      }
+    }
+
+    // 5. Booking / Amadeus (si configuré)
+    if (shouldRun('booking')) {
+      logger.info('Veille détecteurs: lancement Booking/Amadeus...');
+      try {
+        results.booking = await bookingDetector.runBatch(db, { batchSize: options.batchSize || 30 });
+      } catch (err) {
+        // Ne pas crasher si Amadeus n'est pas configuré
+        logger.warn(`Détecteur Booking: ${err.message}`);
+        results.booking = { error: err.message };
+      }
+    }
+
+    // 6. Lier les signaux orphelins aux opportunités existantes
+    const linked = linkOrphanSignals(db);
+    results.signals_linked = linked;
+
+    // 7. Mettre à jour les signal_summary des opportunités touchées
+    try {
+      const oppsWithSignals = db.prepare(`
+        SELECT DISTINCT opportunity_id FROM veille_signals
+        WHERE opportunity_id IS NOT NULL
+      `).all();
+
+      for (const row of oppsWithSignals) {
+        const summary = buildSignalSummary(db, row.opportunity_id);
+        db.prepare('UPDATE veille_opportunities SET signal_summary = ?, updated_at = datetime(\'now\') WHERE id = ?')
+          .run(JSON.stringify(summary), row.opportunity_id);
+      }
+      results.summaries_updated = oppsWithSignals.length;
+    } catch (err) {
+      logger.warn(`Mise à jour signal_summary: ${err.message}`);
+    }
+
+    const totalSignals = Object.values(results)
+      .filter(r => typeof r === 'object' && r.signals_found)
+      .reduce((sum, r) => sum + r.signals_found, 0);
+
+    logger.info(`Veille détecteurs terminés: ${totalSignals} signaux trouvés au total`);
+
+  } finally {
+    detectorsRunning = false;
+  }
+
+  return results;
+}
+
 // ─── Initialisation ─────────────────────────────────────────────────────────
 
 function initialiser(database) {
@@ -286,6 +401,40 @@ function initialiser(database) {
     runEnrichmentPipeline();
   });
   logger.info('Veille: cron enrichissement planifié (toutes les 30 min)');
+
+  // Cron détecteurs de signaux
+
+  // Google Maps + LinkedIn + BOAMP/BODACC : 2x/semaine (lundi et jeudi 6h)
+  cron.schedule('0 6 * * 1,4', async () => {
+    try {
+      logger.info('Veille: cron détecteurs signaux (bi-hebdo)');
+      await runAllDetectors({ batchSize: 50 });
+    } catch (err) {
+      logger.error(`Veille détecteurs cron erreur: ${err.message}`);
+    }
+  });
+
+  // Data.gouv (permis construire) : 1x/semaine (dimanche 3h)
+  cron.schedule('0 3 * * 0', async () => {
+    try {
+      logger.info('Veille: cron data.gouv permis');
+      await dataGouvDetector.runBatch(db);
+    } catch (err) {
+      logger.error(`Veille data.gouv cron erreur: ${err.message}`);
+    }
+  });
+
+  // Booking/Amadeus : 2x/mois (1er et 15 du mois, 4h)
+  cron.schedule('0 4 1,15 * *', async () => {
+    try {
+      logger.info('Veille: cron Booking/Amadeus');
+      await bookingDetector.runBatch(db, { batchSize: 30 });
+    } catch (err) {
+      logger.warn(`Veille Booking cron erreur: ${err.message}`);
+    }
+  });
+
+  logger.info('Veille: crons détecteurs de signaux planifiés');
 }
 
 // ─── Status (pour debug / API) ──────────────────────────────────────────────
@@ -295,6 +444,8 @@ function getStatus() {
     crons: scheduledJobs.size,
     running: [...runningLocks],
     cronExpressions: [...scheduledJobs.keys()],
+    detectorsRunning,
+    enrichmentRunning,
   };
 }
 
@@ -304,5 +455,6 @@ module.exports = {
   scraperUneSource,
   planifierCrons,
   runEnrichmentPipeline,
+  runAllDetectors,
   getStatus,
 };

@@ -11,7 +11,7 @@
 
 const { Router } = require('express');
 const { randomUUID } = require('crypto');
-const { scraperUneSource, scraperToutesSources, planifierCrons, runEnrichmentPipeline, getStatus } = require('../jobs/veilleScraper');
+const { scraperUneSource, scraperToutesSources, planifierCrons, runEnrichmentPipeline, runAllDetectors, getStatus } = require('../jobs/veilleScraper');
 
 module.exports = (db) => {
   const router = Router();
@@ -731,7 +731,20 @@ module.exports = (db) => {
         ORDER BY a.created_at DESC
       `).all(req.params.id);
 
-      res.json({ ...opp, articles });
+      // Signaux liés à cette opportunité
+      const signals = db.prepare(`
+        SELECT id, signal_type, source, signal_strength, signal_date, detected_at, source_url
+        FROM veille_signals
+        WHERE opportunity_id = ?
+        ORDER BY detected_at DESC
+      `).all(req.params.id);
+
+      // Parse signal_summary si présent
+      if (opp.signal_summary && typeof opp.signal_summary === 'string') {
+        try { opp.signal_summary = JSON.parse(opp.signal_summary); } catch (e) { /* ignore */ }
+      }
+
+      res.json({ ...opp, articles, signals });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
@@ -877,6 +890,137 @@ module.exports = (db) => {
           error_runs: errorRuns,
         },
       });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Signaux (Phase 1) ──────────────────────────────────────────────────────
+
+  /**
+   * GET /signals — Liste paginée des signaux avec filtres
+   */
+  router.get('/signals', (req, res) => {
+    try {
+      const {
+        signal_type, source, hotel_name, city,
+        opportunity_id, min_strength,
+        page = 1, limit = 50, search
+      } = req.query;
+
+      let where = ['1=1'];
+      const params = [];
+
+      if (signal_type) { where.push('s.signal_type = ?'); params.push(signal_type); }
+      if (source) { where.push('s.source = ?'); params.push(source); }
+      if (hotel_name) { where.push('s.hotel_name LIKE ?'); params.push(`%${hotel_name}%`); }
+      if (city) { where.push('s.city LIKE ?'); params.push(`%${city}%`); }
+      if (opportunity_id) { where.push('s.opportunity_id = ?'); params.push(opportunity_id); }
+      if (min_strength) { where.push('s.signal_strength >= ?'); params.push(parseInt(min_strength)); }
+      if (search) {
+        where.push('(s.hotel_name LIKE ? OR s.city LIKE ? OR s.signal_type LIKE ?)');
+        params.push(`%${search}%`, `%${search}%`, `%${search}%`);
+      }
+
+      const whereClause = where.join(' AND ');
+      const offset = (parseInt(page) - 1) * parseInt(limit);
+
+      const total = db.prepare(`SELECT COUNT(*) as n FROM veille_signals s WHERE ${whereClause}`).get(...params).n;
+
+      const signals = db.prepare(`
+        SELECT s.*,
+          o.hotel_name as opp_hotel_name, o.business_score as opp_business_score
+        FROM veille_signals s
+        LEFT JOIN veille_opportunities o ON o.id = s.opportunity_id
+        WHERE ${whereClause}
+        ORDER BY s.detected_at DESC
+        LIMIT ? OFFSET ?
+      `).all(...params, parseInt(limit), offset);
+
+      res.json({
+        signals: signals.map(s => ({
+          ...s,
+          raw_payload: typeof s.raw_payload === 'string' ? JSON.parse(s.raw_payload) : s.raw_payload,
+        })),
+        total,
+        page: parseInt(page),
+        pages: Math.ceil(total / parseInt(limit)),
+      });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /signals/stats — Statistiques des signaux par type et source
+   */
+  router.get('/signals/stats', (req, res) => {
+    try {
+      const total = db.prepare('SELECT COUNT(*) as n FROM veille_signals').get().n;
+      const linked = db.prepare('SELECT COUNT(*) as n FROM veille_signals WHERE opportunity_id IS NOT NULL').get().n;
+      const orphan = total - linked;
+
+      const byType = db.prepare(`
+        SELECT signal_type, COUNT(*) as count, AVG(signal_strength) as avg_strength,
+          MAX(detected_at) as last_detected
+        FROM veille_signals
+        GROUP BY signal_type
+        ORDER BY count DESC
+      `).all();
+
+      const bySource = db.prepare(`
+        SELECT source, COUNT(*) as count, MAX(detected_at) as last_detected
+        FROM veille_signals
+        GROUP BY source
+        ORDER BY count DESC
+      `).all();
+
+      const recent = db.prepare(`
+        SELECT id, signal_type, source, hotel_name, city, signal_strength, detected_at
+        FROM veille_signals
+        ORDER BY detected_at DESC
+        LIMIT 10
+      `).all();
+
+      res.json({ total, linked, orphan, byType, bySource, recent });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * POST /signals/run-detectors — Lancer tous les détecteurs manuellement
+   * Body optionnel: { detectors: ['google_maps', 'booking', 'data_gouv', 'linkedin', 'boamp_bodacc'] }
+   */
+  router.post('/signals/run-detectors', async (req, res) => {
+    req.setTimeout(300000);
+    res.setTimeout(300000);
+    try {
+      const { detectors } = req.body || {};
+      const result = await runAllDetectors({ detectors });
+      res.json({ ok: true, ...result });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /signals/:id — Détail d'un signal
+   */
+  router.get('/signals/:id', (req, res) => {
+    try {
+      const signal = db.prepare('SELECT * FROM veille_signals WHERE id = ?').get(req.params.id);
+      if (!signal) return res.status(404).json({ erreur: 'Signal introuvable' });
+
+      signal.raw_payload = typeof signal.raw_payload === 'string' ? JSON.parse(signal.raw_payload) : signal.raw_payload;
+
+      // Si lié à une opportunité, récupérer ses infos
+      let opportunity = null;
+      if (signal.opportunity_id) {
+        opportunity = db.prepare('SELECT id, hotel_name, city, business_score, status FROM veille_opportunities WHERE id = ?').get(signal.opportunity_id);
+      }
+
+      res.json({ ...signal, opportunity });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }

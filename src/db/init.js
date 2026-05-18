@@ -441,6 +441,49 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_veille_oppsrc_opp ON veille_opportunity_sources(opportunity_id);
   CREATE INDEX IF NOT EXISTS idx_veille_oppsrc_art ON veille_opportunity_sources(article_id);
 
+  -- ─── Phase 1 Refonte Veille — Signaux individuels ───────────────────────────
+
+  CREATE TABLE IF NOT EXISTS veille_signals (
+    id TEXT PRIMARY KEY,
+    hotel_name TEXT,
+    city TEXT,
+    postcode TEXT,
+    country TEXT DEFAULT 'FR',
+    signal_type TEXT NOT NULL,
+    signal_strength INTEGER DEFAULT 50,
+    source TEXT NOT NULL,
+    source_url TEXT,
+    raw_payload TEXT,
+    detected_at TEXT DEFAULT (datetime('now')),
+    signal_date TEXT,
+    opportunity_id TEXT,
+    fingerprint TEXT NOT NULL,
+    UNIQUE(fingerprint)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_sig_hotel ON veille_signals(hotel_name);
+  CREATE INDEX IF NOT EXISTS idx_veille_sig_city ON veille_signals(city);
+  CREATE INDEX IF NOT EXISTS idx_veille_sig_type ON veille_signals(signal_type);
+  CREATE INDEX IF NOT EXISTS idx_veille_sig_opp ON veille_signals(opportunity_id);
+  CREATE INDEX IF NOT EXISTS idx_veille_sig_detected ON veille_signals(detected_at DESC);
+
+  CREATE TABLE IF NOT EXISTS veille_google_snapshots (
+    id TEXT PRIMARY KEY,
+    hotel_place_id TEXT NOT NULL,
+    hotel_name TEXT,
+    city TEXT,
+    snapshot_date TEXT NOT NULL,
+    review_count INTEGER,
+    rating REAL,
+    business_status TEXT,
+    opening_hours_json TEXT,
+    website_uri TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    UNIQUE(hotel_place_id, snapshot_date)
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_veille_gsnap_place ON veille_google_snapshots(hotel_place_id);
+
   -- ─── Table Prospection Hôtels France (import CSV officiel) ──────────────────
 
   CREATE TABLE IF NOT EXISTS hotels_france (
@@ -894,6 +937,15 @@ const migrations = [
   'ALTER TABLE vf_client_mappings ADD COLUMN hubspot_company_id TEXT',
   // Emails génériques — exclusion des mauvais emails
   'ALTER TABLE hotels_france ADD COLUMN email_excluded INTEGER DEFAULT 0',
+  // ─── Phase 1 Refonte Veille — Signaux multi-sources ───────────────
+  'ALTER TABLE veille_opportunities ADD COLUMN signal_summary TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN best_contact_id TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN hubspot_company_id TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN hubspot_deal_id TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN stars TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN website TEXT',
+  'ALTER TABLE veille_opportunities ADD COLUMN google_place_id TEXT',
+  'ALTER TABLE veille_articles ADD COLUMN signal_id TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
