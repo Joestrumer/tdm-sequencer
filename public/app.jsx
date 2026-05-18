@@ -19470,6 +19470,13 @@ const VueVeille = ({ showToast }) => {
   // Feedback state
   const [feedbackReason, setFeedbackReason] = useState('');
 
+  // Settings state
+  const [veilleSettings, setVeilleSettings] = useState(null);
+  const [apiCredits, setApiCredits] = useState(null);
+  const [excludedHotels, setExcludedHotels] = useState([]);
+  const [newExcluded, setNewExcluded] = useState('');
+  const [testingApi, setTestingApi] = useState('');
+
   useEffect(() => { const t = setTimeout(() => setSearchDebounced(search), 400); return () => clearTimeout(t); }, [search]);
   useEffect(() => { const t = setTimeout(() => setOppSearchDebounced(oppSearch), 400); return () => clearTimeout(t); }, [oppSearch]);
 
@@ -19532,6 +19539,18 @@ const VueVeille = ({ showToast }) => {
   const loadContactsStats = async () => { try { setContactsStats(await api.get('/veille/contacts/stats')); } catch (e) { console.warn('Contacts stats:', e.message); } };
   const loadAlerts = async () => { try { setAlertsData(await api.get('/veille/veille-alerts?hours=168')); } catch (e) { console.warn('Alerts:', e.message); } };
   const loadCalibration = async () => { try { setCalibrationData(await api.get('/veille/scoring/calibration')); } catch (e) { console.warn('Calibration:', e.message); } };
+  const loadSettings = async () => {
+    try {
+      const [s, c, h] = await Promise.all([
+        api.get('/veille/settings'),
+        api.get('/veille/api-credits'),
+        api.get('/veille/excluded-hotels'),
+      ]);
+      setVeilleSettings(s);
+      setApiCredits(c);
+      setExcludedHotels(h.hotels || []);
+    } catch (e) { console.warn('Settings:', e.message); }
+  };
 
   const charger = async () => {
     setLoading(true);
@@ -19545,6 +19564,7 @@ const VueVeille = ({ showToast }) => {
   useEffect(() => { if (tab === 'health') { loadSourceHealth(); loadRecentRuns(); } }, [tab]);
   useEffect(() => { if (tab === 'signals') { loadSignals(1); loadSignalStats(); } }, [tab, sigTypeFilter, sigSourceFilter]);
   useEffect(() => { if (tab === 'dashboard') { loadAlerts(); loadCalibration(); loadContactsStats(); } }, [tab]);
+  useEffect(() => { if (tab === 'settings') { loadSettings(); } }, [tab]);
 
   // ─── Actions ─────────────────────────────────────────────────────────────
 
@@ -19769,6 +19789,44 @@ const VueVeille = ({ showToast }) => {
     setPipelineRunning(false);
   };
 
+  const handleSaveSettings = async (key, value) => {
+    try {
+      await api.put('/veille/settings', { [key]: value });
+      showToast?.('Paramètre sauvegardé', 'success');
+      loadSettings();
+    } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
+  };
+
+  const handleTestApi = async (service) => {
+    setTestingApi(service);
+    try {
+      const res = await api.post(`/veille/test-api/${service}`);
+      if (res.ok) showToast?.(`${res.service}: connexion OK`, 'success');
+      else showToast?.(`${res.service}: ${res.error || 'erreur ' + res.status}`, 'error');
+    } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
+    setTestingApi('');
+  };
+
+  const handleAddExcluded = async () => {
+    if (!newExcluded.trim()) return;
+    const updated = [...excludedHotels, newExcluded.trim()];
+    try {
+      await api.put('/veille/excluded-hotels', { hotels: updated });
+      setExcludedHotels(updated);
+      setNewExcluded('');
+      showToast?.('Hôtel exclu ajouté', 'success');
+    } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
+  };
+
+  const handleRemoveExcluded = async (idx) => {
+    const updated = excludedHotels.filter((_, i) => i !== idx);
+    try {
+      await api.put('/veille/excluded-hotels', { hotels: updated });
+      setExcludedHotels(updated);
+      showToast?.('Hôtel retiré', 'success');
+    } catch (err) { showToast?.('Erreur: ' + err.message, 'error'); }
+  };
+
   const toggleLu = async (a) => {
     try { await api.patch(`/veille/articles/${a.id}`, { lu: !a.lu }); setArticles(p => p.map(x => x.id === a.id ? { ...x, lu: x.lu ? 0 : 1 } : x)); loadStats(); } catch (e) { showToast?.('Erreur: ' + e.message, 'error'); }
   };
@@ -19827,6 +19885,7 @@ const VueVeille = ({ showToast }) => {
               { id: 'signals', label: `Signaux${sigStats ? ` (${sigStats.total || 0})` : ''}` },
               { id: 'articles', label: `Articles${stats ? ` (${stats.nonLus})` : ''}` },
               { id: 'health', label: 'Sources & Santé' },
+              { id: 'settings', label: 'Paramètres' },
             ].map(t => (
               <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'articles' && articles.length === 0) loadArticles(1); }}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${tab === t.id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
@@ -20720,6 +20779,142 @@ const VueVeille = ({ showToast }) => {
               </div>
             </div>
           )}
+        </div>
+      )}
+
+      {/* ─── Onglet Paramètres ──────────────────────────────────────────────── */}
+      {tab === 'settings' && (
+        <div className="space-y-4">
+          {/* Section Clés API */}
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-4">Clés API</h3>
+            <div className="space-y-2">
+              {veilleSettings?.api_keys && Object.entries(veilleSettings.api_keys).map(([key, info]) => {
+                const labels = {
+                  brave_search_api_key: 'Brave Search',
+                  google_places_api_key: 'Google Places',
+                  pappers_api_key: 'Pappers',
+                  zerobounce_api_key: 'ZeroBounce',
+                  amadeus_client_id: 'Amadeus Client ID',
+                  amadeus_client_secret: 'Amadeus Client Secret',
+                };
+                const serviceMap = {
+                  brave_search_api_key: 'brave',
+                  google_places_api_key: 'google_places',
+                  pappers_api_key: 'pappers',
+                  zerobounce_api_key: 'zerobounce',
+                  amadeus_client_id: 'amadeus',
+                };
+                const svc = serviceMap[key];
+                return (
+                  <div key={key} className="flex items-center justify-between bg-slate-50 rounded-lg px-4 py-2.5">
+                    <div className="flex items-center gap-3">
+                      <span className={`w-2.5 h-2.5 rounded-full ${info.configured ? 'bg-emerald-500' : 'bg-slate-300'}`} />
+                      <span className="text-xs font-medium text-slate-700">{labels[key] || key}</span>
+                      {info.configured && <span className="text-xs text-slate-400 font-mono">{info.preview}</span>}
+                      {!info.configured && <span className="text-xs text-slate-400">Non configurée</span>}
+                    </div>
+                    {svc && (
+                      <button onClick={() => handleTestApi(svc)} disabled={!info.configured || testingApi === svc}
+                        className="text-xs px-3 py-1 rounded-lg border border-slate-200 hover:bg-slate-100 text-slate-600 disabled:opacity-50">
+                        {testingApi === svc ? 'Test...' : 'Tester'}
+                      </button>
+                    )}
+                  </div>
+                );
+              })}
+              <p className="text-xs text-slate-400 mt-2">Les clés API se configurent dans Paramètres &gt; Configuration globale</p>
+            </div>
+          </div>
+
+          {/* Section Utilisation API */}
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-4">Utilisation API — {apiCredits?.month || '...'}</h3>
+            {apiCredits?.services && (
+              <div className="space-y-3">
+                {Object.entries(apiCredits.services).map(([key, svc]) => (
+                  <div key={key}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-xs font-medium text-slate-700">{svc.label}</span>
+                      <span className="text-xs text-slate-500">{svc.requests} / {svc.quota} req</span>
+                    </div>
+                    <div className="w-full bg-slate-100 rounded-full h-2">
+                      <div className={`h-2 rounded-full transition-all ${svc.percentUsed > 80 ? 'bg-red-500' : svc.percentUsed > 50 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                        style={{ width: `${Math.min(100, svc.percentUsed)}%` }} />
+                    </div>
+                    <div className="flex justify-between mt-0.5">
+                      <span className="text-xs text-slate-400">{svc.remaining} restantes</span>
+                      {svc.cost > 0 && <span className="text-xs text-slate-400">${svc.cost.toFixed(2)}</span>}
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {/* Section Seuils de scoring */}
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-4">Seuils de scoring</h3>
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Score minimum opportunités</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" min="0" max="100"
+                    defaultValue={veilleSettings?.veille_score_threshold || 50}
+                    onBlur={e => handleSaveSettings('veille_score_threshold', e.target.value)}
+                    className="w-20 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                  <span className="text-xs text-slate-400">/ 100</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Score minimum pour afficher une opportunité</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Score contacts pipeline</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" min="0" max="100"
+                    defaultValue={veilleSettings?.veille_contact_score_threshold || 50}
+                    onBlur={e => handleSaveSettings('veille_contact_score_threshold', e.target.value)}
+                    className="w-20 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                  <span className="text-xs text-slate-400">/ 100</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Score minimum pour lancer le pipeline contacts</p>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 block mb-1">Seuil alerte score</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" min="0" max="100"
+                    defaultValue={veilleSettings?.veille_alert_score_threshold || 80}
+                    onBlur={e => handleSaveSettings('veille_alert_score_threshold', e.target.value)}
+                    className="w-20 text-sm border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-300" />
+                  <span className="text-xs text-slate-400">/ 100</span>
+                </div>
+                <p className="text-xs text-slate-400 mt-1">Score pour déclencher une alerte proactive</p>
+              </div>
+            </div>
+          </div>
+
+          {/* Section Hôtels exclus */}
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">Hôtels exclus ({excludedHotels.length})</h3>
+            <p className="text-xs text-slate-400 mb-3">Hôtels à ignorer dans la veille (concurrents déjà clients, faux positifs récurrents)</p>
+            <div className="flex gap-2 mb-3">
+              <input type="text" value={newExcluded} onChange={e => setNewExcluded(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleAddExcluded()}
+                placeholder="Nom de l'hôtel à exclure..."
+                className="flex-1 text-xs border border-slate-200 rounded-lg px-3 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-300" />
+              <button onClick={handleAddExcluded} disabled={!newExcluded.trim()}
+                className="text-xs px-3 py-1.5 rounded-lg bg-slate-800 text-white hover:bg-slate-700 disabled:opacity-50">Ajouter</button>
+            </div>
+            {excludedHotels.length > 0 && (
+              <div className="space-y-1">
+                {excludedHotels.map((h, i) => (
+                  <div key={i} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-1.5">
+                    <span className="text-xs text-slate-700">{h}</span>
+                    <button onClick={() => handleRemoveExcluded(i)} className="text-xs text-red-500 hover:text-red-700">Retirer</button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
     </div>

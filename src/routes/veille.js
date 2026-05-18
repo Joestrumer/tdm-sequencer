@@ -18,6 +18,7 @@ const { getZeroBounceCredits, getZeroBounceKey } = require('../services/contacts
 const { getApiKey: getPappersKey } = require('../services/contacts/pappersService');
 const { computeCalibration, saveCalibrationReport, getLastCalibrationReport } = require('../jobs/scoringCalibration');
 const { checkAlerts, getRecentAlerts } = require('../services/veilleAlerts');
+const { getApiStats, getApiHistory } = require('../utils/apiClient');
 
 module.exports = (db) => {
   const router = Router();
@@ -1397,6 +1398,211 @@ module.exports = (db) => {
     try {
       const result = checkAlerts(db, req.body || {});
       res.json(result);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Settings & API Credits ──────────────────────────────────────────────
+
+  /**
+   * GET /settings — Récupérer les paramètres Veille
+   */
+  router.get('/settings', (req, res) => {
+    try {
+      const keys = [
+        'veille_score_threshold', 'veille_contact_score_threshold',
+        'veille_excluded_hotels', 'veille_alert_score_threshold',
+        'veille_alert_email_enabled', 'veille_alert_email_to',
+      ];
+      const settings = {};
+      for (const key of keys) {
+        try {
+          const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get(key);
+          settings[key] = row?.valeur || null;
+        } catch (_) { settings[key] = null; }
+      }
+
+      // Clés API (masquées — juste le statut configuré/non)
+      const apiKeys = ['brave_search_api_key', 'google_places_api_key', 'pappers_api_key', 'zerobounce_api_key', 'amadeus_client_id', 'amadeus_client_secret'];
+      settings.api_keys = {};
+      for (const key of apiKeys) {
+        try {
+          const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get(key);
+          const val = row?.valeur || process.env[key.toUpperCase()] || '';
+          settings.api_keys[key] = {
+            configured: val.length > 0,
+            preview: val ? val.substring(0, 6) + '••••' : '',
+          };
+        } catch (_) {
+          settings.api_keys[key] = { configured: false, preview: '' };
+        }
+      }
+
+      res.json(settings);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * PUT /settings — Mettre à jour les paramètres Veille
+   */
+  router.put('/settings', (req, res) => {
+    try {
+      const allowedKeys = [
+        'veille_score_threshold', 'veille_contact_score_threshold',
+        'veille_excluded_hotels', 'veille_alert_score_threshold',
+        'veille_alert_email_enabled', 'veille_alert_email_to',
+      ];
+      const upsert = db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES (?, ?)");
+      let updated = 0;
+      for (const [key, val] of Object.entries(req.body)) {
+        if (allowedKeys.includes(key)) {
+          upsert.run(key, String(val));
+          updated++;
+        }
+      }
+      res.json({ ok: true, updated });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /api-credits — Statistiques d'utilisation API du mois
+   */
+  router.get('/api-credits', (req, res) => {
+    try {
+      const stats = getApiStats(db);
+
+      // Ajouter les crédits ZeroBounce réels si disponible
+      const zbKey = getZeroBounceKey(db);
+      if (zbKey) {
+        stats.services.zerobounce.realCredits = 'use /api-credits/zerobounce for live check';
+      }
+
+      // Ajouter le solde Pappers si disponible
+      const pKey = getPappersKey(db);
+      if (pKey) {
+        stats.services.pappers.keyConfigured = true;
+      }
+
+      res.json(stats);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /api-credits/history — Historique utilisation API sur 6 mois
+   */
+  router.get('/api-credits/history', (req, res) => {
+    try {
+      const months = parseInt(req.query.months) || 6;
+      res.json(getApiHistory(db, months));
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * GET /api-credits/zerobounce — Crédits ZeroBounce en live
+   */
+  router.get('/api-credits/zerobounce', async (req, res) => {
+    try {
+      const credits = await getZeroBounceCredits(db);
+      res.json(credits);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * POST /test-api/:service — Tester la connexion à un service API
+   */
+  router.post('/test-api/:service', async (req, res) => {
+    const { service } = req.params;
+    try {
+      switch (service) {
+        case 'brave': {
+          let row;
+          try { row = db.prepare("SELECT valeur FROM config WHERE cle = 'brave_search_api_key'").get(); } catch (_) {}
+          const apiKey = row?.valeur || process.env.BRAVE_SEARCH_API_KEY || '';
+          if (!apiKey) return res.json({ ok: false, error: 'Clé API non configurée' });
+          const r = await fetch('https://api.search.brave.com/res/v1/web/search?q=test&count=1', {
+            headers: { 'Accept': 'application/json', 'X-Subscription-Token': apiKey },
+          });
+          res.json({ ok: r.ok, status: r.status, service: 'Brave Search' });
+          break;
+        }
+        case 'google_places': {
+          const { getConfigValue } = require('../services/signals/signalUtils');
+          const key = getConfigValue(db, 'google_places_api_key', 'GOOGLE_PLACES_API_KEY', '');
+          if (!key) return res.json({ ok: false, error: 'Clé API non configurée' });
+          const r = await fetch(`https://places.googleapis.com/v1/places/ChIJD7fiBh9u5kcRYJSMaMOCCwQ?fields=id,displayName&key=${encodeURIComponent(key)}`);
+          res.json({ ok: r.ok, status: r.status, service: 'Google Places' });
+          break;
+        }
+        case 'pappers': {
+          const key = getPappersKey(db);
+          if (!key) return res.json({ ok: false, error: 'Clé API non configurée' });
+          const r = await fetch(`https://api.pappers.fr/v2/entreprise?api_token=${encodeURIComponent(key)}&siren=443061841`);
+          res.json({ ok: r.ok, status: r.status, service: 'Pappers' });
+          break;
+        }
+        case 'zerobounce': {
+          const key = getZeroBounceKey(db);
+          if (!key) return res.json({ ok: false, error: 'Clé API non configurée' });
+          const r = await fetch(`https://api.zerobounce.net/v2/getcredits?api_key=${encodeURIComponent(key)}`);
+          const data = await r.json();
+          res.json({ ok: r.ok, status: r.status, credits: data.Credits, service: 'ZeroBounce' });
+          break;
+        }
+        case 'amadeus': {
+          const { getConfigValue } = require('../services/signals/signalUtils');
+          const clientId = getConfigValue(db, 'amadeus_client_id', 'AMADEUS_CLIENT_ID', '');
+          const clientSecret = getConfigValue(db, 'amadeus_client_secret', 'AMADEUS_CLIENT_SECRET', '');
+          if (!clientId || !clientSecret) return res.json({ ok: false, error: 'Client ID/Secret non configurés' });
+          const r = await fetch('https://test.api.amadeus.com/v1/security/oauth2/token', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+            body: `grant_type=client_credentials&client_id=${encodeURIComponent(clientId)}&client_secret=${encodeURIComponent(clientSecret)}`,
+          });
+          res.json({ ok: r.ok, status: r.status, service: 'Amadeus' });
+          break;
+        }
+        default:
+          res.status(400).json({ erreur: `Service inconnu: ${service}` });
+      }
+    } catch (err) {
+      res.json({ ok: false, error: err.message, service });
+    }
+  });
+
+  /**
+   * GET /excluded-hotels — Liste des hôtels exclus
+   */
+  router.get('/excluded-hotels', (req, res) => {
+    try {
+      const row = db.prepare("SELECT valeur FROM config WHERE cle = 'veille_excluded_hotels'").get();
+      const list = row?.valeur ? JSON.parse(row.valeur) : [];
+      res.json({ hotels: list });
+    } catch (err) {
+      res.json({ hotels: [] });
+    }
+  });
+
+  /**
+   * PUT /excluded-hotels — Mettre à jour la liste d'hôtels exclus
+   */
+  router.put('/excluded-hotels', (req, res) => {
+    try {
+      const { hotels } = req.body;
+      if (!Array.isArray(hotels)) return res.status(400).json({ erreur: 'hotels doit être un tableau' });
+      db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('veille_excluded_hotels', ?)")
+        .run(JSON.stringify(hotels));
+      res.json({ ok: true, count: hotels.length });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
