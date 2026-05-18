@@ -568,14 +568,12 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
         }
       }
 
-      // Créer la company avec toutes les infos disponibles
+      // Créer la company — d'abord propriétés standard, puis custom en PATCH
       const companyProps = {
         name: hotelName,
-        account_source: 'outbound',
         type: 'PROSPECT',
         hubspot_owner_id: HUGO_OWNER_ID,
       };
-      if (businessType) companyProps.business_type = businessType;
       if (domaine) companyProps.domain = domaine;
       if (clientCity) companyProps.city = clientCity;
       if (clientCountry) companyProps.country = clientCountry;
@@ -591,8 +589,19 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
         companyId = companyRes?.id;
         companyName = hotelName;
         logger.info('🏨 HubSpot company créée (échantillon)', { companyId, hotelName, domaine });
+
+        // Ajouter les propriétés custom séparément (ne bloque pas si elles n'existent pas)
+        if (companyId) {
+          const customProps = {};
+          if (businessType) customProps.business_type = businessType;
+          customProps.account_source = 'outbound';
+          await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
+            method: 'PATCH',
+            body: JSON.stringify({ properties: customProps }),
+          }).catch(e => logger.warn('HubSpot props custom company ignorées', { error: e.message, companyId }));
+        }
       } catch (e) {
-        logger.error('HubSpot création company échouée', { error: e.message, hotelName });
+        logger.error('HubSpot création company échouée', { error: e.message, hotelName, props: companyProps });
       }
 
       // Créer le contact
@@ -699,7 +708,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
     const dealLabel = isSample ? 'echantillons' : (orderNumber || '');
     const dealName = `${companyName} - ${dealLabel} - ${invoiceNumber || ''}`.replace(/ - $/,'').replace(/ - - /,' - ');
 
-    // 6. Créer le deal
+    // 6. Créer le deal — propriétés standard d'abord
     const properties = {
       dealname: dealName,
       amount: String(montantTTC || 0),
@@ -708,8 +717,6 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
       dealstage: isSample ? 'appointmentscheduled' : 'closedwon',
       hubspot_owner_id: HUGO_OWNER_ID,
       closedate: closeDate || new Date().toISOString().split('T')[0],
-      no_vat_amount: String(montantHT || 0),
-      n15__sales_commission: String(commission),
     };
 
     const res = await hubspotFetch('/crm/v3/objects/deals', {
@@ -718,7 +725,18 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
     });
     const dealId = res?.id;
 
-    // 7. Associer le deal à la company
+    // Ajouter propriétés custom au deal (ne bloque pas si elles n'existent pas)
+    if (dealId) {
+      await hubspotFetch(`/crm/v3/objects/deals/${dealId}`, {
+        method: 'PATCH',
+        body: JSON.stringify({ properties: {
+          no_vat_amount: String(montantHT || 0),
+          n15__sales_commission: String(commission),
+        }}),
+      }).catch(e => logger.warn('HubSpot props custom deal ignorées', { error: e.message, dealId }));
+    }
+
+    // 7. Associer le deal à la company + au contact
     if (dealId) {
       await hubspotFetch('/crm/v3/associations/deals/companies/batch/create', {
         method: 'POST',
@@ -726,6 +744,15 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
           inputs: [{ from: { id: dealId }, to: { id: companyId }, type: 'deal_to_company' }]
         }),
       }).catch(e => logger.warn('HubSpot association deal→company échouée', { error: e.message, dealId, companyId }));
+
+      if (contactId) {
+        await hubspotFetch('/crm/v3/associations/deals/contacts/batch/create', {
+          method: 'POST',
+          body: JSON.stringify({
+            inputs: [{ from: { id: dealId }, to: { id: contactId }, type: 'deal_to_contact' }]
+          }),
+        }).catch(e => logger.warn('HubSpot association deal→contact échouée', { error: e.message, dealId, contactId }));
+      }
     }
 
     // 8. Mettre à jour envoi_echantillons sur la company si c'est un échantillon
@@ -749,6 +776,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
 
       const associations = { companyIds: [parseInt(companyId)] };
       if (contactId) associations.contactIds = [parseInt(contactId)];
+      if (dealId) associations.dealIds = [parseInt(dealId)];
 
       await hubspotFetch('/engagements/v1/engagements', {
         method: 'POST',
