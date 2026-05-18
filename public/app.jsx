@@ -12151,6 +12151,8 @@ const FacturesSamples = ({ showToast }) => {
                 let cleaned = rawText;
                 if (parsedEmail) cleaned = cleaned.replace(parsedEmail, ' ');
                 if (parsedPhone) cleaned = cleaned.replace(phoneMatch[0], ' ');
+                // Normaliser les codes postaux avec espace (07 240 → 07240)
+                cleaned = cleaned.replace(/\b(\d{2})\s(\d{3})\b/g, '$1$2');
                 let lines = cleaned.split(/\n/).map(l => l.trim()).filter(Boolean);
                 const usedLines = new Set();
 
