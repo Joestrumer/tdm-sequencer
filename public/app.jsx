@@ -12153,7 +12153,9 @@ const FacturesSamples = ({ showToast }) => {
                 if (parsedPhone) cleaned = cleaned.replace(phoneMatch[0], ' ');
                 // Normaliser les codes postaux avec espace (07 240 → 07240)
                 cleaned = cleaned.replace(/\b(\d{2})\s(\d{3})\b/g, '$1$2');
-                let lines = cleaned.split(/\n/).map(l => l.trim()).filter(Boolean);
+                // Nettoyer les préfixes téléphone résiduels (T., Tel., Tél.) et séparateurs
+                cleaned = cleaned.replace(/\b[Tt][eé]?l?\.?\s*[:.]?\s*(?=$|[\s\n-])/gm, '');
+                let lines = cleaned.split(/\n/).map(l => l.replace(/^[\s\-–—]+|[\s\-–—]+$/g, '').trim()).filter(l => l.length > 0 && /[a-zA-ZÀ-ÿ]{2,}/.test(l));
                 const usedLines = new Set();
 
                 // ── Step 1: Parse dash-separated lines as structured blocks ──
@@ -12224,11 +12226,11 @@ const FacturesSamples = ({ showToast }) => {
                   }
                 }
 
-                // ── Step 6: Person name = remaining unused line (2-4 words, letters only) ──
+                // ── Step 6: Person name = remaining unused line (1-4 words, letters only) ──
                 for (let i = 0; i < lines.length; i++) {
                   if (usedLines.has(i)) continue;
                   const w = lines[i].split(/\s+/).length;
-                  if (w >= 2 && w <= 4 && /^[A-Za-zÀ-ÿ\s.'-]+$/.test(lines[i])) {
+                  if (w >= 1 && w <= 4 && /^[A-Za-zÀ-ÿ\s.'-]+$/.test(lines[i]) && lines[i].replace(/[^A-Za-zÀ-ÿ]/g, '').length >= 2) {
                     personName = lines[i]; usedLines.add(i); break;
                   }
                 }
