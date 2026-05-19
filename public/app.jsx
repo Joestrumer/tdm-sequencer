@@ -19457,6 +19457,15 @@ const VueVeille = ({ showToast }) => {
   const [contactsStats, setContactsStats] = useState(null);
   const [pipelineRunning, setPipelineRunning] = useState(false);
 
+  // Contacts list state
+  const [contactsList, setContactsList] = useState([]);
+  const [contactsTotal, setContactsTotal] = useState(0);
+  const [contactsPage, setContactsPage] = useState(1);
+  const [contactsPages, setContactsPages] = useState(0);
+  const [contactsEmailFilter, setContactsEmailFilter] = useState('');
+  const [contactsSearch, setContactsSearch] = useState('');
+  const [contactsSearchDebounced, setContactsSearchDebounced] = useState('');
+
   // Scanner fermetures state
   const [regions, setRegions] = useState([]);
   const [selectedRegion, setSelectedRegion] = useState('');
@@ -19479,6 +19488,7 @@ const VueVeille = ({ showToast }) => {
 
   useEffect(() => { const t = setTimeout(() => setSearchDebounced(search), 400); return () => clearTimeout(t); }, [search]);
   useEffect(() => { const t = setTimeout(() => setOppSearchDebounced(oppSearch), 400); return () => clearTimeout(t); }, [oppSearch]);
+  useEffect(() => { const t = setTimeout(() => setContactsSearchDebounced(contactsSearch), 400); return () => clearTimeout(t); }, [contactsSearch]);
 
   // ─── Loaders ─────────────────────────────────────────────────────────────
 
@@ -19537,6 +19547,19 @@ const VueVeille = ({ showToast }) => {
   };
   const loadSignalStats = async () => { try { setSigStats(await api.get('/veille/signals/stats')); } catch (e) { console.warn('Signal stats:', e.message); } };
   const loadContactsStats = async () => { try { setContactsStats(await api.get('/veille/contacts/stats')); } catch (e) { console.warn('Contacts stats:', e.message); } };
+  const loadContacts = async (p = 1) => {
+    try {
+      const params = new URLSearchParams({ page: p, limit: 50 });
+      if (contactsEmailFilter) params.set('email_status', contactsEmailFilter);
+      if (contactsSearchDebounced) params.set('search', contactsSearchDebounced);
+      const res = await api.get(`/veille/contacts?${params}`);
+      if (p === 1) setContactsList(res.contacts || []);
+      else setContactsList(prev => [...prev, ...(res.contacts || [])]);
+      setContactsTotal(res.total || 0);
+      setContactsPages(res.pages || 0);
+      setContactsPage(p);
+    } catch (e) { showToast?.('Erreur chargement contacts', 'error'); }
+  };
   const loadAlerts = async () => { try { setAlertsData(await api.get('/veille/veille-alerts?hours=168')); } catch (e) { console.warn('Alerts:', e.message); } };
   const loadCalibration = async () => { try { setCalibrationData(await api.get('/veille/scoring/calibration')); } catch (e) { console.warn('Calibration:', e.message); } };
   const loadSettings = async () => {
@@ -19565,6 +19588,7 @@ const VueVeille = ({ showToast }) => {
   useEffect(() => { if (tab === 'signals') { loadSignals(1); loadSignalStats(); } }, [tab, sigTypeFilter, sigSourceFilter]);
   useEffect(() => { if (tab === 'dashboard') { loadAlerts(); loadCalibration(); loadContactsStats(); } }, [tab]);
   useEffect(() => { if (tab === 'settings') { loadSettings(); } }, [tab]);
+  useEffect(() => { if (tab === 'contacts') { loadContacts(1); loadContactsStats(); } }, [tab, contactsEmailFilter, contactsSearchDebounced]);
 
   // ─── Actions ─────────────────────────────────────────────────────────────
 
@@ -19886,8 +19910,10 @@ const VueVeille = ({ showToast }) => {
               { id: 'articles', label: `Articles${stats ? ` (${stats.nonLus})` : ''}` },
               { id: 'health', label: 'Sources & Santé' },
               { id: 'settings', label: 'Paramètres' },
+              { id: 'guide', label: 'Guide' },
+              { id: 'contacts', label: `Contacts${contactsStats ? ` (${contactsStats.total})` : ''}` },
             ].map(t => (
-              <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'articles' && articles.length === 0) loadArticles(1); }}
+              <button key={t.id} onClick={() => { setTab(t.id); if (t.id === 'articles' && articles.length === 0) loadArticles(1); if (t.id === 'contacts') loadContacts(1); }}
                 className={`px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${tab === t.id ? 'bg-white shadow-sm text-slate-900' : 'text-slate-500 hover:text-slate-700'}`}>
                 {t.label}
               </button>
@@ -19930,7 +19956,7 @@ const VueVeille = ({ showToast }) => {
                 <div className="text-xs font-medium text-emerald-600 mb-0.5">SIGNAUX</div>
                 <div className="text-2xl font-bold text-emerald-900">{sigStats?.total || 0}</div>
               </div>
-              <div className="bg-gradient-to-br from-sky-50 to-sky-100 rounded-xl border border-sky-200 p-3">
+              <div className="bg-gradient-to-br from-sky-50 to-sky-100 rounded-xl border border-sky-200 p-3 cursor-pointer hover:shadow-md transition-shadow" onClick={() => setTab('contacts')}>
                 <div className="text-xs font-medium text-sky-600 mb-0.5">CONTACTS</div>
                 <div className="text-2xl font-bold text-sky-900">{contactsStats?.total || 0}</div>
                 <div className="text-xs text-sky-600">{contactsStats?.valid || 0} emails valides</div>
@@ -20916,6 +20942,264 @@ const VueVeille = ({ showToast }) => {
             )}
           </div>
         </div>
+      )}
+
+      {/* ─── Onglet Guide ──────────────────────────────────────────────────── */}
+      {tab === 'guide' && (
+        <div className="space-y-4">
+          {/* Comment ca marche */}
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">Comment ca marche</h3>
+            <div className="flex items-center gap-2 flex-wrap text-xs">
+              <span className="bg-blue-100 text-blue-700 px-3 py-1.5 rounded-lg font-medium">Sources presse</span>
+              <span className="text-slate-400">&rarr;</span>
+              <span className="bg-purple-100 text-purple-700 px-3 py-1.5 rounded-lg font-medium">Signaux</span>
+              <span className="text-slate-400">&rarr;</span>
+              <span className="bg-amber-100 text-amber-700 px-3 py-1.5 rounded-lg font-medium">Opportunites</span>
+              <span className="text-slate-400">&rarr;</span>
+              <span className="bg-sky-100 text-sky-700 px-3 py-1.5 rounded-lg font-medium">Contacts</span>
+              <span className="text-slate-400">&rarr;</span>
+              <span className="bg-orange-100 text-orange-700 px-3 py-1.5 rounded-lg font-medium">HubSpot</span>
+            </div>
+            <p className="text-xs text-slate-500 mt-3">
+              Le module Veille scrape des sources presse et detecte des signaux business (renovation, ouverture, vente, etc.).
+              Les signaux sont regroupes en opportunites, scores automatiquement. Pour les meilleures, le pipeline contacts
+              cherche les decideurs (Pappers + LinkedIn + email) puis vous pouvez exporter vers HubSpot.
+            </p>
+          </div>
+
+          {/* Les onglets */}
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">Les onglets</h3>
+            <div className="space-y-2">
+              {[
+                { tab: 'Dashboard', desc: 'Vue d\'ensemble : KPIs prioritaires, repartition des signaux, opportunites haute valeur, calibration du scoring, stats contacts.' },
+                { tab: 'Opportunites', desc: 'Liste de toutes les opportunites detectees, filtrables par priorite (A/B/C), type de signal, statut. Cliquez sur une opportunite pour voir le detail, les contacts et exporter vers HubSpot.' },
+                { tab: 'Signaux', desc: 'Signaux bruts detectes par les differents detecteurs (Google Maps, Booking, data.gouv, LinkedIn, BOAMP/BODACC, presse). Filtrable par type et source.' },
+                { tab: 'Articles', desc: 'Articles de presse recuperes par le scraping. Filtrable par statut de lecture, priorite, source. Marquez-les comme lus, favoris ou archivez-les.' },
+                { tab: 'Sources & Sante', desc: 'Liste des sources configurees, leur etat de sante (healthy/degraded/failing), logs des dernieres executions.' },
+                { tab: 'Parametres', desc: 'Cles API, utilisation mensuelle, seuils de scoring, hotels exclus.' },
+                { tab: 'Guide', desc: 'Cette page. Explique le fonctionnement du module.' },
+                { tab: 'Contacts', desc: 'Vue centralisee de tous les contacts extraits par le pipeline. Filtrable par statut email et recherche.' },
+              ].map(item => (
+                <div key={item.tab} className="flex gap-3 items-start">
+                  <span className="text-xs font-semibold text-slate-700 bg-slate-100 rounded-lg px-2 py-1 whitespace-nowrap min-w-[110px]">{item.tab}</span>
+                  <span className="text-xs text-slate-600">{item.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Les boutons d'action */}
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">Les boutons d'action</h3>
+            <div className="space-y-3">
+              {[
+                { btn: 'Scraper maintenant', color: 'bg-blue-600 text-white', desc: 'Lance le scraping de toutes les sources presse (Brave Search, RSS, HTML). Recupere de nouveaux articles depuis les sources configurees.' },
+                { btn: 'Enrichir', color: 'bg-white text-slate-600 border border-slate-200', desc: 'Analyse les articles recents pour en extraire les informations cles (hotel, ville, signal, date projet) et les transformer en opportunites.' },
+                { btn: 'Lancer detecteurs', color: 'bg-indigo-600 text-white', desc: 'Lance les detecteurs de signaux techniques : Google Maps (fermetures), Booking (indisponibilites), data.gouv (permis), LinkedIn (recrutement pre-ouverture), BOAMP/BODACC. Independant des articles presse.' },
+                { btn: 'Lancer pipeline', color: 'bg-white text-slate-600 border border-slate-200', desc: 'Pour les opportunites avec score >= 50, cherche les contacts decideurs via Pappers (SIREN/dirigeants) + LinkedIn + generation email + verification ZeroBounce.' },
+                { btn: 'Envoyer vers HubSpot', color: 'bg-orange-600 text-white', desc: 'Exporte une opportunite avec ses contacts dans HubSpot : cree/met a jour la Company, les Contacts et un Deal.' },
+              ].map(item => (
+                <div key={item.btn} className="flex gap-3 items-start">
+                  <span className={`text-xs font-medium rounded-lg px-3 py-1.5 whitespace-nowrap ${item.color}`}>{item.btn}</span>
+                  <span className="text-xs text-slate-600">{item.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Workflow typique */}
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">Workflow typique</h3>
+            <div className="space-y-2">
+              {[
+                { step: 1, action: 'Scraper', desc: 'Recuperer les nouveaux articles de presse' },
+                { step: 2, action: 'Enrichir', desc: 'Transformer les articles en opportunites structurees' },
+                { step: 3, action: 'Detecteurs', desc: 'Lancer les detecteurs techniques (Google Maps, Booking, etc.)' },
+                { step: 4, action: 'Consulter', desc: 'Trier les opportunites par priorite, evaluer les meilleures' },
+                { step: 5, action: 'Pipeline contacts', desc: 'Chercher les decideurs pour les opportunites qualifiees' },
+                { step: 6, action: 'Export HubSpot', desc: 'Envoyer les opportunites validees dans le CRM' },
+              ].map(item => (
+                <div key={item.step} className="flex items-center gap-3">
+                  <span className="flex-shrink-0 w-6 h-6 rounded-full bg-slate-800 text-white text-xs font-bold flex items-center justify-center">{item.step}</span>
+                  <span className="text-xs font-semibold text-slate-700 min-w-[100px]">{item.action}</span>
+                  <span className="text-xs text-slate-500">{item.desc}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Ou trouver quoi */}
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-3">Ou trouver quoi</h3>
+            <div className="overflow-x-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-100">
+                    <th className="text-left py-2 px-3 text-slate-500 font-medium">Je cherche...</th>
+                    <th className="text-left py-2 px-3 text-slate-500 font-medium">Aller dans</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {[
+                    { cherche: 'Les opportunites les plus chaudes', aller: 'Dashboard > Prio A / Prio B' },
+                    { cherche: 'Le detail d\'une opportunite', aller: 'Opportunites > cliquer sur la ligne' },
+                    { cherche: 'Les contacts d\'un hotel', aller: 'Contacts > rechercher le nom de l\'hotel' },
+                    { cherche: 'Les emails valides', aller: 'Contacts > filtre "valid"' },
+                    { cherche: 'Les signaux de renovation', aller: 'Signaux > filtre type "Renovation"' },
+                    { cherche: 'L\'etat des sources', aller: 'Sources & Sante' },
+                    { cherche: 'Combien de credits API restants', aller: 'Parametres > Utilisation API' },
+                    { cherche: 'Exclure un hotel recurrent', aller: 'Parametres > Hotels exclus' },
+                    { cherche: 'Exporter vers HubSpot', aller: 'Opportunites > detail > bouton HubSpot' },
+                  ].map((item, i) => (
+                    <tr key={i} className="border-b border-slate-50 hover:bg-slate-50">
+                      <td className="py-2 px-3 text-slate-700">{item.cherche}</td>
+                      <td className="py-2 px-3 text-slate-500">{item.aller}</td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Onglet Contacts ─────────────────────────────────────────────── */}
+      {tab === 'contacts' && (
+        <>
+          {/* Stats rapides */}
+          {contactsStats && (
+            <div className="grid grid-cols-2 lg:grid-cols-5 gap-3">
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl border border-slate-200 p-3 text-center">
+                <div className="text-lg font-bold text-slate-800">{contactsStats.total}</div>
+                <div className="text-xs text-slate-500">Total contacts</div>
+              </div>
+              <div className="bg-gradient-to-br from-emerald-50 to-emerald-100 rounded-xl border border-emerald-200 p-3 text-center cursor-pointer hover:shadow-md transition-shadow" onClick={() => setContactsEmailFilter(contactsEmailFilter === 'valid' ? '' : 'valid')}>
+                <div className="text-lg font-bold text-emerald-700">{contactsStats.valid}</div>
+                <div className="text-xs text-emerald-600">Emails valides</div>
+              </div>
+              <div className="bg-gradient-to-br from-amber-50 to-amber-100 rounded-xl border border-amber-200 p-3 text-center cursor-pointer hover:shadow-md transition-shadow" onClick={() => setContactsEmailFilter(contactsEmailFilter === 'catch_all' ? '' : 'catch_all')}>
+                <div className="text-lg font-bold text-amber-700">{contactsStats.catchAll}</div>
+                <div className="text-xs text-amber-600">Catch-all</div>
+              </div>
+              <div className="bg-gradient-to-br from-slate-50 to-slate-100 rounded-xl border border-slate-200 p-3 text-center cursor-pointer hover:shadow-md transition-shadow" onClick={() => setContactsEmailFilter(contactsEmailFilter === 'unverified' ? '' : 'unverified')}>
+                <div className="text-lg font-bold text-slate-500">{contactsStats.unverified}</div>
+                <div className="text-xs text-slate-400">Non verifies</div>
+              </div>
+              <div className="bg-gradient-to-br from-red-50 to-red-100 rounded-xl border border-red-200 p-3 text-center cursor-pointer hover:shadow-md transition-shadow" onClick={() => setContactsEmailFilter(contactsEmailFilter === 'invalid' ? '' : 'invalid')}>
+                <div className="text-lg font-bold text-red-600">{(contactsStats.total || 0) - (contactsStats.valid || 0) - (contactsStats.catchAll || 0) - (contactsStats.unverified || 0)}</div>
+                <div className="text-xs text-red-500">Invalides</div>
+              </div>
+            </div>
+          )}
+
+          {/* Filtres */}
+          <div className="flex flex-wrap items-center gap-2">
+            <select value={contactsEmailFilter} onChange={e => setContactsEmailFilter(e.target.value)}
+              className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 bg-white">
+              <option value="">Tous les statuts email</option>
+              <option value="valid">Valid</option>
+              <option value="catch_all">Catch-all</option>
+              <option value="unverified">Non verifie</option>
+              <option value="invalid">Invalid</option>
+            </select>
+            <SearchInput value={contactsSearch} onChange={e => setContactsSearch(e.target.value)}
+              placeholder="Rechercher nom, hotel, email..."
+              className="text-xs border border-slate-200 rounded-lg px-3 py-1.5 w-64 focus:outline-none focus:ring-1 focus:ring-blue-300" />
+            <div className="flex-1" />
+            <span className="text-xs text-slate-400">{contactsTotal} contact(s)</span>
+          </div>
+
+          {/* Liste contacts */}
+          {contactsList.length === 0 ? (
+            <div className="bg-white rounded-xl border border-slate-100 p-12 text-center">
+              <div className="text-3xl mb-3">👤</div>
+              <p className="text-sm text-slate-500">Aucun contact trouve</p>
+              <p className="text-xs text-slate-400 mt-1">Lancez le pipeline contacts depuis le Dashboard ou une opportunite</p>
+            </div>
+          ) : (
+            <div className="bg-white rounded-xl border border-slate-100 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full text-xs">
+                  <thead>
+                    <tr className="bg-slate-50 border-b border-slate-100">
+                      <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Nom</th>
+                      <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Role</th>
+                      <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Hotel</th>
+                      <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Email</th>
+                      <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Statut</th>
+                      <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Score</th>
+                      <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {contactsList.map(c => (
+                      <tr key={c.id} className="border-b border-slate-50 hover:bg-slate-50">
+                        <td className="py-2 px-3 font-medium text-slate-800">{c.full_name || '—'}</td>
+                        <td className="py-2 px-3 text-slate-600">
+                          {c.role || '—'}
+                          {c.role_relevance != null && <span className="ml-1 text-slate-400">({c.role_relevance})</span>}
+                        </td>
+                        <td className="py-2 px-3 text-slate-600">
+                          <div>{c.opp_hotel_name || c.hotel_name || '—'}</div>
+                          {c.opp_city && <div className="text-slate-400">{c.opp_city}</div>}
+                        </td>
+                        <td className="py-2 px-3">
+                          {c.email ? (
+                            <div className="flex items-center gap-1">
+                              <span className="text-slate-700 font-mono">{c.email}</span>
+                              <button onClick={() => { navigator.clipboard.writeText(c.email); showToast?.('Email copie', 'success'); }}
+                                className="text-slate-400 hover:text-slate-600" title="Copier">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2" ry="2" strokeWidth="2"/><path d="M5 15H4a2 2 0 01-2-2V4a2 2 0 012-2h9a2 2 0 012 2v1" strokeWidth="2"/></svg>
+                              </button>
+                            </div>
+                          ) : <span className="text-slate-400">—</span>}
+                        </td>
+                        <td className="py-2 px-3">
+                          {c.email_status ? (
+                            <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${emailStatusBadge(c.email_status)}`}>
+                              {c.email_status === 'valid' ? 'Valid' : c.email_status === 'catch_all' ? 'Catch-all' : c.email_status === 'unverified' ? 'Non verifie' : c.email_status}
+                            </span>
+                          ) : <span className="text-slate-400">—</span>}
+                        </td>
+                        <td className="py-2 px-3">
+                          {c.opp_business_score != null ? (
+                            <span className={`px-1.5 py-0.5 rounded text-xs font-bold ${scoreColor(c.opp_business_score)}`}>{c.opp_business_score}</span>
+                          ) : <span className="text-slate-400">—</span>}
+                        </td>
+                        <td className="py-2 px-3">
+                          <div className="flex items-center gap-1">
+                            {c.linkedin_url && (
+                              <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer"
+                                className="text-blue-500 hover:text-blue-700" title="LinkedIn">
+                                <svg className="w-3.5 h-3.5" fill="currentColor" viewBox="0 0 24 24"><path d="M20.447 20.452h-3.554v-5.569c0-1.328-.027-3.037-1.852-3.037-1.853 0-2.136 1.445-2.136 2.939v5.667H9.351V9h3.414v1.561h.046c.477-.9 1.637-1.85 3.37-1.85 3.601 0 4.267 2.37 4.267 5.455v6.286zM5.337 7.433a2.062 2.062 0 01-2.063-2.065 2.064 2.064 0 112.063 2.065zm1.782 13.019H3.555V9h3.564v11.452zM22.225 0H1.771C.792 0 0 .774 0 1.729v20.542C0 23.227.792 24 1.771 24h20.451C23.2 24 24 23.227 24 22.271V1.729C24 .774 23.2 0 22.222 0h.003z"/></svg>
+                              </a>
+                            )}
+                            {c.opportunity_id && (
+                              <button onClick={() => { setTab('opportunities'); handleViewOpp(c.opportunity_id); }}
+                                className="text-slate-400 hover:text-slate-600" title="Voir opportunite">
+                                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M13 7l5 5m0 0l-5 5m5-5H6"/></svg>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+              {contactsPage < contactsPages && (
+                <div className="text-center py-4 border-t border-slate-100">
+                  <button onClick={() => loadContacts(contactsPage + 1)}
+                    className="text-xs px-6 py-2 rounded-lg border border-slate-200 hover:bg-slate-50 text-slate-600">
+                    Charger plus ({contactsTotal - contactsList.length} restants)
+                  </button>
+                </div>
+              )}
+            </div>
+          )}
+        </>
       )}
     </div>
   );
