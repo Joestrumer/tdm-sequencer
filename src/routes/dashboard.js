@@ -69,6 +69,37 @@ module.exports = (db) => {
       const configMax = db.prepare("SELECT valeur FROM config WHERE cle = 'max_emails_par_jour'").get();
       const quotaMax = parseInt(configMax?.valeur || process.env.MAX_EMAILS_PER_DAY || '50') || 50;
 
+      // 3b. État des envois prévus aujourd'hui
+      const todayStart = today + ' 00:00:00';
+      const todayEnd = today + ' 23:59:59';
+      const envoiAujourdHui = {
+        prevus: db.prepare(`
+          SELECT COUNT(*) as count FROM inscriptions i
+          JOIN leads l ON i.lead_id = l.id
+          WHERE i.statut = 'actif'
+            AND i.prochain_envoi IS NOT NULL
+            AND datetime(i.prochain_envoi) >= datetime(?)
+            AND datetime(i.prochain_envoi) <= datetime(?)
+            AND l.unsubscribed = 0
+        `).get(todayStart, todayEnd)?.count || 0,
+        envoyes: db.prepare(`
+          SELECT COUNT(*) as count FROM emails
+          WHERE date(envoye_at) = ? AND statut = 'envoyé'
+        `).get(today)?.count || 0,
+        erreurs: db.prepare(`
+          SELECT COUNT(*) as count FROM emails
+          WHERE date(envoye_at) = ? AND statut = 'erreur'
+        `).get(today)?.count || 0,
+        en_attente: db.prepare(`
+          SELECT COUNT(*) as count FROM inscriptions i
+          JOIN leads l ON i.lead_id = l.id
+          WHERE i.statut = 'actif'
+            AND i.prochain_envoi IS NOT NULL
+            AND datetime(i.prochain_envoi) <= datetime(?)
+            AND l.unsubscribed = 0
+        `).get(todayEnd)?.count || 0,
+      };
+
       // 4. Activité récente (20 derniers events)
       const activite = db.prepare(`
         SELECT
@@ -127,6 +158,7 @@ module.exports = (db) => {
         stats,
         prochainsEnvois,
         quota: { utilise: quotaUtilise, max: quotaMax },
+        envoiAujourdHui,
         activite,
         erreurs,
         topSequences

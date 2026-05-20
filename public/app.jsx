@@ -1391,7 +1391,7 @@ const VueDashboard = ({ showToast }) => {
     );
   }
 
-  const { stats, prochainsEnvois, quota, activite, erreurs, topSequences } = data;
+  const { stats, prochainsEnvois, quota, envoiAujourdHui, activite, erreurs, topSequences } = data;
   const ICONS = { envoi: "📧", ouverture: "👁", clic: "🔗", desabonnement: "🚫" };
 
   const quotaPct = (quota.utilise / quota.max) * 100;
@@ -1447,6 +1447,34 @@ const VueDashboard = ({ showToast }) => {
           <p className="text-xs text-red-600 mt-2">⚠️ Quota presque atteint ! Les envois seront limités.</p>
         )}
       </div>
+
+      {/* État des envois du jour */}
+      {envoiAujourdHui && (
+        <div className="bg-white rounded-xl border border-slate-100 p-5">
+          <h3 className="text-sm font-semibold text-slate-800 mb-3">Envois du jour</h3>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div className="bg-blue-50 rounded-lg p-3 text-center">
+              <div className="text-xl font-bold text-blue-700">{envoiAujourdHui.en_attente}</div>
+              <div className="text-xs text-blue-600 mt-0.5">Total restant</div>
+            </div>
+            <div className="bg-amber-50 rounded-lg p-3 text-center">
+              <div className="text-xl font-bold text-amber-700">{envoiAujourdHui.prevus}</div>
+              <div className="text-xs text-amber-600 mt-0.5">Prévus aujourd'hui</div>
+            </div>
+            <div className="bg-emerald-50 rounded-lg p-3 text-center">
+              <div className="text-xl font-bold text-emerald-700">{envoiAujourdHui.envoyes}</div>
+              <div className="text-xs text-emerald-600 mt-0.5">Envoyés</div>
+            </div>
+            <div className={`rounded-lg p-3 text-center ${envoiAujourdHui.erreurs > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
+              <div className={`text-xl font-bold ${envoiAujourdHui.erreurs > 0 ? 'text-red-700' : 'text-slate-400'}`}>{envoiAujourdHui.erreurs}</div>
+              <div className={`text-xs mt-0.5 ${envoiAujourdHui.erreurs > 0 ? 'text-red-600' : 'text-slate-400'}`}>Erreurs</div>
+            </div>
+          </div>
+          {envoiAujourdHui.en_attente === 0 && envoiAujourdHui.envoyes === 0 && envoiAujourdHui.prevus === 0 && (
+            <p className="text-xs text-slate-400 italic text-center mt-3">Aucun envoi prévu aujourd'hui</p>
+          )}
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Prochains envois */}
