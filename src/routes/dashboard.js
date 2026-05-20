@@ -82,14 +82,11 @@ module.exports = (db) => {
             AND datetime(i.prochain_envoi) <= datetime(?)
             AND l.unsubscribed = 0
         `).get(todayStart, todayEnd)?.count || 0,
-        envoyes: db.prepare(`
-          SELECT COUNT(*) as count FROM emails
-          WHERE date(envoye_at) = ? AND statut = 'envoyé'
-        `).get(today)?.count || 0,
-        erreurs: db.prepare(`
+        envoyes: quotaUtilise,
+        erreurs: (db.prepare(`
           SELECT COUNT(*) as count FROM emails
           WHERE date(envoye_at) = ? AND statut = 'erreur'
-        `).get(today)?.count || 0,
+        `).get(today)?.count || 0),
         en_attente: db.prepare(`
           SELECT COUNT(*) as count FROM inscriptions i
           JOIN leads l ON i.lead_id = l.id
