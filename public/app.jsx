@@ -11782,6 +11782,7 @@ const FacturesSamples = ({ showToast }) => {
   const [searchingClient, setSearchingClient] = useState(false);
   const [queue, setQueue] = useState([]);
   const [queueProcessing, setQueueProcessing] = useState(false);
+  const [editingIndex, setEditingIndex] = useState(null);
   const clientSearchTimer = useRef(null);
   const clientAbortRef = useRef(null);
 
@@ -11852,8 +11853,9 @@ const FacturesSamples = ({ showToast }) => {
       if (res.erreur) throw new Error(res.erreur);
 
       // Shipment
+      let shipment_id = null;
       try {
-        await api.post('/shipments', {
+        const shipRes = await api.post('/shipments', {
           type: 'echantillon',
           order_ref: res.number || `ECH-${Date.now()}`,
           invoice_id: res.id,
@@ -11869,6 +11871,7 @@ const FacturesSamples = ({ showToast }) => {
           montant_ttc: res.price_gross || 0,
           notes: deliveryComment || 'Proforma échantillon',
         });
+        shipment_id = shipRes.shipment?.id || null;
       } catch (shipErr) {
         console.warn('Erreur ajout shipment:', shipErr);
       }
@@ -11880,10 +11883,13 @@ const FacturesSamples = ({ showToast }) => {
           const cat = catalog.find(c => c.ref === p.ref);
           return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
         }),
+        rawProducts: products.map(p => ({ ref: p.ref, quantity: p.quantity })),
         shippingId,
         deliveryComment,
+        businessType,
         result: res,
         status: 'ok',
+        shipment_id,
         hubspot_deal_id: res.hubspot_deal_id || null,
       };
       setQueue(q => q.map((item, i) => i === entryIndex ? entry : item));
@@ -11896,8 +11902,113 @@ const FacturesSamples = ({ showToast }) => {
     setQueueProcessing(false);
   };
 
-  const removeFromQueue = (index) => {
+  const removeFromQueue = async (index) => {
+    const entry = queue[index];
+    if (entry?.shipment_id) {
+      try { await api.delete('/shipments/' + entry.shipment_id); } catch (e) { console.warn('Erreur suppression shipment:', e); }
+    }
+    if (editingIndex === index) { setEditingIndex(null); resetClientFields(); }
+    else if (editingIndex !== null && editingIndex > index) { setEditingIndex(editingIndex - 1); }
     setQueue(q => q.filter((_, i) => i !== index));
+  };
+
+  const editQueueEntry = (index) => {
+    const e = queue[index];
+    if (!e || e.status !== 'ok') return;
+    setClientName(e.client.name || '');
+    setClientEmail(e.client.email || '');
+    setClientAddress(e.client.street || '');
+    setClientCity(e.client.city || '');
+    setClientZip(e.client.zip || '');
+    setClientCountry(e.client.country || 'FR');
+    setClientPhone(e.client.phone || '');
+    setProducts(e.rawProducts || []);
+    setShippingId(e.shippingId || '300');
+    setDeliveryComment(e.deliveryComment || '');
+    setBusinessType(e.businessType || 'Hotel 4*');
+    setEditingIndex(index);
+  };
+
+  const cancelEdit = () => {
+    setEditingIndex(null);
+    resetClientFields();
+  };
+
+  const updateQueueEntry = async () => {
+    if (editingIndex === null) return;
+    if (!clientName.trim() || products.length === 0) {
+      showToast('Nom du destinataire et produits requis', 'error'); return;
+    }
+    setQueueProcessing(true);
+    const oldEntry = queue[editingIndex];
+    setQueue(q => q.map((item, i) => i === editingIndex ? { ...item, status: 'processing' } : item));
+    try {
+      // Supprimer l'ancien shipment
+      if (oldEntry?.shipment_id) {
+        try { await api.delete('/shipments/' + oldEntry.shipment_id); } catch (e) { console.warn('Erreur suppression ancien shipment:', e); }
+      }
+      // Nouvelle proforma
+      const res = await api.post('/factures/invoices', {
+        client: { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone },
+        products: products.map(p => {
+          const cat = catalog.find(c => c.ref === p.ref);
+          return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
+        }),
+        fraisPort: [{ ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20 }],
+        documentType: 'proforma',
+        logGSheets: false,
+        isSample: true,
+        businessType,
+      });
+      if (res.erreur) throw new Error(res.erreur);
+      // Nouveau shipment
+      let shipment_id = null;
+      try {
+        const shipRes = await api.post('/shipments', {
+          type: 'echantillon',
+          order_ref: res.number || `ECH-${Date.now()}`,
+          invoice_id: res.id,
+          invoice_number: res.number,
+          client_name: clientName,
+          client_email: clientEmail || '',
+          client_address: clientAddress || '',
+          client_city: clientCity || '',
+          client_country: clientCountry || 'FR',
+          shipping_id: shippingId,
+          shipping_name: '',
+          montant_ht: res.price_net || 0,
+          montant_ttc: res.price_gross || 0,
+          notes: deliveryComment || 'Proforma échantillon',
+        });
+        shipment_id = shipRes.shipment?.id || null;
+      } catch (shipErr) {
+        console.warn('Erreur ajout shipment:', shipErr);
+      }
+      const updatedEntry = {
+        clientName,
+        client: { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone },
+        products: products.map(p => {
+          const cat = catalog.find(c => c.ref === p.ref);
+          return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
+        }),
+        rawProducts: products.map(p => ({ ref: p.ref, quantity: p.quantity })),
+        shippingId,
+        deliveryComment,
+        businessType,
+        result: res,
+        status: 'ok',
+        shipment_id,
+        hubspot_deal_id: res.hubspot_deal_id || null,
+      };
+      setQueue(q => q.map((item, i) => i === editingIndex ? updatedEntry : item));
+      showToast(`Envoi modifié — Proforma ${res.number}`, 'success');
+      setEditingIndex(null);
+      resetClientFields();
+    } catch (err) {
+      setQueue(q => q.map((item, i) => i === editingIndex ? { ...oldEntry, status: 'ok' } : item));
+      showToast('Erreur modification: ' + err.message, 'error');
+    }
+    setQueueProcessing(false);
   };
 
   const sendAllBatch = async () => {
@@ -12355,15 +12466,30 @@ const FacturesSamples = ({ showToast }) => {
         </div>
 
         <div className="flex gap-3">
-          <button onClick={addToQueue} disabled={processing || queueProcessing || !clientName.trim()}
-            className="flex-1 py-3 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-500 disabled:opacity-50">
-            {queueProcessing ? 'Ajout...' : `Ajouter à la file${queue.length > 0 ? ` (${queue.length})` : ''}`}
-          </button>
-          {queue.length === 0 && (
-            <button onClick={createProforma} disabled={processing || !clientName.trim()}
-              className="flex-1 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50">
-              {processing ? 'Création...' : 'Créer & envoyer'}
-            </button>
+          {editingIndex !== null ? (
+            <>
+              <button onClick={updateQueueEntry} disabled={processing || queueProcessing || !clientName.trim()}
+                className="flex-1 py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-500 disabled:opacity-50">
+                {queueProcessing ? 'Modification...' : 'Modifier l\'envoi'}
+              </button>
+              <button onClick={cancelEdit} disabled={queueProcessing}
+                className="py-3 px-4 bg-slate-200 text-slate-700 text-sm font-medium rounded-xl hover:bg-slate-300 disabled:opacity-50">
+                Annuler
+              </button>
+            </>
+          ) : (
+            <>
+              <button onClick={addToQueue} disabled={processing || queueProcessing || !clientName.trim()}
+                className="flex-1 py-3 bg-indigo-600 text-white text-sm font-medium rounded-xl hover:bg-indigo-500 disabled:opacity-50">
+                {queueProcessing ? 'Ajout...' : `Ajouter à la file${queue.length > 0 ? ` (${queue.length})` : ''}`}
+              </button>
+              {queue.length === 0 && (
+                <button onClick={createProforma} disabled={processing || !clientName.trim()}
+                  className="flex-1 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50">
+                  {processing ? 'Création...' : 'Créer & envoyer'}
+                </button>
+              )}
+            </>
           )}
         </div>
 
@@ -12393,9 +12519,9 @@ const FacturesSamples = ({ showToast }) => {
           <h4 className="text-sm font-semibold text-slate-800">File d'attente ({queue.filter(e => e.status === 'ok').length} destinataire{queue.filter(e => e.status === 'ok').length > 1 ? 's' : ''})</h4>
           <div className="space-y-2">
             {queue.map((entry, i) => (
-              <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${entry.status === 'ok' ? 'bg-emerald-50 border border-emerald-100' : entry.status === 'error' ? 'bg-red-50 border border-red-100' : 'bg-slate-50 border border-slate-100'}`}>
+              <div key={i} className={`flex items-center gap-3 px-3 py-2 rounded-lg text-sm ${editingIndex === i ? 'bg-indigo-50 border-2 border-indigo-400' : entry.status === 'ok' ? 'bg-emerald-50 border border-emerald-100' : entry.status === 'error' ? 'bg-red-50 border border-red-100' : 'bg-slate-50 border border-slate-100'}`}>
                 <span className="text-base">{entry.status === 'ok' ? '\u2705' : entry.status === 'error' ? '\u274C' : '\u23F3'}</span>
-                <span className="flex-1 font-medium text-slate-700">{entry.clientName}</span>
+                <span className="flex-1 font-medium text-slate-700">{entry.clientName}{editingIndex === i && <span className="text-indigo-500 text-xs ml-2">(en cours de modification)</span>}</span>
                 {entry.result?.number && <span className="text-xs font-mono text-slate-500">#{entry.result.number}</span>}
                 {entry.status === 'ok' && entry.hubspot_deal_id && <span className="text-xs text-emerald-600">HubSpot</span>}
                 {entry.status === 'ok' && !entry.hubspot_deal_id && <span className="text-xs text-amber-500">pas HubSpot</span>}
@@ -12404,6 +12530,7 @@ const FacturesSamples = ({ showToast }) => {
                   <a href={`https://terredemars.vosfactures.fr/invoices/${entry.result.id}`} target="_blank" rel="noopener"
                     className="text-xs text-blue-600 hover:underline">Voir</a>
                 )}
+                {entry.status === 'ok' && <button onClick={() => editQueueEntry(i)} className="text-slate-400 hover:text-indigo-500 text-xs" title="Modifier">&#9998;</button>}
                 <button onClick={() => removeFromQueue(i)} className="text-slate-400 hover:text-red-500 text-xs" title="Retirer de la file">\u2716</button>
               </div>
             ))}
