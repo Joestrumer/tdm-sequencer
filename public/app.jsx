@@ -5653,14 +5653,25 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 onClick={async () => {
                   try {
                     const res = await api.post('/prospection/emails-generiques/auto-clean', { dry_run: true });
-                    if (res.bad_emails === 0) {
+                    if (res.bad_emails === 0 && (res.fixed_emails || 0) === 0) {
                       showToast('Aucun mauvais email detecte', 'success');
                       return;
                     }
-                    const exemples = res.details.slice(0, 5).map(d => d.email + ' (' + d.reason + ')').join('\n');
-                    if (confirm(res.bad_emails + ' mauvais email(s) detecte(s) :\n\n' + exemples + (res.bad_emails > 5 ? '\n... et ' + (res.bad_emails - 5) + ' autre(s)' : '') + '\n\nExclure tous ?')) {
+                    let msg = '';
+                    if (res.fixed_emails > 0) {
+                      const fixExemples = (res.fixed_details || []).slice(0, 3).map(d => d.original + ' → ' + d.fixed).join('\n');
+                      msg += res.fixed_emails + ' email(s) corrigeable(s) :\n' + fixExemples + (res.fixed_emails > 3 ? '\n... et ' + (res.fixed_emails - 3) + ' autre(s)' : '') + '\n\n';
+                    }
+                    if (res.bad_emails > 0) {
+                      const exemples = res.details.slice(0, 5).map(d => d.email + ' (' + d.reason + ')').join('\n');
+                      msg += res.bad_emails + ' email(s) invalide(s) a exclure :\n' + exemples + (res.bad_emails > 5 ? '\n... et ' + (res.bad_emails - 5) + ' autre(s)' : '');
+                    }
+                    if (confirm(msg.trim() + '\n\nAppliquer le nettoyage ?')) {
                       const res2 = await api.post('/prospection/emails-generiques/auto-clean', { dry_run: false });
-                      showToast(res2.bad_emails + ' email(s) exclu(s) automatiquement', 'success');
+                      const actions = [];
+                      if (res2.fixed_emails > 0) actions.push(res2.fixed_emails + ' corrige(s)');
+                      if (res2.bad_emails > 0) actions.push(res2.bad_emails + ' exclu(s)');
+                      showToast('Nettoyage : ' + actions.join(', '), 'success');
                       chargerEmailsGeneriques();
                     }
                   } catch (err) {
