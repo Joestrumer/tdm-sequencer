@@ -12315,7 +12315,7 @@ const FacturesSamples = ({ showToast }) => {
                 // Normaliser les codes postaux avec espace (07 240 → 07240)
                 cleaned = cleaned.replace(/\b(\d{2})\s(\d{3})\b/g, '$1$2');
                 // Nettoyer les préfixes téléphone résiduels (T., Tel., Tél.) et séparateurs
-                cleaned = cleaned.replace(/\b[Tt][eé]?l?\.?\s*[:.]?\s*(?=$|[\s\n-])/gm, '');
+                cleaned = cleaned.replace(/(?<![a-zA-ZÀ-ÿ])[Tt][eé]?l?\.?\s*[:.]?\s*(?=$|[\s\n-])/gm, '');
                 let lines = cleaned.split(/\n/).map(l => l.replace(/^[\s\-–—]+|[\s\-–—]+$/g, '').trim()).filter(l => l.length > 0 && /[a-zA-ZÀ-ÿ]{2,}/.test(l));
                 const usedLines = new Set();
 
