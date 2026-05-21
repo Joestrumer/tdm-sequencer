@@ -6,7 +6,7 @@
 const express = require('express');
 
 // Clés sensibles à ne jamais renvoyer en clair (masquées)
-const CLES_SENSIBLES = ['brevo_api_key', 'hubspot_api_key', 'auth_secret', 'zerobounce_api_key', 'vf_api_token', 'gsheets_credentials', 'external_api_key', 'smtp_password', 'imap_password', 'brave_search_api_key', 'google_places_api_key', 'pappers_api_key', 'lusha_api_key', 'lemlist_api_key'];
+const CLES_SENSIBLES = ['brevo_api_key', 'hubspot_api_key', 'auth_secret', 'zerobounce_api_key', 'vf_api_token', 'gsheets_credentials', 'external_api_key', 'smtp_password', 'imap_password', 'brave_search_api_key', 'google_places_api_key', 'pappers_api_key', 'lusha_api_key', 'lemlist_api_key', 'wms_user', 'wms_password', 'ups_client_id', 'ups_client_secret'];
 
 module.exports = (db) => {
   const router = express.Router();

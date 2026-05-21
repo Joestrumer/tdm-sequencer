@@ -13746,6 +13746,8 @@ const VueParametres = () => {
           <VueLushaConfig />
           <VueLemlistConfig />
           <VueGooglePlacesConfig />
+          <VueWmsConfig />
+          <VueUpsConfig />
           <VueHubspot />
           <VueVosFacturesConfig />
         </div>
@@ -14427,6 +14429,151 @@ const VueVosFacturesConfig = () => {
         className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
         {saving ? 'Sauvegarde...' : 'Enregistrer VF/GSheets'}
       </button>
+    </div>
+  );
+};
+
+// ─── WMS Endurance Config ─────────────────────────────────────────────────────
+const VueWmsConfig = () => {
+  const [wmsUser, setWmsUser] = useState('');
+  const [wmsPass, setWmsPass] = useState('');
+  const [configured, setConfigured] = useState(false);
+  const [showPass, setShowPass] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.wms_user_configured) setConfigured(true);
+    }).catch(e => console.warn('WMS config:', e.message));
+  }, []);
+
+  const sauvegarder = async () => {
+    if (!wmsUser && !wmsPass) return;
+    setSaving(true); setMsg('');
+    try {
+      const payload = {};
+      if (wmsUser) payload.wms_user = wmsUser;
+      if (wmsPass) payload.wms_password = wmsPass;
+      await api.post('/config', payload);
+      setConfigured(true);
+      setWmsUser(''); setWmsPass('');
+      setMsg('Identifiants WMS sauvegardés');
+    } catch(e) { setMsg('Erreur: ' + e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">WMS Endurance Logistique</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Suivi des expéditions et statuts commandes via SOAP</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs ${configured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${configured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {configured ? "Configuré" : "Non configuré"}
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Utilisateur</label>
+          <input type="text" value={wmsUser} onChange={e => setWmsUser(e.target.value)}
+            placeholder={configured ? "Laisser vide pour conserver" : "Utilisateur Endurance"}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Mot de passe</label>
+          <div className="flex gap-2">
+            <input type={showPass ? "text" : "password"} value={wmsPass} onChange={e => setWmsPass(e.target.value)}
+              placeholder={configured ? "Laisser vide pour conserver" : "Mot de passe Endurance"}
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+            <button onClick={() => setShowPass(!showPass)} className="px-2 text-xs text-slate-400 hover:text-slate-600">{showPass ? '🙈' : '👁'}</button>
+          </div>
+        </div>
+      </div>
+      <div className="flex items-center gap-2">
+        {(wmsUser || wmsPass) && (
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+            {saving ? "Sauvegarde..." : "Enregistrer"}
+          </button>
+        )}
+      </div>
+      {msg && <p className={`text-xs font-medium ${msg.startsWith('Erreur') ? 'text-red-600' : 'text-emerald-600'}`}>{msg}</p>}
+    </div>
+  );
+};
+
+// ─── UPS Tracking Config ─────────────────────────────────────────────────────
+const VueUpsConfig = () => {
+  const [clientId, setClientId] = useState('');
+  const [clientSecret, setClientSecret] = useState('');
+  const [configured, setConfigured] = useState(false);
+  const [showSecret, setShowSecret] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.ups_client_id_configured) setConfigured(true);
+    }).catch(e => console.warn('UPS config:', e.message));
+  }, []);
+
+  const sauvegarder = async () => {
+    if (!clientId && !clientSecret) return;
+    setSaving(true); setMsg('');
+    try {
+      const payload = {};
+      if (clientId) payload.ups_client_id = clientId;
+      if (clientSecret) payload.ups_client_secret = clientSecret;
+      await api.post('/config', payload);
+      setConfigured(true);
+      setClientId(''); setClientSecret('');
+      setMsg('Credentials UPS sauvegardées');
+    } catch(e) { setMsg('Erreur: ' + e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <div className="flex items-center justify-between">
+        <div>
+          <h3 className="text-sm font-semibold text-slate-800">UPS Tracking</h3>
+          <p className="text-xs text-slate-400 mt-0.5">Suivi livraison automatique des colis UPS</p>
+        </div>
+        <div className={`flex items-center gap-1.5 text-xs ${configured ? "text-emerald-600" : "text-slate-400"}`}>
+          <span className={`w-2 h-2 rounded-full ${configured ? "bg-emerald-500" : "bg-slate-300"}`} />
+          {configured ? "Configuré" : "Non configuré"}
+        </div>
+      </div>
+      <div className="space-y-2">
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Client ID</label>
+          <input type="text" value={clientId} onChange={e => setClientId(e.target.value)}
+            placeholder={configured ? "Laisser vide pour conserver" : "Client ID UPS"}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+        </div>
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Client Secret</label>
+          <div className="flex gap-2">
+            <input type={showSecret ? "text" : "password"} value={clientSecret} onChange={e => setClientSecret(e.target.value)}
+              placeholder={configured ? "Laisser vide pour conserver" : "Client Secret UPS"}
+              className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+            <button onClick={() => setShowSecret(!showSecret)} className="px-2 text-xs text-slate-400 hover:text-slate-600">{showSecret ? '🙈' : '👁'}</button>
+          </div>
+        </div>
+        <p className="text-xs text-slate-400">Créez une app gratuite sur <a href="https://developer.ups.com" target="_blank" rel="noopener" className="text-blue-500 hover:underline">developer.ups.com</a> pour obtenir vos credentials</p>
+      </div>
+      <div className="flex items-center gap-2">
+        {(clientId || clientSecret) && (
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 bg-slate-900 text-white text-xs font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+            {saving ? "Sauvegarde..." : "Enregistrer"}
+          </button>
+        )}
+      </div>
+      {msg && <p className={`text-xs font-medium ${msg.startsWith('Erreur') ? 'text-red-600' : 'text-emerald-600'}`}>{msg}</p>}
     </div>
   );
 };
