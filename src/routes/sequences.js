@@ -70,12 +70,12 @@ module.exports = (db) => {
   // POST /api/sequences
   router.post('/', (req, res) => {
     try {
-      const { nom, segment, etapes, options } = req.body;
+      const { nom, segment, etapes, options, priorite } = req.body;
       if (!nom || !etapes?.length) return res.status(400).json({ erreur: 'nom et etapes sont requis' });
 
       const seqId = uuidv4();
-      db.prepare('INSERT INTO sequences (id, nom, segment, options) VALUES (?, ?, ?, ?)')
-        .run(seqId, nom, segment || '5*', options ? JSON.stringify(options) : null);
+      db.prepare('INSERT INTO sequences (id, nom, segment, options, priorite) VALUES (?, ?, ?, ?, ?)')
+        .run(seqId, nom, segment || '5*', options ? JSON.stringify(options) : null, priorite != null ? priorite : 3);
 
       db.transaction((etapes) => {
         etapes.forEach((e, i) => {
@@ -113,8 +113,8 @@ module.exports = (db) => {
       const newNom = `${seq.nom} (copie)`;
 
       db.transaction(() => {
-        db.prepare('INSERT INTO sequences (id, nom, segment, options) VALUES (?, ?, ?, ?)')
-          .run(newSeqId, newNom, seq.segment, seq.options);
+        db.prepare('INSERT INTO sequences (id, nom, segment, options, priorite) VALUES (?, ?, ?, ?, ?)')
+          .run(newSeqId, newNom, seq.segment, seq.options, seq.priorite);
 
         for (const e of etapes) {
           db.prepare('INSERT INTO etapes (id, sequence_id, ordre, jour_delai, sujet, corps, corps_html, piece_jointe, content_json) VALUES (?,?,?,?,?,?,?,?,?)')
@@ -134,12 +134,12 @@ module.exports = (db) => {
   // PUT /api/sequences/:id
   router.put('/:id', (req, res) => {
     try {
-      const { nom, segment, etapes, options } = req.body;
+      const { nom, segment, etapes, options, priorite } = req.body;
       const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
       if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
 
-      db.prepare('UPDATE sequences SET nom = ?, segment = ?, options = ? WHERE id = ?')
-        .run(nom || seq.nom, segment || seq.segment, options ? JSON.stringify(options) : seq.options, req.params.id);
+      db.prepare('UPDATE sequences SET nom = ?, segment = ?, options = ?, priorite = ? WHERE id = ?')
+        .run(nom || seq.nom, segment || seq.segment, options ? JSON.stringify(options) : seq.options, priorite != null ? priorite : seq.priorite, req.params.id);
 
       if (etapes?.length) {
         db.transaction((etapes) => {

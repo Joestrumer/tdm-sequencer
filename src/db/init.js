@@ -1008,6 +1008,8 @@ const migrations = [
   'ALTER TABLE veille_opportunities ADD COLUMN website TEXT',
   'ALTER TABLE veille_opportunities ADD COLUMN google_place_id TEXT',
   'ALTER TABLE veille_articles ADD COLUMN signal_id TEXT',
+  // Priorité des séquences d'envoi (1=haute, 5=basse, 3=normal)
+  'ALTER TABLE sequences ADD COLUMN priorite INTEGER DEFAULT 3',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

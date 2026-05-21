@@ -224,11 +224,12 @@ async function lancerVerification() {
 
   // Utiliser datetime() pour normaliser les formats (T vs espace) des anciennes données
   const inscriptions = db.prepare(`
-    SELECT * FROM inscriptions
-    WHERE statut = 'actif'
-      AND prochain_envoi IS NOT NULL
-      AND datetime(prochain_envoi) <= datetime(?)
-    ORDER BY prochain_envoi ASC
+    SELECT i.* FROM inscriptions i
+    JOIN sequences s ON s.id = i.sequence_id
+    WHERE i.statut = 'actif'
+      AND i.prochain_envoi IS NOT NULL
+      AND datetime(i.prochain_envoi) <= datetime(?)
+    ORDER BY COALESCE(s.priorite, 3) ASC, i.prochain_envoi ASC
     LIMIT 20
   `).all(nowParis);
 

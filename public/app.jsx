@@ -715,6 +715,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
   const [etapes, setEtapes] = useState(seq ? [...seq.etapes] : [{ jour: 0, sujet: "", corps: "" }]);
   const [nom, setNom] = useState(seq?.nom || "");
   const [segment, setSegment] = useState(seq?.segment || "5*");
+  const [priorite, setPriorite] = useState(seq?.priorite ?? 3);
   const [desabonnement, setDesabonnement] = useState(seq?.options?.desabonnement !== false);
   const [bcc, setBcc] = useState(seq?.options?.bcc || "");
   // HubSpot options par séquence (undefined = hérite du global)
@@ -992,7 +993,7 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
       if (hsLogEmail !== undefined) options.hs_log_email = hsLogEmail;
       if (hsLifecycle !== undefined) options.hs_lifecycle = hsLifecycle;
       if (hsTaskFin !== undefined) options.hs_task_fin_sequence = hsTaskFin;
-      await onSave({ id: seq?.id || null, nom, segment, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options });
+      await onSave({ id: seq?.id || null, nom, segment, priorite, etapes: etapesFinales, leadsActifs: seq?.leadsActifs || 0, options });
       onClose();
     } catch(e) { setErrMsg("Erreur : " + (e.message || "impossible de sauvegarder")); }
     setSaving(false);
@@ -1029,6 +1030,13 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
           <input value={nom} onChange={e => setNom(e.target.value)} placeholder="Nom de la séquence..." className="flex-1 text-base font-semibold text-slate-900 focus:outline-none bg-transparent placeholder-slate-300" />
           <select value={segment} onChange={e => setSegment(e.target.value)} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none">
             {getSegments().map(s => <option key={s}>{s}</option>)}
+          </select>
+          <select value={priorite} onChange={e => setPriorite(Number(e.target.value))} className="text-xs border border-slate-200 rounded-lg px-2 py-1.5 text-slate-600 focus:outline-none" title="Priorité d'envoi (P1 = haute, P5 = basse)">
+            <option value={1}>P1 - Haute</option>
+            <option value={2}>P2 - Élevée</option>
+            <option value={3}>P3 - Normale</option>
+            <option value={4}>P4 - Basse</option>
+            <option value={5}>P5 - Minimale</option>
           </select>
           <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
             <input type="checkbox" checked={desabonnement} onChange={e => setDesabonnement(e.target.checked)} className="rounded" />
@@ -6381,6 +6389,9 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
               <span className={`text-slate-400 text-xs transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
               <h3 className="text-sm font-semibold text-slate-800 truncate">{seq.nom}</h3>
               <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full flex-shrink-0">{seq.segment}</span>
+              {seq.priorite != null && seq.priorite !== 3 && (
+                <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 font-medium ${seq.priorite <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-400'}`}>P{seq.priorite}</span>
+              )}
               <span className="text-xs text-slate-400 flex-shrink-0">{seq.leadsActifs} actifs</span>
               <span className="text-xs text-slate-400 flex-shrink-0">{seq.etapes?.length || 0} étape{(seq.etapes?.length || 0) !== 1 ? 's' : ''}</span>
             </div>
