@@ -67,14 +67,15 @@ async function refreshWMS() {
   return updated;
 }
 
-// ─── Phase 2 : Check livraison via La Poste (Colissimo + Chronopost) ────────
+// ─── Phase 2 : Check livraison via transporteur (La Poste, UPS, etc.) ───────
 async function checkDeliveries() {
-  // Envois expédiés avec tracking mais pas encore livrés
+  // Tous les colis avec tracking, non livrés, sans filtre sur last_wms_check
+  // (indépendant de la Phase 1 — on vérifie la livraison à chaque cycle)
   const shipments = db.prepare(`
     SELECT * FROM shipments
     WHERE tracking_number IS NOT NULL
       AND (wms_status_code IS NULL OR wms_status_code NOT IN ('9', '10'))
-      AND (last_wms_check IS NULL OR last_wms_check < datetime('now', '-2 hours'))
+      AND delivered_at IS NULL
     ORDER BY created_at DESC
     LIMIT 30
   `).all();
