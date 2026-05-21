@@ -62,31 +62,23 @@ module.exports = (db) => {
         LIMIT 10
       `).all();
 
-      // 3. Quota du jour
-      const today = new Date().toISOString().split('T')[0];
+      // 3. Quota du jour (heure Paris, cohérent avec le scheduler)
+      const _pad2 = n => String(n).padStart(2, '0');
+      const _nowParis = new Date(new Date().toLocaleString('en-US', { timeZone: process.env.FUSEAU || 'Europe/Paris' }));
+      const today = `${_nowParis.getFullYear()}-${_pad2(_nowParis.getMonth()+1)}-${_pad2(_nowParis.getDate())}`;
+      const nowParis = `${today} ${_pad2(_nowParis.getHours())}:${_pad2(_nowParis.getMinutes())}:${_pad2(_nowParis.getSeconds())}`;
       const quota = db.prepare('SELECT count FROM envoi_quota WHERE date_jour = ?').get(today);
       const quotaUtilise = quota ? quota.count : 0;
       const configMax = db.prepare("SELECT valeur FROM config WHERE cle = 'max_emails_par_jour'").get();
       const quotaMax = parseInt(configMax?.valeur || process.env.MAX_EMAILS_PER_DAY || '50') || 50;
 
-      // 3b. État des envois prévus aujourd'hui
+      // 3b. État des envois du jour
       const todayStart = today + ' 00:00:00';
       const todayEnd = today + ' 23:59:59';
       const envoiAujourdHui = {
-        prevus: db.prepare(`
-          SELECT COUNT(*) as count FROM inscriptions i
-          JOIN leads l ON i.lead_id = l.id
-          WHERE i.statut = 'actif'
-            AND i.prochain_envoi IS NOT NULL
-            AND datetime(i.prochain_envoi) >= datetime(?)
-            AND datetime(i.prochain_envoi) <= datetime(?)
-            AND l.unsubscribed = 0
-        `).get(todayStart, todayEnd)?.count || 0,
+        // Emails déjà envoyés aujourd'hui (quota = source de vérité)
         envoyes: quotaUtilise,
-        erreurs: (db.prepare(`
-          SELECT COUNT(*) as count FROM emails
-          WHERE date(envoye_at) = ? AND statut = 'erreur'
-        `).get(today)?.count || 0),
+        // En attente : prochain_envoi déjà passé, le scheduler va les traiter au prochain cycle
         en_attente: db.prepare(`
           SELECT COUNT(*) as count FROM inscriptions i
           JOIN leads l ON i.lead_id = l.id
@@ -94,7 +86,22 @@ module.exports = (db) => {
             AND i.prochain_envoi IS NOT NULL
             AND datetime(i.prochain_envoi) <= datetime(?)
             AND l.unsubscribed = 0
-        `).get(todayEnd)?.count || 0,
+        `).get(nowParis)?.count || 0,
+        // Prévus plus tard : programmés pour plus tard dans la journée
+        prevus_plus_tard: db.prepare(`
+          SELECT COUNT(*) as count FROM inscriptions i
+          JOIN leads l ON i.lead_id = l.id
+          WHERE i.statut = 'actif'
+            AND i.prochain_envoi IS NOT NULL
+            AND datetime(i.prochain_envoi) > datetime(?)
+            AND datetime(i.prochain_envoi) <= datetime(?)
+            AND l.unsubscribed = 0
+        `).get(nowParis, todayEnd)?.count || 0,
+        // Erreurs d'envoi aujourd'hui
+        erreurs: db.prepare(`
+          SELECT COUNT(*) as count FROM emails
+          WHERE date(envoye_at) = ? AND statut = 'erreur'
+        `).get(today)?.count || 0,
       };
 
       // 4. Activité récente (20 derniers events)

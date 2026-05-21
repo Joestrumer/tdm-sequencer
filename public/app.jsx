@@ -1453,24 +1453,24 @@ const VueDashboard = ({ showToast }) => {
         <div className="bg-white rounded-xl border border-slate-100 p-5">
           <h3 className="text-sm font-semibold text-slate-800 mb-3">Envois du jour</h3>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <div className="bg-blue-50 rounded-lg p-3 text-center">
-              <div className="text-xl font-bold text-blue-700">{envoiAujourdHui.en_attente}</div>
-              <div className="text-xs text-blue-600 mt-0.5">Total restant</div>
-            </div>
-            <div className="bg-amber-50 rounded-lg p-3 text-center">
-              <div className="text-xl font-bold text-amber-700">{envoiAujourdHui.prevus}</div>
-              <div className="text-xs text-amber-600 mt-0.5">Prévus aujourd'hui</div>
-            </div>
             <div className="bg-emerald-50 rounded-lg p-3 text-center">
               <div className="text-xl font-bold text-emerald-700">{envoiAujourdHui.envoyes}</div>
               <div className="text-xs text-emerald-600 mt-0.5">Envoyés</div>
+            </div>
+            <div className={`rounded-lg p-3 text-center ${envoiAujourdHui.en_attente > 0 ? 'bg-amber-50' : 'bg-slate-50'}`}>
+              <div className={`text-xl font-bold ${envoiAujourdHui.en_attente > 0 ? 'text-amber-700' : 'text-slate-400'}`}>{envoiAujourdHui.en_attente}</div>
+              <div className={`text-xs mt-0.5 ${envoiAujourdHui.en_attente > 0 ? 'text-amber-600' : 'text-slate-400'}`}>En attente</div>
+            </div>
+            <div className="bg-blue-50 rounded-lg p-3 text-center">
+              <div className="text-xl font-bold text-blue-700">{envoiAujourdHui.prevus_plus_tard || 0}</div>
+              <div className="text-xs text-blue-600 mt-0.5">Prévus plus tard</div>
             </div>
             <div className={`rounded-lg p-3 text-center ${envoiAujourdHui.erreurs > 0 ? 'bg-red-50' : 'bg-slate-50'}`}>
               <div className={`text-xl font-bold ${envoiAujourdHui.erreurs > 0 ? 'text-red-700' : 'text-slate-400'}`}>{envoiAujourdHui.erreurs}</div>
               <div className={`text-xs mt-0.5 ${envoiAujourdHui.erreurs > 0 ? 'text-red-600' : 'text-slate-400'}`}>Erreurs</div>
             </div>
           </div>
-          {envoiAujourdHui.en_attente === 0 && envoiAujourdHui.envoyes === 0 && envoiAujourdHui.prevus === 0 && (
+          {envoiAujourdHui.en_attente === 0 && envoiAujourdHui.envoyes === 0 && (envoiAujourdHui.prevus_plus_tard || 0) === 0 && (
             <p className="text-xs text-slate-400 italic text-center mt-3">Aucun envoi prévu aujourd'hui</p>
           )}
         </div>
