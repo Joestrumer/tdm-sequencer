@@ -1,83 +1,65 @@
 /**
- * carrierTrackingService.js — Suivi colis via API La Poste (Colissimo + Chronopost)
+ * carrierTrackingService.js — Suivi colis via endpoint interne La Poste
  *
- * API Suivi v2 : https://developer.laposte.fr/products/suivi/2
- * Clé gratuite à obtenir sur developer.laposte.fr
+ * Endpoint : https://www.laposte.fr/ssu/sun/back/suivi-unifie/{tracking}?lang=fr
+ * Fonctionne pour Colissimo + Chronopost, sans clé API.
  *
- * Codes événements livraison :
- * - DR1 / DR2 = Distribué (livré)
- * - AG1 = Disponible en point retrait
- * - DI1 / DI2 = Distribué à un voisin / gardien
- * - ET1-ET4 = En transit
- * - PC1/PC2 = Pris en charge
+ * Réponse clé :
+ * - shipment.isFinal   → true quand le colis est livré
+ * - shipment.deliveryDate → date de livraison
+ * - shipment.event[0]  → dernier événement (code DI1 = livré, ET1 = transit, etc.)
  */
 
 const logger = require('../config/logger');
 
-const LAPOSTE_API = 'https://api.laposte.fr/suivi/v2/idships';
-
-// Codes événement qui indiquent une livraison réussie
-const DELIVERED_CODES = new Set(['DR1', 'DR2', 'DI1', 'DI2', 'AG1']);
-// Codes qui indiquent un problème
-const PROBLEM_CODES = new Set(['ND1', 'RE1', 'RE2', 'AR1', 'AR2']);
-
-function getApiKey(db) {
-  const fromDb = db?.prepare?.("SELECT valeur FROM config WHERE cle = 'laposte_suivi_key'")?.get()?.valeur;
-  return fromDb || process.env.LAPOSTE_SUIVI_KEY || null;
-}
+const SSU_URL = 'https://www.laposte.fr/ssu/sun/back/suivi-unifie';
 
 /**
- * Interroge l'API La Poste Suivi pour un numéro de tracking
- * @returns {{ delivered: boolean, status: string, statusDetail: string, lastEvent: string, deliveredAt: string|null }} | null
+ * Interroge La Poste pour un numéro de tracking (Colissimo ou Chronopost)
+ * @returns {{ isFinal, delivered, product, status, statusCode, date, deliveryDate }} | null
  */
 async function checkDelivery(db, trackingNumber) {
-  const apiKey = getApiKey(db);
-  if (!apiKey) return null;
   if (!trackingNumber) return null;
 
-  const res = await fetch(`${LAPOSTE_API}/${encodeURIComponent(trackingNumber)}?lang=fr_FR`, {
+  const res = await fetch(`${SSU_URL}/${encodeURIComponent(trackingNumber)}?lang=fr`, {
     headers: {
+      'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/125.0.0.0 Safari/537.36',
       'Accept': 'application/json',
-      'X-Okapi-Key': apiKey,
     },
   });
 
   if (!res.ok) {
-    if (res.status === 404) return null; // Tracking inconnu
-    if (res.status === 401 || res.status === 403) {
-      logger.warn('[La Poste Suivi] Clé API invalide ou expirée');
-      return null;
-    }
-    throw new Error(`La Poste API HTTP ${res.status}`);
+    if (res.status === 404 || res.status === 400) return null;
+    throw new Error(`La Poste SSU HTTP ${res.status}`);
   }
 
   const data = await res.json();
-  const shipment = data.shipment;
+  const entry = Array.isArray(data) ? data[0] : data;
+  if (!entry || entry.returnCode !== 200) return null;
+
+  const shipment = entry.shipment;
   if (!shipment) return null;
 
-  // Dernier événement
-  const lastEvent = shipment.event?.[0]; // Events triés du plus récent au plus ancien
-  if (!lastEvent) return null;
-
-  const eventCode = lastEvent.code || '';
-  const delivered = DELIVERED_CODES.has(eventCode);
-  const problem = PROBLEM_CODES.has(eventCode);
+  const lastEvent = shipment.event?.[0];
+  const isFinal = !!shipment.isFinal;
+  // Codes livraison : DI1 (livré domicile), DI2 (livré voisin), AG1 (point retrait)
+  const deliveredCodes = ['DI1', 'DI2', 'AG1'];
+  const delivered = isFinal || deliveredCodes.includes(lastEvent?.code);
 
   return {
+    isFinal,
     delivered,
-    problem,
-    eventCode,
-    status: lastEvent.label || '',
-    statusDetail: lastEvent.status || '',
-    date: lastEvent.date || null,
-    deliveredAt: delivered ? lastEvent.date : null,
-    carrier: shipment.product?.label || null,
+    product: shipment.product || null,
+    statusCode: lastEvent?.code || null,
+    status: lastEvent?.label || (isFinal ? 'Livré' : null),
+    date: lastEvent?.date || null,
+    deliveryDate: shipment.deliveryDate || null,
   };
 }
 
 /**
  * Met à jour le statut livraison d'un shipment dans la DB
- * @returns {boolean} true si le statut a été mis à jour
+ * @returns {boolean} true si marqué comme livré
  */
 async function updateShipmentDelivery(db, shipment) {
   if (!shipment.tracking_number) return false;
@@ -90,22 +72,31 @@ async function updateShipmentDelivery(db, shipment) {
       db.prepare(`
         UPDATE shipments
         SET wms_status = ?, wms_status_code = '9', delivered_at = ?,
+            carrier_name = COALESCE(carrier_name, ?),
             last_wms_check = datetime('now')
         WHERE id = ?
-      `).run(result.status || 'Livré', result.deliveredAt, shipment.id);
+      `).run(
+        result.status || 'Livré',
+        result.deliveryDate || result.date,
+        result.product,
+        shipment.id
+      );
       return true;
     }
 
-    // Mettre à jour le statut textuel si on a un événement plus récent
-    if (result.status && !shipment.wms_status) {
+    // Pas encore livré mais on a un statut → mettre à jour si plus informatif
+    if (result.status && (!shipment.wms_status || shipment.wms_status === 'Non vérifié')) {
       db.prepare(`
-        UPDATE shipments SET wms_status = ?, last_wms_check = datetime('now') WHERE id = ?
-      `).run(result.status, shipment.id);
+        UPDATE shipments
+        SET wms_status = ?, carrier_name = COALESCE(carrier_name, ?),
+            last_wms_check = datetime('now')
+        WHERE id = ?
+      `).run(result.status, result.product, shipment.id);
     }
 
     return false;
   } catch (e) {
-    logger.warn(`[La Poste Suivi] Erreur ${shipment.tracking_number}: ${e.message}`);
+    logger.warn(`[Carrier Tracking] Erreur ${shipment.tracking_number}: ${e.message}`);
     return false;
   }
 }
@@ -113,5 +104,4 @@ async function updateShipmentDelivery(db, shipment) {
 module.exports = {
   checkDelivery,
   updateShipmentDelivery,
-  getApiKey,
 };

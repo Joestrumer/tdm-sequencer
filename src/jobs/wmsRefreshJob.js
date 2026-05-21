@@ -67,13 +67,8 @@ async function refreshWMS() {
   return updated;
 }
 
-// ─── Phase 2 : Check livraison via API La Poste ─────────────────────────────
+// ─── Phase 2 : Check livraison via La Poste (Colissimo + Chronopost) ────────
 async function checkDeliveries() {
-  // Vérifier que la clé La Poste est configurée
-  if (!carrierTracking.getApiKey(db)) {
-    return 0;
-  }
-
   // Envois expédiés avec tracking mais pas encore livrés
   const shipments = db.prepare(`
     SELECT * FROM shipments

@@ -230,7 +230,7 @@ module.exports = (db) => {
     try {
       const result = await carrierTracking.checkDelivery(db, req.params.trackingNumber);
       if (!result) {
-        return res.status(404).json({ erreur: 'Pas de résultat (clé La Poste manquante ou tracking inconnu)' });
+        return res.status(404).json({ erreur: 'Tracking inconnu ou pas encore pris en charge' });
       }
       res.json(result);
     } catch (e) {
