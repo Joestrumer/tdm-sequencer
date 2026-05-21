@@ -12995,7 +12995,8 @@ const FacturesShipments = ({ showToast }) => {
     if (t.includes('ups')) return `https://www.ups.com/track?tracknum=${numero}`;
     if (t.includes('dhl')) return `https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=${numero}`;
     if (t.includes('tnt') || t.includes('fedex')) return `https://www.fedex.com/fedextrack/?trknbr=${numero}`;
-    return null;
+    // Fallback : La Poste gère Colissimo + Chronopost
+    return `https://www.laposte.fr/outils/suivre-vos-envois?code=${numero}`;
   };
 
   const filtered = shipments.filter(s => {
@@ -13126,13 +13127,10 @@ const FacturesShipments = ({ showToast }) => {
                     </td>
                     <td className="px-4 py-3">
                       {s.tracking_number ? (
-                        <div className="flex items-center gap-2">
-                          <span className="text-xs font-mono text-slate-700">{s.tracking_number}</span>
-                          {trackingUrl(s.carrier_name, s.tracking_number) && (
-                            <a href={trackingUrl(s.carrier_name, s.tracking_number)} target="_blank" rel="noopener"
-                              className="text-blue-600 hover:text-blue-800 text-xs">🔗</a>
-                          )}
-                        </div>
+                        <a href={trackingUrl(s.carrier_name, s.tracking_number)} target="_blank" rel="noopener"
+                          className="text-xs font-mono text-blue-600 hover:text-blue-800 hover:underline">
+                          {s.tracking_number}
+                        </a>
                       ) : (
                         <span className="text-xs text-slate-400 italic">-</span>
                       )}

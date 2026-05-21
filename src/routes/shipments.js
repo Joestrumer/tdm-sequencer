@@ -84,6 +84,25 @@ module.exports = (db) => {
 
       const shipment = db.prepare('SELECT * FROM shipments WHERE id = ?').get(result.lastInsertRowid);
 
+      // Check WMS en arrière-plan (ne bloque pas la réponse)
+      (async () => {
+        try {
+          const wmsInfo = await wmsService.getFullInfo(db, order_ref);
+          const status = wmsInfo.status?.libelle_etat || wmsInfo.status?.code_etat || null;
+          const statusCode = wmsInfo.status?.code_etat || null;
+          const trackingNumber = wmsInfo.tracking?.tracking || null;
+          const carrierName = wmsInfo.tracking?.transporteur || null;
+          db.prepare(`
+            UPDATE shipments
+            SET wms_status = ?, wms_status_code = ?, tracking_number = ?,
+                carrier_name = ?, last_wms_check = datetime('now')
+            WHERE id = ?
+          `).run(status, statusCode, trackingNumber, carrierName, result.lastInsertRowid);
+        } catch (e) {
+          // Pas bloquant — le cron rattrapera
+        }
+      })();
+
       res.json({ ok: true, shipment });
     } catch (e) {
       res.status(500).json({ erreur: e.message });

@@ -59,6 +59,9 @@ partnerMilestoneScheduler.initialiser(db);
 const anniversaryScheduler = require('./jobs/anniversaryScheduler');
 anniversaryScheduler.initialiser(db);
 
+const wmsRefreshJob = require('./jobs/wmsRefreshJob');
+wmsRefreshJob.initialiser(db);
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
