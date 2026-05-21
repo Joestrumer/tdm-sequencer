@@ -40,7 +40,8 @@ module.exports = (db) => {
     'smtp_host', 'smtp_port', 'smtp_user', 'smtp_secure', 'smtp_password',
     'imap_host', 'imap_port', 'imap_user', 'imap_secure', 'imap_password',
     'email_signature_html', 'brave_search_api_key', 'google_places_api_key', 'pappers_api_key',
-    'lusha_api_key', 'lemlist_api_key', 'laposte_suivi_key'];
+    'lusha_api_key', 'lemlist_api_key', 'laposte_suivi_key',
+    'ups_client_id', 'ups_client_secret'];
 
   // Sauvegarder une ou plusieurs clés
   router.post('/', (req, res) => {
