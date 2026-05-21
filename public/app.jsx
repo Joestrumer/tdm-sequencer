@@ -12999,6 +12999,17 @@ const FacturesShipments = ({ showToast }) => {
     return `https://www.laposte.fr/outils/suivre-vos-envois?code=${numero}`;
   };
 
+  const wmsStatusBadge = (status, code) => {
+    if (!status && !code) return { label: 'Non vérifié', cls: 'bg-slate-100 text-slate-500 italic' };
+    const c = String(code || status || '').toLowerCase();
+    if (c === '9' || c === '10' || c.includes('livr')) return { label: status || 'Livré', cls: 'bg-emerald-100 text-emerald-700' };
+    if (c === '7' || c === '8' || c.includes('expedi') || c.includes('envoy')) return { label: status || 'Envoyé', cls: 'bg-blue-100 text-blue-700' };
+    if (c === '3' || c === '4' || c === '5' || c.includes('prepar')) return { label: status || 'Préparation', cls: 'bg-amber-100 text-amber-700' };
+    if (c === '1' || c === '2' || c.includes('nouveau') || c.includes('integ') || c.includes('recep')) return { label: status || 'Nouveau', cls: 'bg-purple-100 text-purple-700' };
+    if (c.includes('rupture') || c.includes('erreur') || c.includes('annul')) return { label: status || 'Erreur', cls: 'bg-red-100 text-red-700' };
+    return { label: status, cls: 'bg-slate-100 text-slate-600' };
+  };
+
   const filtered = shipments.filter(s => {
     if (!search) return true;
     const q = search.toLowerCase();
@@ -13119,11 +13130,10 @@ const FacturesShipments = ({ showToast }) => {
                     </td>
                     <td className="px-4 py-3 text-sm text-slate-600">{s.shipping_name || `ID ${s.shipping_id}`}</td>
                     <td className="px-4 py-3">
-                      {s.wms_status ? (
-                        <span className="text-xs text-slate-700">{s.wms_status}</span>
-                      ) : (
-                        <span className="text-xs text-slate-400 italic">Non vérifié</span>
-                      )}
+                      {(() => {
+                        const badge = wmsStatusBadge(s.wms_status, s.wms_status_code);
+                        return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>{badge.label}</span>;
+                      })()}
                     </td>
                     <td className="px-4 py-3">
                       {s.tracking_number ? (

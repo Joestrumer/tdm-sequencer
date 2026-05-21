@@ -12,12 +12,19 @@ const wmsService = require('../services/wmsService');
 
 let db;
 
+const JUNK = new Set(['unknown', 'undefined', 'null', 'n/a', '0', '']);
+const clean = (v) => {
+  if (!v) return null;
+  const s = String(v).trim();
+  return JUNK.has(s.toLowerCase()) ? null : s;
+};
+
 async function refreshPending() {
   try {
-    // Envois non livrés et non vérifiés depuis 1h+
+    // Envois non livrés (codes 9/10 = livré) et non vérifiés depuis 1h+
     const shipments = db.prepare(`
       SELECT * FROM shipments
-      WHERE (wms_status IS NULL OR wms_status NOT IN ('livré', 'Livré', 'Livre'))
+      WHERE (wms_status_code IS NULL OR wms_status_code NOT IN ('9', '10'))
         AND (last_wms_check IS NULL OR last_wms_check < datetime('now', '-1 hour'))
       ORDER BY created_at DESC
       LIMIT 50
@@ -34,10 +41,10 @@ async function refreshPending() {
       try {
         const wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
 
-        const status = wmsInfo.status?.libelle_etat || wmsInfo.status?.code_etat || null;
-        const statusCode = wmsInfo.status?.code_etat || null;
-        const trackingNumber = wmsInfo.tracking?.tracking || null;
-        const carrierName = wmsInfo.tracking?.transporteur || null;
+        const status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
+        const statusCode = clean(wmsInfo.status?.code_etat);
+        const trackingNumber = clean(wmsInfo.tracking?.tracking);
+        const carrierName = clean(wmsInfo.tracking?.transporteur);
 
         db.prepare(`
           UPDATE shipments

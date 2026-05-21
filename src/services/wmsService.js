@@ -47,12 +47,16 @@ function parseResponse(xml) {
   const matches = xml.matchAll(/<([a-z_]+)(?:\s[^>]*)?>([^<]*)<\/\1>/gi);
   for (const m of matches) {
     const key = m[1];
+    const val = m[2]?.trim();
     // Skip SOAP envelope elements
     if (['faultcode', 'faultstring'].includes(key)) {
-      throw new Error(`SOAP Fault: ${m[2]}`);
+      throw new Error(`SOAP Fault: ${val}`);
     }
     if (!['Body', 'Envelope', 'Header'].includes(key)) {
-      result[key] = m[2];
+      // Filtrer les valeurs vides ou "unknown" renvoyées par le WMS
+      if (val && val.toLowerCase() !== 'unknown' && val !== '0' && val !== '') {
+        result[key] = val;
+      }
     }
   }
   return result;

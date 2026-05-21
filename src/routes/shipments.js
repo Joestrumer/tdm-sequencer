@@ -5,7 +5,22 @@
 const express = require('express');
 const wmsService = require('../services/wmsService');
 
+// Valeurs "unknown" à traiter comme NULL
+const JUNK = new Set(['unknown', 'undefined', 'null', 'n/a', '0', '']);
+const clean = (v) => {
+  if (!v) return null;
+  const s = String(v).trim();
+  return JUNK.has(s.toLowerCase()) ? null : s;
+};
+
 module.exports = (db) => {
+  // Nettoyage des "unknown" existants au démarrage
+  db.prepare(`UPDATE shipments SET wms_status = NULL, wms_status_code = NULL WHERE LOWER(wms_status) IN ('unknown', 'undefined', '0')`).run();
+  db.prepare(`UPDATE shipments SET tracking_number = NULL WHERE LOWER(tracking_number) IN ('unknown', 'undefined', '0')`).run();
+  db.prepare(`UPDATE shipments SET carrier_name = NULL WHERE LOWER(carrier_name) IN ('unknown', 'undefined', '0')`).run();
+  // Réinitialiser last_wms_check des entrées nettoyées pour forcer un re-check
+  db.prepare(`UPDATE shipments SET last_wms_check = NULL WHERE wms_status IS NULL AND last_wms_check IS NOT NULL`).run();
+
   const router = express.Router();
 
   // ─── Liste tous les envois ──────────────────────────────────────────────────
@@ -88,10 +103,10 @@ module.exports = (db) => {
       (async () => {
         try {
           const wmsInfo = await wmsService.getFullInfo(db, order_ref);
-          const status = wmsInfo.status?.libelle_etat || wmsInfo.status?.code_etat || null;
-          const statusCode = wmsInfo.status?.code_etat || null;
-          const trackingNumber = wmsInfo.tracking?.tracking || null;
-          const carrierName = wmsInfo.tracking?.transporteur || null;
+          const status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
+          const statusCode = clean(wmsInfo.status?.code_etat);
+          const trackingNumber = clean(wmsInfo.tracking?.tracking);
+          const carrierName = clean(wmsInfo.tracking?.transporteur);
           db.prepare(`
             UPDATE shipments
             SET wms_status = ?, wms_status_code = ?, tracking_number = ?,
@@ -120,11 +135,11 @@ module.exports = (db) => {
       // Récupérer les infos WMS
       const wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
 
-      // Extraire les données pertinentes
-      const status = wmsInfo.status?.libelle_etat || wmsInfo.status?.code_etat;
-      const statusCode = wmsInfo.status?.code_etat;
-      const trackingNumber = wmsInfo.tracking?.tracking;
-      const carrierName = wmsInfo.tracking?.transporteur;
+      // Extraire les données pertinentes (filtrer "unknown")
+      const status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
+      const statusCode = clean(wmsInfo.status?.code_etat);
+      const trackingNumber = clean(wmsInfo.tracking?.tracking);
+      const carrierName = clean(wmsInfo.tracking?.transporteur);
 
       // Mettre à jour la DB
       db.prepare(`
@@ -145,10 +160,10 @@ module.exports = (db) => {
   // ─── Rafraîchir tous les envois en attente ──────────────────────────────────
   router.post('/refresh-all', async (req, res) => {
     try {
-      // Récupérer les envois non livrés et vérifiés il y a plus de 1h
+      // Récupérer les envois non livrés (codes 9/10 = livré) et vérifiés il y a plus de 1h
       const shipments = db.prepare(`
         SELECT * FROM shipments
-        WHERE (wms_status IS NULL OR wms_status != 'livré')
+        WHERE (wms_status_code IS NULL OR wms_status_code NOT IN ('9', '10'))
           AND (last_wms_check IS NULL OR last_wms_check < datetime('now', '-1 hour'))
         ORDER BY created_at DESC
         LIMIT 50
@@ -158,10 +173,10 @@ module.exports = (db) => {
       for (const shipment of shipments) {
         try {
           const wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
-          const status = wmsInfo.status?.libelle_etat || wmsInfo.status?.code_etat;
-          const statusCode = wmsInfo.status?.code_etat;
-          const trackingNumber = wmsInfo.tracking?.tracking;
-          const carrierName = wmsInfo.tracking?.transporteur;
+          const status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
+          const statusCode = clean(wmsInfo.status?.code_etat);
+          const trackingNumber = clean(wmsInfo.tracking?.tracking);
+          const carrierName = clean(wmsInfo.tracking?.transporteur);
 
           db.prepare(`
             UPDATE shipments
