@@ -4,6 +4,7 @@
 
 const express = require('express');
 const wmsService = require('../services/wmsService');
+const carrierTracking = require('../services/carrierTrackingService');
 
 // Valeurs "unknown" à traiter comme NULL
 const JUNK = new Set(['unknown', 'undefined', 'null', 'n/a', '0', '']);
@@ -219,6 +220,19 @@ module.exports = (db) => {
       };
 
       res.json(stats);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Test suivi La Poste ────────────────────────────────────────────────────
+  router.get('/tracking-laposte/:trackingNumber', async (req, res) => {
+    try {
+      const result = await carrierTracking.checkDelivery(db, req.params.trackingNumber);
+      if (!result) {
+        return res.status(404).json({ erreur: 'Pas de résultat (clé La Poste manquante ou tracking inconnu)' });
+      }
+      res.json(result);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
