@@ -161,6 +161,7 @@ const STATUT_CONFIG = {
   "En séquence": { bg: "bg-blue-50", text: "text-blue-700", dot: "bg-blue-500" },
   "Répondu": { bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500" },
   "Converti": { bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
+  "Échantillon envoyé": { bg: "bg-pink-50", text: "text-pink-700", dot: "bg-pink-500" },
   "Fin de séquence": { bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-500" },
   "Closed Lost": { bg: "bg-orange-50", text: "text-orange-700", dot: "bg-orange-500" },
   "Email Marketing Sent": { bg: "bg-indigo-50", text: "text-indigo-700", dot: "bg-indigo-500" },
@@ -2165,7 +2166,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  const KANBAN_COLS = useMemo(() => ["Nouveau", "En séquence", "Répondu", "Converti", "Fin de séquence", "Closed Lost", "Désabonné"], []);
+  const KANBAN_COLS = useMemo(() => ["Nouveau", "En séquence", "Répondu", "Converti", "Échantillon envoyé", "Fin de séquence", "Closed Lost", "Désabonné"], []);
 
   // ── Import CSV ──────────────────────────────────────────────────────────
   const importerCSV = async (file) => {
@@ -2478,6 +2479,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               <option value="En séquence">En séquence</option>
               <option value="Répondu">Répondu</option>
               <option value="Converti">Converti</option>
+              <option value="Échantillon envoyé">Échantillon envoyé</option>
               <option value="Fin de séquence">Fin de séquence</option>
               <option value="Closed Lost">Closed Lost</option>
             </select>
@@ -13185,11 +13187,12 @@ const FacturesShipments = ({ showToast }) => {
                         {s.delivered_at && s.client_email && s.type === 'echantillon' && (
                           <button onClick={() => {
                             const tUrl = trackingUrl(s.carrier_name, s.tracking_number);
+                            const prenom = s.client_prenom || (s.client_name ? s.client_name.split(' ')[0] : '');
                             const subject = encodeURIComponent('Terre de Mars - Confirmation de réception de vos échantillons');
                             const body = encodeURIComponent(
-                              `Bonjour,\n\nNous espérons que vous avez bien reçu vos échantillons Terre de Mars (réf. ${s.order_ref}).` +
+                              `Bonjour ${prenom},\n\nJ'espère que vous allez bien.\n\nLe colis apparait comme livré. Pouvez-vous me confirmer l'avoir bien reçu ?\n\nOn fait le point quand vous avez pu les tester mais n'hésitez pas si vous avez des questions d'ici là.` +
                               (s.tracking_number ? `\n\nVous pouvez suivre votre colis ici : ${tUrl}` : '') +
-                              `\n\nPourriez-vous nous confirmer la bonne réception ?\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\nHugo Montiel\nTerre de Mars`
+                              `\n\nBonne journée,`
                             );
                             window.open(`mailto:${s.client_email}?subject=${subject}&body=${body}`, '_self');
                           }}

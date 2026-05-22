@@ -1011,6 +1011,7 @@ const migrations = [
   // Priorité des séquences d'envoi (1=haute, 5=basse, 3=normal)
   'ALTER TABLE sequences ADD COLUMN priorite INTEGER DEFAULT 3',
   'ALTER TABLE shipments ADD COLUMN delivery_notified_at TEXT',
+  'ALTER TABLE shipments ADD COLUMN client_prenom TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

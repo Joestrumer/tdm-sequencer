@@ -101,7 +101,7 @@ async function avancerInscription(inscription, etapesParsed, lead) {
 
       // Vérifier si le lead a répondu ou été converti — sinon → "Fin de séquence"
       const currentLead = db.prepare(`SELECT statut FROM leads WHERE id = ?`).get(lead.id);
-      const preservedStatuses = ['Répondu', 'Converti', 'Désabonné', 'Closed Lost'];
+      const preservedStatuses = ['Répondu', 'Converti', 'Désabonné', 'Closed Lost', 'Échantillon envoyé'];
       if (!preservedStatuses.includes(currentLead?.statut)) {
         db.prepare(`UPDATE leads SET statut='Fin de séquence', updated_at=datetime('now') WHERE id=?`).run(lead.id);
         logger.info(`📭 Lead ${lead.email} mis en statut "Fin de séquence" (aucune réponse/conversion)`);

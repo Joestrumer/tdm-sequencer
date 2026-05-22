@@ -98,6 +98,22 @@ module.exports = (db) => {
         notes, meta ? JSON.stringify(meta) : null
       );
 
+      // Lookup lead par email → stocker prénom + mettre statut "Échantillon envoyé"
+      if (type === 'echantillon' && client_email) {
+        try {
+          const lead = db.prepare("SELECT id, prenom, statut FROM leads WHERE email = ? LIMIT 1").get(client_email);
+          if (lead) {
+            if (lead.prenom) {
+              db.prepare("UPDATE shipments SET client_prenom = ? WHERE id = ?").run(lead.prenom, result.lastInsertRowid);
+            }
+            const preserveStatuts = ['Répondu', 'Converti', 'Désabonné', 'Closed Lost'];
+            if (!preserveStatuts.includes(lead.statut)) {
+              db.prepare("UPDATE leads SET statut = 'Échantillon envoyé', updated_at = datetime('now') WHERE id = ?").run(lead.id);
+            }
+          }
+        } catch (_) {}
+      }
+
       const shipment = db.prepare('SELECT * FROM shipments WHERE id = ?').get(result.lastInsertRowid);
 
       // Check WMS en arrière-plan (ne bloque pas la réponse)
