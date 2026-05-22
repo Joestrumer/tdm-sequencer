@@ -1942,6 +1942,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [sortBy, setSortBy] = useState("recent"); // "recent"|"score"|"nom"
   const [sortColumn, setSortColumn] = useState(null); // colonne active pour tri
   const [sortDirection, setSortDirection] = useState("asc"); // "asc"|"desc"
+  const [page, setPage] = useState(1);
+  const [debouncedSearch, setDebouncedSearch] = useState("");
+  const PAGE_SIZE = 50;
   const [vueMode, setVueMode] = useState("liste"); // "liste"|"kanban"
   const [selectedLead, setSelectedLead] = useState(null);
   const [editLead, setEditLead] = useState(null);
@@ -1978,6 +1981,15 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     document.addEventListener('mousedown', close);
     return () => document.removeEventListener('mousedown', close);
   }, [showTooltip]);
+
+  // Debounce recherche (300ms)
+  useEffect(() => {
+    const timer = setTimeout(() => setDebouncedSearch(search), 300);
+    return () => clearTimeout(timer);
+  }, [search]);
+
+  // Reset page quand filtres/recherche changent
+  useEffect(() => { setPage(1); }, [debouncedSearch, filterStatut, filterSegment, filterVille, filterLangue, filterCampaign, filterTag, filterSource]);
 
   // État pour les largeurs de colonnes redimensionnables
   const [columnWidths, setColumnWidths] = useState(() => {
@@ -2099,7 +2111,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   };
 
   const filtered = useMemo(() => leadsNorm.filter(l => {
-    const matchSearch = `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email} ${l.campaign||""} ${l.source||""} ${l.statut||""} ${l.civilite||""} ${l.poste||""}`.toLowerCase().includes(search.toLowerCase());
+    const matchSearch = !debouncedSearch || `${l.prenom} ${l.nom} ${l.hotel} ${l.ville} ${l.email} ${l.campaign||""} ${l.source||""} ${l.statut||""} ${l.civilite||""} ${l.poste||""}`.toLowerCase().includes(debouncedSearch.toLowerCase());
     const matchStatut = filterStatut.size === 0 || filterStatut.has(l.statut);
     const matchSegment = filterSegment.size === 0 || filterSegment.has(l.segment);
     const matchVille = filterVille.size === 0 || filterVille.has(l.ville);
@@ -2148,7 +2160,10 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     if (sortBy === "score") return (b.score||0) - (a.score||0);
     if (sortBy === "nom") return `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`);
     return 0; // recent = ordre API
-  }), [leadsNorm, search, filterStatut, filterSegment, filterVille, filterLangue, filterCampaign, filterTag, filterSource, sortColumn, sortDirection, sortBy]);
+  }), [leadsNorm, debouncedSearch, filterStatut, filterSegment, filterVille, filterLangue, filterCampaign, filterTag, filterSource, sortColumn, sortDirection, sortBy]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
 
   const KANBAN_COLS = useMemo(() => ["Nouveau", "En séquence", "Répondu", "Converti", "Fin de séquence", "Closed Lost", "Désabonné"], []);
 
@@ -2472,7 +2487,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         )}
         {/* Mobile cards */}
         <div className="md:hidden space-y-2">
-          {filtered.map(lead => {
+          {paginated.map(lead => {
             const cfg = STATUT_CONFIG[lead.statut] || STATUT_CONFIG["Nouveau"];
             return (
               <div key={lead.id} className={`bg-white rounded-xl border border-slate-100 p-3 cursor-pointer transition-colors ${selectedLead?.id === lead.id ? "ring-1 ring-indigo-200 bg-indigo-50" : "active:bg-slate-50"}`} onClick={() => ouvrirDetail(lead)}>
@@ -2582,11 +2597,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               </tr>
             </thead>
             <tbody>
-              {filtered.map((lead, i) => {
+              {paginated.map((lead, i) => {
                 const cfg = STATUT_CONFIG[lead.statut] || STATUT_CONFIG["Nouveau"];
                 return (
                 <React.Fragment key={lead.id}>
-                <tr className={`group border-b border-slate-50 border-l-2 transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200 border-l-indigo-400" : selectedIds.has(lead.id) ? "bg-slate-100 border-l-transparent" : "hover:bg-slate-50/80 border-l-transparent hover:border-l-blue-400"} ${i === filtered.length-1 ? "border-b-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
+                <tr className={`group border-b border-slate-50 border-l-2 transition-colors cursor-pointer ${selectedLead?.id === lead.id ? "bg-indigo-50 ring-1 ring-inset ring-indigo-200 border-l-indigo-400" : selectedIds.has(lead.id) ? "bg-slate-100 border-l-transparent" : "hover:bg-slate-50/80 border-l-transparent hover:border-l-blue-400"} ${i === paginated.length-1 ? "border-b-0" : ""}`} onClick={() => ouvrirDetail(lead)}>
                   <td className="px-2 py-1.5" style={{ width: columnWidths.checkbox + 'px' }} onClick={e => e.stopPropagation()}>
                     <input type="checkbox" className="rounded accent-blue-600" checked={selectedIds.has(lead.id)} onChange={e => { const s = new Set(selectedIds); e.target.checked ? s.add(lead.id) : s.delete(lead.id); setSelectedIds(s); }} />
                   </td>
@@ -3075,6 +3090,19 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           </table>
           {filtered.length === 0 && <div className="text-center py-12 text-slate-400 text-sm">Aucun lead trouvé</div>}
         </div>
+        {/* Pagination */}
+        {totalPages > 1 && (
+          <div className="flex items-center justify-between bg-white rounded-xl border border-slate-100 px-4 py-2">
+            <span className="text-xs text-slate-400">{filtered.length} contact{filtered.length !== 1 ? 's' : ''} — page {page}/{totalPages}</span>
+            <div className="flex items-center gap-1">
+              <button onClick={() => setPage(1)} disabled={page === 1} className="px-2 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">«</button>
+              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">‹ Préc</button>
+              <span className="px-3 py-1 text-xs font-medium text-slate-700">{page}</span>
+              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-2.5 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">Suiv ›</button>
+              <button onClick={() => setPage(totalPages)} disabled={page === totalPages} className="px-2 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">»</button>
+            </div>
+          </div>
+        )}
         </>
       )}
 
