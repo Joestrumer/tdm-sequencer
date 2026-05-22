@@ -13187,7 +13187,7 @@ const FacturesShipments = ({ showToast }) => {
                         {s.delivered_at && s.client_email && s.type === 'echantillon' && (
                           <button onClick={() => {
                             const tUrl = trackingUrl(s.carrier_name, s.tracking_number);
-                            const prenom = s.client_prenom || (s.client_name ? s.client_name.split(' ')[0] : '');
+                            const prenom = s.client_prenom || (s.client_name && s.client_name.includes(' - ') ? s.client_name.split(' - ')[1].trim().split(' ')[0] : '');
                             const subject = encodeURIComponent('Terre de Mars - Confirmation de réception de vos échantillons');
                             const body = encodeURIComponent(
                               `Bonjour ${prenom},\n\nJ'espère que vous allez bien.\n\nLe colis apparait comme livré. Pouvez-vous me confirmer l'avoir bien reçu ?\n\nOn fait le point quand vous avez pu les tester mais n'hésitez pas si vous avez des questions d'ici là.` +

@@ -1022,6 +1022,31 @@ for (const sql of migrations) {
   }
 }
 
+// ─── Migration : statut "Échantillon envoyé" pour leads ayant déjà un échantillon ──
+try {
+  const alreadyDone = db.prepare("SELECT value FROM config WHERE key = 'migration_echantillon_envoye'").get();
+  if (!alreadyDone) {
+    const preserveStatuts = ['Répondu', 'Converti', 'Désabonné', 'Closed Lost'];
+    const placeholders = preserveStatuts.map(() => '?').join(',');
+    const result = db.prepare(`
+      UPDATE leads SET statut = 'Échantillon envoyé', updated_at = datetime('now')
+      WHERE email IN (SELECT DISTINCT client_email FROM shipments WHERE type = 'echantillon' AND client_email IS NOT NULL)
+      AND statut NOT IN (${placeholders})
+    `).run(...preserveStatuts);
+    // Aussi remplir client_prenom sur les shipments existants
+    db.prepare(`
+      UPDATE shipments SET client_prenom = (
+        SELECT l.prenom FROM leads l WHERE l.email = shipments.client_email LIMIT 1
+      )
+      WHERE type = 'echantillon' AND client_email IS NOT NULL AND client_prenom IS NULL
+    `).run();
+    db.prepare("INSERT INTO config (key, value) VALUES ('migration_echantillon_envoye', '1')").run();
+    console.log(`✅ Migration "Échantillon envoyé" : ${result.changes} lead(s) mis à jour`);
+  }
+} catch (e) {
+  console.error('⚠️  Erreur migration échantillon envoyé:', e.message);
+}
+
 // ─── Migration emails : rendre inscription_id/etape_id nullable (campagnes) ──
 try {
   // Vérifier si la migration est nécessaire (colonnes NOT NULL ?)
