@@ -13182,6 +13182,21 @@ const FacturesShipments = ({ showToast }) => {
                     <td className="px-4 py-3 text-xs text-slate-500">{parseUTC(s.created_at).toLocaleDateString('fr-FR')}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
+                        {s.delivered_at && s.client_email && s.type === 'echantillon' && (
+                          <button onClick={() => {
+                            const tUrl = trackingUrl(s.carrier_name, s.tracking_number);
+                            const subject = encodeURIComponent('Terre de Mars - Confirmation de réception de vos échantillons');
+                            const body = encodeURIComponent(
+                              `Bonjour,\n\nNous espérons que vous avez bien reçu vos échantillons Terre de Mars (réf. ${s.order_ref}).` +
+                              (s.tracking_number ? `\n\nVous pouvez suivre votre colis ici : ${tUrl}` : '') +
+                              `\n\nPourriez-vous nous confirmer la bonne réception ?\n\nNous restons à votre disposition pour toute question.\n\nCordialement,\nHugo Montiel\nTerre de Mars`
+                            );
+                            window.open(`mailto:${s.client_email}?subject=${subject}&body=${body}`, '_self');
+                          }}
+                            className="text-xs text-emerald-600 hover:text-emerald-800" title="Email confirmation réception">
+                            ✉️
+                          </button>
+                        )}
                         <button onClick={() => refreshWMS(s.id)}
                           className="text-xs text-blue-600 hover:text-blue-800" title="Rafraîchir WMS">
                           🔄

@@ -62,6 +62,9 @@ anniversaryScheduler.initialiser(db);
 const wmsRefreshJob = require('./jobs/wmsRefreshJob');
 wmsRefreshJob.initialiser(db);
 
+const deliveryNotifier = require('./jobs/deliveryNotifier');
+deliveryNotifier.initialiser(db);
+
 const app = express();
 const PORT = process.env.PORT || 3001;
 
