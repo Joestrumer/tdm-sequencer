@@ -12297,12 +12297,12 @@ const FacturesSamples = ({ showToast }) => {
               );
             })}
           </div>
-          <div className="mt-2">
+          <div className="mt-2 relative">
             <SearchInput value={searchRef} onChange={e => setSearchRef(e.target.value)}
               placeholder="Ajouter un produit (code ou nom)..."
               className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             {filteredCatalog.length > 0 && (
-              <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
+              <div className="absolute z-50 left-0 right-0 bg-white border border-slate-200 rounded-lg mt-1 max-h-40 overflow-y-auto shadow-lg">
                 {filteredCatalog.slice(0, 10).map(c => (
                   <button key={c.ref} onClick={() => addProduct(c.ref)}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 flex items-center gap-2">
