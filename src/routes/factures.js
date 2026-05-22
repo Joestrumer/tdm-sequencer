@@ -404,7 +404,7 @@ module.exports = (db) => {
         department_id: parseInt(process.env.VF_DEPARTMENT_ID) || 1553025,
         buyer_name: client.name || '',
         buyer_tax_no: client.tax_no || '',
-        buyer_post_code: client.post_code || '',
+        buyer_post_code: client.post_code || client.zip || '',
         buyer_city: client.city || '',
         buyer_street: client.street || '',
         buyer_country: client.country || 'FR',

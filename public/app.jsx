@@ -11894,7 +11894,6 @@ const FacturesSamples = ({ showToast }) => {
           const cat = catalog.find(c => c.ref === p.ref);
           return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
         }),
-        fraisPort: [{ ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20 }],
         documentType: 'proforma',
         logGSheets: false,
         isSample: true,
@@ -12004,7 +12003,6 @@ const FacturesSamples = ({ showToast }) => {
           const cat = catalog.find(c => c.ref === p.ref);
           return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
         }),
-        fraisPort: [{ ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20 }],
         documentType: 'proforma',
         logGSheets: false,
         isSample: true,
@@ -12123,7 +12121,6 @@ const FacturesSamples = ({ showToast }) => {
           const cat = catalog.find(c => c.ref === p.ref);
           return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
         }),
-        fraisPort: [{ ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20 }],
         documentType: 'proforma',
         logGSheets: false,
         isSample: true,
@@ -12426,7 +12423,7 @@ const FacturesSamples = ({ showToast }) => {
         </div>
 
         {/* Client search */}
-        <div>
+        <div className="relative">
           <label className="text-xs font-medium text-slate-500 mb-1 block">Rechercher un client VosFactures</label>
           <div className="relative">
             <SearchInput value={clientSearch} onChange={e => rechercherClient(e.target.value)}
@@ -12435,7 +12432,7 @@ const FacturesSamples = ({ showToast }) => {
             {searchingClient && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">Recherche...</div>}
           </div>
           {clientResults.length > 0 && (
-            <div className="absolute z-10 w-full bg-white border border-slate-200 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
+            <div className="absolute z-50 left-0 right-0 bg-white border border-slate-200 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
               {clientResults.slice(0, 10).map(c => (
                 <button key={c.id} onClick={() => selectClient(c)}
                   className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 border-b border-slate-50 last:border-0">
