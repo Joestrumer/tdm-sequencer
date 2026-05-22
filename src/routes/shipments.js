@@ -106,7 +106,7 @@ module.exports = (db) => {
             if (lead.prenom) {
               db.prepare("UPDATE shipments SET client_prenom = ? WHERE id = ?").run(lead.prenom, result.lastInsertRowid);
             }
-            const preserveStatuts = ['Répondu', 'Converti', 'Désabonné', 'Closed Lost'];
+            const preserveStatuts = ['Converti', 'Désabonné', 'Closed Lost'];
             if (!preserveStatuts.includes(lead.statut)) {
               db.prepare("UPDATE leads SET statut = 'Échantillon envoyé', updated_at = datetime('now') WHERE id = ?").run(lead.id);
             }

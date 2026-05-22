@@ -1026,7 +1026,7 @@ for (const sql of migrations) {
 try {
   const alreadyDone = db.prepare("SELECT value FROM config WHERE key = 'migration_echantillon_envoye'").get();
   if (!alreadyDone) {
-    const preserveStatuts = ['Répondu', 'Converti', 'Désabonné', 'Closed Lost'];
+    const preserveStatuts = ['Converti', 'Désabonné', 'Closed Lost'];
     const placeholders = preserveStatuts.map(() => '?').join(',');
     const result = db.prepare(`
       UPDATE leads SET statut = 'Échantillon envoyé', updated_at = datetime('now')
