@@ -21733,11 +21733,7 @@ function App() {
       { id: "dashboard-marketing", label: "Marketing" },
       { id: "dashboard-ventes", label: "Ventes" },
     ]},
-    { id: "portail", icon: "📦", label: "Portail Partenaire", children: [
-      { id: "commandes", label: "Commandes" },
-      { id: "partenaires", label: "Partenaires" },
-      { id: "account-mgmt", label: "Relation Partenaires" },
-    ]},
+    { id: "factures", icon: "📦", label: "Expéditions" },
     { id: "leads-group", icon: "👥", label: "Leads", children: [
       { id: "leads", label: "Contacts" },
       { id: "prospection", label: "Prospection" },
@@ -21747,14 +21743,18 @@ function App() {
       { id: "email-campaigns", label: "Email Marketing" },
       { id: "templates", label: "Templates" },
     ]},
-    { id: "factures", icon: "📄", label: "Factures" },
-    { id: "veille", icon: "🔍", label: "Veille" },
     { id: "emails", icon: "✉️", label: "Validation Email" },
+    { id: "portail", icon: "🏨", label: "Portail Partenaire", children: [
+      { id: "commandes", label: "Commandes" },
+      { id: "partenaires", label: "Partenaires" },
+      { id: "account-mgmt", label: "Relation Partenaires" },
+    ]},
     { id: "config", icon: "⚙️", label: "Configuration", children: [
       { id: "parametres", label: "Paramètres" },
       { id: "blocklist", label: "Blocklist" },
       ...(isAdmin ? [{ id: "equipe", label: "Équipe" }] : []),
     ]},
+    { id: "veille", icon: "🔍", label: "Veille" },
   ];
 
   // Helper permission mapping
@@ -21913,7 +21913,7 @@ function App() {
               {vue === "email-campaigns" && "Campagnes email marketing one-shot"}
               {vue === "blocklist" && "Gestion des emails et domaines bloqués"}
               {vue === "emails" && "Vérification & nettoyage des adresses email"}
-              {vue === "factures" && "Commandes, factures & relances VosFactures"}
+              {vue === "factures" && "Expéditions, factures & relances VosFactures"}
               {vue === "parametres" && "Configuration Brevo & envoi"}
               {vue === "veille" && "Scraping et veille hôtelière"}
               {vue === "equipe" && "Gestion des utilisateurs et permissions"}
