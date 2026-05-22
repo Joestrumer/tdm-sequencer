@@ -21749,12 +21749,12 @@ function App() {
       { id: "partenaires", label: "Partenaires" },
       { id: "account-mgmt", label: "Relation Partenaires" },
     ]},
+    { id: "veille", icon: "🔍", label: "Veille" },
     { id: "config", icon: "⚙️", label: "Configuration", children: [
       { id: "parametres", label: "Paramètres" },
       { id: "blocklist", label: "Blocklist" },
       ...(isAdmin ? [{ id: "equipe", label: "Équipe" }] : []),
     ]},
-    { id: "veille", icon: "🔍", label: "Veille" },
   ];
 
   // Helper permission mapping
