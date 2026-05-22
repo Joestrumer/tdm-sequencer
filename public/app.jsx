@@ -1943,8 +1943,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [sortColumn, setSortColumn] = useState(null); // colonne active pour tri
   const [sortDirection, setSortDirection] = useState("asc"); // "asc"|"desc"
   const [page, setPage] = useState(1);
+  const [pageSize, setPageSize] = useState(50);
   const [debouncedSearch, setDebouncedSearch] = useState("");
-  const PAGE_SIZE = 50;
   const [vueMode, setVueMode] = useState("liste"); // "liste"|"kanban"
   const [selectedLead, setSelectedLead] = useState(null);
   const [editLead, setEditLead] = useState(null);
@@ -2162,8 +2162,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     return 0; // recent = ordre API
   }), [leadsNorm, debouncedSearch, filterStatut, filterSegment, filterVille, filterLangue, filterCampaign, filterTag, filterSource, sortColumn, sortDirection, sortBy]);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
-  const paginated = filtered.slice((page - 1) * PAGE_SIZE, page * PAGE_SIZE);
+  const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
+  const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
   const KANBAN_COLS = useMemo(() => ["Nouveau", "En séquence", "Répondu", "Converti", "Fin de séquence", "Closed Lost", "Désabonné"], []);
 
@@ -3091,16 +3091,24 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           {filtered.length === 0 && <div className="text-center py-12 text-slate-400 text-sm">Aucun lead trouvé</div>}
         </div>
         {/* Pagination */}
-        {totalPages > 1 && (
+        {filtered.length > 0 && (
           <div className="flex items-center justify-between bg-white rounded-xl border border-slate-100 px-4 py-2">
-            <span className="text-xs text-slate-400">{filtered.length} contact{filtered.length !== 1 ? 's' : ''} — page {page}/{totalPages}</span>
-            <div className="flex items-center gap-1">
-              <button onClick={() => setPage(1)} disabled={page === 1} className="px-2 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">«</button>
-              <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">‹ Préc</button>
-              <span className="px-3 py-1 text-xs font-medium text-slate-700">{page}</span>
-              <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-2.5 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">Suiv ›</button>
-              <button onClick={() => setPage(totalPages)} disabled={page === totalPages} className="px-2 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">»</button>
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-slate-400">{filtered.length} contact{filtered.length !== 1 ? 's' : ''}</span>
+              <select value={pageSize} onChange={e => { setPageSize(Number(e.target.value)); setPage(1); }}
+                className="text-xs border border-slate-200 rounded-md px-1.5 py-0.5 text-slate-600 bg-white cursor-pointer">
+                {[50, 100, 200, 300, 500].map(n => <option key={n} value={n}>{n} / page</option>)}
+              </select>
             </div>
+            {totalPages > 1 && (
+              <div className="flex items-center gap-1">
+                <button onClick={() => setPage(1)} disabled={page === 1} className="px-2 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">«</button>
+                <button onClick={() => setPage(p => Math.max(1, p - 1))} disabled={page === 1} className="px-2.5 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">‹ Préc</button>
+                <span className="px-3 py-1 text-xs font-medium text-slate-700">{page}/{totalPages}</span>
+                <button onClick={() => setPage(p => Math.min(totalPages, p + 1))} disabled={page === totalPages} className="px-2.5 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">Suiv ›</button>
+                <button onClick={() => setPage(totalPages)} disabled={page === totalPages} className="px-2 py-1 text-xs rounded-md border border-slate-200 hover:bg-slate-50 disabled:opacity-30 disabled:cursor-default">»</button>
+              </div>
+            )}
           </div>
         )}
         </>
