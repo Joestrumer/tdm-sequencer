@@ -1024,7 +1024,7 @@ for (const sql of migrations) {
 
 // ─── Migration : statut "Échantillon envoyé" pour leads ayant déjà un échantillon ──
 try {
-  const alreadyDone = db.prepare("SELECT value FROM config WHERE key = 'migration_echantillon_envoye_v2'").get();
+  const alreadyDone = db.prepare("SELECT valeur FROM config WHERE cle = 'migration_echantillon_envoye_v2'").get();
   if (!alreadyDone) {
     const preserveStatuts = ['Converti', 'Désabonné', 'Closed Lost'];
     const placeholders = preserveStatuts.map(() => '?').join(',');
@@ -1040,7 +1040,7 @@ try {
       )
       WHERE type = 'echantillon' AND client_email IS NOT NULL AND client_prenom IS NULL
     `).run();
-    db.prepare("INSERT OR REPLACE INTO config (key, value) VALUES ('migration_echantillon_envoye_v2', '1')").run();
+    db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('migration_echantillon_envoye_v2', '1')").run();
     console.log(`✅ Migration "Échantillon envoyé" v2 : ${result.changes} lead(s) mis à jour`);
   }
 } catch (e) {
