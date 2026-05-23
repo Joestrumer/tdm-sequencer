@@ -13167,7 +13167,12 @@ const FacturesShipments = ({ showToast }) => {
                     <td className="px-4 py-3">
                       {(() => {
                         const badge = wmsStatusBadge(s.wms_status, s.wms_status_code);
-                        return <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>{badge.label}</span>;
+                        return (
+                          <div>
+                            <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${badge.cls}`}>{badge.label}</span>
+                            {s.delivered_at && <div className="text-[10px] text-slate-400 mt-0.5">{parseUTC(s.delivered_at).toLocaleDateString('fr-FR')}</div>}
+                          </div>
+                        );
                       })()}
                     </td>
                     <td className="px-4 py-3">
@@ -13185,7 +13190,7 @@ const FacturesShipments = ({ showToast }) => {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {s.delivered_at && s.client_email && s.type === 'echantillon' && (
-                          <button onClick={() => {
+                          <button onClick={async () => {
                             const tUrl = trackingUrl(s.carrier_name, s.tracking_number);
                             const prenom = s.client_prenom || (s.client_name && s.client_name.includes(' - ') ? s.client_name.split(' - ')[1].trim().split(' ')[0] : '');
                             const subject = encodeURIComponent('Terre de Mars - Confirmation de réception de vos échantillons');
@@ -13195,9 +13200,15 @@ const FacturesShipments = ({ showToast }) => {
                               `\n\nBonne journée,`
                             );
                             window.open(`mailto:${s.client_email}?subject=${subject}&body=${body}`, '_self');
+                            try {
+                              await api.patch(`/shipments/${s.id}/notify`);
+                              s.delivery_notified_at = new Date().toISOString();
+                              setShipments(prev => prev.map(sh => sh.id === s.id ? { ...sh, delivery_notified_at: new Date().toISOString() } : sh));
+                            } catch (_) {}
                           }}
-                            className="text-xs text-emerald-600 hover:text-emerald-800" title="Email confirmation réception">
-                            ✉️
+                            className={`text-xs ${s.delivery_notified_at ? 'text-slate-400' : 'text-emerald-600 hover:text-emerald-800'}`}
+                            title={s.delivery_notified_at ? `Email envoyé le ${parseUTC(s.delivery_notified_at).toLocaleDateString('fr-FR')}` : 'Email confirmation réception'}>
+                            {s.delivery_notified_at ? '✅' : '✉️'}
                           </button>
                         )}
                         <button onClick={() => refreshWMS(s.id)}

@@ -254,6 +254,16 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Marquer un envoi comme notifié (email confirmation envoyé) ─────────────
+  router.patch('/:id/notify', (req, res) => {
+    try {
+      db.prepare("UPDATE shipments SET delivery_notified_at = datetime('now') WHERE id = ?").run(req.params.id);
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Supprimer un envoi ──────────────────────────────────────────────────────
   router.delete('/:id', (req, res) => {
     try {
