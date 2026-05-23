@@ -102,12 +102,36 @@ module.exports = (db) => {
 
       // Stratégie multi-requêtes : Google Places (New) renvoie max 20 résultats
       // par requête sans pagination fiable. On lance plusieurs requêtes avec
-      // des variantes et on déduplique par place_id.
+      // des variantes (synonymes, proximité) et on déduplique par place_id.
       const queries = [baseQuery];
       if (category && city) {
-        queries.push(`${category} ${city} centre`);
-        queries.push(`meilleur ${category} ${city}`);
-        queries.push(`${category} proche ${city}`);
+        // Synonymes courants par catégorie
+        const synonyms = {
+          'coiffeur': ['salon de coiffure', 'coiffure', 'barbier', 'hair salon'],
+          'restaurant': ['brasserie', 'bistrot', 'traiteur'],
+          'boulangerie': ['pâtisserie', 'boulangerie pâtisserie'],
+          'garage': ['garage auto', 'réparation automobile', 'carrosserie'],
+          'dentiste': ['cabinet dentaire', 'chirurgien dentiste'],
+          'médecin': ['cabinet médical', 'docteur', 'médecin généraliste'],
+          'avocat': ['cabinet avocat', 'avocat droit'],
+          'spa': ['institut de beauté', 'centre de bien-être', 'esthéticienne'],
+          'fleuriste': ['boutique fleurs', 'compositions florales'],
+          'pharmacie': ['parapharmacie'],
+          'immobilier': ['agence immobilière', 'agent immobilier'],
+          'comptable': ['expert comptable', 'cabinet comptable'],
+        };
+        const catLower = category.toLowerCase();
+        const syns = synonyms[catLower] || [];
+
+        // Variantes avec synonymes
+        for (const syn of syns.slice(0, 2)) {
+          queries.push(`${syn} ${city}`);
+        }
+
+        // Variantes géographiques (alentours)
+        queries.push(`${category} à ${city}`);
+        queries.push(`${category} près de ${city}`);
+        queries.push(`tous les ${category}s ${city}`);
       }
 
       // Lancer toutes les requêtes en parallèle
