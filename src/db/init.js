@@ -910,6 +910,30 @@ db.exec(`
     active INTEGER DEFAULT 1,
     created_at TEXT DEFAULT (datetime('now'))
   );
+
+  -- ─── Maps Prospection ───────────────────────────────────────────────────────
+  CREATE TABLE IF NOT EXISTS maps_prospects (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    place_id TEXT UNIQUE NOT NULL,
+    name TEXT, category TEXT, address TEXT, city TEXT, country TEXT,
+    phone TEXT, website TEXT,
+    website_age_years REAL, website_last_updated TEXT,
+    website_is_old INTEGER DEFAULT 0, website_age_method TEXT,
+    rating REAL, reviews_count INTEGER, maps_url TEXT,
+    email TEXT, email_source TEXT, email_confidence TEXT,
+    instagram TEXT, facebook TEXT, linkedin TEXT, notes TEXT,
+    status TEXT DEFAULT 'new',
+    enrichment_attempted INTEGER DEFAULT 0,
+    enrichment_at TEXT,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_maps_prospects_place_id ON maps_prospects(place_id);
+  CREATE INDEX IF NOT EXISTS idx_maps_prospects_city ON maps_prospects(city);
+  CREATE INDEX IF NOT EXISTS idx_maps_prospects_status ON maps_prospects(status);
+  CREATE INDEX IF NOT EXISTS idx_maps_prospects_email ON maps_prospects(email);
+  CREATE INDEX IF NOT EXISTS idx_maps_prospects_rating ON maps_prospects(rating);
 `);
 
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────

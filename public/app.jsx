@@ -19808,6 +19808,710 @@ const OPP_STATUSES = {
   archived: { label: 'Archivée', color: 'bg-slate-50 text-slate-400' },
 };
 
+// ─── VueMapsProspecting ───────────────────────────────────────────────────────
+const MAPS_COUNTRIES = [
+  'France', 'Belgique', 'Suisse', 'Luxembourg', 'Monaco', 'Espagne', 'Italie',
+  'Allemagne', 'Portugal', 'Royaume-Uni', 'Pays-Bas', 'Autriche',
+];
+
+const VueMapsProspecting = ({ showToast, readOnly }) => {
+  // Onglets principaux
+  const [activeTab, setActiveTab] = useState('results'); // 'results' | 'saved'
+
+  // Recherche
+  const [searchForm, setSearchForm] = useState({ category: '', city: '', country: 'France', radius: '', ratingMin: '', reviewsMin: '' });
+  const [searchResults, setSearchResults] = useState([]);
+  const [searching, setSearching] = useState(false);
+  const [nextPageToken, setNextPageToken] = useState(null);
+  const [loadingMore, setLoadingMore] = useState(false);
+  const [noWebsite, setNoWebsite] = useState(false);
+  const [oldWebsite, setOldWebsite] = useState(false);
+
+  // Prospects sauvegardés
+  const [prospects, setProspects] = useState([]);
+  const [prospectsTotal, setProspectsTotal] = useState(0);
+  const [prospectsStats, setProspectsStats] = useState(null);
+  const [prospectsLoading, setProspectsLoading] = useState(false);
+  const [prospectsFilter, setProspectsFilter] = useState({ status: '', country: '', search: '', has_email: '', is_old: '' });
+  const [prospectsOffset, setProspectsOffset] = useState(0);
+
+  // Selection
+  const [selectedResults, setSelectedResults] = useState(new Set());
+  const [selectedProspects, setSelectedProspects] = useState(new Set());
+
+  // Drawer
+  const [drawerProspect, setDrawerProspect] = useState(null);
+  const [drawerEdits, setDrawerEdits] = useState({});
+  const [drawerSaving, setDrawerSaving] = useState(false);
+
+  // Enrichment
+  const [enrichingId, setEnrichingId] = useState(null);
+  const [batchJobId, setBatchJobId] = useState(null);
+  const [batchProgress, setBatchProgress] = useState(null);
+  const batchPollRef = React.useRef(null);
+
+  // ─── Recherche Google Places ────────────────────────────────────────────
+  const handleSearch = async () => {
+    setSearching(true);
+    setSearchResults([]);
+    setNextPageToken(null);
+    setSelectedResults(new Set());
+    try {
+      const res = await api.post('/maps/search', {
+        category: searchForm.category,
+        city: searchForm.city,
+        country: searchForm.country,
+        radius: searchForm.radius ? parseInt(searchForm.radius) : undefined,
+      });
+      let results = res.places || [];
+      // Filtres côté client
+      if (searchForm.ratingMin) results = results.filter(p => p.rating >= parseFloat(searchForm.ratingMin));
+      if (searchForm.reviewsMin) results = results.filter(p => p.reviews_count >= parseInt(searchForm.reviewsMin));
+      if (noWebsite) results = results.filter(p => !p.website);
+      if (oldWebsite) results = results.filter(p => p.website); // on gardera ceux avec site pour les analyser
+      setSearchResults(results);
+      setNextPageToken(res.nextPageToken || null);
+    } catch (err) {
+      showToast('Erreur recherche: ' + err.message, 'error');
+    }
+    setSearching(false);
+  };
+
+  const loadMore = async () => {
+    if (!nextPageToken) return;
+    setLoadingMore(true);
+    try {
+      const res = await api.post('/maps/search/next-page', { pageToken: nextPageToken });
+      let results = res.places || [];
+      if (searchForm.ratingMin) results = results.filter(p => p.rating >= parseFloat(searchForm.ratingMin));
+      if (searchForm.reviewsMin) results = results.filter(p => p.reviews_count >= parseInt(searchForm.reviewsMin));
+      setSearchResults(prev => [...prev, ...results]);
+      setNextPageToken(res.nextPageToken || null);
+    } catch (err) {
+      showToast('Erreur pagination: ' + err.message, 'error');
+    }
+    setLoadingMore(false);
+  };
+
+  // ─── Prospects sauvegardés ──────────────────────────────────────────────
+  const chargerProspects = async () => {
+    setProspectsLoading(true);
+    try {
+      const params = new URLSearchParams({ limit: 50, offset: prospectsOffset });
+      Object.entries(prospectsFilter).forEach(([k, v]) => { if (v) params.set(k, v); });
+      const res = await api.get(`/maps/prospects?${params}`);
+      setProspects(res.prospects || []);
+      setProspectsTotal(res.total || 0);
+      setProspectsStats(res.stats || null);
+    } catch (err) {
+      showToast('Erreur chargement: ' + err.message, 'error');
+    }
+    setProspectsLoading(false);
+  };
+
+  React.useEffect(() => {
+    if (activeTab === 'saved') chargerProspects();
+  }, [activeTab, prospectsFilter, prospectsOffset]);
+
+  // ─── Sauvegarder résultats ──────────────────────────────────────────────
+  const saveSelected = async () => {
+    const toSave = searchResults.filter((_, i) => selectedResults.has(i));
+    if (toSave.length === 0) return showToast('Sélectionner des résultats', 'error');
+    try {
+      const res = await api.post('/maps/prospects/save-batch', { places: toSave });
+      showToast(`${res.saved} prospect(s) sauvegardé(s)`, 'success');
+      setSelectedResults(new Set());
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const saveAll = async () => {
+    if (searchResults.length === 0) return;
+    try {
+      const res = await api.post('/maps/prospects/save-batch', { places: searchResults });
+      showToast(`${res.saved} prospect(s) sauvegardé(s)`, 'success');
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  // ─── Enrichissement ─────────────────────────────────────────────────────
+  const enrichProspect = async (id) => {
+    setEnrichingId(id);
+    try {
+      await api.post(`/maps/prospects/${id}/enrich-all`);
+      showToast('Prospect enrichi', 'success');
+      if (activeTab === 'saved') chargerProspects();
+      if (drawerProspect?.id === id) {
+        const res = await api.get(`/maps/prospects?search=&limit=1&offset=0`);
+        const updated = (res.prospects || []).find(p => p.id === id);
+        if (updated) { setDrawerProspect(updated); setDrawerEdits({}); }
+      }
+    } catch (err) {
+      showToast('Erreur enrichissement: ' + err.message, 'error');
+    }
+    setEnrichingId(null);
+  };
+
+  const analyzeWebsite = async (id) => {
+    setEnrichingId(id);
+    try {
+      await api.post(`/maps/prospects/${id}/analyze-website`);
+      showToast('Site analysé', 'success');
+      chargerProspects();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    setEnrichingId(null);
+  };
+
+  const findEmailProspect = async (id) => {
+    setEnrichingId(id);
+    try {
+      await api.post(`/maps/prospects/${id}/find-email`);
+      showToast('Recherche email terminée', 'success');
+      chargerProspects();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    setEnrichingId(null);
+  };
+
+  // ─── Batch enrichissement ───────────────────────────────────────────────
+  const startBatchEnrich = async (ids) => {
+    if (ids.length === 0) return showToast('Sélectionner des prospects', 'error');
+    try {
+      const res = await api.post('/maps/enrich-batch', { prospect_ids: ids });
+      setBatchJobId(res.jobId);
+      setBatchProgress({ total: ids.length, processed: 0, success: 0, errors: 0, status: 'running' });
+      // Polling
+      batchPollRef.current = setInterval(async () => {
+        try {
+          const status = await api.get(`/maps/enrich-batch/${res.jobId}/status`);
+          setBatchProgress(status);
+          if (status.status === 'completed' || status.status === 'cancelled') {
+            clearInterval(batchPollRef.current);
+            batchPollRef.current = null;
+            chargerProspects();
+            showToast(`Enrichissement terminé : ${status.success} succès, ${status.errors} erreurs`, status.errors > 0 ? 'warning' : 'success');
+          }
+        } catch { /* ignore */ }
+      }, 2000);
+    } catch (err) {
+      showToast('Erreur batch: ' + err.message, 'error');
+    }
+  };
+
+  const cancelBatch = async () => {
+    if (!batchJobId) return;
+    try {
+      await api.post(`/maps/enrich-batch/${batchJobId}/cancel`);
+      if (batchPollRef.current) { clearInterval(batchPollRef.current); batchPollRef.current = null; }
+      setBatchProgress(prev => prev ? { ...prev, status: 'cancelled' } : null);
+      showToast('Batch annulé', 'warning');
+    } catch { /* ignore */ }
+  };
+
+  React.useEffect(() => {
+    return () => { if (batchPollRef.current) clearInterval(batchPollRef.current); };
+  }, []);
+
+  // ─── Push pipeline ──────────────────────────────────────────────────────
+  const pushToPipeline = async (id) => {
+    try {
+      const res = await api.post(`/maps/prospects/${id}/push-to-pipeline`);
+      showToast(res.already_exists ? 'Lead existant lié' : 'Lead créé en pipeline', 'success');
+      chargerProspects();
+      if (drawerProspect?.id === id) setDrawerProspect(prev => ({ ...prev, status: 'in_pipeline' }));
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const deleteProspect = async (id) => {
+    try {
+      await api.delete(`/maps/prospects/${id}`);
+      showToast('Prospect supprimé', 'success');
+      chargerProspects();
+      if (drawerProspect?.id === id) setDrawerProspect(null);
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  // ─── Drawer save ────────────────────────────────────────────────────────
+  const saveDrawer = async () => {
+    if (!drawerProspect) return;
+    setDrawerSaving(true);
+    try {
+      const updated = await api.patch(`/maps/prospects/${drawerProspect.id}`, drawerEdits);
+      setDrawerProspect(updated);
+      setDrawerEdits({});
+      showToast('Prospect mis à jour', 'success');
+      chargerProspects();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    setDrawerSaving(false);
+  };
+
+  // ─── Helpers ────────────────────────────────────────────────────────────
+  const getWebsiteBadge = (p) => {
+    if (!p.website) return <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">Aucun</span>;
+    if (p.website_is_old) return <span className="px-2 py-0.5 rounded text-xs bg-orange-100 text-orange-700">Vieux</span>;
+    if (p.website_age_years !== null && p.website_age_years !== undefined) return <span className="px-2 py-0.5 rounded text-xs bg-green-100 text-green-700">Récent</span>;
+    return <span className="px-2 py-0.5 rounded text-xs bg-slate-100 text-slate-500">?</span>;
+  };
+
+  const getEmailBadge = (p) => {
+    if (p.email && p.email_confidence === 'high') return <span className="text-green-600 text-xs font-medium">{p.email}</span>;
+    if (p.email && (p.email_confidence === 'medium' || p.email_confidence === 'low')) return <span className="text-orange-600 text-xs font-medium">{p.email}</span>;
+    if (p.enrichment_attempted && !p.email) return <span className="text-red-400 text-xs">Non trouvé</span>;
+    if (p.email) return <span className="text-slate-600 text-xs">{p.email}</span>;
+    return <span className="text-slate-300 text-xs">—</span>;
+  };
+
+  const statusBadge = (status) => {
+    const map = {
+      new: 'bg-slate-100 text-slate-600',
+      enriched: 'bg-blue-100 text-blue-700',
+      in_pipeline: 'bg-green-100 text-green-700',
+      rejected: 'bg-red-100 text-red-600',
+    };
+    const labels = { new: 'Nouveau', enriched: 'Enrichi', in_pipeline: 'Pipeline', rejected: 'Rejeté' };
+    return <span className={`px-2 py-0.5 rounded text-xs ${map[status] || map.new}`}>{labels[status] || status}</span>;
+  };
+
+  const drawerVal = (field) => drawerEdits[field] !== undefined ? drawerEdits[field] : (drawerProspect?.[field] || '');
+
+  // ─── Render ─────────────────────────────────────────────────────────────
+  return (
+    <div className="flex gap-0 h-[calc(100vh-64px)] relative">
+      {/* Sidebar gauche */}
+      <div className="w-[280px] flex-shrink-0 bg-white border-r border-slate-200 overflow-y-auto p-4 space-y-4">
+        <h3 className="font-semibold text-sm text-slate-700">Recherche Places</h3>
+
+        <div className="space-y-2">
+          <input className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Catégorie (ex: restaurant, spa...)"
+            value={searchForm.category} onChange={e => setSearchForm(f => ({...f, category: e.target.value}))} />
+          <input className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Ville"
+            value={searchForm.city} onChange={e => setSearchForm(f => ({...f, city: e.target.value}))} />
+          <select className="w-full border rounded px-2 py-1.5 text-sm" value={searchForm.country}
+            onChange={e => setSearchForm(f => ({...f, country: e.target.value}))}>
+            {MAPS_COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+          </select>
+          <input className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Rayon (km)" type="number"
+            value={searchForm.radius} onChange={e => setSearchForm(f => ({...f, radius: e.target.value}))} />
+          <input className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Note min (ex: 4)" type="number" step="0.1"
+            value={searchForm.ratingMin} onChange={e => setSearchForm(f => ({...f, ratingMin: e.target.value}))} />
+          <input className="w-full border rounded px-2 py-1.5 text-sm" placeholder="Avis min (ex: 50)" type="number"
+            value={searchForm.reviewsMin} onChange={e => setSearchForm(f => ({...f, reviewsMin: e.target.value}))} />
+        </div>
+
+        <div className="space-y-1">
+          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+            <input type="checkbox" checked={noWebsite} onChange={e => setNoWebsite(e.target.checked)} className="rounded" />
+            Sans site web
+          </label>
+          <label className="flex items-center gap-2 text-xs text-slate-600 cursor-pointer">
+            <input type="checkbox" checked={oldWebsite} onChange={e => setOldWebsite(e.target.checked)} className="rounded" />
+            Site web vieux
+          </label>
+        </div>
+
+        <button onClick={handleSearch} disabled={searching || (!searchForm.category && !searchForm.city)}
+          className="w-full bg-indigo-600 text-white py-2 rounded text-sm font-medium hover:bg-indigo-700 disabled:opacity-50">
+          {searching ? 'Recherche...' : 'Lancer la recherche'}
+        </button>
+
+        {/* Stats rapides */}
+        {prospectsStats && (
+          <div className="bg-slate-50 rounded-lg p-3 space-y-1 text-xs">
+            <div className="font-semibold text-slate-700 mb-1">Stats prospects</div>
+            <div className="flex justify-between"><span className="text-slate-500">Total</span><span className="font-medium">{prospectsStats.total}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Avec email</span><span className="font-medium text-green-600">{prospectsStats.with_email}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Sans site</span><span className="font-medium text-red-600">{prospectsStats.no_website}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Site vieux</span><span className="font-medium text-orange-600">{prospectsStats.old_website}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">En pipeline</span><span className="font-medium text-indigo-600">{prospectsStats.in_pipeline}</span></div>
+          </div>
+        )}
+      </div>
+
+      {/* Zone principale */}
+      <div className="flex-1 overflow-y-auto p-4">
+        {/* Onglets */}
+        <div className="flex gap-1 mb-4 border-b">
+          <button onClick={() => setActiveTab('results')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'results' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            Résultats {searchResults.length > 0 && `(${searchResults.length})`}
+          </button>
+          <button onClick={() => setActiveTab('saved')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'saved' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
+            Prospects sauvegardés {prospectsStats?.total > 0 && `(${prospectsStats.total})`}
+          </button>
+        </div>
+
+        {/* Onglet Résultats */}
+        {activeTab === 'results' && (
+          <div>
+            {/* Barre bulk */}
+            {searchResults.length > 0 && (
+              <div className="flex items-center gap-2 mb-3 p-2 bg-slate-50 rounded-lg">
+                <label className="flex items-center gap-1 text-xs text-slate-600 cursor-pointer">
+                  <input type="checkbox" checked={selectedResults.size === searchResults.length && searchResults.length > 0}
+                    onChange={e => setSelectedResults(e.target.checked ? new Set(searchResults.map((_, i) => i)) : new Set())} className="rounded" />
+                  Tout
+                </label>
+                <button onClick={saveSelected} disabled={selectedResults.size === 0 || readOnly}
+                  className="px-3 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50">
+                  Sauvegarder ({selectedResults.size})
+                </button>
+                <button onClick={saveAll} disabled={readOnly}
+                  className="px-3 py-1 bg-slate-600 text-white rounded text-xs hover:bg-slate-700 disabled:opacity-50">
+                  Tout sauvegarder
+                </button>
+                {nextPageToken && (
+                  <button onClick={loadMore} disabled={loadingMore}
+                    className="px-3 py-1 bg-white border text-slate-600 rounded text-xs hover:bg-slate-50 disabled:opacity-50 ml-auto">
+                    {loadingMore ? 'Chargement...' : 'Charger +20'}
+                  </button>
+                )}
+              </div>
+            )}
+
+            {searching && <div className="flex items-center gap-2 text-sm text-slate-400 py-8 justify-center"><span className="w-4 h-4 border-2 border-slate-200 border-t-indigo-500 rounded-full animate-spin inline-block" /> Recherche en cours...</div>}
+
+            {!searching && searchResults.length === 0 && (
+              <div className="text-center text-slate-400 py-12 text-sm">
+                Lancez une recherche pour trouver des prospects
+              </div>
+            )}
+
+            {searchResults.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500 border-b">
+                      <th className="pb-2 w-8"></th>
+                      <th className="pb-2">Nom</th>
+                      <th className="pb-2">Catégorie</th>
+                      <th className="pb-2">Ville</th>
+                      <th className="pb-2 text-center">Note</th>
+                      <th className="pb-2 text-center">Avis</th>
+                      <th className="pb-2">Site web</th>
+                      <th className="pb-2 w-24">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {searchResults.map((p, i) => (
+                      <tr key={p.place_id || i} className="border-b border-slate-100 hover:bg-slate-50">
+                        <td className="py-2">
+                          <input type="checkbox" checked={selectedResults.has(i)}
+                            onChange={e => { const s = new Set(selectedResults); e.target.checked ? s.add(i) : s.delete(i); setSelectedResults(s); }} className="rounded" />
+                        </td>
+                        <td className="py-2 font-medium text-slate-800">{p.name}</td>
+                        <td className="py-2 text-slate-500 text-xs">{p.category}</td>
+                        <td className="py-2 text-slate-600 text-xs">{p.city}</td>
+                        <td className="py-2 text-center">{p.rating ? <span className="text-amber-500">{p.rating}</span> : '—'}</td>
+                        <td className="py-2 text-center text-slate-500">{p.reviews_count || 0}</td>
+                        <td className="py-2">
+                          {p.website ? (
+                            <a href={p.website} target="_blank" rel="noopener" className="text-indigo-600 hover:underline text-xs truncate block max-w-[180px]">
+                              {p.website.replace(/^https?:\/\/(www\.)?/, '').replace(/\/$/, '')}
+                            </a>
+                          ) : <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">Aucun</span>}
+                        </td>
+                        <td className="py-2">
+                          <div className="flex gap-1">
+                            <button onClick={() => { const s = [p]; api.post('/maps/prospects/save-batch', { places: s }).then(() => showToast('Sauvegardé', 'success')).catch(e => showToast(e.message, 'error')); }}
+                              disabled={readOnly} className="p-1 text-slate-400 hover:text-indigo-600 disabled:opacity-50" title="Sauvegarder">
+                              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7H5a2 2 0 00-2 2v9a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-3m-1 4l-3 3m0 0l-3-3m3 3V4" /></svg>
+                            </button>
+                            {p.maps_url && (
+                              <a href={p.maps_url} target="_blank" rel="noopener" className="p-1 text-slate-400 hover:text-green-600" title="Ouvrir Maps">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" /><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 11a3 3 0 11-6 0 3 3 0 016 0z" /></svg>
+                              </a>
+                            )}
+                            {p.phone && (
+                              <a href={`tel:${p.phone}`} className="p-1 text-slate-400 hover:text-blue-600" title={p.phone}>
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M3 5a2 2 0 012-2h3.28a1 1 0 01.948.684l1.498 4.493a1 1 0 01-.502 1.21l-2.257 1.13a11.042 11.042 0 005.516 5.516l1.13-2.257a1 1 0 011.21-.502l4.493 1.498a1 1 0 01.684.949V19a2 2 0 01-2 2h-1C9.716 21 3 14.284 3 6V5z" /></svg>
+                              </a>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* Onglet Prospects sauvegardés */}
+        {activeTab === 'saved' && (
+          <div>
+            {/* Filtres horizontaux */}
+            <div className="flex flex-wrap items-center gap-2 mb-3">
+              <select className="border rounded px-2 py-1 text-xs" value={prospectsFilter.status}
+                onChange={e => { setProspectsFilter(f => ({...f, status: e.target.value})); setProspectsOffset(0); }}>
+                <option value="">Tous statuts</option>
+                <option value="new">Nouveau</option>
+                <option value="enriched">Enrichi</option>
+                <option value="in_pipeline">Pipeline</option>
+                <option value="rejected">Rejeté</option>
+              </select>
+              <select className="border rounded px-2 py-1 text-xs" value={prospectsFilter.country}
+                onChange={e => { setProspectsFilter(f => ({...f, country: e.target.value})); setProspectsOffset(0); }}>
+                <option value="">Tous pays</option>
+                {MAPS_COUNTRIES.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+              <select className="border rounded px-2 py-1 text-xs" value={prospectsFilter.has_email}
+                onChange={e => { setProspectsFilter(f => ({...f, has_email: e.target.value})); setProspectsOffset(0); }}>
+                <option value="">Email: tous</option>
+                <option value="true">Avec email</option>
+                <option value="false">Sans email</option>
+              </select>
+              <select className="border rounded px-2 py-1 text-xs" value={prospectsFilter.is_old}
+                onChange={e => { setProspectsFilter(f => ({...f, is_old: e.target.value})); setProspectsOffset(0); }}>
+                <option value="">Site: tous</option>
+                <option value="true">Site vieux</option>
+                <option value="false">Site récent</option>
+              </select>
+              <input className="border rounded px-2 py-1 text-xs w-48" placeholder="Rechercher..."
+                value={prospectsFilter.search} onChange={e => { setProspectsFilter(f => ({...f, search: e.target.value})); setProspectsOffset(0); }} />
+
+              {selectedProspects.size > 0 && !readOnly && (
+                <>
+                  <button onClick={() => startBatchEnrich([...selectedProspects])} disabled={!!batchProgress?.status === 'running'}
+                    className="px-3 py-1 bg-indigo-600 text-white rounded text-xs hover:bg-indigo-700 disabled:opacity-50 ml-auto">
+                    Enrichir ({selectedProspects.size})
+                  </button>
+                </>
+              )}
+            </div>
+
+            {prospectsLoading && <div className="flex items-center gap-2 text-sm text-slate-400 py-8 justify-center"><span className="w-4 h-4 border-2 border-slate-200 border-t-indigo-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
+
+            {!prospectsLoading && prospects.length === 0 && (
+              <div className="text-center text-slate-400 py-12 text-sm">Aucun prospect sauvegardé</div>
+            )}
+
+            {prospects.length > 0 && (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="text-left text-xs text-slate-500 border-b">
+                      <th className="pb-2 w-8">
+                        <input type="checkbox" checked={selectedProspects.size === prospects.length && prospects.length > 0}
+                          onChange={e => setSelectedProspects(e.target.checked ? new Set(prospects.map(p => p.id)) : new Set())} className="rounded" />
+                      </th>
+                      <th className="pb-2">Nom</th>
+                      <th className="pb-2">Ville / Pays</th>
+                      <th className="pb-2 text-center">Note</th>
+                      <th className="pb-2 text-center">Avis</th>
+                      <th className="pb-2">Site</th>
+                      <th className="pb-2">Email</th>
+                      <th className="pb-2">Statut</th>
+                      <th className="pb-2 w-28">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {prospects.map(p => (
+                      <tr key={p.id} className={`border-b border-slate-100 hover:bg-slate-50 cursor-pointer ${drawerProspect?.id === p.id ? 'bg-indigo-50' : ''}`}
+                        onClick={() => { setDrawerProspect(p); setDrawerEdits({}); }}>
+                        <td className="py-2" onClick={e => e.stopPropagation()}>
+                          <input type="checkbox" checked={selectedProspects.has(p.id)}
+                            onChange={e => { const s = new Set(selectedProspects); e.target.checked ? s.add(p.id) : s.delete(p.id); setSelectedProspects(s); }} className="rounded" />
+                        </td>
+                        <td className="py-2 font-medium text-slate-800">{p.name}</td>
+                        <td className="py-2 text-slate-500 text-xs">{[p.city, p.country].filter(Boolean).join(', ')}</td>
+                        <td className="py-2 text-center">{p.rating ? <span className="text-amber-500">{p.rating}</span> : '—'}</td>
+                        <td className="py-2 text-center text-slate-500">{p.reviews_count || 0}</td>
+                        <td className="py-2">{getWebsiteBadge(p)}</td>
+                        <td className="py-2">{getEmailBadge(p)}</td>
+                        <td className="py-2">{statusBadge(p.status)}</td>
+                        <td className="py-2" onClick={e => e.stopPropagation()}>
+                          <div className="flex gap-1">
+                            {!readOnly && (
+                              <button onClick={() => enrichProspect(p.id)} disabled={enrichingId === p.id}
+                                className="p-1 text-slate-400 hover:text-indigo-600 disabled:opacity-50" title="Enrichir">
+                                {enrichingId === p.id ? <span className="w-4 h-4 border-2 border-slate-200 border-t-indigo-500 rounded-full animate-spin inline-block" /> :
+                                  <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
+                              </button>
+                            )}
+                            {p.email && !readOnly && p.status !== 'in_pipeline' && (
+                              <button onClick={() => pushToPipeline(p.id)} className="p-1 text-slate-400 hover:text-green-600" title="Push pipeline">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
+                              </button>
+                            )}
+                            {!readOnly && (
+                              <button onClick={() => deleteProspect(p.id)} className="p-1 text-slate-400 hover:text-red-600" title="Supprimer">
+                                <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M19 7l-.867 12.142A2 2 0 0116.138 21H7.862a2 2 0 01-1.995-1.858L5 7m5 4v6m4-6v6m1-10V4a1 1 0 00-1-1h-4a1 1 0 00-1 1v3M4 7h16" /></svg>
+                              </button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                {/* Pagination */}
+                {prospectsTotal > 50 && (
+                  <div className="flex items-center justify-between mt-3 text-xs text-slate-500">
+                    <span>{prospectsOffset + 1}-{Math.min(prospectsOffset + 50, prospectsTotal)} sur {prospectsTotal}</span>
+                    <div className="flex gap-1">
+                      <button onClick={() => setProspectsOffset(Math.max(0, prospectsOffset - 50))} disabled={prospectsOffset === 0}
+                        className="px-2 py-1 border rounded hover:bg-slate-50 disabled:opacity-50">Préc.</button>
+                      <button onClick={() => setProspectsOffset(prospectsOffset + 50)} disabled={prospectsOffset + 50 >= prospectsTotal}
+                        className="px-2 py-1 border rounded hover:bg-slate-50 disabled:opacity-50">Suiv.</button>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+      </div>
+
+      {/* Drawer latéral droit */}
+      {drawerProspect && (
+        <div className="w-[420px] flex-shrink-0 bg-white border-l border-slate-200 overflow-y-auto p-4 space-y-4">
+          <div className="flex items-center justify-between">
+            <h3 className="font-semibold text-sm text-slate-800 truncate flex-1">{drawerProspect.name}</h3>
+            <button onClick={() => setDrawerProspect(null)} className="p-1 text-slate-400 hover:text-slate-600">
+              <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" /></svg>
+            </button>
+          </div>
+
+          {/* Infos Google Maps (read-only) */}
+          <div className="bg-slate-50 rounded-lg p-3 space-y-1 text-xs">
+            <div className="font-semibold text-slate-600 mb-1">Google Maps</div>
+            <div><span className="text-slate-400 w-16 inline-block">Adresse</span> <span className="text-slate-700">{drawerProspect.address || '—'}</span></div>
+            <div><span className="text-slate-400 w-16 inline-block">Catégorie</span> <span className="text-slate-700">{drawerProspect.category || '—'}</span></div>
+            <div><span className="text-slate-400 w-16 inline-block">Tél</span> <span className="text-slate-700">{drawerProspect.phone || '—'}</span></div>
+            <div><span className="text-slate-400 w-16 inline-block">Note</span> <span className="text-amber-500">{drawerProspect.rating || '—'}</span> <span className="text-slate-400">({drawerProspect.reviews_count || 0} avis)</span></div>
+            {drawerProspect.maps_url && (
+              <a href={drawerProspect.maps_url} target="_blank" rel="noopener" className="text-indigo-600 hover:underline">Voir sur Maps</a>
+            )}
+          </div>
+
+          {/* Section analyse site web */}
+          <div className="border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-xs text-slate-600">Site web</span>
+              {drawerProspect.website && !readOnly && (
+                <button onClick={() => analyzeWebsite(drawerProspect.id)} disabled={enrichingId === drawerProspect.id}
+                  className="text-xs text-indigo-600 hover:underline disabled:opacity-50">
+                  {enrichingId === drawerProspect.id ? 'Analyse...' : 'Analyser'}
+                </button>
+              )}
+            </div>
+            {drawerProspect.website ? (
+              <>
+                <a href={drawerProspect.website} target="_blank" rel="noopener" className="text-xs text-indigo-600 hover:underline block truncate">{drawerProspect.website}</a>
+                <div className="flex items-center gap-2">
+                  {getWebsiteBadge(drawerProspect)}
+                  {drawerProspect.website_age_years != null && <span className="text-xs text-slate-500">{drawerProspect.website_age_years} ans</span>}
+                  {drawerProspect.website_age_method && <span className="text-xs text-slate-400">({drawerProspect.website_age_method})</span>}
+                </div>
+              </>
+            ) : <span className="text-xs text-slate-400">Aucun site web</span>}
+          </div>
+
+          {/* Section email */}
+          <div className="border rounded-lg p-3 space-y-2">
+            <div className="flex items-center justify-between">
+              <span className="font-semibold text-xs text-slate-600">Email</span>
+              {!readOnly && (
+                <button onClick={() => findEmailProspect(drawerProspect.id)} disabled={enrichingId === drawerProspect.id}
+                  className="text-xs text-indigo-600 hover:underline disabled:opacity-50">
+                  {enrichingId === drawerProspect.id ? 'Recherche...' : 'Rechercher'}
+                </button>
+              )}
+            </div>
+            <input className="w-full border rounded px-2 py-1 text-xs" placeholder="Email" value={drawerVal('email')}
+              onChange={e => setDrawerEdits(d => ({...d, email: e.target.value}))} disabled={readOnly} />
+            {drawerProspect.email_source && (
+              <div className="flex gap-2 text-xs">
+                <span className="text-slate-400">Source: {drawerProspect.email_source}</span>
+                {drawerProspect.email_confidence && (
+                  <span className={`px-1.5 py-0.5 rounded ${
+                    drawerProspect.email_confidence === 'high' ? 'bg-green-100 text-green-700' :
+                    drawerProspect.email_confidence === 'medium' ? 'bg-orange-100 text-orange-700' :
+                    'bg-slate-100 text-slate-500'
+                  }`}>{drawerProspect.email_confidence}</span>
+                )}
+              </div>
+            )}
+          </div>
+
+          {/* Réseaux sociaux */}
+          <div className="border rounded-lg p-3 space-y-2">
+            <span className="font-semibold text-xs text-slate-600">Réseaux sociaux</span>
+            <input className="w-full border rounded px-2 py-1 text-xs" placeholder="Instagram" value={drawerVal('instagram')}
+              onChange={e => setDrawerEdits(d => ({...d, instagram: e.target.value}))} disabled={readOnly} />
+            <input className="w-full border rounded px-2 py-1 text-xs" placeholder="Facebook" value={drawerVal('facebook')}
+              onChange={e => setDrawerEdits(d => ({...d, facebook: e.target.value}))} disabled={readOnly} />
+            <input className="w-full border rounded px-2 py-1 text-xs" placeholder="LinkedIn" value={drawerVal('linkedin')}
+              onChange={e => setDrawerEdits(d => ({...d, linkedin: e.target.value}))} disabled={readOnly} />
+          </div>
+
+          {/* Notes */}
+          <div className="border rounded-lg p-3 space-y-2">
+            <span className="font-semibold text-xs text-slate-600">Notes</span>
+            <textarea className="w-full border rounded px-2 py-1 text-xs h-20 resize-none" placeholder="Notes..."
+              value={drawerVal('notes')} onChange={e => setDrawerEdits(d => ({...d, notes: e.target.value}))} disabled={readOnly} />
+          </div>
+
+          {/* Boutons drawer */}
+          {!readOnly && (
+            <div className="flex gap-2">
+              <button onClick={saveDrawer} disabled={drawerSaving || Object.keys(drawerEdits).length === 0}
+                className="flex-1 bg-indigo-600 text-white py-1.5 rounded text-xs font-medium hover:bg-indigo-700 disabled:opacity-50">
+                {drawerSaving ? 'Sauvegarde...' : 'Sauvegarder'}
+              </button>
+              {drawerProspect.email && drawerProspect.status !== 'in_pipeline' && (
+                <button onClick={() => pushToPipeline(drawerProspect.id)}
+                  className="flex-1 bg-green-600 text-white py-1.5 rounded text-xs font-medium hover:bg-green-700">
+                  Push pipeline
+                </button>
+              )}
+              {drawerProspect.status !== 'rejected' && (
+                <button onClick={() => {
+                  api.patch(`/maps/prospects/${drawerProspect.id}`, { status: 'rejected' })
+                    .then(() => { setDrawerProspect(p => ({...p, status: 'rejected'})); chargerProspects(); showToast('Prospect rejeté', 'success'); })
+                    .catch(e => showToast(e.message, 'error'));
+                }} className="px-3 py-1.5 bg-red-50 text-red-600 rounded text-xs font-medium hover:bg-red-100">
+                  Rejeter
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Barre de progression batch (sticky bottom) */}
+      {batchProgress && batchProgress.status === 'running' && (
+        <div className="fixed bottom-0 left-0 right-0 bg-white border-t border-slate-200 px-4 py-3 flex items-center gap-4 z-50 shadow-lg">
+          <div className="flex-1">
+            <div className="flex items-center justify-between text-xs text-slate-600 mb-1">
+              <span>Enrichissement en cours</span>
+              <span>{batchProgress.processed}/{batchProgress.total} enrichis</span>
+            </div>
+            <div className="w-full bg-slate-200 rounded-full h-2">
+              <div className="bg-indigo-600 h-2 rounded-full transition-all" style={{ width: `${(batchProgress.processed / batchProgress.total) * 100}%` }} />
+            </div>
+          </div>
+          <button onClick={cancelBatch} className="px-3 py-1.5 bg-red-50 text-red-600 rounded text-xs font-medium hover:bg-red-100">
+            Annuler
+          </button>
+        </div>
+      )}
+    </div>
+  );
+};
+
 const VueVeille = ({ showToast }) => {
   const [tab, setTab] = useState('dashboard');
   const [loading, setLoading] = useState(true);
@@ -21764,6 +22468,7 @@ function App() {
     { id: "leads-group", icon: "👥", label: "Leads", children: [
       { id: "leads", label: "Contacts" },
       { id: "prospection", label: "Prospection" },
+      { id: "maps-prospection", label: "Prospection Maps" },
     ]},
     { id: "campagnes", icon: "📨", label: "Campagnes", children: [
       { id: "sequences", label: "Séquences" },
@@ -21791,7 +22496,7 @@ function App() {
     if (id === 'sequences' || id === 'templates' || id === 'email-campaigns') return 'campagnes';
     if (id === 'parametres' || id === 'blocklist') return 'config';
     if (id === 'dashboard' || id === 'dashboard-marketing' || id === 'dashboard-ventes') return 'dashboard';
-    if (id === 'prospection') return 'leads';
+    if (id === 'prospection' || id === 'maps-prospection') return 'leads';
     return id;
   };
 
@@ -21976,6 +22681,7 @@ function App() {
           {vue === "account-mgmt" && <VuePartnerCenter showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}
           {vue === "prospection" && <VueProspection showToast={showToast} readOnly={!canWrite('leads')} sequences={sequencesNorm} onRefreshLeads={charger} />}
+          {vue === "maps-prospection" && <VueMapsProspecting showToast={showToast} readOnly={!canWrite('leads')} />}
           {vue === "sequences" && <VueSequences sequences={sequencesNorm} onNew={() => { setEditSeq(null); setShowSeqEditor(true); }} onEdit={seq => { setEditSeq(seq); setShowSeqEditor(true); }} onRefresh={charger} showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "templates" && <VueTemplates showToast={showToast} readOnly={!canWrite('campagnes')} />}
           {vue === "email-campaigns" && <VueCampagnes showToast={showToast} readOnly={!canWrite('campagnes')} />}
