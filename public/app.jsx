@@ -19878,11 +19878,12 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
       setSearchResults(allResults);
 
       // Auto-charger les pages suivantes (max 3 pages = 60 résultats)
+      const searchParams = { category: searchForm.category, city: searchForm.city, country: searchForm.country };
       let token = res.nextPageToken;
       let pageCount = 1;
       while (token && pageCount < 3) {
         pageCount++;
-        const nextRes = await api.post('/maps/search/next-page', { pageToken: token });
+        const nextRes = await api.post('/maps/search/next-page', { ...searchParams, pageToken: token });
         const nextFiltered = applyClientFilters(nextRes.places || []);
         allResults = [...allResults, ...nextFiltered];
         setSearchResults([...allResults]);
@@ -19899,7 +19900,10 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
     if (!nextPageToken) return;
     setLoadingMore(true);
     try {
-      const res = await api.post('/maps/search/next-page', { pageToken: nextPageToken });
+      const res = await api.post('/maps/search/next-page', {
+        category: searchForm.category, city: searchForm.city, country: searchForm.country,
+        pageToken: nextPageToken,
+      });
       const filtered = applyClientFilters(res.places || []);
       setSearchResults(prev => [...prev, ...filtered]);
       setNextPageToken(res.nextPageToken || null);

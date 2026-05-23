@@ -75,6 +75,7 @@ module.exports = (db) => {
       }
 
       const data = await apiRes.json();
+      console.log(`[Maps Search] ${(data.places || []).length} résultats, nextPageToken: ${data.nextPageToken ? 'oui' : 'non'}`);
       const places = (data.places || []).map(place => {
         // Extraire la ville depuis l'adresse formatée
         const addressParts = (place.formattedAddress || '').split(',').map(s => s.trim());
@@ -136,13 +137,23 @@ module.exports = (db) => {
   });
 
   // ─── POST /search/next-page — Pagination Places ──────────────────────────
+  // Doit recevoir les mêmes paramètres de recherche que /search + pageToken
   router.post('/search/next-page', async (req, res) => {
     try {
-      const { pageToken } = req.body;
+      const { pageToken, category, city, country } = req.body;
       if (!pageToken) return res.status(400).json({ error: 'pageToken requis' });
 
       const apiKey = getApiKey(db);
       if (!apiKey) return res.status(400).json({ error: 'Clé API Google Places non configurée' });
+
+      const textQuery = [category, city, country].filter(Boolean).join(' ');
+
+      const body = {
+        textQuery,
+        languageCode: 'fr',
+        pageSize: 20,
+        pageToken,
+      };
 
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
@@ -161,7 +172,7 @@ module.exports = (db) => {
           'X-Goog-Api-Key': apiKey,
           'X-Goog-FieldMask': fieldMask,
         },
-        body: JSON.stringify({ pageToken, pageSize: 20 }),
+        body: JSON.stringify(body),
         signal: controller.signal,
       });
 
@@ -178,13 +189,21 @@ module.exports = (db) => {
         const extractedCity = addressParts.length >= 2 ? addressParts[addressParts.length - 2] : '';
         const extractedCountry = addressParts.length >= 1 ? addressParts[addressParts.length - 1] : '';
 
+        const typeMapping = {
+          restaurant: 'Restaurant', hotel: 'Hôtel', lodging: 'Hébergement', spa: 'Spa',
+          beauty_salon: 'Salon de beauté', hair_care: 'Coiffure', gym: 'Salle de sport',
+          dentist: 'Dentiste', doctor: 'Médecin', lawyer: 'Avocat', accounting: 'Comptabilité',
+          real_estate_agency: 'Immobilier', store: 'Commerce', cafe: 'Café', bar: 'Bar',
+          bakery: 'Boulangerie', car_dealer: 'Concessionnaire', car_repair: 'Garage auto',
+          pharmacy: 'Pharmacie', florist: 'Fleuriste', travel_agency: 'Agence de voyage',
+        };
         const types = place.types || [];
-        const category = types[0] || '';
+        const cat = types.map(t => typeMapping[t]).find(Boolean) || types[0] || '';
 
         return {
           place_id: place.id,
           name: place.displayName?.text || 'Inconnu',
-          category,
+          category: cat,
           address: place.formattedAddress || '',
           city: extractedCity,
           country: extractedCountry,
