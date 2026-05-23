@@ -20104,7 +20104,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
 
   // ─── Render ─────────────────────────────────────────────────────────────
   return (
-    <div className="flex gap-0 h-[calc(100vh-64px)] relative">
+    <div className="flex gap-0 -m-4 md:-m-8 h-[calc(100vh-64px)] relative" style={{ minHeight: 0 }}>
       {/* Sidebar gauche */}
       <div className="w-[280px] flex-shrink-0 bg-white border-r border-slate-200 overflow-y-auto p-4 space-y-4">
         <h3 className="font-semibold text-sm text-slate-700">Recherche Places</h3>
@@ -20156,7 +20156,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
       </div>
 
       {/* Zone principale */}
-      <div className="flex-1 overflow-y-auto p-4">
+      <div className="flex-1 overflow-y-auto p-4" style={{ minHeight: 0 }}>
         {/* Onglets */}
         <div className="flex gap-1 mb-4 border-b">
           <button onClick={() => setActiveTab('results')} className={`px-4 py-2 text-sm font-medium border-b-2 -mb-px ${activeTab === 'results' ? 'border-indigo-600 text-indigo-600' : 'border-transparent text-slate-500 hover:text-slate-700'}`}>
@@ -20255,17 +20255,25 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                   </tbody>
                 </table>
 
-                {/* Charger +20 en bas de table */}
-                {nextPageToken && (
-                  <div className="flex justify-center mt-4">
-                    <button onClick={loadMore} disabled={loadingMore}
-                      className="px-6 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 disabled:opacity-50 border border-indigo-200">
-                      {loadingMore ? (
-                        <span className="flex items-center gap-2"><span className="w-3 h-3 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin inline-block" /> Chargement...</span>
-                      ) : 'Charger +20 résultats'}
-                    </button>
-                  </div>
-                )}
+              </div>
+            )}
+
+            {/* Charger +20 en bas de table */}
+            {nextPageToken && (
+              <div className="flex justify-center py-4">
+                <button onClick={loadMore} disabled={loadingMore}
+                  className="px-6 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 disabled:opacity-50 border border-indigo-200">
+                  {loadingMore ? (
+                    <span className="flex items-center gap-2"><span className="w-3 h-3 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin inline-block" /> Chargement...</span>
+                  ) : 'Charger +20 résultats'}
+                </button>
+              </div>
+            )}
+
+            {/* Compteur résultats en bas */}
+            {searchResults.length > 0 && (
+              <div className="text-center text-xs text-slate-400 pb-4">
+                {searchResults.length} résultats affichés {!nextPageToken && '(tous chargés)'}
               </div>
             )}
           </div>
