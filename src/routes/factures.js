@@ -538,6 +538,110 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Modifier une facture existante ────────────────────────────────────────
+  router.put('/invoices/:id', async (req, res) => {
+    try {
+      const { client, products, fraisPort, isSample, businessType } = req.body;
+
+      const catalog = getCatalogMap();
+      const productIdMappings = getCodeMappings('product_id');
+      const productNameMappings = getCodeMappings('product_name');
+      const codeMappings = getCodeMappings('code_alias');
+      const forcedPrices = getForcedPrices();
+
+      const canonicalClientName = resolveCanonicalClientName(client.name);
+      const discountsDb = canonicalClientName ? getDiscountsForClient(canonicalClientName) : [];
+
+      const positions = [];
+      let hasDiscount = false;
+
+      for (const p of (products || [])) {
+        const ref = normalizeRef(p.ref);
+        const catEntry = catalog[ref];
+        const qty = p.quantite || p.quantity || 1;
+        const taxRate = p.tva || catEntry?.tva || 20;
+        const priceHT = p.prix_ht || catEntry?.prix_ht || 0;
+
+        let discount = p.discount || 0;
+        if (!discount && canonicalClientName) {
+          discount = calculerRemise(canonicalClientName, ref, discountsDb);
+        }
+        if (discount > 0) hasDiscount = true;
+
+        const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
+
+        const forcedEntry = forcedPrices.find(f => normalizeRef(f.code_source) === ref);
+        const forcedPriceTTC = forcedEntry ? parseFloat(forcedEntry.valeur) : null;
+
+        let priceToUse = priceHT;
+        if (forcedPriceTTC) {
+          priceToUse = forcedPriceTTC / (1 + taxRate / 100);
+        }
+
+        const totalPriceNet = priceToUse * qty;
+        const totalPriceGross = forcedPriceTTC
+          ? (forcedPriceTTC * qty)
+          : (totalPriceNet * (1 + taxRate / 100));
+
+        const position = {
+          product_id: vfProduct.productId || undefined,
+          name: vfProduct.productName || p.nom || p.name || vfProduct.ref,
+          code: p.ref || vfProduct.vfRef || ref,
+          tax: taxRate,
+          quantity: qty,
+          price_net: priceToUse.toFixed(2),
+          total_price_gross: totalPriceGross.toFixed(2),
+        };
+        if (discount > 0) position.discount_percent = discount;
+        if (!position.product_id) delete position.product_id;
+
+        positions.push(position);
+      }
+
+      for (const f of (fraisPort || [])) {
+        const ref = normalizeRef(f.ref);
+        const qty = f.quantite || f.quantity || 1;
+        const taxRate = f.tva || 20;
+        const priceHT = f.prix_ht || 0;
+        const gross = priceHT * qty * (1 + taxRate / 100);
+        const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
+
+        const position = {
+          name: vfProduct.productName || f.nom || f.name || ref,
+          code: f.ref || ref,
+          price_net: Number(priceHT).toFixed(2),
+          total_price_gross: Number(gross).toFixed(2),
+          tax: taxRate,
+          quantity: qty,
+        };
+        if (vfProduct.productId) position.product_id = vfProduct.productId;
+        positions.push(position);
+      }
+
+      const invoiceData = {
+        buyer_name: client.name || '',
+        buyer_tax_no: client.tax_no || '',
+        buyer_post_code: client.post_code || client.zip || '',
+        buyer_city: client.city || '',
+        buyer_street: client.street || '',
+        buyer_country: client.country || 'FR',
+        buyer_email: client.email || '',
+        buyer_phone: client.phone || '',
+        show_discount: hasDiscount,
+        discount_kind: hasDiscount ? 'percent_unit' : null,
+        positions,
+      };
+
+      if (client.id) invoiceData.client_id = client.id;
+
+      const result = await req.vfService.updateFacture(req.params.id, invoiceData);
+
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Batch ──────────────────────────────────────────────────────────────────
 
   router.post('/invoices/batch', async (req, res) => {

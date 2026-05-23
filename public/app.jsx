@@ -12030,53 +12030,69 @@ const FacturesSamples = ({ showToast }) => {
     const oldEntry = queue[editingIndex];
     setQueue(q => q.map((item, i) => i === editingIndex ? { ...item, status: 'processing' } : item));
     try {
-      // Supprimer l'ancien shipment
-      if (oldEntry?.shipment_id) {
-        try { await api.delete('/shipments/' + oldEntry.shipment_id); } catch (e) { console.warn('Erreur suppression ancien shipment:', e); }
-      }
-      // Nouvelle proforma
-      const res = await api.post('/factures/invoices', {
-        client: { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone },
-        products: products.map(p => {
-          const cat = catalog.find(c => c.ref === p.ref);
-          return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
-        }),
-        documentType: 'proforma',
-        logGSheets: false,
-        isSample: true,
-        businessType,
+      const productsList = products.map(p => {
+        const cat = catalog.find(c => c.ref === p.ref);
+        return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
       });
-      if (res.erreur) throw new Error(res.erreur);
-      // Nouveau shipment
-      let shipment_id = null;
-      try {
-        const shipRes = await api.post('/shipments', {
-          type: 'echantillon',
-          order_ref: res.number || `ECH-${Date.now()}`,
-          invoice_id: res.id,
-          invoice_number: res.number,
-          client_name: clientName,
-          client_email: clientEmail || '',
-          client_address: clientAddress || '',
-          client_city: clientCity || '',
-          client_country: clientCountry || 'FR',
-          shipping_id: shippingId,
-          shipping_name: '',
-          montant_ht: res.price_net || 0,
-          montant_ttc: res.price_gross || 0,
-          notes: deliveryComment || 'Proforma échantillon',
+      const clientData = { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone };
+
+      let res;
+      if (oldEntry?.result?.id) {
+        // Modifier la proforma existante
+        res = await api.put(`/factures/invoices/${oldEntry.result.id}`, {
+          client: clientData,
+          products: productsList,
+          isSample: true,
+          businessType,
         });
-        shipment_id = shipRes.shipment?.id || null;
-      } catch (shipErr) {
-        console.warn('Erreur ajout shipment:', shipErr);
+        if (res.erreur) throw new Error(res.erreur);
+        // Conserver les champs de l'ancienne réponse qui ne changent pas
+        res = { ...oldEntry.result, ...res };
+      } else {
+        // Pas de proforma existante — en créer une nouvelle
+        res = await api.post('/factures/invoices', {
+          client: clientData,
+          products: productsList,
+          documentType: 'proforma',
+          logGSheets: false,
+          isSample: true,
+          businessType,
+        });
+        if (res.erreur) throw new Error(res.erreur);
       }
+
+      // Mettre à jour le shipment existant ou en créer un nouveau
+      let shipment_id = oldEntry?.shipment_id || null;
+      if (shipment_id) {
+        // Shipment existant — pas besoin de le recréer
+      } else {
+        try {
+          const shipRes = await api.post('/shipments', {
+            type: 'echantillon',
+            order_ref: res.number || `ECH-${Date.now()}`,
+            invoice_id: res.id,
+            invoice_number: res.number,
+            client_name: clientName,
+            client_email: clientEmail || '',
+            client_address: clientAddress || '',
+            client_city: clientCity || '',
+            client_country: clientCountry || 'FR',
+            shipping_id: shippingId,
+            shipping_name: '',
+            montant_ht: res.price_net || 0,
+            montant_ttc: res.price_gross || 0,
+            notes: deliveryComment || 'Proforma échantillon',
+          });
+          shipment_id = shipRes.shipment?.id || null;
+        } catch (shipErr) {
+          console.warn('Erreur ajout shipment:', shipErr);
+        }
+      }
+
       const updatedEntry = {
         clientName,
-        client: { name: clientName, street: clientAddress, city: clientCity, zip: clientZip, country: clientCountry, email: clientEmail, phone: clientPhone },
-        products: products.map(p => {
-          const cat = catalog.find(c => c.ref === p.ref);
-          return { ref: p.ref, quantite: p.quantity, prix_ht: cat?.prix_ht || 0, nom: cat?.nom || p.ref, tva: 20 };
-        }),
+        client: clientData,
+        products: productsList,
         rawProducts: products.map(p => ({ ref: p.ref, quantity: p.quantity })),
         shippingId,
         deliveryComment,
@@ -12084,7 +12100,7 @@ const FacturesSamples = ({ showToast }) => {
         result: res,
         status: 'ok',
         shipment_id,
-        hubspot_deal_id: res.hubspot_deal_id || null,
+        hubspot_deal_id: res.hubspot_deal_id || oldEntry?.hubspot_deal_id || null,
       };
       setQueue(q => q.map((item, i) => i === editingIndex ? updatedEntry : item));
       showToast(`Envoi modifié — Proforma ${res.number}`, 'success');

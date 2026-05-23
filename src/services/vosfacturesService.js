@@ -149,6 +149,13 @@ module.exports = (db, userToken = null) => ({
     }, db, userToken);
   },
 
+  async updateFacture(id, data) {
+    return vfFetch(`/invoices/${id}.json`, {
+      method: 'PUT',
+      body: { invoice: data },
+    }, db, userToken);
+  },
+
   async getFacture(id) {
     return vfFetch(`/invoices/${id}.json`, {}, db, userToken);
   },
