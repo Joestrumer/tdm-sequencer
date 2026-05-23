@@ -19831,8 +19831,9 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
   const [prospects, setProspects] = useState([]);
   const [prospectsTotal, setProspectsTotal] = useState(0);
   const [prospectsStats, setProspectsStats] = useState(null);
+  const [prospectsCategories, setProspectsCategories] = useState([]);
   const [prospectsLoading, setProspectsLoading] = useState(false);
-  const [prospectsFilter, setProspectsFilter] = useState({ status: '', country: '', search: '', has_email: '', is_old: '' });
+  const [prospectsFilter, setProspectsFilter] = useState({ status: '', country: '', category: '', search: '', has_email: '', is_old: '' });
   const [prospectsOffset, setProspectsOffset] = useState(0);
 
   // Selection
@@ -19851,26 +19852,43 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
   const batchPollRef = React.useRef(null);
 
   // ─── Recherche Google Places ────────────────────────────────────────────
+  const applyClientFilters = (results) => {
+    let filtered = results;
+    if (searchForm.ratingMin) filtered = filtered.filter(p => p.rating >= parseFloat(searchForm.ratingMin));
+    if (searchForm.reviewsMin) filtered = filtered.filter(p => p.reviews_count >= parseInt(searchForm.reviewsMin));
+    if (noWebsite) filtered = filtered.filter(p => !p.website);
+    if (oldWebsite) filtered = filtered.filter(p => p.website);
+    return filtered;
+  };
+
   const handleSearch = async () => {
     setSearching(true);
     setSearchResults([]);
     setNextPageToken(null);
     setSelectedResults(new Set());
     try {
+      // Page 1
       const res = await api.post('/maps/search', {
         category: searchForm.category,
         city: searchForm.city,
         country: searchForm.country,
         radius: searchForm.radius ? parseInt(searchForm.radius) : undefined,
       });
-      let results = res.places || [];
-      // Filtres côté client
-      if (searchForm.ratingMin) results = results.filter(p => p.rating >= parseFloat(searchForm.ratingMin));
-      if (searchForm.reviewsMin) results = results.filter(p => p.reviews_count >= parseInt(searchForm.reviewsMin));
-      if (noWebsite) results = results.filter(p => !p.website);
-      if (oldWebsite) results = results.filter(p => p.website); // on gardera ceux avec site pour les analyser
-      setSearchResults(results);
-      setNextPageToken(res.nextPageToken || null);
+      let allResults = applyClientFilters(res.places || []);
+      setSearchResults(allResults);
+
+      // Auto-charger les pages suivantes (max 3 pages = 60 résultats)
+      let token = res.nextPageToken;
+      let pageCount = 1;
+      while (token && pageCount < 3) {
+        pageCount++;
+        const nextRes = await api.post('/maps/search/next-page', { pageToken: token });
+        const nextFiltered = applyClientFilters(nextRes.places || []);
+        allResults = [...allResults, ...nextFiltered];
+        setSearchResults([...allResults]);
+        token = nextRes.nextPageToken || null;
+      }
+      setNextPageToken(token);
     } catch (err) {
       showToast('Erreur recherche: ' + err.message, 'error');
     }
@@ -19882,10 +19900,8 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
     setLoadingMore(true);
     try {
       const res = await api.post('/maps/search/next-page', { pageToken: nextPageToken });
-      let results = res.places || [];
-      if (searchForm.ratingMin) results = results.filter(p => p.rating >= parseFloat(searchForm.ratingMin));
-      if (searchForm.reviewsMin) results = results.filter(p => p.reviews_count >= parseInt(searchForm.reviewsMin));
-      setSearchResults(prev => [...prev, ...results]);
+      const filtered = applyClientFilters(res.places || []);
+      setSearchResults(prev => [...prev, ...filtered]);
       setNextPageToken(res.nextPageToken || null);
     } catch (err) {
       showToast('Erreur pagination: ' + err.message, 'error');
@@ -19903,6 +19919,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
       setProspects(res.prospects || []);
       setProspectsTotal(res.total || 0);
       setProspectsStats(res.stats || null);
+      setProspectsCategories(res.categories || []);
     } catch (err) {
       showToast('Erreur chargement: ' + err.message, 'error');
     }
@@ -20169,12 +20186,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                   className="px-3 py-1 bg-slate-600 text-white rounded text-xs hover:bg-slate-700 disabled:opacity-50">
                   Tout sauvegarder
                 </button>
-                {nextPageToken && (
-                  <button onClick={loadMore} disabled={loadingMore}
-                    className="px-3 py-1 bg-white border text-slate-600 rounded text-xs hover:bg-slate-50 disabled:opacity-50 ml-auto">
-                    {loadingMore ? 'Chargement...' : 'Charger +20'}
-                  </button>
-                )}
+                <span className="text-xs text-slate-400 ml-auto">{searchResults.length} résultats</span>
               </div>
             )}
 
@@ -20242,6 +20254,18 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                     ))}
                   </tbody>
                 </table>
+
+                {/* Charger +20 en bas de table */}
+                {nextPageToken && (
+                  <div className="flex justify-center mt-4">
+                    <button onClick={loadMore} disabled={loadingMore}
+                      className="px-6 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 disabled:opacity-50 border border-indigo-200">
+                      {loadingMore ? (
+                        <span className="flex items-center gap-2"><span className="w-3 h-3 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin inline-block" /> Chargement...</span>
+                      ) : 'Charger +20 résultats'}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -20259,6 +20283,11 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                 <option value="enriched">Enrichi</option>
                 <option value="in_pipeline">Pipeline</option>
                 <option value="rejected">Rejeté</option>
+              </select>
+              <select className="border rounded px-2 py-1 text-xs" value={prospectsFilter.category}
+                onChange={e => { setProspectsFilter(f => ({...f, category: e.target.value})); setProspectsOffset(0); }}>
+                <option value="">Toutes catégories</option>
+                {prospectsCategories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
               <select className="border rounded px-2 py-1 text-xs" value={prospectsFilter.country}
                 onChange={e => { setProspectsFilter(f => ({...f, country: e.target.value})); setProspectsOffset(0); }}>
@@ -20306,6 +20335,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                           onChange={e => setSelectedProspects(e.target.checked ? new Set(prospects.map(p => p.id)) : new Set())} className="rounded" />
                       </th>
                       <th className="pb-2">Nom</th>
+                      <th className="pb-2">Catégorie</th>
                       <th className="pb-2">Ville / Pays</th>
                       <th className="pb-2 text-center">Note</th>
                       <th className="pb-2 text-center">Avis</th>
@@ -20324,6 +20354,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                             onChange={e => { const s = new Set(selectedProspects); e.target.checked ? s.add(p.id) : s.delete(p.id); setSelectedProspects(s); }} className="rounded" />
                         </td>
                         <td className="py-2 font-medium text-slate-800">{p.name}</td>
+                        <td className="py-2 text-slate-500 text-xs">{p.category || '—'}</td>
                         <td className="py-2 text-slate-500 text-xs">{[p.city, p.country].filter(Boolean).join(', ')}</td>
                         <td className="py-2 text-center">{p.rating ? <span className="text-amber-500">{p.rating}</span> : '—'}</td>
                         <td className="py-2 text-center text-slate-500">{p.reviews_count || 0}</td>

@@ -209,12 +209,13 @@ module.exports = (db) => {
   // ─── GET /prospects — Liste paginée avec filtres ──────────────────────────
   router.get('/prospects', (req, res) => {
     try {
-      const { status, city, country, has_email, is_old, search, limit = 50, offset = 0 } = req.query;
+      const { status, city, country, category, has_email, is_old, search, limit = 50, offset = 0 } = req.query;
 
       let where = [];
       let params = [];
 
       if (status) { where.push('status = ?'); params.push(status); }
+      if (category) { where.push('category = ?'); params.push(category); }
       if (city) { where.push('city LIKE ?'); params.push(`%${city}%`); }
       if (country) { where.push('country LIKE ?'); params.push(`%${country}%`); }
       if (has_email === 'true') { where.push('email IS NOT NULL AND email != \'\''); }
@@ -249,7 +250,10 @@ module.exports = (db) => {
         FROM maps_prospects
       `).get();
 
-      res.json({ prospects, total, stats });
+      // Liste des catégories distinctes
+      const categories = db.prepare('SELECT DISTINCT category FROM maps_prospects WHERE category IS NOT NULL AND category != \'\' ORDER BY category').all().map(r => r.category);
+
+      res.json({ prospects, total, stats, categories });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
