@@ -19822,8 +19822,6 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
   const [searchForm, setSearchForm] = useState({ category: '', city: '', country: 'France', radius: '', ratingMin: '', reviewsMin: '' });
   const [searchResults, setSearchResults] = useState([]);
   const [searching, setSearching] = useState(false);
-  const [nextPageToken, setNextPageToken] = useState(null);
-  const [loadingMore, setLoadingMore] = useState(false);
   const [noWebsite, setNoWebsite] = useState(false);
   const [oldWebsite, setOldWebsite] = useState(false);
 
@@ -19852,65 +19850,27 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
   const batchPollRef = React.useRef(null);
 
   // ─── Recherche Google Places ────────────────────────────────────────────
-  const applyClientFilters = (results) => {
-    let filtered = results;
-    if (searchForm.ratingMin) filtered = filtered.filter(p => p.rating >= parseFloat(searchForm.ratingMin));
-    if (searchForm.reviewsMin) filtered = filtered.filter(p => p.reviews_count >= parseInt(searchForm.reviewsMin));
-    if (noWebsite) filtered = filtered.filter(p => !p.website);
-    if (oldWebsite) filtered = filtered.filter(p => p.website);
-    return filtered;
-  };
-
   const handleSearch = async () => {
     setSearching(true);
     setSearchResults([]);
-    setNextPageToken(null);
     setSelectedResults(new Set());
     try {
-      // Page 1
       const res = await api.post('/maps/search', {
         category: searchForm.category,
         city: searchForm.city,
         country: searchForm.country,
-        radius: searchForm.radius ? parseInt(searchForm.radius) : undefined,
       });
-      let allResults = applyClientFilters(res.places || []);
-      setSearchResults(allResults);
-
-      // Auto-charger les pages suivantes (max 3 pages = 60 résultats)
-      const searchParams = { category: searchForm.category, city: searchForm.city, country: searchForm.country };
-      let token = res.nextPageToken;
-      let pageCount = 1;
-      while (token && pageCount < 3) {
-        pageCount++;
-        const nextRes = await api.post('/maps/search/next-page', { ...searchParams, pageToken: token });
-        const nextFiltered = applyClientFilters(nextRes.places || []);
-        allResults = [...allResults, ...nextFiltered];
-        setSearchResults([...allResults]);
-        token = nextRes.nextPageToken || null;
-      }
-      setNextPageToken(token);
+      let results = res.places || [];
+      // Filtres côté client
+      if (searchForm.ratingMin) results = results.filter(p => p.rating >= parseFloat(searchForm.ratingMin));
+      if (searchForm.reviewsMin) results = results.filter(p => p.reviews_count >= parseInt(searchForm.reviewsMin));
+      if (noWebsite) results = results.filter(p => !p.website);
+      if (oldWebsite) results = results.filter(p => p.website);
+      setSearchResults(results);
     } catch (err) {
       showToast('Erreur recherche: ' + err.message, 'error');
     }
     setSearching(false);
-  };
-
-  const loadMore = async () => {
-    if (!nextPageToken) return;
-    setLoadingMore(true);
-    try {
-      const res = await api.post('/maps/search/next-page', {
-        category: searchForm.category, city: searchForm.city, country: searchForm.country,
-        pageToken: nextPageToken,
-      });
-      const filtered = applyClientFilters(res.places || []);
-      setSearchResults(prev => [...prev, ...filtered]);
-      setNextPageToken(res.nextPageToken || null);
-    } catch (err) {
-      showToast('Erreur pagination: ' + err.message, 'error');
-    }
-    setLoadingMore(false);
   };
 
   // ─── Prospects sauvegardés ──────────────────────────────────────────────
@@ -20262,22 +20222,10 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
               </div>
             )}
 
-            {/* Charger +20 en bas de table */}
-            {nextPageToken && (
-              <div className="flex justify-center py-4">
-                <button onClick={loadMore} disabled={loadingMore}
-                  className="px-6 py-2 bg-indigo-50 text-indigo-600 rounded-lg text-sm font-medium hover:bg-indigo-100 disabled:opacity-50 border border-indigo-200">
-                  {loadingMore ? (
-                    <span className="flex items-center gap-2"><span className="w-3 h-3 border-2 border-indigo-200 border-t-indigo-600 rounded-full animate-spin inline-block" /> Chargement...</span>
-                  ) : 'Charger +20 résultats'}
-                </button>
-              </div>
-            )}
-
             {/* Compteur résultats en bas */}
             {searchResults.length > 0 && (
               <div className="text-center text-xs text-slate-400 pb-4">
-                {searchResults.length} résultats affichés {!nextPageToken && '(tous chargés)'}
+                {searchResults.length} résultats affichés
               </div>
             )}
           </div>

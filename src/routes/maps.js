@@ -22,204 +22,112 @@ module.exports = (db) => {
     }
   }, 5 * 60 * 1000);
 
-  // ─── POST /search — Google Places Text Search ─────────────────────────────
+  // ─── Helpers Places API ─────────────────────────────────────────────────
+
+  const FIELD_MASK = [
+    'places.id', 'places.displayName', 'places.formattedAddress',
+    'places.internationalPhoneNumber', 'places.websiteUri',
+    'places.rating', 'places.userRatingCount', 'places.types',
+    'places.googleMapsUri', 'places.businessStatus',
+  ].join(',');
+
+  const TYPE_MAPPING = {
+    restaurant: 'Restaurant', hotel: 'Hôtel', lodging: 'Hébergement', spa: 'Spa',
+    beauty_salon: 'Salon de beauté', hair_care: 'Coiffure', gym: 'Salle de sport',
+    dentist: 'Dentiste', doctor: 'Médecin', lawyer: 'Avocat', accounting: 'Comptabilité',
+    real_estate_agency: 'Immobilier', store: 'Commerce', cafe: 'Café', bar: 'Bar',
+    bakery: 'Boulangerie', car_dealer: 'Concessionnaire', car_repair: 'Garage auto',
+    pharmacy: 'Pharmacie', florist: 'Fleuriste', travel_agency: 'Agence de voyage',
+  };
+
+  function parsePlaces(rawPlaces) {
+    return (rawPlaces || []).map(place => {
+      const addressParts = (place.formattedAddress || '').split(',').map(s => s.trim());
+      const extractedCity = addressParts.length >= 2 ? addressParts[addressParts.length - 2] : '';
+      const extractedCountry = addressParts.length >= 1 ? addressParts[addressParts.length - 1] : '';
+      const types = place.types || [];
+      const category = types.map(t => TYPE_MAPPING[t]).find(Boolean) || types[0] || '';
+
+      return {
+        place_id: place.id,
+        name: place.displayName?.text || 'Inconnu',
+        category,
+        address: place.formattedAddress || '',
+        city: extractedCity,
+        country: extractedCountry,
+        phone: place.internationalPhoneNumber || null,
+        website: place.websiteUri || null,
+        rating: place.rating || null,
+        reviews_count: place.userRatingCount || 0,
+        maps_url: place.googleMapsUri || null,
+        business_status: place.businessStatus || 'OPERATIONAL',
+      };
+    });
+  }
+
+  async function doTextSearch(apiKey, textQuery) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+    try {
+      const apiRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': apiKey,
+          'X-Goog-FieldMask': FIELD_MASK,
+        },
+        body: JSON.stringify({ textQuery, languageCode: 'fr', pageSize: 20 }),
+        signal: controller.signal,
+      });
+      clearTimeout(timeout);
+      if (!apiRes.ok) return [];
+      const data = await apiRes.json();
+      return parsePlaces(data.places);
+    } catch {
+      clearTimeout(timeout);
+      return [];
+    }
+  }
+
+  // ─── POST /search — Google Places multi-requêtes + déduplication ──────
   router.post('/search', async (req, res) => {
     try {
-      const { query, category, city, country, radius, pageToken } = req.body;
+      const { query, category, city, country } = req.body;
 
       const apiKey = getApiKey(db);
       if (!apiKey) return res.status(400).json({ error: 'Clé API Google Places non configurée' });
 
-      const textQuery = [category, city, country].filter(Boolean).join(' ') || query;
-      if (!textQuery) return res.status(400).json({ error: 'Requête vide' });
+      const baseQuery = [category, city, country].filter(Boolean).join(' ') || query;
+      if (!baseQuery) return res.status(400).json({ error: 'Requête vide' });
 
-      const body = {
-        textQuery,
-        languageCode: 'fr',
-        pageSize: 20,
-      };
-
-      if (pageToken) body.pageToken = pageToken;
-
-      if (radius && city) {
-        // Geocoder la ville pour le centre de recherche n'est pas nécessaire
-        // Places API Text Search gère la localisation via le texte
+      // Stratégie multi-requêtes : Google Places (New) renvoie max 20 résultats
+      // par requête sans pagination fiable. On lance plusieurs requêtes avec
+      // des variantes et on déduplique par place_id.
+      const queries = [baseQuery];
+      if (category && city) {
+        queries.push(`${category} ${city} centre`);
+        queries.push(`meilleur ${category} ${city}`);
+        queries.push(`${category} proche ${city}`);
       }
 
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
+      // Lancer toutes les requêtes en parallèle
+      const batches = await Promise.all(queries.map(q => doTextSearch(apiKey, q)));
 
-      const fieldMask = [
-        'places.id', 'places.displayName', 'places.formattedAddress',
-        'places.internationalPhoneNumber', 'places.websiteUri',
-        'places.rating', 'places.userRatingCount', 'places.types',
-        'places.googleMapsUri', 'places.businessStatus',
-      ].join(',');
-
-      const apiRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': fieldMask,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (!apiRes.ok) {
-        const errText = await apiRes.text().catch(() => '');
-        return res.status(apiRes.status).json({ error: `Google Places API: ${errText.substring(0, 300)}` });
+      // Dédupliquer par place_id
+      const seen = new Set();
+      const allPlaces = [];
+      for (const batch of batches) {
+        for (const place of batch) {
+          if (!seen.has(place.place_id)) {
+            seen.add(place.place_id);
+            allPlaces.push(place);
+          }
+        }
       }
 
-      const data = await apiRes.json();
-      console.log(`[Maps Search] ${(data.places || []).length} résultats, nextPageToken: ${data.nextPageToken ? 'oui' : 'non'}`);
-      const places = (data.places || []).map(place => {
-        // Extraire la ville depuis l'adresse formatée
-        const addressParts = (place.formattedAddress || '').split(',').map(s => s.trim());
-        const extractedCity = addressParts.length >= 2 ? addressParts[addressParts.length - 2] : '';
-        // Extraire le pays (dernier élément)
-        const extractedCountry = addressParts.length >= 1 ? addressParts[addressParts.length - 1] : '';
+      console.log(`[Maps Search] "${baseQuery}" → ${queries.length} requêtes, ${allPlaces.length} résultats uniques`);
 
-        // Catégorie à partir des types Google
-        const typeMapping = {
-          restaurant: 'Restaurant',
-          hotel: 'Hôtel',
-          lodging: 'Hébergement',
-          spa: 'Spa',
-          beauty_salon: 'Salon de beauté',
-          hair_care: 'Coiffure',
-          gym: 'Salle de sport',
-          dentist: 'Dentiste',
-          doctor: 'Médecin',
-          lawyer: 'Avocat',
-          accounting: 'Comptabilité',
-          real_estate_agency: 'Immobilier',
-          store: 'Commerce',
-          cafe: 'Café',
-          bar: 'Bar',
-          bakery: 'Boulangerie',
-          car_dealer: 'Concessionnaire',
-          car_repair: 'Garage auto',
-          pharmacy: 'Pharmacie',
-          florist: 'Fleuriste',
-          travel_agency: 'Agence de voyage',
-        };
-        const types = place.types || [];
-        const category = types.map(t => typeMapping[t]).find(Boolean) || types[0] || '';
-
-        return {
-          place_id: place.id,
-          name: place.displayName?.text || 'Inconnu',
-          category,
-          address: place.formattedAddress || '',
-          city: extractedCity,
-          country: extractedCountry,
-          phone: place.internationalPhoneNumber || null,
-          website: place.websiteUri || null,
-          rating: place.rating || null,
-          reviews_count: place.userRatingCount || 0,
-          maps_url: place.googleMapsUri || null,
-          business_status: place.businessStatus || 'OPERATIONAL',
-        };
-      });
-
-      res.json({
-        places,
-        nextPageToken: data.nextPageToken || null,
-        total: places.length,
-      });
-    } catch (err) {
-      res.status(500).json({ error: err.message });
-    }
-  });
-
-  // ─── POST /search/next-page — Pagination Places ──────────────────────────
-  // Doit recevoir les mêmes paramètres de recherche que /search + pageToken
-  router.post('/search/next-page', async (req, res) => {
-    try {
-      const { pageToken, category, city, country } = req.body;
-      if (!pageToken) return res.status(400).json({ error: 'pageToken requis' });
-
-      const apiKey = getApiKey(db);
-      if (!apiKey) return res.status(400).json({ error: 'Clé API Google Places non configurée' });
-
-      const textQuery = [category, city, country].filter(Boolean).join(' ');
-
-      const body = {
-        textQuery,
-        languageCode: 'fr',
-        pageSize: 20,
-        pageToken,
-      };
-
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 15000);
-
-      const fieldMask = [
-        'places.id', 'places.displayName', 'places.formattedAddress',
-        'places.internationalPhoneNumber', 'places.websiteUri',
-        'places.rating', 'places.userRatingCount', 'places.types',
-        'places.googleMapsUri', 'places.businessStatus',
-      ].join(',');
-
-      const apiRes = await fetch('https://places.googleapis.com/v1/places:searchText', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-Goog-Api-Key': apiKey,
-          'X-Goog-FieldMask': fieldMask,
-        },
-        body: JSON.stringify(body),
-        signal: controller.signal,
-      });
-
-      clearTimeout(timeout);
-
-      if (!apiRes.ok) {
-        const errText = await apiRes.text().catch(() => '');
-        return res.status(apiRes.status).json({ error: `Google Places API: ${errText.substring(0, 300)}` });
-      }
-
-      const data = await apiRes.json();
-      const places = (data.places || []).map(place => {
-        const addressParts = (place.formattedAddress || '').split(',').map(s => s.trim());
-        const extractedCity = addressParts.length >= 2 ? addressParts[addressParts.length - 2] : '';
-        const extractedCountry = addressParts.length >= 1 ? addressParts[addressParts.length - 1] : '';
-
-        const typeMapping = {
-          restaurant: 'Restaurant', hotel: 'Hôtel', lodging: 'Hébergement', spa: 'Spa',
-          beauty_salon: 'Salon de beauté', hair_care: 'Coiffure', gym: 'Salle de sport',
-          dentist: 'Dentiste', doctor: 'Médecin', lawyer: 'Avocat', accounting: 'Comptabilité',
-          real_estate_agency: 'Immobilier', store: 'Commerce', cafe: 'Café', bar: 'Bar',
-          bakery: 'Boulangerie', car_dealer: 'Concessionnaire', car_repair: 'Garage auto',
-          pharmacy: 'Pharmacie', florist: 'Fleuriste', travel_agency: 'Agence de voyage',
-        };
-        const types = place.types || [];
-        const cat = types.map(t => typeMapping[t]).find(Boolean) || types[0] || '';
-
-        return {
-          place_id: place.id,
-          name: place.displayName?.text || 'Inconnu',
-          category: cat,
-          address: place.formattedAddress || '',
-          city: extractedCity,
-          country: extractedCountry,
-          phone: place.internationalPhoneNumber || null,
-          website: place.websiteUri || null,
-          rating: place.rating || null,
-          reviews_count: place.userRatingCount || 0,
-          maps_url: place.googleMapsUri || null,
-        };
-      });
-
-      res.json({
-        places,
-        nextPageToken: data.nextPageToken || null,
-        total: places.length,
-      });
+      res.json({ places: allPlaces, total: allPlaces.length });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
