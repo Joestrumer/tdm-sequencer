@@ -20034,13 +20034,13 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
     return () => { if (batchPollRef.current) clearInterval(batchPollRef.current); };
   }, []);
 
-  // ─── Push pipeline ──────────────────────────────────────────────────────
-  const pushToPipeline = async (id) => {
+  // ─── Créer contact ──────────────────────────────────────────────────────
+  const createContact = async (id) => {
     try {
-      const res = await api.post(`/maps/prospects/${id}/push-to-pipeline`);
-      showToast(res.already_exists ? 'Lead existant lié' : 'Lead créé en pipeline', 'success');
+      const res = await api.post(`/maps/prospects/${id}/create-contact`);
+      showToast(res.already_exists ? 'Contact existant lié' : 'Contact créé', 'success');
       chargerProspects();
-      if (drawerProspect?.id === id) setDrawerProspect(prev => ({ ...prev, status: 'in_pipeline' }));
+      if (drawerProspect?.id === id) setDrawerProspect(prev => ({ ...prev, status: 'contacted' }));
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
     }
@@ -20093,10 +20093,10 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
     const map = {
       new: 'bg-slate-100 text-slate-600',
       enriched: 'bg-blue-100 text-blue-700',
-      in_pipeline: 'bg-green-100 text-green-700',
+      contacted: 'bg-green-100 text-green-700',
       rejected: 'bg-red-100 text-red-600',
     };
-    const labels = { new: 'Nouveau', enriched: 'Enrichi', in_pipeline: 'Pipeline', rejected: 'Rejeté' };
+    const labels = { new: 'Nouveau', enriched: 'Enrichi', contacted: 'Contacté', rejected: 'Rejeté' };
     return <span className={`px-2 py-0.5 rounded text-xs ${map[status] || map.new}`}>{labels[status] || status}</span>;
   };
 
@@ -20150,7 +20150,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
             <div className="flex justify-between"><span className="text-slate-500">Avec email</span><span className="font-medium text-green-600">{prospectsStats.with_email}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Sans site</span><span className="font-medium text-red-600">{prospectsStats.no_website}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Site vieux</span><span className="font-medium text-orange-600">{prospectsStats.old_website}</span></div>
-            <div className="flex justify-between"><span className="text-slate-500">En pipeline</span><span className="font-medium text-indigo-600">{prospectsStats.in_pipeline}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Contactés</span><span className="font-medium text-indigo-600">{prospectsStats.contacted}</span></div>
           </div>
         )}
       </div>
@@ -20281,7 +20281,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                 <option value="">Tous statuts</option>
                 <option value="new">Nouveau</option>
                 <option value="enriched">Enrichi</option>
-                <option value="in_pipeline">Pipeline</option>
+                <option value="contacted">Contacté</option>
                 <option value="rejected">Rejeté</option>
               </select>
               <select className="border rounded px-2 py-1 text-xs" value={prospectsFilter.category}
@@ -20370,8 +20370,8 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                                   <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15" /></svg>}
                               </button>
                             )}
-                            {p.email && !readOnly && p.status !== 'in_pipeline' && (
-                              <button onClick={() => pushToPipeline(p.id)} className="p-1 text-slate-400 hover:text-green-600" title="Push pipeline">
+                            {p.email && !readOnly && p.status !== 'contacted' && (
+                              <button onClick={() => createContact(p.id)} className="p-1 text-slate-400 hover:text-green-600" title="Créer contact">
                                 <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 19l9 2-9-18-9 18 9-2zm0 0v-8" /></svg>
                               </button>
                             )}
@@ -20502,10 +20502,10 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                 className="flex-1 bg-indigo-600 text-white py-1.5 rounded text-xs font-medium hover:bg-indigo-700 disabled:opacity-50">
                 {drawerSaving ? 'Sauvegarde...' : 'Sauvegarder'}
               </button>
-              {drawerProspect.email && drawerProspect.status !== 'in_pipeline' && (
-                <button onClick={() => pushToPipeline(drawerProspect.id)}
+              {drawerProspect.email && drawerProspect.status !== 'contacted' && (
+                <button onClick={() => createContact(drawerProspect.id)}
                   className="flex-1 bg-green-600 text-white py-1.5 rounded text-xs font-medium hover:bg-green-700">
-                  Push pipeline
+                  Créer contact
                 </button>
               )}
               {drawerProspect.status !== 'rejected' && (

@@ -244,7 +244,7 @@ module.exports = (db) => {
           SUM(CASE WHEN email IS NOT NULL AND email != '' THEN 1 ELSE 0 END) as with_email,
           SUM(CASE WHEN website IS NULL OR website = '' THEN 1 ELSE 0 END) as no_website,
           SUM(CASE WHEN website_is_old = 1 THEN 1 ELSE 0 END) as old_website,
-          SUM(CASE WHEN status = 'in_pipeline' THEN 1 ELSE 0 END) as in_pipeline,
+          SUM(CASE WHEN status = 'contacted' THEN 1 ELSE 0 END) as contacted,
           SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_count,
           SUM(CASE WHEN status = 'enriched' THEN 1 ELSE 0 END) as enriched_count
         FROM maps_prospects
@@ -564,35 +564,33 @@ module.exports = (db) => {
     res.json({ ok: true });
   });
 
-  // ─── POST /prospects/:id/push-to-pipeline — Créer un lead ────────────────
-  router.post('/prospects/:id/push-to-pipeline', (req, res) => {
+  // ─── POST /prospects/:id/create-contact — Créer un lead depuis le prospect ─
+  router.post('/prospects/:id/create-contact', (req, res) => {
     try {
       const { id } = req.params;
       const prospect = db.prepare('SELECT * FROM maps_prospects WHERE id = ?').get(id);
       if (!prospect) return res.status(404).json({ error: 'Prospect non trouvé' });
-      if (!prospect.email) return res.status(400).json({ error: 'Email requis pour push en pipeline' });
+      if (!prospect.email) return res.status(400).json({ error: 'Email requis pour créer un contact' });
 
       // Vérifier si le lead existe déjà
       const existing = db.prepare('SELECT id FROM leads WHERE email = ?').get(prospect.email);
       if (existing) {
-        // Mettre à jour le statut du prospect
-        db.prepare("UPDATE maps_prospects SET status = 'in_pipeline', updated_at = datetime('now') WHERE id = ?").run(id);
+        db.prepare("UPDATE maps_prospects SET status = 'contacted', updated_at = datetime('now') WHERE id = ?").run(id);
         return res.json({ lead_id: existing.id, already_exists: true });
       }
 
-      // Créer le lead
+      // Source = "Maps — Catégorie"
+      const source = prospect.category ? `Maps — ${prospect.category}` : 'Maps Prospection';
+
+      // Créer le lead — le nom du business va dans hotel, Contact comme prénom par défaut
       const leadId = uuidv4();
-      const nameParts = (prospect.name || '').split(' ');
-      const prenom = nameParts[0] || prospect.name || 'Contact';
-      const nom = nameParts.slice(1).join(' ') || '';
 
       db.prepare(`
         INSERT INTO leads (id, prenom, nom, email, hotel, ville, source)
-        VALUES (?, ?, ?, ?, ?, ?, 'Maps Prospection')
-      `).run(leadId, prenom, nom, prospect.email, prospect.name || '', prospect.city || '');
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `).run(leadId, 'Contact', '', prospect.email, prospect.name || '', prospect.city || '', source);
 
-      // Mettre à jour le statut du prospect
-      db.prepare("UPDATE maps_prospects SET status = 'in_pipeline', updated_at = datetime('now') WHERE id = ?").run(id);
+      db.prepare("UPDATE maps_prospects SET status = 'contacted', updated_at = datetime('now') WHERE id = ?").run(id);
 
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
       res.json({ lead_id: leadId, lead, already_exists: false });
