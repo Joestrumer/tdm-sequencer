@@ -13053,14 +13053,16 @@ const FacturesShipments = ({ showToast }) => {
 
   const wmsStatusBadge = (status, code) => {
     if (!status && !code) return { label: 'Non vérifié', cls: 'bg-slate-100 text-slate-500 italic' };
-    const c = String(code || status || '').toLowerCase();
-    if (c === 'ret' || c.includes('retour')) return { label: status || 'Retour à l\'expéditeur', cls: 'bg-orange-100 text-orange-700' };
-    if (c === 'ech' || c.includes('ne peut pas') || c.includes('échec')) return { label: status || 'Échec de livraison', cls: 'bg-yellow-100 text-yellow-700' };
-    if (c === '9' || c === '10' || c.includes('livr') || c.includes('gardien') || c.includes('accueil')) return { label: status || 'Livré', cls: 'bg-emerald-100 text-emerald-700' };
-    if (c === '7' || c === '8' || c.includes('expedi') || c.includes('envoy')) return { label: status || 'Envoyé', cls: 'bg-blue-100 text-blue-700' };
-    if (c === '3' || c === '4' || c === '5' || c.includes('prepar')) return { label: status || 'Préparation', cls: 'bg-amber-100 text-amber-700' };
-    if (c === '1' || c === '2' || c.includes('nouveau') || c.includes('integ') || c.includes('recep')) return { label: status || 'Nouveau', cls: 'bg-purple-100 text-purple-700' };
-    if (c.includes('rupture') || c.includes('erreur') || c.includes('annul')) return { label: status || 'Erreur', cls: 'bg-red-100 text-red-700' };
+    const c = String(code || '').toLowerCase();
+    const s = String(status || '').toLowerCase();
+    if (c === 'ret' || s.includes('retour')) return { label: status || 'Retour à l\'expéditeur', cls: 'bg-orange-100 text-orange-700' };
+    if (c === 'prp' || s.includes('point de retrait')) return { label: 'En point de retrait', cls: 'bg-indigo-100 text-indigo-700' };
+    if (c === 'ech' || s.includes('ne peut pas') || s.includes('ne peut être livré') || s.includes('pas pu') || s.includes('indépendante de notre volonté')) return { label: 'Échec de livraison', cls: 'bg-yellow-100 text-yellow-700' };
+    if (c === '9' || c === '10' || s.includes('livr') || s.includes('gardien') || s.includes('accueil')) return { label: status || 'Livré', cls: 'bg-emerald-100 text-emerald-700' };
+    if (c === '7' || c === '8' || s.includes('expedi') || s.includes('envoy')) return { label: status || 'Envoyé', cls: 'bg-blue-100 text-blue-700' };
+    if (c === '3' || c === '4' || c === '5' || s.includes('prepar')) return { label: status || 'Préparation', cls: 'bg-amber-100 text-amber-700' };
+    if (c === '1' || c === '2' || s.includes('nouveau') || s.includes('integ') || s.includes('recep')) return { label: status || 'Nouveau', cls: 'bg-purple-100 text-purple-700' };
+    if (s.includes('rupture') || s.includes('erreur') || s.includes('annul')) return { label: status || 'Erreur', cls: 'bg-red-100 text-red-700' };
     return { label: status, cls: 'bg-slate-100 text-slate-600' };
   };
 

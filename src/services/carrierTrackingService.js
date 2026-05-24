@@ -52,16 +52,28 @@ async function checkLaPoste(trackingNumber) {
   const isFinal = !!shipment.isFinal;
   const deliveredCodes = ['DI1', 'DI2', 'AG1'];
   const returnCodes = ['RE1', 'RI1', 'RI2'];
-  const failedDeliveryCodes = ['ND1'];
+  const failedDeliveryCodes = ['ND1', 'ND2'];
   const label = lastEvent?.label || '';
+  const labelLow = label.toLowerCase();
+
   const delivered = isFinal || deliveredCodes.includes(lastEvent?.code);
-  const returned = returnCodes.includes(lastEvent?.code) || label.toLowerCase().includes('retour');
-  const failedDelivery = failedDeliveryCodes.includes(lastEvent?.code) || label.includes('ne peut pas être livré');
+  const returned = returnCodes.includes(lastEvent?.code) || labelLow.includes('retour');
+  // "ne peut pas être livré", "ne peut être livré", "n'a pas pu vous être remis"
+  const failedDelivery = failedDeliveryCodes.includes(lastEvent?.code)
+    || labelLow.includes('ne peut pas être livré')
+    || labelLow.includes('ne peut être livré')
+    || labelLow.includes('pas pu vous être remis')
+    || labelLow.includes('pas pu vous remettre')
+    || labelLow.includes('indépendante de notre volonté');
+  // "point de retrait", "nous sommes passés"
+  const atPickupPoint = labelLow.includes('point de retrait')
+    || labelLow.includes('nous sommes passés');
 
   return {
     delivered,
     returned,
     failedDelivery,
+    atPickupPoint,
     product: shipment.product || 'colissimo',
     statusCode: lastEvent?.code || null,
     status: label || (isFinal ? 'Livré' : null),
@@ -182,14 +194,14 @@ async function checkDelivery(db, trackingNumber) {
 
 /**
  * Met à jour le statut livraison d'un shipment dans la DB
- * @returns {boolean} true si marqué comme livré
+ * @returns {{ type: string }|null}
  */
 async function updateShipmentDelivery(db, shipment) {
-  if (!shipment.tracking_number) return false;
+  if (!shipment.tracking_number) return null;
 
   try {
     const result = await checkDelivery(db, shipment.tracking_number);
-    if (!result) return false;
+    if (!result) return null;
 
     if (result.delivered) {
       db.prepare(`
@@ -222,6 +234,21 @@ async function updateShipmentDelivery(db, shipment) {
       return { type: 'returned' };
     }
 
+    if (result.atPickupPoint) {
+      db.prepare(`
+        UPDATE shipments
+        SET wms_status = ?, wms_status_code = 'PRP',
+            carrier_name = COALESCE(carrier_name, ?),
+            last_wms_check = datetime('now')
+        WHERE id = ?
+      `).run(
+        result.status || 'En point de retrait',
+        result.product,
+        shipment.id
+      );
+      return { type: 'pickup_point' };
+    }
+
     if (result.failedDelivery) {
       db.prepare(`
         UPDATE shipments
@@ -237,7 +264,7 @@ async function updateShipmentDelivery(db, shipment) {
       return { type: 'failed_delivery' };
     }
 
-    // Pas encore livré mais on a un statut → mettre à jour
+    // Aucun statut terminal — toujours mettre à jour le texte wms_status
     if (result.status) {
       db.prepare(`
         UPDATE shipments
@@ -250,7 +277,7 @@ async function updateShipmentDelivery(db, shipment) {
     return null;
   } catch (e) {
     logger.warn(`[Carrier Tracking] Erreur ${shipment.tracking_number}: ${e.message}`);
-    return false;
+    return null;
   }
 }
 
