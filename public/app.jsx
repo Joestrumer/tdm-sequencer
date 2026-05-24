@@ -2218,7 +2218,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     try {
       const r = await api.post("/leads/import", { leads: toImport });
       setImportStatus(`✓ ${r.crees} importés`);
-      showToast(`${r.crees} lead(s) importés, ${r.ignores || 0} ignoré(s)`, 'success');
+      const parts = [`${r.crees} lead(s) importé(s)`];
+      if (r.doublons) parts.push(`${r.doublons} doublon(s) ignoré(s) (email déjà existant)`);
+      if (r.incomplets) parts.push(`${r.incomplets} ligne(s) incomplète(s) (email ou hôtel manquant)`);
+      if (r.erreurs?.length) parts.push(`${r.erreurs.length} erreur(s)`);
+      showToast(parts.join(' · '), r.crees > 0 ? 'success' : 'error');
       if (onRefresh) onRefresh();
     } catch(e) { setImportStatus("✗ Erreur"); showToast('Erreur import CSV', 'error'); }
     setTimeout(() => setImportStatus(null), 4000);

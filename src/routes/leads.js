@@ -315,7 +315,7 @@ module.exports = (db) => {
       const { leads } = req.body;
       if (!Array.isArray(leads)) return res.status(400).json({ erreur: 'Fournir un tableau de leads' });
 
-      let crees = 0, ignores = 0, erreurs = [];
+      let crees = 0, incomplets = 0, doublons = 0, erreurs = [];
 
       const inserer = db.prepare(`
         INSERT OR IGNORE INTO leads (id, prenom, nom, email, hotel, ville, segment, tags, poste, langue, source, civilite)
@@ -329,14 +329,14 @@ module.exports = (db) => {
 
       const importerTous = db.transaction((leads) => {
         for (const l of leads) {
-          if (!l.email || !l.hotel) { ignores++; continue; }
+          if (!l.email || !l.hotel) { incomplets++; continue; }
           try {
             const result = inserer.run(uuidv4(), l.prenom || '', l.nom || '', l.email, l.hotel, l.ville || '', l.segment || '5*', JSON.stringify(l.tags || []), l.poste || null, l.langue || 'fr', l.source || 'Import CSV', l.civilite || '');
             if (result.changes) crees++;
             else {
               // Lead existant : mettre à jour civilite/source si vides
               if (l.civilite) updateCivilite.run(l.civilite, l.source || 'Import CSV', l.email);
-              ignores++;
+              doublons++;
             }
           } catch (e) {
             erreurs.push({ email: l.email, erreur: e.message });
@@ -345,8 +345,9 @@ module.exports = (db) => {
       });
 
       importerTous(leads);
-      logger.info(`📥 Import CSV : ${crees} créés, ${ignores} ignorés`);
-      res.json({ crees, ignores, erreurs, message: `${crees} leads importés avec succès` });
+      const ignores = incomplets + doublons;
+      logger.info(`📥 Import CSV : ${crees} créés, ${doublons} doublons, ${incomplets} incomplets`);
+      res.json({ crees, ignores, doublons, incomplets, erreurs, message: `${crees} leads importés avec succès` });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
