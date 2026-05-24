@@ -1765,21 +1765,31 @@ try {
   `).run();
 } catch (e) { /* ignore */ }
 
-// ─── Migration : marquer TOUS les échantillons déjà livrés comme déjà contactés ──
+// ─── Migration : marquer les échantillons livrés AVANT le 22/05/2026 comme déjà contactés ──
+// Ceux depuis le 22/05 doivent recevoir l'email auto (backlog traité via bulk-notify)
 try {
-  const alreadyDone = db.prepare("SELECT valeur FROM config WHERE cle = 'migration_client_notified_all_v2'").get();
+  const alreadyDone = db.prepare("SELECT valeur FROM config WHERE cle = 'migration_client_notified_v3'").get();
   if (!alreadyDone) {
+    // Marquer les pré-22/05 comme déjà contactés (gérés manuellement)
     const result = db.prepare(`
       UPDATE shipments SET client_notified_at = COALESCE(delivery_notified_at, delivered_at)
       WHERE type = 'echantillon'
         AND delivered_at IS NOT NULL
+        AND delivered_at < '2026-05-22'
         AND client_notified_at IS NULL
     `).run();
-    db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('migration_client_notified_all_v2', '1')").run();
-    console.log(`✅ Migration client_notified_at : ${result.changes} échantillon(s) marqué(s) comme déjà contacté(s)`);
+    // Reset ceux depuis le 22/05 (au cas où la migration v2 les a marqués à tort)
+    const reset = db.prepare(`
+      UPDATE shipments SET client_notified_at = NULL
+      WHERE type = 'echantillon'
+        AND delivered_at IS NOT NULL
+        AND delivered_at >= '2026-05-22'
+    `).run();
+    db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('migration_client_notified_v3', '1')").run();
+    console.log(`✅ Migration client_notified_at v3 : ${result.changes} pré-22/05 marqué(s), ${reset.changes} post-22/05 reset`);
   }
 } catch (e) {
-  console.error('⚠️  Erreur migration client_notified_at:', e.message);
+  console.error('⚠️  Erreur migration client_notified_at v3:', e.message);
 }
 
 console.log('✅ Base de données initialisée :', DB_PATH);

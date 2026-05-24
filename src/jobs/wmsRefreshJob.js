@@ -248,14 +248,49 @@ async function checkDeliveries() {
   return delivered;
 }
 
-// ─── Job principal ────────────────────────────────────��──────────────────────
+// ─── Phase 3 : Rattraper les échantillons livrés non notifiés (backlog) ──────
+async function notifyPendingDeliveries() {
+  const pending = db.prepare(`
+    SELECT * FROM shipments
+    WHERE type = 'echantillon'
+      AND delivered_at IS NOT NULL
+      AND client_notified_at IS NULL
+      AND client_email IS NOT NULL
+    ORDER BY delivered_at ASC
+    LIMIT 10
+  `).all();
+
+  if (pending.length === 0) return 0;
+
+  logger.info(`[Auto Notify] ${pending.length} échantillon(s) livré(s) en attente de notification`);
+
+  let sent = 0;
+  for (const shipment of pending) {
+    try {
+      await autoNotifyClient(shipment);
+      sent++;
+      // Pause 2s entre envois
+      await new Promise(r => setTimeout(r, 2000));
+    } catch (err) {
+      logger.error(`[Auto Notify] Erreur ${shipment.client_name}: ${err.message}`);
+    }
+  }
+
+  if (sent > 0) {
+    logger.info(`[Auto Notify] ${sent} email(s) de confirmation envoyé(s)`);
+  }
+  return sent;
+}
+
+// ─── Job principal ───────────────────────────────────────────────────────────
 async function refreshPending() {
   try {
     const wmsUpdated = await refreshWMS();
     const deliveredCount = await checkDeliveries();
+    const notified = await notifyPendingDeliveries();
 
-    if (wmsUpdated > 0 || deliveredCount > 0) {
-      logger.info(`[WMS Refresh] Bilan: ${wmsUpdated} WMS mis à jour, ${deliveredCount} livraison(s) détectée(s)`);
+    if (wmsUpdated > 0 || deliveredCount > 0 || notified > 0) {
+      logger.info(`[WMS Refresh] Bilan: ${wmsUpdated} WMS, ${deliveredCount} livraison(s), ${notified} notif(s) envoyée(s)`);
     }
   } catch (e) {
     logger.error('[WMS Refresh] Erreur globale:', e.message);
