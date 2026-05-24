@@ -5,6 +5,26 @@
 const express = require('express');
 const wmsService = require('../services/wmsService');
 const carrierTracking = require('../services/carrierTrackingService');
+const brevoService = require('../services/brevoService');
+const hubspotService = require('../services/hubspotService');
+const logger = require('../config/logger');
+
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function buildTrackingUrl(carrier, trackingNumber) {
+  if (!trackingNumber) return '#';
+  const t = (carrier || '').toLowerCase();
+  if (t.includes('chronopost')) return `https://www.chronopost.fr/tracking-no-powerful/tracking/suivi?listeNumerosLT=${trackingNumber}`;
+  if (t.includes('colissimo')) return `https://www.laposte.fr/outils/suivre-vos-envois?code=${trackingNumber}`;
+  if (t.includes('ups')) return `https://www.ups.com/track?tracknum=${trackingNumber}`;
+  if (t.includes('dhl')) return `https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=${trackingNumber}`;
+  if (t.includes('tnt') || t.includes('fedex')) return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+  return `https://www.laposte.fr/outils/suivre-vos-envois?code=${trackingNumber}`;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
 
 // Valeurs "unknown" à traiter comme NULL
 const JUNK = new Set(['unknown', 'undefined', 'null', 'n/a', '0', '']);
@@ -254,10 +274,97 @@ module.exports = (db) => {
     }
   });
 
-  // ─── Marquer un envoi comme notifié (email confirmation envoyé) ─────────────
-  router.patch('/:id/notify', (req, res) => {
+  // ─── Envoyer email confirmation réception + task HubSpot ────────────────────
+  router.patch('/:id/notify', async (req, res) => {
     try {
+      const shipment = db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id);
+      if (!shipment) return res.status(404).json({ erreur: 'Envoi non trouvé' });
+      if (!shipment.delivered_at) return res.status(400).json({ erreur: 'Envoi non livré' });
+      if (!shipment.client_email) return res.status(400).json({ erreur: 'Pas d\'email client' });
+      if (shipment.type !== 'echantillon') return res.status(400).json({ erreur: 'Type doit être echantillon' });
+
+      // 1. Construire l'email HTML
+      const prenom = shipment.client_prenom || (shipment.client_name && shipment.client_name.includes(' - ') ? shipment.client_name.split(' - ')[1].trim().split(' ')[0] : '');
+      const trackingLink = buildTrackingUrl(shipment.carrier_name, shipment.tracking_number);
+      const signature = brevoService.getSignature(db);
+
+      const htmlContent = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;">
+  <p>Bonjour ${escapeHtml(prenom)},</p>
+  <p>J'espère que vous allez bien.</p>
+  <p>Le colis apparait comme livré. Pouvez-vous me confirmer l'avoir bien reçu ?</p>
+  <p>On fait le point quand vous avez pu les tester mais n'hésitez pas si vous avez des questions d'ici là.</p>
+  ${shipment.tracking_number ? `<p>Vous pouvez suivre votre colis ici : <a href="${trackingLink}">${escapeHtml(shipment.tracking_number)}</a></p>` : ''}
+  <p>Bonne journée,</p>
+  <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:16px;">
+    ${signature}
+  </div>
+</div>`;
+
+      // 2. Envoyer via Brevo
+      await brevoService.brevoSendEmail({
+        sender: brevoService.SENDER,
+        to: [{ email: shipment.client_email, name: prenom || shipment.client_name }],
+        bcc: [{ email: 'hugo@terredemars.com', name: 'Hugo Montiel' }],
+        subject: 'Terre de Mars - Confirmation de réception de vos échantillons',
+        htmlContent,
+        replyTo: { email: 'hugo@terredemars.com', name: 'Hugo Montiel' },
+      });
+
+      // 3. Créer task HubSpot (optionnel — ne bloque pas l'email)
+      try {
+        if (process.env.HUBSPOT_API_KEY) {
+          const deliveredDate = shipment.delivered_at ? new Date(shipment.delivered_at).toLocaleDateString('fr-FR') : new Date().toLocaleDateString('fr-FR');
+
+          // Chercher le contact par email
+          const lead = db.prepare('SELECT hubspot_id FROM leads WHERE email = ? LIMIT 1').get(shipment.client_email);
+          const contactId = lead?.hubspot_id ? parseInt(lead.hubspot_id) : null;
+
+          // Chercher la company par domaine email
+          const domaine = shipment.client_email.split('@')[1];
+          const company = await hubspotService.trouverCompanyParDomaine(domaine);
+          const companyId = company?.id ? parseInt(company.id) : null;
+
+          // Calculer +5 jours ouvrés
+          let taskDate = new Date();
+          let businessDays = 0;
+          while (businessDays < 5) {
+            taskDate.setDate(taskDate.getDate() + 1);
+            if (taskDate.getDay() !== 0 && taskDate.getDay() !== 6) businessDays++;
+          }
+          const taskTimestamp = taskDate.getTime();
+
+          const associations = {};
+          if (contactId) associations.contactIds = [contactId];
+          if (companyId) associations.companyIds = [parseInt(companyId)];
+
+          await hubspotService.hubspotFetch('/engagements/v1/engagements', {
+            method: 'POST',
+            body: JSON.stringify({
+              engagement: {
+                active: true,
+                type: 'TASK',
+                timestamp: taskTimestamp,
+                ownerId: parseInt(hubspotService.HUGO_OWNER_ID),
+              },
+              associations,
+              metadata: {
+                subject: `retour echantillon (reçu le ${deliveredDate})`,
+                body: `Relancer ${shipment.client_name} suite à la réception des échantillons.`,
+                status: 'NOT_STARTED',
+                priority: 'HIGH',
+                taskType: 'TODO',
+              }
+            }),
+          });
+          logger.info('📋 HubSpot task "retour echantillon" créée', { email: shipment.client_email, taskDate: taskDate.toISOString().split('T')[0] });
+        }
+      } catch (hsErr) {
+        logger.error('HubSpot task création échouée (non bloquant)', { error: hsErr.message, email: shipment.client_email });
+      }
+
+      // 4. Marquer comme notifié
       db.prepare("UPDATE shipments SET delivery_notified_at = datetime('now') WHERE id = ?").run(req.params.id);
+
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });

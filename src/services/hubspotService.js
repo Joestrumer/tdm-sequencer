@@ -866,6 +866,8 @@ module.exports = {
   trouverCompanyParDomaine,
   fetchOwners,
   getDealProperties,
+  hubspotFetch,
+  HUGO_OWNER_ID,
 };
 
 // ─── Deals d'un contact ───────────────────────────────────────────────────────

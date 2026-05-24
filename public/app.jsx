@@ -12975,6 +12975,7 @@ const FacturesShipments = ({ showToast }) => {
   const [filter, setFilter] = useState('all'); // all, commande, echantillon
   const [search, setSearch] = useState('');
   const [refreshing, setRefreshing] = useState(false);
+  const [sendingNotif, setSendingNotif] = useState(null);
   const [showAddModal, setShowAddModal] = useState(false);
 
   const loadShipments = async () => {
@@ -13206,25 +13207,24 @@ const FacturesShipments = ({ showToast }) => {
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
                         {s.delivered_at && s.client_email && s.type === 'echantillon' && (
-                          <button onClick={async () => {
-                            const tUrl = trackingUrl(s.carrier_name, s.tracking_number);
-                            const prenom = s.client_prenom || (s.client_name && s.client_name.includes(' - ') ? s.client_name.split(' - ')[1].trim().split(' ')[0] : '');
-                            const subject = encodeURIComponent('Terre de Mars - Confirmation de réception de vos échantillons');
-                            const body = encodeURIComponent(
-                              `Bonjour ${prenom},\n\nJ'espère que vous allez bien.\n\nLe colis apparait comme livré. Pouvez-vous me confirmer l'avoir bien reçu ?\n\nOn fait le point quand vous avez pu les tester mais n'hésitez pas si vous avez des questions d'ici là.` +
-                              (s.tracking_number ? `\n\nVous pouvez suivre votre colis ici : ${tUrl}` : '') +
-                              `\n\nBonne journée,`
-                            );
-                            window.open(`mailto:${s.client_email}?subject=${subject}&body=${body}`, '_self');
-                            try {
-                              await api.patch(`/shipments/${s.id}/notify`);
-                              s.delivery_notified_at = new Date().toISOString();
-                              setShipments(prev => prev.map(sh => sh.id === s.id ? { ...sh, delivery_notified_at: new Date().toISOString() } : sh));
-                            } catch (_) {}
-                          }}
-                            className={`text-xs ${s.delivery_notified_at ? 'text-slate-400' : 'text-emerald-600 hover:text-emerald-800'}`}
-                            title={s.delivery_notified_at ? `Email envoyé le ${parseUTC(s.delivery_notified_at).toLocaleDateString('fr-FR')}` : 'Email confirmation réception'}>
-                            {s.delivery_notified_at ? '✅' : '✉️'}
+                          <button
+                            disabled={sendingNotif === s.id}
+                            onClick={async () => {
+                              if (s.delivery_notified_at || sendingNotif) return;
+                              setSendingNotif(s.id);
+                              try {
+                                await api.patch(`/shipments/${s.id}/notify`);
+                                setShipments(prev => prev.map(sh => sh.id === s.id
+                                  ? { ...sh, delivery_notified_at: new Date().toISOString() } : sh));
+                                showToast('Email envoyé + task HubSpot créée', 'success');
+                              } catch (err) {
+                                showToast('Erreur: ' + (err.message || 'Envoi échoué'), 'error');
+                              }
+                              setSendingNotif(null);
+                            }}
+                            className={`text-xs ${s.delivery_notified_at ? 'text-slate-400' : 'text-emerald-600 hover:text-emerald-800'} ${sendingNotif === s.id ? 'opacity-50' : ''}`}
+                            title={s.delivery_notified_at ? `Email envoyé le ${parseUTC(s.delivery_notified_at).toLocaleDateString('fr-FR')}` : 'Envoyer email confirmation réception'}>
+                            {sendingNotif === s.id ? '⏳' : s.delivery_notified_at ? '✅' : '✉️'}
                           </button>
                         )}
                         <button onClick={() => refreshWMS(s.id)}
