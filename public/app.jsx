@@ -13056,8 +13056,8 @@ const FacturesShipments = ({ showToast }) => {
     const c = String(code || '').toLowerCase();
     const s = String(status || '').toLowerCase();
     if (c === 'ret' || s.includes('retour')) return { label: status || 'Retour à l\'expéditeur', cls: 'bg-orange-100 text-orange-700' };
-    if (c === 'prp' || s.includes('point de retrait')) return { label: 'En point de retrait', cls: 'bg-indigo-100 text-indigo-700' };
-    if (c === 'ech' || s.includes('ne peut pas') || s.includes('ne peut être livré') || s.includes('pas pu') || s.includes('indépendante de notre volonté')) return { label: 'Échec de livraison', cls: 'bg-yellow-100 text-yellow-700' };
+    if (c === 'prp' || s.includes('point de retrait')) return { label: status || 'En point de retrait', cls: 'bg-indigo-100 text-indigo-700' };
+    if (c === 'ech' || s.includes('ne peut pas') || s.includes('ne peut être livré') || s.includes('pas pu') || s.includes('indépendante de notre volonté')) return { label: status || 'Échec de livraison', cls: 'bg-yellow-100 text-yellow-700' };
     if (c === '9' || c === '10' || s.includes('livr') || s.includes('gardien') || s.includes('accueil')) return { label: status || 'Livré', cls: 'bg-emerald-100 text-emerald-700' };
     if (c === '7' || c === '8' || s.includes('expedi') || s.includes('envoy')) return { label: status || 'Envoyé', cls: 'bg-blue-100 text-blue-700' };
     if (c === '3' || c === '4' || c === '5' || s.includes('prepar')) return { label: status || 'Préparation', cls: 'bg-amber-100 text-amber-700' };

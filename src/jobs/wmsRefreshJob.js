@@ -128,7 +128,92 @@ async function autoNotifyClient(shipment) {
   logger.info(`✉️ Email auto envoyé à ${fresh.client_email} (${fresh.client_name})`);
 }
 
-// ──��� Phase 1 : Refresh WMS Endurance (tracking + statut expédition) ─────────
+// ─── Notification point de retrait : email client + task HubSpot ─────────────
+async function notifyPickupPoint(shipment) {
+  // Recharger pour vérifier pickup_notified_at
+  const fresh = db.prepare('SELECT * FROM shipments WHERE id = ?').get(shipment.id);
+  if (!fresh || !fresh.client_email || fresh.pickup_notified_at) return;
+  if (fresh.type !== 'echantillon') return;
+
+  const prenom = fresh.client_prenom || (fresh.client_name && fresh.client_name.includes(' - ') ? fresh.client_name.split(' - ')[1].trim().split(' ')[0] : '');
+  const trackingLink = buildTrackingUrl(fresh.carrier_name, fresh.tracking_number);
+  const signature = brevoService.getSignature(db);
+
+  const htmlContent = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;">
+  <p>Bonjour ${escapeHtml(prenom)},</p>
+  <p>J'espère que vous allez bien.</p>
+  <p>Votre colis n'a pas pu vous être remis et <strong>vous attend dans votre point de retrait</strong>.</p>
+  <p>Pensez à le récupérer rapidement pour éviter un retour à l'expéditeur.</p>
+  ${fresh.tracking_number ? `<p>Vous pouvez suivre votre colis ici : <a href="${trackingLink}">${escapeHtml(fresh.tracking_number)}</a></p>` : ''}
+  <p>N'hésitez pas si vous avez des questions.</p>
+  <p>Bonne journée,</p>
+  <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:16px;">
+    ${signature}
+  </div>
+</div>`;
+
+  // Envoyer via Brevo (BCC Hugo)
+  await brevoService.brevoSendEmail({
+    sender: brevoService.SENDER,
+    to: [{ email: fresh.client_email, name: prenom || fresh.client_name }],
+    bcc: [{ email: 'hugo@terredemars.com', name: 'Hugo Montiel' }],
+    subject: 'Terre de Mars - Votre colis vous attend en point de retrait',
+    htmlContent,
+    replyTo: { email: 'hugo@terredemars.com', name: 'Hugo Montiel' },
+  });
+
+  // Créer task HubSpot +5 jours ouvrés (vérifier si récupéré)
+  try {
+    if (process.env.HUBSPOT_API_KEY) {
+      const lead = db.prepare('SELECT hubspot_id FROM leads WHERE email = ? LIMIT 1').get(fresh.client_email);
+      const contactId = lead?.hubspot_id ? parseInt(lead.hubspot_id) : null;
+
+      const domaine = fresh.client_email.split('@')[1];
+      const company = await hubspotService.trouverCompanyParDomaine(domaine);
+      const companyId = company?.id ? parseInt(company.id) : null;
+
+      let taskDate = new Date();
+      let businessDays = 0;
+      while (businessDays < 5) {
+        taskDate.setDate(taskDate.getDate() + 1);
+        if (taskDate.getDay() !== 0 && taskDate.getDay() !== 6) businessDays++;
+      }
+
+      const associations = {};
+      if (contactId) associations.contactIds = [contactId];
+      if (companyId) associations.companyIds = [parseInt(companyId)];
+
+      await hubspotService.hubspotFetch('/engagements/v1/engagements', {
+        method: 'POST',
+        body: JSON.stringify({
+          engagement: {
+            active: true,
+            type: 'TASK',
+            timestamp: taskDate.getTime(),
+            ownerId: parseInt(hubspotService.HUGO_OWNER_ID),
+          },
+          associations,
+          metadata: {
+            subject: `point retrait echantillon - ${fresh.client_name}`,
+            body: `Vérifier si ${fresh.client_name} a récupéré le colis en point de retrait. Tracking: ${fresh.tracking_number || 'N/A'}`,
+            status: 'NOT_STARTED',
+            priority: 'HIGH',
+            taskType: 'TODO',
+          }
+        }),
+      });
+      logger.info('📋 HubSpot task "point retrait" créée', { email: fresh.client_email, taskDate: taskDate.toISOString().split('T')[0] });
+    }
+  } catch (hsErr) {
+    logger.error('HubSpot task pickup échouée (non bloquant)', { error: hsErr.message });
+  }
+
+  // Marquer comme notifié
+  db.prepare("UPDATE shipments SET pickup_notified_at = datetime('now') WHERE id = ?").run(fresh.id);
+  logger.info(`📦 Email point de retrait envoyé à ${fresh.client_email} (${fresh.client_name})`);
+}
+
+// ─── Phase 1 : Refresh WMS Endurance (tracking + statut expédition) ─────────
 async function refreshWMS() {
   const shipments = db.prepare(`
     SELECT * FROM shipments
@@ -203,6 +288,15 @@ async function checkDeliveries() {
         await autoNotifyClient(shipment);
       } catch (notifErr) {
         logger.error(`[Auto Notify] Erreur pour ${shipment.client_name}:`, notifErr.message);
+      }
+
+    } else if (result?.type === 'pickup_point') {
+      logger.info(`[Carrier Tracking] ${shipment.order_ref} (${shipment.tracking_number}) → Point de retrait`);
+      // Envoyer email au client pour l'informer + task HubSpot
+      try {
+        await notifyPickupPoint(shipment);
+      } catch (notifErr) {
+        logger.error(`[Pickup Notify] Erreur pour ${shipment.client_name}:`, notifErr.message);
       }
 
     } else if (result?.type === 'returned') {

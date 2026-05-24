@@ -1042,6 +1042,8 @@ const migrations = [
   'ALTER TABLE maps_prospects ADD COLUMN tiktok TEXT',
   // Séparation notification interne (Hugo) vs email client
   'ALTER TABLE shipments ADD COLUMN client_notified_at TEXT',
+  // Notification point de retrait envoyée au client
+  'ALTER TABLE shipments ADD COLUMN pickup_notified_at TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
