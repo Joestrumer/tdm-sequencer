@@ -52,15 +52,19 @@ async function checkLaPoste(trackingNumber) {
   const isFinal = !!shipment.isFinal;
   const deliveredCodes = ['DI1', 'DI2', 'AG1'];
   const returnCodes = ['RE1', 'RI1', 'RI2'];
+  const failedDeliveryCodes = ['ND1'];
+  const label = lastEvent?.label || '';
   const delivered = isFinal || deliveredCodes.includes(lastEvent?.code);
-  const returned = returnCodes.includes(lastEvent?.code) || (lastEvent?.label || '').toLowerCase().includes('retour');
+  const returned = returnCodes.includes(lastEvent?.code) || label.toLowerCase().includes('retour');
+  const failedDelivery = failedDeliveryCodes.includes(lastEvent?.code) || label.includes('ne peut pas être livré');
 
   return {
     delivered,
     returned,
+    failedDelivery,
     product: shipment.product || 'colissimo',
     statusCode: lastEvent?.code || null,
-    status: lastEvent?.label || (isFinal ? 'Livré' : null),
+    status: label || (isFinal ? 'Livré' : null),
     date: lastEvent?.date || null,
     deliveryDate: shipment.deliveryDate || null,
   };
@@ -218,8 +222,23 @@ async function updateShipmentDelivery(db, shipment) {
       return { type: 'returned' };
     }
 
-    // Pas encore livré mais on a un statut → mettre à jour si plus informatif
-    if (result.status && (!shipment.wms_status || shipment.wms_status === 'Non vérifié')) {
+    if (result.failedDelivery) {
+      db.prepare(`
+        UPDATE shipments
+        SET wms_status = ?, wms_status_code = 'ECH',
+            carrier_name = COALESCE(carrier_name, ?),
+            last_wms_check = datetime('now')
+        WHERE id = ?
+      `).run(
+        result.status || 'Échec de livraison',
+        result.product,
+        shipment.id
+      );
+      return { type: 'failed_delivery' };
+    }
+
+    // Pas encore livré mais on a un statut → mettre à jour
+    if (result.status) {
       db.prepare(`
         UPDATE shipments
         SET wms_status = ?, carrier_name = COALESCE(carrier_name, ?),
