@@ -20077,6 +20077,12 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
     return <span className={`px-2 py-0.5 rounded text-xs ${map[status] || map.new}`}>{labels[status] || status}</span>;
   };
 
+  const businessStatusBadge = (bs) => {
+    if (bs === 'CLOSED_TEMPORARILY') return <span className="px-2 py-0.5 rounded text-xs bg-amber-100 text-amber-700">Fermé temp.</span>;
+    if (bs === 'CLOSED_PERMANENTLY') return <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">Fermé déf.</span>;
+    return null;
+  };
+
   const drawerVal = (field) => drawerEdits[field] !== undefined ? drawerEdits[field] : (drawerProspect?.[field] || '');
 
   // ─── Render ─────────────────────────────────────────────────────────────
@@ -20128,6 +20134,9 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
             <div className="flex justify-between"><span className="text-slate-500">Sans site</span><span className="font-medium text-red-600">{prospectsStats.no_website}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Site vieux</span><span className="font-medium text-orange-600">{prospectsStats.old_website}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Contactés</span><span className="font-medium text-indigo-600">{prospectsStats.contacted}</span></div>
+            {prospectsStats.closed_temporarily > 0 && (
+              <div className="flex justify-between"><span className="text-slate-500">Fermés temp.</span><span className="font-medium text-amber-600">{prospectsStats.closed_temporarily}</span></div>
+            )}
           </div>
         )}
 
@@ -20198,12 +20207,13 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                       <th className="pb-2 text-center">Note</th>
                       <th className="pb-2 text-center">Avis</th>
                       <th className="pb-2">Site web</th>
+                      <th className="pb-2">Ouvert</th>
                       <th className="pb-2 w-24">Actions</th>
                     </tr>
                   </thead>
                   <tbody>
                     {searchResults.map((p, i) => (
-                      <tr key={p.place_id || i} className="border-b border-slate-100 hover:bg-slate-50">
+                      <tr key={p.place_id || i} className={`border-b border-slate-100 hover:bg-slate-50 ${p.business_status === 'CLOSED_TEMPORARILY' ? 'bg-amber-50/50' : p.business_status === 'CLOSED_PERMANENTLY' ? 'bg-red-50/50' : ''}`}>
                         <td className="py-2">
                           <input type="checkbox" checked={selectedResults.has(i)}
                             onChange={e => { const s = new Set(selectedResults); e.target.checked ? s.add(i) : s.delete(i); setSelectedResults(s); }} className="rounded" />
@@ -20220,6 +20230,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                             </a>
                           ) : <span className="px-2 py-0.5 rounded text-xs bg-red-100 text-red-700">Aucun</span>}
                         </td>
+                        <td className="py-2">{businessStatusBadge(p.business_status) || <span className="text-green-500 text-xs">Ouvert</span>}</td>
                         <td className="py-2">
                           <div className="flex gap-1">
                             <button onClick={() => { const s = [p]; api.post('/maps/prospects/save-batch', { places: s }).then(() => showToast('Sauvegardé', 'success')).catch(e => showToast(e.message, 'error')); }}
@@ -20290,6 +20301,13 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                 <option value="true">Site vieux</option>
                 <option value="false">Site récent</option>
               </select>
+              <select className="border rounded px-2 py-1 text-xs" value={prospectsFilter.business_status || ''}
+                onChange={e => { setProspectsFilter(f => ({...f, business_status: e.target.value})); setProspectsOffset(0); }}>
+                <option value="">Tous états</option>
+                <option value="OPERATIONAL">Ouvert</option>
+                <option value="CLOSED_TEMPORARILY">Fermé temporairement</option>
+                <option value="CLOSED_PERMANENTLY">Fermé définitivement</option>
+              </select>
               <input className="border rounded px-2 py-1 text-xs w-48" placeholder="Rechercher..."
                 value={prospectsFilter.search} onChange={e => { setProspectsFilter(f => ({...f, search: e.target.value})); setProspectsOffset(0); }} />
 
@@ -20324,6 +20342,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                       <th className="pb-2 text-center">Note</th>
                       <th className="pb-2 text-center">Avis</th>
                       <th className="pb-2">Site</th>
+                      <th className="pb-2">Ouvert</th>
                       <th className="pb-2">Email</th>
                       <th className="pb-2">Statut</th>
                       <th className="pb-2 w-28">Actions</th>
@@ -20343,6 +20362,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
                         <td className="py-2 text-center">{p.rating ? <span className="text-amber-500">{p.rating}</span> : '—'}</td>
                         <td className="py-2 text-center text-slate-500">{p.reviews_count || 0}</td>
                         <td className="py-2">{getWebsiteBadge(p)}</td>
+                        <td className="py-2">{businessStatusBadge(p.business_status) || <span className="text-green-500 text-xs">Ouvert</span>}</td>
                         <td className="py-2">{getEmailBadge(p)}</td>
                         <td className="py-2">{statusBadge(p.status)}</td>
                         <td className="py-2" onClick={e => e.stopPropagation()}>
@@ -20406,6 +20426,9 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
             <div><span className="text-slate-400 w-16 inline-block">Catégorie</span> <span className="text-slate-700">{drawerProspect.category || '—'}</span></div>
             <div><span className="text-slate-400 w-16 inline-block">Tél</span> <span className="text-slate-700">{drawerProspect.phone || '—'}</span></div>
             <div><span className="text-slate-400 w-16 inline-block">Note</span> <span className="text-amber-500">{drawerProspect.rating || '—'}</span> <span className="text-slate-400">({drawerProspect.reviews_count || 0} avis)</span></div>
+            {drawerProspect.business_status && drawerProspect.business_status !== 'OPERATIONAL' && (
+              <div><span className="text-slate-400 w-16 inline-block">État</span> {businessStatusBadge(drawerProspect.business_status)}</div>
+            )}
             {drawerProspect.maps_url && (
               <a href={drawerProspect.maps_url} target="_blank" rel="noopener" className="text-indigo-600 hover:underline">Voir sur Maps</a>
             )}

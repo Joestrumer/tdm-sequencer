@@ -1036,6 +1036,8 @@ const migrations = [
   'ALTER TABLE sequences ADD COLUMN priorite INTEGER DEFAULT 3',
   'ALTER TABLE shipments ADD COLUMN delivery_notified_at TEXT',
   'ALTER TABLE shipments ADD COLUMN client_prenom TEXT',
+  // Maps Prospection — statut business (OPERATIONAL, CLOSED_TEMPORARILY, CLOSED_PERMANENTLY)
+  'ALTER TABLE maps_prospects ADD COLUMN business_status TEXT DEFAULT \'OPERATIONAL\'',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

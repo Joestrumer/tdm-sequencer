@@ -185,7 +185,7 @@ module.exports = (db) => {
   // ─── GET /prospects — Liste paginée avec filtres ──────────────────────────
   router.get('/prospects', (req, res) => {
     try {
-      const { status, city, country, category, has_email, is_old, search, limit = 50, offset = 0 } = req.query;
+      const { status, city, country, category, has_email, is_old, business_status, search, limit = 50, offset = 0 } = req.query;
 
       let where = [];
       let params = [];
@@ -198,6 +198,7 @@ module.exports = (db) => {
       if (has_email === 'false') { where.push('(email IS NULL OR email = \'\')'); }
       if (is_old === 'true') { where.push('website_is_old = 1'); }
       if (is_old === 'false') { where.push('website_is_old = 0'); }
+      if (business_status) { where.push('business_status = ?'); params.push(business_status); }
       if (search) {
         where.push('(name LIKE ? OR address LIKE ? OR email LIKE ? OR city LIKE ?)');
         params.push(`%${search}%`, `%${search}%`, `%${search}%`, `%${search}%`);
@@ -222,7 +223,8 @@ module.exports = (db) => {
           SUM(CASE WHEN website_is_old = 1 THEN 1 ELSE 0 END) as old_website,
           SUM(CASE WHEN status = 'contacted' THEN 1 ELSE 0 END) as contacted,
           SUM(CASE WHEN status = 'new' THEN 1 ELSE 0 END) as new_count,
-          SUM(CASE WHEN status = 'enriched' THEN 1 ELSE 0 END) as enriched_count
+          SUM(CASE WHEN status = 'enriched' THEN 1 ELSE 0 END) as enriched_count,
+          SUM(CASE WHEN business_status = 'CLOSED_TEMPORARILY' THEN 1 ELSE 0 END) as closed_temporarily
         FROM maps_prospects
       `).get();
 
@@ -285,8 +287,8 @@ module.exports = (db) => {
       }
 
       const upsert = db.prepare(`
-        INSERT INTO maps_prospects (place_id, name, category, address, city, country, phone, website, rating, reviews_count, maps_url)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO maps_prospects (place_id, name, category, address, city, country, phone, website, rating, reviews_count, maps_url, business_status)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(place_id) DO UPDATE SET
           name = excluded.name,
           category = excluded.category,
@@ -298,6 +300,7 @@ module.exports = (db) => {
           rating = excluded.rating,
           reviews_count = excluded.reviews_count,
           maps_url = COALESCE(excluded.maps_url, maps_prospects.maps_url),
+          business_status = excluded.business_status,
           updated_at = datetime('now')
       `);
 
@@ -307,7 +310,8 @@ module.exports = (db) => {
           upsert.run(
             p.place_id, p.name, p.category || null, p.address || null,
             p.city || null, p.country || null, p.phone || null, p.website || null,
-            p.rating || null, p.reviews_count || 0, p.maps_url || null
+            p.rating || null, p.reviews_count || 0, p.maps_url || null,
+            p.business_status || 'OPERATIONAL'
           );
           saved++;
         }
