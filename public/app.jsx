@@ -567,17 +567,18 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
   useEscapeClose(onClose);
   const [selected, setSelected] = useState(sequences[0]?.id);
   const [taskRelance, setTaskRelance] = useState(0);
+  const [scheduledDate, setScheduledDate] = useState('');
   const [status, setStatus] = useState(null); // null | "loading" | "done" | "error"
   const [errMsg, setErrMsg] = useState("");
 
-  const handleLaunch = async (sendNow) => {
+  const handleLaunch = async (sendNow, scheduled) => {
     if (!selected) return;
     setStatus("loading");
     try {
       // 1. Inscrire le lead à la séquence
-      await onLaunch(lead.id, selected, taskRelance);
+      await onLaunch(lead.id, selected, taskRelance, scheduled || null);
       // 2. Si "envoyer maintenant" → forcer le scheduler sur ce lead uniquement (en arrière-plan)
-      if (sendNow) {
+      if (sendNow && !scheduled) {
         const r = await api.post('/sequences/trigger-now', { lead_ids: [lead.id], async: true });
         if (r?.erreur) throw new Error(r.erreur);
       }
@@ -620,6 +621,10 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
               <option value={12}>Dans 12 mois</option>
             </select>
           </div>
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Programmer l'envoi (optionnel)</label>
+            <input type="datetime-local" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 bg-white" />
+          </div>
           {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée ! Email en cours d'envoi...</p>}
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
         </div>
@@ -638,6 +643,15 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
           >
             📅 Lancer la séquence (prochain créneau)
           </button>
+          {scheduledDate && (
+            <button
+              disabled={!selected || status === "loading" || status === "done"}
+              onClick={() => handleLaunch(false, scheduledDate)}
+              className="w-full py-2.5 text-sm font-medium bg-amber-50 border border-amber-300 text-amber-800 rounded-xl hover:bg-amber-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              📅 Programmer le {new Date(scheduledDate).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}
+            </button>
+          )}
           <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600 text-center pt-1">Annuler</button>
         </div>
       </div>
@@ -1879,11 +1893,12 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
   useEscapeClose(onClose);
   const [selected, setSelected] = useState(sequences[0]?.id);
   const [taskRelance, setTaskRelance] = useState(0);
+  const [scheduledDate, setScheduledDate] = useState('');
   const [status, setStatus] = useState(null);
   const [errMsg, setErrMsg] = useState("");
-  const handleLaunch = (sendNow) => {
+  const handleLaunch = (sendNow, scheduled) => {
     if (!selected) return;
-    onLaunch(selected, sendNow, taskRelance);
+    onLaunch(selected, sendNow, taskRelance, scheduled || null);
   };
   return (
     <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
@@ -1916,12 +1931,19 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
               <option value={12}>Dans 12 mois</option>
             </select>
           </div>
+          <div className="mt-4 pt-4 border-t border-slate-100">
+            <label className="block text-xs font-medium text-slate-600 mb-1.5">Programmer l'envoi (optionnel)</label>
+            <input type="datetime-local" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 bg-white" />
+          </div>
           {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée pour {count} leads !</p>}
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
         </div>
         <div className="px-6 py-4 bg-slate-50 flex flex-col gap-2 flex-shrink-0 border-t border-slate-100">
           <button disabled={!selected || status === "loading" || status === "done"} onClick={() => handleLaunch(true)} className="w-full py-2.5 text-sm font-semibold bg-blue-600 text-white rounded-xl hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed">⚡ Envoyer le 1er email maintenant</button>
           <button disabled={!selected || status === "loading" || status === "done"} onClick={() => handleLaunch(false)} className="w-full py-2.5 text-sm font-medium bg-white border border-slate-200 text-slate-700 rounded-xl hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed">📅 Lancer (prochain créneau)</button>
+          {scheduledDate && (
+            <button disabled={!selected || status === "loading" || status === "done"} onClick={() => handleLaunch(false, scheduledDate)} className="w-full py-2.5 text-sm font-medium bg-amber-50 border border-amber-300 text-amber-800 rounded-xl hover:bg-amber-100 disabled:opacity-50 disabled:cursor-not-allowed">📅 Programmer le {new Date(scheduledDate).toLocaleString('fr-FR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}</button>
+          )}
           <button onClick={onClose} className="text-xs text-slate-400 hover:text-slate-600 text-center pt-1">Annuler</button>
         </div>
       </div>
@@ -2277,7 +2299,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     <div className="space-y-4">
       {showAdd && <ModalAddLead onClose={() => setShowAdd(false)} onAdd={(l) => { onAdd(l); if(onRefresh) onRefresh(); }} campaigns={campaigns.filter(c => c !== "Tous")} sequences={sequences} />}
       {showLaunch && <ModalLaunchSequence lead={showLaunch} sequences={sequences} onClose={() => setShowLaunch(null)} onLaunch={onLaunch} />}
-      {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow, taskRelance) => {
+      {showBulkLaunch && <ModalBulkLaunch count={selectedIds.size} sequences={sequences} onClose={() => setShowBulkLaunch(false)} onLaunch={async (seqId, sendNow, taskRelance, scheduledAt) => {
         const ids = Array.from(selectedIds);
         setSelectedIds(new Set());
         setShowBulkLaunch(false);
@@ -2285,9 +2307,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         // Lancer en arrière-plan
         (async () => {
           try {
-            await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids, task_relance_mois: taskRelance || 0 });
-            if (sendNow) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(e => console.error(e));
-            showToast(`${ids.length} lead(s) inscrits et ${sendNow ? '1er email envoyé' : 'planifiés'}`, 'success');
+            await api.post('/sequences/' + seqId + '/inscrire-batch', { lead_ids: ids, task_relance_mois: taskRelance || 0, scheduled_at: scheduledAt || undefined });
+            if (sendNow && !scheduledAt) await api.post('/sequences/trigger-now', { lead_ids: ids }).catch(e => console.error(e));
+            showToast(`${ids.length} lead(s) inscrits et ${sendNow ? '1er email envoyé' : scheduledAt ? 'programmés' : 'planifiés'}`, 'success');
             if (onRefresh) onRefresh();
           } catch (e) {
             showToast(e.message || 'Erreur inscription batch', 'error');
@@ -5983,12 +6005,13 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
             setShowEmailsSequenceModal(false);
             setCreatedLeadIds([]);
           }}
-          onLaunch={async (seqId, sendNow, taskRelance) => {
+          onLaunch={async (seqId, sendNow, taskRelance, scheduledAt) => {
             try {
               const res = await api.post(`/sequences/${seqId}/inscrire-batch`, {
                 lead_ids: createdLeadIds,
                 send_now: sendNow,
                 task_relance_mois: taskRelance,
+                scheduled_at: scheduledAt || undefined,
               });
               showToast(`✅ ${res.inscribed || createdLeadIds.length} lead(s) inscrit(s) en séquence`, 'success');
               setCreatedLeadIds([]);
@@ -22493,8 +22516,8 @@ function App() {
     setLeads(l => [lead, ...l]);
   };
 
-  const launchSequence = async (leadId, seqId, taskRelanceMois) => {
-    const r = await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId, task_relance_mois: taskRelanceMois || 0 });
+  const launchSequence = async (leadId, seqId, taskRelanceMois, scheduledAt) => {
+    const r = await api.post(`/sequences/${seqId}/inscrire`, { lead_id: leadId, task_relance_mois: taskRelanceMois || 0, scheduled_at: scheduledAt || undefined });
     if (r?.erreur) throw new Error(r.erreur);
     charger();
   };

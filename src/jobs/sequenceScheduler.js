@@ -251,14 +251,16 @@ async function lancerVerification() {
 }
 
 // ─── Inscrire un lead à une séquence ─────────────────────────────────────────
-function inscrireLead(leadId, sequenceId) {
+function inscrireLead(leadId, sequenceId, scheduledAt) {
   const premiereEtape = db.prepare(`SELECT * FROM etapes WHERE sequence_id = ? ORDER BY ordre ASC LIMIT 1`).get(sequenceId);
   if (!premiereEtape) throw new Error('Séquence vide ou introuvable');
 
   // Respecter le jour_delai de la première étape
   // En dev : toujours 1 minute pour tester rapidement
   let prochainEnvoi;
-  if (process.env.NODE_ENV === 'development') {
+  if (scheduledAt) {
+    prochainEnvoi = formatSQLite(new Date(scheduledAt));
+  } else if (process.env.NODE_ENV === 'development') {
     const devDate = maintenant_paris();
     devDate.setMinutes(devDate.getMinutes() + 1);
     prochainEnvoi = formatSQLite(devDate);

@@ -241,7 +241,7 @@ module.exports = (db) => {
   // POST /api/sequences/:id/inscrire
   router.post('/:id/inscrire', (req, res) => {
     try {
-      const { lead_id, task_relance_mois } = req.body;
+      const { lead_id, task_relance_mois, scheduled_at } = req.body;
       if (!lead_id) return res.status(400).json({ erreur: 'lead_id requis' });
 
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(lead_id);
@@ -251,7 +251,7 @@ module.exports = (db) => {
       const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
       if (!seq) return res.status(404).json({ erreur: 'Séquence introuvable' });
 
-      const inscription = inscrireLead(lead_id, req.params.id);
+      const inscription = inscrireLead(lead_id, req.params.id, scheduled_at || null);
 
       // Mettre à jour la campaign du lead avec le nom de la séquence
       db.prepare("UPDATE leads SET campaign = ?, updated_at = datetime('now') WHERE id = ?").run(seq.nom, lead_id);
@@ -280,7 +280,7 @@ module.exports = (db) => {
   // POST /api/sequences/:id/inscrire-batch
   router.post('/:id/inscrire-batch', (req, res) => {
     try {
-      const { lead_ids, task_relance_mois } = req.body;
+      const { lead_ids, task_relance_mois, scheduled_at } = req.body;
       if (!Array.isArray(lead_ids)) return res.status(400).json({ erreur: 'lead_ids doit être un tableau' });
 
       const seq = db.prepare('SELECT * FROM sequences WHERE id = ?').get(req.params.id);
@@ -292,7 +292,7 @@ module.exports = (db) => {
           const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
           if (!lead) return { lead_id: leadId, statut: 'erreur', erreur: 'Lead introuvable' };
           if (lead.unsubscribed) return { lead_id: leadId, statut: 'erreur', erreur: 'Lead désabonné' };
-          const inscription = inscrireLead(leadId, req.params.id);
+          const inscription = inscrireLead(leadId, req.params.id, scheduled_at || null);
           updateCampaign.run(seq.nom, leadId);
 
           // Task de relance HubSpot (fire & forget)
