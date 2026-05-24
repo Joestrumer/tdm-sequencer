@@ -362,8 +362,8 @@ module.exports = (db) => {
         logger.error('HubSpot task création échouée (non bloquant)', { error: hsErr.message, email: shipment.client_email });
       }
 
-      // 4. Marquer comme notifié
-      db.prepare("UPDATE shipments SET delivery_notified_at = datetime('now') WHERE id = ?").run(req.params.id);
+      // 4. Marquer comme notifié (client_notified_at = email client envoyé)
+      db.prepare("UPDATE shipments SET client_notified_at = datetime('now') WHERE id = ?").run(req.params.id);
 
       res.json({ ok: true });
     } catch (e) {

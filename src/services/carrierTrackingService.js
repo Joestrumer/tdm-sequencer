@@ -51,10 +51,13 @@ async function checkLaPoste(trackingNumber) {
   const lastEvent = shipment.event?.[0];
   const isFinal = !!shipment.isFinal;
   const deliveredCodes = ['DI1', 'DI2', 'AG1'];
+  const returnCodes = ['RE1', 'RI1', 'RI2'];
   const delivered = isFinal || deliveredCodes.includes(lastEvent?.code);
+  const returned = returnCodes.includes(lastEvent?.code) || (lastEvent?.label || '').toLowerCase().includes('retour');
 
   return {
     delivered,
+    returned,
     product: shipment.product || 'colissimo',
     statusCode: lastEvent?.code || null,
     status: lastEvent?.label || (isFinal ? 'Livré' : null),
@@ -197,7 +200,22 @@ async function updateShipmentDelivery(db, shipment) {
         result.product,
         shipment.id
       );
-      return true;
+      return { type: 'delivered' };
+    }
+
+    if (result.returned) {
+      db.prepare(`
+        UPDATE shipments
+        SET wms_status = ?, wms_status_code = 'RET',
+            carrier_name = COALESCE(carrier_name, ?),
+            last_wms_check = datetime('now')
+        WHERE id = ?
+      `).run(
+        result.status || 'Retour à l\'expéditeur',
+        result.product,
+        shipment.id
+      );
+      return { type: 'returned' };
     }
 
     // Pas encore livré mais on a un statut → mettre à jour si plus informatif
@@ -210,7 +228,7 @@ async function updateShipmentDelivery(db, shipment) {
       `).run(result.status, result.product, shipment.id);
     }
 
-    return false;
+    return null;
   } catch (e) {
     logger.warn(`[Carrier Tracking] Erreur ${shipment.tracking_number}: ${e.message}`);
     return false;

@@ -11,6 +11,7 @@ const cron = require('node-cron');
 const logger = require('../config/logger');
 const wmsService = require('../services/wmsService');
 const carrierTracking = require('../services/carrierTrackingService');
+const brevoService = require('../services/brevoService');
 
 let db;
 
@@ -69,12 +70,12 @@ async function refreshWMS() {
 
 // ─── Phase 2 : Check livraison via transporteur (La Poste, UPS, etc.) ───────
 async function checkDeliveries() {
-  // Tous les colis avec tracking, non livrés, sans filtre sur last_wms_check
+  // Tous les colis avec tracking, non livrés/retournés, sans filtre sur last_wms_check
   // (indépendant de la Phase 1 — on vérifie la livraison à chaque cycle)
   const shipments = db.prepare(`
     SELECT * FROM shipments
     WHERE tracking_number IS NOT NULL
-      AND (wms_status_code IS NULL OR wms_status_code NOT IN ('9', '10'))
+      AND (wms_status_code IS NULL OR wms_status_code NOT IN ('9', '10', 'RET'))
       AND delivered_at IS NULL
     ORDER BY created_at DESC
     LIMIT 30
@@ -85,11 +86,39 @@ async function checkDeliveries() {
   logger.info(`[Carrier Tracking] ${shipments.length} colis à vérifier via La Poste`);
 
   let delivered = 0;
+  let returned = 0;
   for (const shipment of shipments) {
-    const wasDelivered = await carrierTracking.updateShipmentDelivery(db, shipment);
-    if (wasDelivered) {
+    const result = await carrierTracking.updateShipmentDelivery(db, shipment);
+    if (result?.type === 'delivered') {
       delivered++;
       logger.info(`[Carrier Tracking] ${shipment.order_ref} (${shipment.tracking_number}) → Livré`);
+    } else if (result?.type === 'returned') {
+      returned++;
+      logger.info(`[Carrier Tracking] ${shipment.order_ref} (${shipment.tracking_number}) → Retour à l'expéditeur`);
+      // Envoyer notification à Hugo
+      try {
+        await brevoService.brevoSendEmail({
+          sender: brevoService.SENDER,
+          to: [{ email: 'hugo@terredemars.com', name: 'Hugo Montiel' }],
+          subject: `⚠️ Retour à l'expéditeur : ${shipment.client_name} (${shipment.order_ref})`,
+          htmlContent: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;">
+  <p>Bonjour,</p>
+  <p>Le colis suivant est en <strong style="color:#dc2626;">retour à l'expéditeur</strong> :</p>
+  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; font-size:14px;">
+    <tr><td style="background:#f5f5f5;font-weight:bold;">Client</td><td>${shipment.client_name}</td></tr>
+    <tr><td style="background:#f5f5f5;font-weight:bold;">Email</td><td>${shipment.client_email || '-'}</td></tr>
+    <tr><td style="background:#f5f5f5;font-weight:bold;">Ville</td><td>${shipment.client_city || '-'}${shipment.client_country ? ', ' + shipment.client_country : ''}</td></tr>
+    <tr><td style="background:#f5f5f5;font-weight:bold;">Référence</td><td>${shipment.order_ref}</td></tr>
+    <tr><td style="background:#f5f5f5;font-weight:bold;">Tracking</td><td>${shipment.tracking_number || '-'}</td></tr>
+    <tr><td style="background:#f5f5f5;font-weight:bold;">Type</td><td>${shipment.type}</td></tr>
+  </table>
+  <p style="margin-top:16px;color:#666;">Vérifier l'adresse et contacter le client si nécessaire.</p>
+</div>`,
+          replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
+        });
+      } catch (emailErr) {
+        logger.error('[Carrier Tracking] Erreur envoi notif retour:', emailErr.message);
+      }
     }
 
     // Pause 300ms pour respecter le rate limit La Poste
@@ -98,6 +127,9 @@ async function checkDeliveries() {
 
   if (delivered > 0) {
     logger.info(`[Carrier Tracking] ${delivered} colis marqué(s) comme livré(s)`);
+  }
+  if (returned > 0) {
+    logger.info(`[Carrier Tracking] ${returned} colis en retour à l'expéditeur`);
   }
 
   return delivered;

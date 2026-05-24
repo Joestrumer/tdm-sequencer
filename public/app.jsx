@@ -13054,7 +13054,8 @@ const FacturesShipments = ({ showToast }) => {
   const wmsStatusBadge = (status, code) => {
     if (!status && !code) return { label: 'Non vérifié', cls: 'bg-slate-100 text-slate-500 italic' };
     const c = String(code || status || '').toLowerCase();
-    if (c === '9' || c === '10' || c.includes('livr')) return { label: status || 'Livré', cls: 'bg-emerald-100 text-emerald-700' };
+    if (c === 'ret' || c.includes('retour')) return { label: status || 'Retour à l\'expéditeur', cls: 'bg-orange-100 text-orange-700' };
+    if (c === '9' || c === '10' || c.includes('livr') || c.includes('gardien') || c.includes('accueil')) return { label: status || 'Livré', cls: 'bg-emerald-100 text-emerald-700' };
     if (c === '7' || c === '8' || c.includes('expedi') || c.includes('envoy')) return { label: status || 'Envoyé', cls: 'bg-blue-100 text-blue-700' };
     if (c === '3' || c === '4' || c === '5' || c.includes('prepar')) return { label: status || 'Préparation', cls: 'bg-amber-100 text-amber-700' };
     if (c === '1' || c === '2' || c.includes('nouveau') || c.includes('integ') || c.includes('recep')) return { label: status || 'Nouveau', cls: 'bg-purple-100 text-purple-700' };
@@ -13210,21 +13211,21 @@ const FacturesShipments = ({ showToast }) => {
                           <button
                             disabled={sendingNotif === s.id}
                             onClick={async () => {
-                              if (s.delivery_notified_at || sendingNotif) return;
+                              if (s.client_notified_at || sendingNotif) return;
                               setSendingNotif(s.id);
                               try {
                                 await api.patch(`/shipments/${s.id}/notify`);
                                 setShipments(prev => prev.map(sh => sh.id === s.id
-                                  ? { ...sh, delivery_notified_at: new Date().toISOString() } : sh));
+                                  ? { ...sh, client_notified_at: new Date().toISOString() } : sh));
                                 showToast('Email envoyé + task HubSpot créée', 'success');
                               } catch (err) {
                                 showToast('Erreur: ' + (err.message || 'Envoi échoué'), 'error');
                               }
                               setSendingNotif(null);
                             }}
-                            className={`text-xs ${s.delivery_notified_at ? 'text-slate-400' : 'text-emerald-600 hover:text-emerald-800'} ${sendingNotif === s.id ? 'opacity-50' : ''}`}
-                            title={s.delivery_notified_at ? `Email envoyé le ${parseUTC(s.delivery_notified_at).toLocaleDateString('fr-FR')}` : 'Envoyer email confirmation réception'}>
-                            {sendingNotif === s.id ? '⏳' : s.delivery_notified_at ? '✅' : '✉️'}
+                            className={`text-xs ${s.client_notified_at ? 'text-slate-400' : 'text-emerald-600 hover:text-emerald-800'} ${sendingNotif === s.id ? 'opacity-50' : ''}`}
+                            title={s.client_notified_at ? `Email client envoyé le ${parseUTC(s.client_notified_at).toLocaleDateString('fr-FR')}` : 'Envoyer email confirmation réception'}>
+                            {sendingNotif === s.id ? '⏳' : s.client_notified_at ? '✅' : '✉️'}
                           </button>
                         )}
                         <button onClick={() => refreshWMS(s.id)}

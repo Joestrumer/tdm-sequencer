@@ -1040,6 +1040,8 @@ const migrations = [
   'ALTER TABLE maps_prospects ADD COLUMN business_status TEXT DEFAULT \'OPERATIONAL\'',
   // Maps Prospection — TikTok
   'ALTER TABLE maps_prospects ADD COLUMN tiktok TEXT',
+  // Séparation notification interne (Hugo) vs email client
+  'ALTER TABLE shipments ADD COLUMN client_notified_at TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
@@ -1762,6 +1764,24 @@ try {
     ) WHERE derniere_commande_at IS NULL
   `).run();
 } catch (e) { /* ignore */ }
+
+// ─── Migration : marquer les échantillons livrés avant le 22/05/2026 comme déjà contactés ──
+try {
+  const alreadyDone = db.prepare("SELECT valeur FROM config WHERE cle = 'migration_client_notified_backlog'").get();
+  if (!alreadyDone) {
+    const result = db.prepare(`
+      UPDATE shipments SET client_notified_at = delivery_notified_at
+      WHERE type = 'echantillon'
+        AND delivered_at IS NOT NULL
+        AND delivered_at < '2026-05-22'
+        AND client_notified_at IS NULL
+    `).run();
+    db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('migration_client_notified_backlog', '1')").run();
+    console.log(`✅ Migration client_notified_at backlog : ${result.changes} échantillon(s) marqué(s) comme déjà contacté(s)`);
+  }
+} catch (e) {
+  console.error('⚠️  Erreur migration client_notified_at backlog:', e.message);
+}
 
 console.log('✅ Base de données initialisée :', DB_PATH);
 module.exports = db;
