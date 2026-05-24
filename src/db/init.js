@@ -1038,6 +1038,8 @@ const migrations = [
   'ALTER TABLE shipments ADD COLUMN client_prenom TEXT',
   // Maps Prospection — statut business (OPERATIONAL, CLOSED_TEMPORARILY, CLOSED_PERMANENTLY)
   'ALTER TABLE maps_prospects ADD COLUMN business_status TEXT DEFAULT \'OPERATIONAL\'',
+  // Maps Prospection — TikTok
+  'ALTER TABLE maps_prospects ADD COLUMN tiktok TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

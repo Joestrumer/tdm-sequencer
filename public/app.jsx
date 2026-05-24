@@ -20487,12 +20487,22 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
           {/* Réseaux sociaux */}
           <div className="border rounded-lg p-3 space-y-2">
             <span className="font-semibold text-xs text-slate-600">Réseaux sociaux</span>
-            <input className="w-full border rounded px-2 py-1 text-xs" placeholder="Instagram" value={drawerVal('instagram')}
-              onChange={e => setDrawerEdits(d => ({...d, instagram: e.target.value}))} disabled={readOnly} />
-            <input className="w-full border rounded px-2 py-1 text-xs" placeholder="Facebook" value={drawerVal('facebook')}
-              onChange={e => setDrawerEdits(d => ({...d, facebook: e.target.value}))} disabled={readOnly} />
-            <input className="w-full border rounded px-2 py-1 text-xs" placeholder="LinkedIn" value={drawerVal('linkedin')}
-              onChange={e => setDrawerEdits(d => ({...d, linkedin: e.target.value}))} disabled={readOnly} />
+            {[
+              { key: 'instagram', label: 'Instagram', color: 'text-pink-600' },
+              { key: 'facebook', label: 'Facebook', color: 'text-blue-600' },
+              { key: 'linkedin', label: 'LinkedIn', color: 'text-blue-700' },
+              { key: 'tiktok', label: 'TikTok', color: 'text-slate-800' },
+            ].map(({ key, label, color }) => (
+              <div key={key} className="flex items-center gap-1">
+                <input className="flex-1 border rounded px-2 py-1 text-xs" placeholder={label} value={drawerVal(key)}
+                  onChange={e => setDrawerEdits(d => ({...d, [key]: e.target.value}))} disabled={readOnly} />
+                {drawerVal(key) && (
+                  <a href={drawerVal(key)} target="_blank" rel="noopener" className={`${color} hover:underline text-xs flex-shrink-0`} title={`Ouvrir ${label}`}>
+                    <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10 6H6a2 2 0 00-2 2v10a2 2 0 002 2h10a2 2 0 002-2v-4M14 4h6m0 0v6m0-6L10 14" /></svg>
+                  </a>
+                )}
+              </div>
+            ))}
           </div>
 
           {/* Notes */}

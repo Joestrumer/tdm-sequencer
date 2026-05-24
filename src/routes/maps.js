@@ -242,7 +242,7 @@ module.exports = (db) => {
     try {
       const { id } = req.params;
       const allowed = ['name', 'category', 'address', 'city', 'country', 'phone', 'website',
-        'email', 'email_source', 'email_confidence', 'instagram', 'facebook', 'linkedin',
+        'email', 'email_source', 'email_confidence', 'instagram', 'facebook', 'linkedin', 'tiktok',
         'notes', 'status'];
       const updates = [];
       const params = [];
@@ -358,6 +358,21 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Helper : sauvegarder les réseaux sociaux trouvés ────────────────────
+  function saveSocials(id, socials) {
+    if (!socials) return;
+    const updates = [];
+    const params = [];
+    if (socials.instagram) { updates.push('instagram = COALESCE(instagram, ?)'); params.push(socials.instagram); }
+    if (socials.facebook) { updates.push('facebook = COALESCE(facebook, ?)'); params.push(socials.facebook); }
+    if (socials.linkedin) { updates.push('linkedin = COALESCE(linkedin, ?)'); params.push(socials.linkedin); }
+    if (socials.tiktok) { updates.push('tiktok = COALESCE(tiktok, ?)'); params.push(socials.tiktok); }
+    if (updates.length === 0) return;
+    updates.push("updated_at = datetime('now')");
+    params.push(id);
+    db.prepare(`UPDATE maps_prospects SET ${updates.join(', ')} WHERE id = ?`).run(...params);
+  }
+
   // ─── POST /prospects/:id/find-email — Lancer mapsEmailFinder ─────────────
   router.post('/prospects/:id/find-email', async (req, res) => {
     try {
@@ -386,6 +401,8 @@ module.exports = (db) => {
         result.confidence,
         id
       );
+
+      saveSocials(id, result.socials);
 
       const updated = db.prepare('SELECT * FROM maps_prospects WHERE id = ?').get(id);
       res.json({ ...updated, all_emails: result.all_emails });
@@ -430,6 +447,8 @@ module.exports = (db) => {
           updated_at = datetime('now')
         WHERE id = ?
       `).run(emailResult.email, emailResult.source, emailResult.confidence, id);
+
+      saveSocials(id, emailResult.socials);
 
       const updated = db.prepare('SELECT * FROM maps_prospects WHERE id = ?').get(id);
       res.json({ ...updated, analysis, all_emails: emailResult.all_emails });
@@ -499,6 +518,8 @@ module.exports = (db) => {
                 updated_at = datetime('now')
               WHERE id = ?
             `).run(emailResult.email, emailResult.source, emailResult.confidence, id);
+
+            saveSocials(id, emailResult.socials);
 
             job.success++;
           } catch (err) {
