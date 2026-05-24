@@ -19849,6 +19849,9 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
   const [batchProgress, setBatchProgress] = useState(null);
   const batchPollRef = React.useRef(null);
 
+  // API usage
+  const [apiUsage, setApiUsage] = useState(null);
+
   // ─── Recherche Google Places ────────────────────────────────────────────
   const handleSearch = async () => {
     setSearching(true);
@@ -19867,6 +19870,7 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
       if (noWebsite) results = results.filter(p => !p.website);
       if (oldWebsite) results = results.filter(p => p.website);
       setSearchResults(results);
+      chargerApiUsage();
     } catch (err) {
       showToast('Erreur recherche: ' + err.message, 'error');
     }
@@ -19998,6 +20002,15 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
     return () => { if (batchPollRef.current) clearInterval(batchPollRef.current); };
   }, []);
 
+  // Charger l'utilisation API au montage et après chaque recherche
+  const chargerApiUsage = async () => {
+    try {
+      const res = await api.get('/maps/api-usage');
+      setApiUsage(res);
+    } catch { /* ignore */ }
+  };
+  React.useEffect(() => { chargerApiUsage(); }, []);
+
   // ─── Créer contact ──────────────────────────────────────────────────────
   const createContact = async (id) => {
     try {
@@ -20115,6 +20128,17 @@ const VueMapsProspecting = ({ showToast, readOnly }) => {
             <div className="flex justify-between"><span className="text-slate-500">Sans site</span><span className="font-medium text-red-600">{prospectsStats.no_website}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Site vieux</span><span className="font-medium text-orange-600">{prospectsStats.old_website}</span></div>
             <div className="flex justify-between"><span className="text-slate-500">Contactés</span><span className="font-medium text-indigo-600">{prospectsStats.contacted}</span></div>
+          </div>
+        )}
+
+        {/* Utilisation API Google Places */}
+        {apiUsage && (
+          <div className="bg-amber-50 rounded-lg p-3 space-y-1 text-xs">
+            <div className="font-semibold text-slate-700 mb-1">API Google Places</div>
+            <div className="flex justify-between"><span className="text-slate-500">Ce mois</span><span className="font-medium">{apiUsage.month} requêtes</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Coût mois</span><span className="font-medium text-amber-700">${apiUsage.cost_month}</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Total</span><span className="font-medium text-slate-600">{apiUsage.total} requêtes</span></div>
+            <div className="flex justify-between"><span className="text-slate-500">Coût total</span><span className="font-medium text-slate-600">${apiUsage.cost_total}</span></div>
           </div>
         )}
       </div>

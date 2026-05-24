@@ -65,6 +65,30 @@ module.exports = (db) => {
     });
   }
 
+  // ─── Compteur d'utilisation API ─────────────────────────────────────────
+  function incrementApiUsage() {
+    const month = new Date().toISOString().slice(0, 7); // YYYY-MM
+    try {
+      // Total
+      const existing = db.prepare("SELECT valeur FROM config WHERE cle = 'maps_api_calls_total'").get();
+      if (existing) {
+        db.prepare("UPDATE config SET valeur = ? WHERE cle = 'maps_api_calls_total'").run(String(parseInt(existing.valeur || '0') + 1));
+      } else {
+        db.prepare("INSERT INTO config (cle, valeur) VALUES ('maps_api_calls_total', '1')").run();
+      }
+      // Par mois
+      const monthKey = `maps_api_calls_${month}`;
+      const monthRow = db.prepare("SELECT valeur FROM config WHERE cle = ?").get(monthKey);
+      if (monthRow) {
+        db.prepare("UPDATE config SET valeur = ? WHERE cle = ?").run(String(parseInt(monthRow.valeur || '0') + 1), monthKey);
+      } else {
+        db.prepare("INSERT INTO config (cle, valeur) VALUES (?, '1')").run(monthKey);
+      }
+    } catch (e) {
+      console.warn('Erreur compteur API Maps:', e.message);
+    }
+  }
+
   async function doTextSearch(apiKey, textQuery) {
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 15000);
@@ -80,6 +104,7 @@ module.exports = (db) => {
         signal: controller.signal,
       });
       clearTimeout(timeout);
+      incrementApiUsage();
       if (!apiRes.ok) return [];
       const data = await apiRes.json();
       return parsePlaces(data.places);
@@ -545,6 +570,26 @@ module.exports = (db) => {
 
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(leadId);
       res.json({ lead_id: leadId, lead, already_exists: false });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ─── GET /api-usage — Utilisation de l'API Google Places ─────────────────
+  router.get('/api-usage', (req, res) => {
+    try {
+      const month = new Date().toISOString().slice(0, 7);
+      const monthKey = `maps_api_calls_${month}`;
+      const total = parseInt(db.prepare("SELECT valeur FROM config WHERE cle = 'maps_api_calls_total'").get()?.valeur || '0');
+      const monthCount = parseInt(db.prepare("SELECT valeur FROM config WHERE cle = ?").get(monthKey)?.valeur || '0');
+      const costPerRequest = 0.032;
+      res.json({
+        total,
+        month: monthCount,
+        month_label: month,
+        cost_month: Math.round(monthCount * costPerRequest * 100) / 100,
+        cost_total: Math.round(total * costPerRequest * 100) / 100,
+      });
     } catch (err) {
       res.status(500).json({ error: err.message });
     }
