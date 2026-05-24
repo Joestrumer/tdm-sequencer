@@ -5,6 +5,7 @@
  * 1. Interroge le WMS Endurance pour récupérer tracking + statut expédition
  * 2. Pour les colis expédiés avec tracking, interroge l'API La Poste
  *    pour détecter la livraison (Colissimo / Chronopost)
+ * 3. Envoie automatiquement l'email client + task HubSpot quand un échantillon est livré
  */
 
 const cron = require('node-cron');
@@ -12,6 +13,7 @@ const logger = require('../config/logger');
 const wmsService = require('../services/wmsService');
 const carrierTracking = require('../services/carrierTrackingService');
 const brevoService = require('../services/brevoService');
+const hubspotService = require('../services/hubspotService');
 
 let db;
 
@@ -22,7 +24,111 @@ const clean = (v) => {
   return JUNK.has(s.toLowerCase()) ? null : s;
 };
 
-// ─── Phase 1 : Refresh WMS Endurance (tracking + statut expédition) ─────────
+// ─── Helpers ────────────────────────────────────────────────────────────────
+function buildTrackingUrl(carrier, trackingNumber) {
+  if (!trackingNumber) return '#';
+  const t = (carrier || '').toLowerCase();
+  if (t.includes('chronopost')) return `https://www.chronopost.fr/tracking-no-powerful/tracking/suivi?listeNumerosLT=${trackingNumber}`;
+  if (t.includes('colissimo')) return `https://www.laposte.fr/outils/suivre-vos-envois?code=${trackingNumber}`;
+  if (t.includes('ups')) return `https://www.ups.com/track?tracknum=${trackingNumber}`;
+  if (t.includes('dhl')) return `https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=${trackingNumber}`;
+  if (t.includes('tnt') || t.includes('fedex')) return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
+  return `https://www.laposte.fr/outils/suivre-vos-envois?code=${trackingNumber}`;
+}
+
+function escapeHtml(str) {
+  if (!str) return '';
+  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+}
+
+// ─── Envoi automatique email client + task HubSpot ──────────────────────────
+async function autoNotifyClient(shipment) {
+  // Recharger le shipment pour avoir delivered_at à jour
+  const fresh = db.prepare('SELECT * FROM shipments WHERE id = ?').get(shipment.id);
+  if (!fresh || fresh.type !== 'echantillon' || !fresh.client_email || !fresh.delivered_at) return;
+  if (fresh.client_notified_at) return; // Déjà envoyé
+
+  const prenom = fresh.client_prenom || (fresh.client_name && fresh.client_name.includes(' - ') ? fresh.client_name.split(' - ')[1].trim().split(' ')[0] : '');
+  const trackingLink = buildTrackingUrl(fresh.carrier_name, fresh.tracking_number);
+  const signature = brevoService.getSignature(db);
+
+  const htmlContent = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;">
+  <p>Bonjour ${escapeHtml(prenom)},</p>
+  <p>J'espère que vous allez bien.</p>
+  <p>Le colis apparait comme livré. Pouvez-vous me confirmer l'avoir bien reçu ?</p>
+  <p>On fait le point quand vous avez pu les tester mais n'hésitez pas si vous avez des questions d'ici là.</p>
+  ${fresh.tracking_number ? `<p>Vous pouvez suivre votre colis ici : <a href="${trackingLink}">${escapeHtml(fresh.tracking_number)}</a></p>` : ''}
+  <p>Bonne journée,</p>
+  <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:16px;">
+    ${signature}
+  </div>
+</div>`;
+
+  // Envoyer via Brevo (BCC Hugo)
+  await brevoService.brevoSendEmail({
+    sender: brevoService.SENDER,
+    to: [{ email: fresh.client_email, name: prenom || fresh.client_name }],
+    bcc: [{ email: 'hugo@terredemars.com', name: 'Hugo Montiel' }],
+    subject: 'Terre de Mars - Confirmation de réception de vos échantillons',
+    htmlContent,
+    replyTo: { email: 'hugo@terredemars.com', name: 'Hugo Montiel' },
+  });
+
+  // Créer task HubSpot (optionnel)
+  try {
+    if (process.env.HUBSPOT_API_KEY) {
+      const deliveredDate = new Date(fresh.delivered_at).toLocaleDateString('fr-FR');
+
+      const lead = db.prepare('SELECT hubspot_id FROM leads WHERE email = ? LIMIT 1').get(fresh.client_email);
+      const contactId = lead?.hubspot_id ? parseInt(lead.hubspot_id) : null;
+
+      const domaine = fresh.client_email.split('@')[1];
+      const company = await hubspotService.trouverCompanyParDomaine(domaine);
+      const companyId = company?.id ? parseInt(company.id) : null;
+
+      // +5 jours ouvrés
+      let taskDate = new Date();
+      let businessDays = 0;
+      while (businessDays < 5) {
+        taskDate.setDate(taskDate.getDate() + 1);
+        if (taskDate.getDay() !== 0 && taskDate.getDay() !== 6) businessDays++;
+      }
+
+      const associations = {};
+      if (contactId) associations.contactIds = [contactId];
+      if (companyId) associations.companyIds = [parseInt(companyId)];
+
+      await hubspotService.hubspotFetch('/engagements/v1/engagements', {
+        method: 'POST',
+        body: JSON.stringify({
+          engagement: {
+            active: true,
+            type: 'TASK',
+            timestamp: taskDate.getTime(),
+            ownerId: parseInt(hubspotService.HUGO_OWNER_ID),
+          },
+          associations,
+          metadata: {
+            subject: `retour echantillon (reçu le ${deliveredDate})`,
+            body: `Relancer ${fresh.client_name} suite à la réception des échantillons.`,
+            status: 'NOT_STARTED',
+            priority: 'HIGH',
+            taskType: 'TODO',
+          }
+        }),
+      });
+      logger.info('📋 HubSpot task "retour echantillon" créée', { email: fresh.client_email, taskDate: taskDate.toISOString().split('T')[0] });
+    }
+  } catch (hsErr) {
+    logger.error('HubSpot task échouée (non bloquant)', { error: hsErr.message, email: fresh.client_email });
+  }
+
+  // Marquer comme notifié
+  db.prepare("UPDATE shipments SET client_notified_at = datetime('now') WHERE id = ?").run(fresh.id);
+  logger.info(`✉️ Email auto envoyé à ${fresh.client_email} (${fresh.client_name})`);
+}
+
+// ──��� Phase 1 : Refresh WMS Endurance (tracking + statut expédition) ─────────
 async function refreshWMS() {
   const shipments = db.prepare(`
     SELECT * FROM shipments
@@ -71,7 +177,6 @@ async function refreshWMS() {
 // ─── Phase 2 : Check livraison via transporteur (La Poste, UPS, etc.) ───────
 async function checkDeliveries() {
   // Tous les colis avec tracking, non livrés/retournés, sans filtre sur last_wms_check
-  // (indépendant de la Phase 1 — on vérifie la livraison à chaque cycle)
   const shipments = db.prepare(`
     SELECT * FROM shipments
     WHERE tracking_number IS NOT NULL
@@ -92,6 +197,14 @@ async function checkDeliveries() {
     if (result?.type === 'delivered') {
       delivered++;
       logger.info(`[Carrier Tracking] ${shipment.order_ref} (${shipment.tracking_number}) → Livré`);
+
+      // Envoi automatique email client + task HubSpot
+      try {
+        await autoNotifyClient(shipment);
+      } catch (notifErr) {
+        logger.error(`[Auto Notify] Erreur pour ${shipment.client_name}:`, notifErr.message);
+      }
+
     } else if (result?.type === 'returned') {
       returned++;
       logger.info(`[Carrier Tracking] ${shipment.order_ref} (${shipment.tracking_number}) → Retour à l'expéditeur`);
@@ -105,10 +218,10 @@ async function checkDeliveries() {
   <p>Bonjour,</p>
   <p>Le colis suivant est en <strong style="color:#dc2626;">retour à l'expéditeur</strong> :</p>
   <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; font-size:14px;">
-    <tr><td style="background:#f5f5f5;font-weight:bold;">Client</td><td>${shipment.client_name}</td></tr>
+    <tr><td style="background:#f5f5f5;font-weight:bold;">Client</td><td>${escapeHtml(shipment.client_name)}</td></tr>
     <tr><td style="background:#f5f5f5;font-weight:bold;">Email</td><td>${shipment.client_email || '-'}</td></tr>
-    <tr><td style="background:#f5f5f5;font-weight:bold;">Ville</td><td>${shipment.client_city || '-'}${shipment.client_country ? ', ' + shipment.client_country : ''}</td></tr>
-    <tr><td style="background:#f5f5f5;font-weight:bold;">Référence</td><td>${shipment.order_ref}</td></tr>
+    <tr><td style="background:#f5f5f5;font-weight:bold;">Ville</td><td>${escapeHtml(shipment.client_city || '-')}${shipment.client_country ? ', ' + escapeHtml(shipment.client_country) : ''}</td></tr>
+    <tr><td style="background:#f5f5f5;font-weight:bold;">Référence</td><td>${escapeHtml(shipment.order_ref)}</td></tr>
     <tr><td style="background:#f5f5f5;font-weight:bold;">Tracking</td><td>${shipment.tracking_number || '-'}</td></tr>
     <tr><td style="background:#f5f5f5;font-weight:bold;">Type</td><td>${shipment.type}</td></tr>
   </table>
@@ -135,7 +248,7 @@ async function checkDeliveries() {
   return delivered;
 }
 
-// ─── Job principal ───────────────────────────────────────────────────────────
+// ─── Job principal ────────────────────────────────────��──────────────────────
 async function refreshPending() {
   try {
     const wmsUpdated = await refreshWMS();
