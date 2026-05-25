@@ -41,6 +41,19 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// Extraire le prénom depuis client_name (format "HOTEL - Prénom NOM") en priorité,
+// puis fallback sur client_prenom (issu du lead en base, pas toujours fiable)
+function extrairePrenom(shipment) {
+  if (shipment.client_name && shipment.client_name.includes(' - ')) {
+    const apres = shipment.client_name.split(' - ')[1].trim();
+    const parts = apres.split(/\s+/);
+    // Trouver le premier mot qui n'est pas tout en majuscules (= le prénom en casse mixte)
+    const prenom = parts.find(p => p !== p.toUpperCase()) || parts[0];
+    if (prenom) return prenom.charAt(0).toUpperCase() + prenom.slice(1).toLowerCase();
+  }
+  return shipment.client_prenom || '';
+}
+
 // ─── Envoi automatique email client + task HubSpot ──────────────────────────
 async function autoNotifyClient(shipment) {
   // Recharger le shipment pour avoir delivered_at à jour
@@ -48,7 +61,7 @@ async function autoNotifyClient(shipment) {
   if (!fresh || fresh.type !== 'echantillon' || !fresh.client_email || !fresh.delivered_at) return;
   if (fresh.client_notified_at) return; // Déjà envoyé
 
-  const prenom = fresh.client_prenom || (fresh.client_name && fresh.client_name.includes(' - ') ? fresh.client_name.split(' - ')[1].trim().split(' ')[0] : '');
+  const prenom = extrairePrenom(fresh);
   const trackingLink = buildTrackingUrl(fresh.carrier_name, fresh.tracking_number);
   const signature = brevoService.getSignature(db);
 
@@ -135,7 +148,7 @@ async function notifyPickupPoint(shipment) {
   if (!fresh || !fresh.client_email || fresh.pickup_notified_at) return;
   if (fresh.type !== 'echantillon') return;
 
-  const prenom = fresh.client_prenom || (fresh.client_name && fresh.client_name.includes(' - ') ? fresh.client_name.split(' - ')[1].trim().split(' ')[0] : '');
+  const prenom = extrairePrenom(fresh);
   const trackingLink = buildTrackingUrl(fresh.carrier_name, fresh.tracking_number);
   const signature = brevoService.getSignature(db);
 

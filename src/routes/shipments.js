@@ -26,6 +26,16 @@ function escapeHtml(str) {
   return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+function extrairePrenom(shipment) {
+  if (shipment.client_name && shipment.client_name.includes(' - ')) {
+    const apres = shipment.client_name.split(' - ')[1].trim();
+    const parts = apres.split(/\s+/);
+    const prenom = parts.find(p => p !== p.toUpperCase()) || parts[0];
+    if (prenom) return prenom.charAt(0).toUpperCase() + prenom.slice(1).toLowerCase();
+  }
+  return shipment.client_prenom || '';
+}
+
 // Valeurs "unknown" à traiter comme NULL
 const JUNK = new Set(['unknown', 'undefined', 'null', 'n/a', '0', '']);
 const clean = (v) => {
@@ -276,7 +286,7 @@ module.exports = (db) => {
 
   // ─── Helper : envoyer email + task HubSpot pour un échantillon livré ────────
   async function sendNotifyEmail(shipment) {
-    const prenom = shipment.client_prenom || (shipment.client_name && shipment.client_name.includes(' - ') ? shipment.client_name.split(' - ')[1].trim().split(' ')[0] : '');
+    const prenom = extrairePrenom(shipment);
     const trackingLink = buildTrackingUrl(shipment.carrier_name, shipment.tracking_number);
     const signature = brevoService.getSignature(db);
 
