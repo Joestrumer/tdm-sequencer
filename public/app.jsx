@@ -1414,7 +1414,7 @@ const VueDashboard = ({ showToast }) => {
     );
   }
 
-  const { stats, prochainsEnvois, quota, envoiAujourdHui, activite, erreurs, topSequences } = data;
+  const { stats, prochainsEnvois, quota, envoiAujourdHui, previsionEnvois, activite, erreurs, topSequences } = data;
   const ICONS = { envoi: "📧", ouverture: "👁", clic: "🔗", desabonnement: "🚫" };
 
   const quotaPct = (quota.utilise / quota.max) * 100;
@@ -1498,6 +1498,52 @@ const VueDashboard = ({ showToast }) => {
           )}
         </div>
       )}
+
+      {/* Prévision des envois 10 jours */}
+      {previsionEnvois && previsionEnvois.length > 0 && (() => {
+        const maxTotal = Math.max(...previsionEnvois.map(j => j.total), 1);
+        const todayStr = previsionEnvois[0]?.date;
+        return (
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <h3 className="text-sm font-semibold text-slate-800 mb-4">Prévision des envois (10 jours)</h3>
+            <div className="flex items-end gap-2" style={{ height: '160px' }}>
+              {previsionEnvois.map((j, i) => {
+                const pct = (j.total / maxTotal) * 100;
+                const isToday = j.date === todayStr;
+                const dayNum = new Date(j.date + 'T12:00:00').getDay();
+                const isWeekend = dayNum === 0 || dayNum === 6;
+                const barColor = isToday ? 'bg-emerald-500' : isWeekend ? 'bg-slate-300' : 'bg-blue-500';
+                return (
+                  <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
+                    <span className="text-xs font-semibold text-slate-700 mb-1">{j.total}</span>
+                    <div
+                      className={`w-full rounded-t-md ${barColor} transition-all duration-300`}
+                      style={{ height: `${Math.max(pct, 4)}%`, minHeight: '4px' }}
+                    />
+                    <span className={`text-xs mt-1.5 ${isToday ? 'font-bold text-emerald-700' : 'text-slate-500'}`}>
+                      {j.jourSemaine}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-4 mt-3 pt-3 border-t border-slate-100">
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-sm bg-emerald-500" />
+                <span className="text-xs text-slate-500">Aujourd'hui</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-sm bg-blue-500" />
+                <span className="text-xs text-slate-500">Jours ouvrés</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-sm bg-slate-300" />
+                <span className="text-xs text-slate-500">Week-end</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* Prochains envois */}

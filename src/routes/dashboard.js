@@ -104,6 +104,39 @@ module.exports = (db) => {
         `).get(today)?.count || 0,
       };
 
+      // 3c. Prévision des envois sur 10 jours
+      const joursNoms = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+      const dates10 = [];
+      for (let i = 0; i < 10; i++) {
+        const d = new Date(_nowParis);
+        d.setDate(d.getDate() + i);
+        const dateStr = `${d.getFullYear()}-${_pad2(d.getMonth()+1)}-${_pad2(d.getDate())}`;
+        dates10.push({ date: dateStr, jour: d.getDay(), label: `${joursNoms[d.getDay()]} ${d.getDate()}` });
+      }
+      const dateDebut = dates10[0].date;
+      const dateFin = dates10[dates10.length - 1].date;
+
+      const previsionRows = db.prepare(`
+        SELECT DATE(i.prochain_envoi) as jour, COUNT(*) as total
+        FROM inscriptions i
+        JOIN leads l ON i.lead_id = l.id
+        WHERE i.statut = 'actif'
+          AND i.prochain_envoi IS NOT NULL
+          AND l.unsubscribed = 0
+          AND DATE(i.prochain_envoi) >= ?
+          AND DATE(i.prochain_envoi) <= ?
+        GROUP BY DATE(i.prochain_envoi)
+      `).all(dateDebut, dateFin);
+
+      const previsionMap = {};
+      for (const row of previsionRows) previsionMap[row.jour] = row.total;
+
+      const previsionEnvois = dates10.map(d => ({
+        date: d.date,
+        total: previsionMap[d.date] || 0,
+        jourSemaine: d.label
+      }));
+
       // 4. Activité récente (20 derniers events)
       const activite = db.prepare(`
         SELECT
@@ -163,6 +196,7 @@ module.exports = (db) => {
         prochainsEnvois,
         quota: { utilise: quotaUtilise, max: quotaMax },
         envoiAujourdHui,
+        previsionEnvois,
         activite,
         erreurs,
         topSequences
