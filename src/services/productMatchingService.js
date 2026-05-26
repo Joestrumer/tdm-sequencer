@@ -562,6 +562,7 @@ function parseOrderText(text) {
     { re: /porte.?flacon.*simple.*securi|porte.?flacon.*temperproof/, ref: 'SPFS' },
     { re: /porte.?flacon.*simple/, ref: 'PFS' },
     { re: /\bsupports?\b/, ref: 'PFS' },
+    { re: /pompe.?doseuse|pompe.*500/, ref: 'P500ml' },
     // Generic (sans marque) — résolution par nom de produit
     { re: /(?=.*(gel|wash|lavant|nettoyant))(?=.*(corps|corporel|body))(?=.*(cheveu|cheveux|hair))(?=.*5\s*l)/, ref: 'P014-5000' },
     { re: /(?=.*(gel|wash|lavant|nettoyant))(?=.*(corps|corporel|body))(?=.*(cheveu|cheveux|hair))/, ref: 'P014' },
@@ -623,6 +624,7 @@ function parseOrderText(text) {
     // H/N refs
     /(\d+)\s*x\s*([HhNn]\s*-?\s*\d{3})/g,
     /([HhNn]\s*-?\s*\d{3})\s*x\s*(\d+)/g,
+    /([HhNn]\s*-?\s*\d{3})\s*:\s*(\d+)/g,
   ];
 
   const extractQty = (line) => {
@@ -646,7 +648,7 @@ function parseOrderText(text) {
 
     // Format email: "008 Gel Nettoyant Corporel Reddition - 5L :  5 cartons (20 bidons)"
     // Code nu (3 chiffres) + description + ":" + N cartons (M bidons/unités)
-    const emailMatch = line.match(/^0*(\d{1,3})\s+.+?:\s*(\d+)\s*cartons?\s*\((\d+)\s*(?:bidons?|unit[eé]s?|pi[eè]ces?|flacons?)\)/i);
+    const emailMatch = line.match(/^0*(\d{1,3})\s+.+?:\s*(\d+)\s*cartons?\s*\((\d+)\s*(?:bidons?|unit[eé]s?|pi[eè]ces?|flacons?|pcs)\)/i);
     if (emailMatch) {
       const codeNum = emailMatch[1].padStart(3, '0');
       const unitQty = parseInt(emailMatch[3], 10);
@@ -663,7 +665,7 @@ function parseOrderText(text) {
     }
 
     // Format email sans parenthèses: "008 Gel ... - 5L : 20"
-    const emailSimpleMatch = line.match(/^0*(\d{1,3})\s+.+?:\s*(\d+)\s*$/);
+    const emailSimpleMatch = line.match(/^0*(\d{1,3})\s+.+?:\s*(\d+)\s*(?:pcs|pi[eè]ces?|unit[eé]s?)?\s*$/i);
     if (emailSimpleMatch) {
       const codeNum = emailSimpleMatch[1].padStart(3, '0');
       const qty = parseInt(emailSimpleMatch[2], 10);
@@ -679,18 +681,62 @@ function parseOrderText(text) {
       }
     }
 
+    // Format "REF (description) : qty unit" — e.g. "H-008 (500ml) : 24 pcs", "N-010 (500ml) : 24 pcs"
+    const refDescQtyMatch = line.match(/^\s*(?:([HhNn]\s*-?\s*\d{3})|([Pp]\d{3}(?:-\d+[A-Za-z]*)?)|0*(\d{1,3}))\s*(?:\(.*?\))?\s*.*?:\s*(\d+)\s*(?:pcs|pi[eè]ces?|unit[eé]s?|bidons?|flacons?|bouteilles?)?\s*$/i);
+    if (refDescQtyMatch && !foundAny) {
+      let ref;
+      if (refDescQtyMatch[1]) {
+        ref = localNormalizeRef(refDescQtyMatch[1], lineNorm);
+      } else if (refDescQtyMatch[2]) {
+        ref = localNormalizeRef(refDescQtyMatch[2], lineNorm);
+      } else {
+        const codeNum = refDescQtyMatch[3].padStart(3, '0');
+        const is5L = /5\s*l/i.test(line);
+        ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
+      }
+      const qty = parseInt(refDescQtyMatch[4], 10);
+      if (ref && qty > 0 && qty < 9999) {
+        const existing = products.find(p => p.ref === ref);
+        if (existing) existing.quantity += qty;
+        else products.push({ ref, quantity: qty });
+        foundAny = true;
+        logger.debug(`📧 Format REF(desc):qty détecté: ${ref} x${qty}`);
+        return;
+      }
+    }
+
+    // Format "Nom produit : qty unit" — e.g. "Pompes doseuses (pour flacons 500ml) : 50 pcs"
+    const nameQtyMatch = line.match(/^(.+?)\s*:\s*(\d+)\s*(?:pcs|pi[eè]ces?|unit[eé]s?|bidons?|flacons?|bouteilles?)?\s*$/i);
+    if (nameQtyMatch && !foundAny) {
+      const qty = parseInt(nameQtyMatch[2], 10);
+      let ref = null;
+      for (const r of nameRules) {
+        if (r.re.test(lineNorm)) { ref = r.ref; break; }
+      }
+      if (ref && qty > 0 && qty < 9999) {
+        const existing = products.find(p => p.ref === ref);
+        if (existing) existing.quantity += qty;
+        else products.push({ ref, quantity: qty });
+        foundAny = true;
+        logger.debug(`📧 Format nom:qty détecté: ${ref} x${qty}`);
+        return;
+      }
+    }
+
     // Format ref au début, quantité à la fin : "P014-5000 – Description – 6 bidons", "011- Lotion 500ml – 6"
-    const refStartMatch = line.match(/^\s*(?:(P\d{3}(?:-\d+[A-Za-z]*)?)|(0?\d{2,3}))\s*[-–—.]?\s+.+?[-–—:,]\s*(\d+)\s*(?:bidons?|pi[eè]ces?|flacons?|bouteilles?|unit[eé]s?|pompes?)?\s*$/i);
+    const refStartMatch = line.match(/^\s*(?:(P\d{3}(?:-\d+[A-Za-z]*)?)|(0?\d{2,3})|([HhNn]\s*-?\s*\d{3}))\s*[-–—.]?\s+.+?[-–—:,]\s*(\d+)\s*(?:bidons?|pi[eè]ces?|flacons?|bouteilles?|unit[eé]s?|pompes?|pcs)?\s*$/i);
     if (refStartMatch) {
       let ref;
       if (refStartMatch[1]) {
         ref = localNormalizeRef(refStartMatch[1], lineNorm);
+      } else if (refStartMatch[3]) {
+        ref = localNormalizeRef(refStartMatch[3], lineNorm);
       } else {
         const codeNum = refStartMatch[2].replace(/^0+/, '').padStart(3, '0');
         const is5L = /5\s*l/i.test(line);
         ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
       }
-      const qty = parseInt(refStartMatch[3], 10);
+      const qty = parseInt(refStartMatch[4], 10);
       if (ref && qty > 0 && qty < 9999) {
         const existing = products.find(p => p.ref === ref);
         if (existing) existing.quantity += qty;
@@ -709,6 +755,27 @@ function parseOrderText(text) {
       for (const r of nameRules) {
         if (r.re.test(lineNorm)) { ref = r.ref; break; }
       }
+      // Fallback: try H/N or P ref in the line
+      if (!ref) {
+        const hnRef = line.match(/\b([HhNn]\s*-?\s*\d{3})\b/);
+        if (hnRef) {
+          ref = localNormalizeRef(hnRef[1], lineNorm);
+        }
+      }
+      if (!ref) {
+        const pRef = line.match(/\b(P\d{3}(?:-\d+[A-Za-z]*)?)\b/i);
+        if (pRef) {
+          ref = localNormalizeRef(pRef[1], lineNorm);
+        }
+      }
+      if (!ref) {
+        const numRef = line.match(/^\s*0*(\d{1,3})\b/);
+        if (numRef) {
+          const codeNum = numRef[1].padStart(3, '0');
+          const is5L = /5\s*l/i.test(line);
+          ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
+        }
+      }
       if (ref && qty > 0) {
         const existing = products.find(p => p.ref === ref);
         if (existing) existing.quantity += qty;
@@ -721,7 +788,7 @@ function parseOrderText(text) {
 
     // Format "N bidons/bouteilles/flacons [de] [5L] [de] description [code]"
     // "8 bidons de 5L de shampoing", "36 bidons de 5 litres de gel douche 008.", "100 bouteilles de shampoing (noir)"
-    const qtyUnitMatch = line.match(/(\d+)\s*(?:bidons?|bouteilles?|flacons?|pi[eè]ces?|unit[eé]s?)\s+(?:de\s+)?(.+)/i);
+    const qtyUnitMatch = line.match(/(\d+)\s*(?:bidons?|bouteilles?|flacons?|pi[eè]ces?|unit[eé]s?|pcs)\s+(?:de\s+)?(.+)/i);
     if (qtyUnitMatch && !foundAny) {
       const qty = parseInt(qtyUnitMatch[1], 10);
       const rest = qtyUnitMatch[2].trim();
