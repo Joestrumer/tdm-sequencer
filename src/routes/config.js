@@ -215,5 +215,50 @@ module.exports = (db) => {
     }
   });
 
+  // ── Notifications échantillons — config ────────────────────────────────
+  const notifService = require('../services/shipmentNotificationService');
+
+  router.get('/shipment-notifications', (req, res) => {
+    try {
+      const configs = notifService.getAllNotificationConfigs(db);
+      res.json(configs);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.post('/shipment-notifications', (req, res) => {
+    try {
+      const body = req.body;
+      const validTypes = notifService.NOTIFICATION_TYPES;
+      const saved = [];
+
+      for (const type of validTypes) {
+        if (!body[type]) continue;
+        const c = body[type];
+
+        // Validation
+        const config = {
+          enabled: !!c.enabled,
+          delay_days: Math.max(0, parseInt(c.delay_days) || 0),
+          recipient: ['client', 'interne'].includes(c.recipient) ? c.recipient : 'client',
+          subject: String(c.subject || '').slice(0, 500),
+          body_html: String(c.body_html || ''),
+          hubspot_task: !!c.hubspot_task,
+          hubspot_task_days: Math.max(1, parseInt(c.hubspot_task_days) || 5),
+          hubspot_task_subject: String(c.hubspot_task_subject || '').slice(0, 500),
+          hubspot_task_body: String(c.hubspot_task_body || '').slice(0, 1000),
+        };
+
+        notifService.saveNotificationConfig(db, type, config);
+        saved.push(type);
+      }
+
+      res.json({ ok: true, saved });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   return router;
 };

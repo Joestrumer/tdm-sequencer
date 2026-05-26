@@ -9707,6 +9707,250 @@ const AnalyticsSpreadsheet = ({ showToast }) => {
   );
 };
 
+// ─── Notifications échantillons (configurable) ─────────────────────────────────
+const FacturesNotifications = ({ showToast }) => {
+  const NOTIF_TYPES = [
+    { id: 'delivered', label: 'Livré', icon: '✅' },
+    { id: 'pickup', label: 'Point de retrait', icon: '📦' },
+    { id: 'returned', label: 'Retour', icon: '⚠️' },
+    { id: 'failed', label: 'Échec', icon: '❌' },
+  ];
+
+  const VARIABLES = [
+    '{{prenom}}', '{{client_name}}', '{{hotel}}', '{{client_email}}',
+    '{{client_city}}', '{{order_ref}}', '{{tracking_number}}',
+    '{{tracking_link}}', '{{shipment_table}}', '{{delivered_at}}', '{{carrier_name}}'
+  ];
+
+  const [configs, setConfigs] = useState(null);
+  const [activeType, setActiveType] = useState('delivered');
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [dirty, setDirty] = useState(false);
+  const editorRef = useRef(null);
+  const tinymceRef = useRef(null);
+  const activeTypeRef = useRef(activeType);
+
+  // Charger les configs
+  useEffect(() => {
+    (async () => {
+      setLoading(true);
+      try {
+        const data = await api.get('/config/shipment-notifications');
+        setConfigs(data);
+      } catch (err) {
+        showToast('Erreur chargement config notifications: ' + err.message, 'error');
+      }
+      setLoading(false);
+    })();
+  }, []);
+
+  // Initialiser/réinitialiser TinyMCE quand le type actif change
+  useEffect(() => {
+    activeTypeRef.current = activeType;
+    if (!configs) return;
+
+    // Détruire l'instance précédente
+    if (tinymceRef.current) {
+      tinymceRef.current.remove();
+      tinymceRef.current = null;
+    }
+
+    if (!editorRef.current) return;
+
+    const containerId = 'tinymce-notif-editor-' + Date.now();
+    editorRef.current.id = containerId;
+
+    tinymce.init({
+      selector: '#' + containerId,
+      plugins: 'lists link image table code fullscreen',
+      toolbar: 'fontfamily fontsize | bold italic underline | blocks | bullist numlist | alignleft aligncenter alignright | link image table | forecolor | removeformat | fullscreen code',
+      font_family_formats: 'Arial=Arial,Helvetica,sans-serif; Helvetica=Helvetica,Arial,sans-serif; Verdana=Verdana,Geneva,sans-serif; Georgia=Georgia,serif; Times New Roman=Times New Roman,Times,serif; Courier New=Courier New,monospace; Trebuchet MS=Trebuchet MS,sans-serif; Tahoma=Tahoma,Geneva,sans-serif',
+      font_size_formats: '10px 12px 14px 16px 18px 20px 24px 28px 32px',
+      menubar: false,
+      height: 300,
+      content_style: 'body { font-family: Arial, sans-serif; font-size: 14px; }',
+      branding: false,
+      promotion: false,
+      placeholder: 'Corps de l\'email...',
+      license_key: 'gpl',
+      setup: (editor) => {
+        editor.on('init', () => {
+          tinymceRef.current = editor;
+          const currentType = activeTypeRef.current;
+          if (configs[currentType]?.body_html) {
+            editor.setContent(configs[currentType].body_html);
+          }
+        });
+        const syncContent = () => {
+          const html = editor.getContent();
+          const currentType = activeTypeRef.current;
+          setConfigs(prev => {
+            if (!prev || prev[currentType]?.body_html === html) return prev;
+            setDirty(true);
+            return { ...prev, [currentType]: { ...prev[currentType], body_html: html } };
+          });
+        };
+        editor.on('input change keyup', syncContent);
+        editor.on('ExecCommand', syncContent);
+        editor.on('NodeChange', syncContent);
+      }
+    });
+
+    return () => {
+      if (tinymceRef.current) {
+        tinymceRef.current.remove();
+        tinymceRef.current = null;
+      }
+    };
+  }, [activeType, configs ? 'loaded' : 'loading']);
+
+  const updateField = (field, value) => {
+    setConfigs(prev => ({
+      ...prev,
+      [activeType]: { ...prev[activeType], [field]: value }
+    }));
+    setDirty(true);
+  };
+
+  const handleSave = async () => {
+    setSaving(true);
+    try {
+      await api.post('/config/shipment-notifications', configs);
+      showToast('Configuration sauvegardée', 'success');
+      setDirty(false);
+    } catch (err) {
+      showToast('Erreur sauvegarde: ' + err.message, 'error');
+    }
+    setSaving(false);
+  };
+
+  if (loading || !configs) {
+    return <div className="p-8 text-center text-sm text-slate-400">Chargement de la configuration...</div>;
+  }
+
+  const cfg = configs[activeType] || {};
+
+  return (
+    <div className="space-y-4">
+      {/* Sous-tabs */}
+      <div className="flex gap-1 bg-slate-100 p-1 rounded-xl w-fit">
+        {NOTIF_TYPES.map(t => (
+          <button key={t.id} onClick={() => setActiveType(t.id)}
+            className={`px-4 py-2 rounded-lg text-sm font-medium transition-colors flex items-center gap-1.5 ${activeType === t.id ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+            <span>{t.icon}</span> {t.label}
+          </button>
+        ))}
+      </div>
+
+      {/* Config panel */}
+      <div className="bg-white rounded-xl border border-slate-100 p-6 space-y-5">
+        {/* Enabled + Delay */}
+        <div className="flex items-center gap-6 flex-wrap">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={cfg.enabled || false}
+              onChange={e => updateField('enabled', e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+            <span className="text-sm font-medium text-slate-700">Activé</span>
+          </label>
+          <div className="flex items-center gap-2">
+            <span className="text-sm text-slate-500">Délai :</span>
+            <input type="number" min="0" value={cfg.delay_days || 0}
+              onChange={e => updateField('delay_days', parseInt(e.target.value) || 0)}
+              className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-center" />
+            <span className="text-sm text-slate-500">jours après détection</span>
+          </div>
+        </div>
+
+        {/* Recipient */}
+        <div className="flex items-center gap-4">
+          <span className="text-sm font-medium text-slate-700">Destinataire :</span>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" name={`recipient-${activeType}`} value="client"
+              checked={cfg.recipient === 'client'}
+              onChange={() => updateField('recipient', 'client')}
+              className="text-blue-600" />
+            <span className="text-sm text-slate-600">Client (BCC Hugo)</span>
+          </label>
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" name={`recipient-${activeType}`} value="interne"
+              checked={cfg.recipient === 'interne'}
+              onChange={() => updateField('recipient', 'interne')}
+              className="text-blue-600" />
+            <span className="text-sm text-slate-600">Interne (Hugo uniquement)</span>
+          </label>
+        </div>
+
+        {/* Subject */}
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Objet</label>
+          <input value={cfg.subject || ''} onChange={e => updateField('subject', e.target.value)}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+        </div>
+
+        {/* Variables */}
+        <div>
+          <span className="text-xs text-slate-400 mr-1">Variables :</span>
+          <div className="flex flex-wrap gap-1 mt-1">
+            {VARIABLES.map(v => (
+              <button key={v} type="button" onClick={() => {
+                if (tinymceRef.current) tinymceRef.current.insertContent(v);
+              }} className="px-1.5 py-0.5 bg-amber-50 hover:bg-amber-100 text-amber-700 text-xs rounded font-mono transition-colors border border-amber-200">{v}</button>
+            ))}
+          </div>
+        </div>
+
+        {/* TinyMCE editor */}
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Corps de l'email</label>
+          <div className="border border-slate-200 rounded-lg bg-white">
+            <div ref={editorRef} />
+          </div>
+        </div>
+
+        {/* HubSpot task */}
+        <div className="border-t border-slate-100 pt-4 space-y-3">
+          <label className="flex items-center gap-2 cursor-pointer">
+            <input type="checkbox" checked={cfg.hubspot_task || false}
+              onChange={e => updateField('hubspot_task', e.target.checked)}
+              className="w-4 h-4 rounded border-slate-300 text-blue-600 focus:ring-blue-500" />
+            <span className="text-sm font-medium text-slate-700">Créer task HubSpot</span>
+          </label>
+          {cfg.hubspot_task && (
+            <div className="ml-6 space-y-3">
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-slate-500">Délai :</span>
+                <input type="number" min="1" value={cfg.hubspot_task_days || 5}
+                  onChange={e => updateField('hubspot_task_days', parseInt(e.target.value) || 5)}
+                  className="w-16 border border-slate-200 rounded-lg px-2 py-1.5 text-sm text-center" />
+                <span className="text-sm text-slate-500">jours ouvrés</span>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Sujet de la task</label>
+                <input value={cfg.hubspot_task_subject || ''} onChange={e => updateField('hubspot_task_subject', e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Corps de la task</label>
+                <input value={cfg.hubspot_task_body || ''} onChange={e => updateField('hubspot_task_body', e.target.value)}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Save button */}
+        <div className="flex justify-end pt-2">
+          <button onClick={handleSave} disabled={saving || !dirty}
+            className="px-5 py-2 bg-slate-900 text-white rounded-lg text-sm font-medium hover:bg-slate-800 disabled:opacity-50 transition-colors flex items-center gap-2">
+            {saving ? 'Sauvegarde...' : 'Sauvegarder'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 // ─── Vue Factures ─────────────────────────────────────────────────────────────
 const VueFactures = ({ showToast }) => {
   const [tab, setTab] = useState("commande");
@@ -9724,6 +9968,7 @@ const VueFactures = ({ showToast }) => {
     { id: "echantillons", label: "Échantillons", icon: "🎁" },
     { id: "relances", label: "Relances", icon: "📨" },
     { id: "envois", label: "Envois", icon: "📮" },
+    { id: "notifications", label: "Notifications", icon: "🔔" },
   ];
 
   return (
@@ -9756,6 +10001,7 @@ const VueFactures = ({ showToast }) => {
       {tab === "echantillons" && <FacturesSamples showToast={showToast} />}
       {tab === "relances" && <FacturesReminders showToast={showToast} />}
       {tab === "envois" && <FacturesShipments showToast={showToast} />}
+      {tab === "notifications" && <FacturesNotifications showToast={showToast} />}
     </div>
   );
 };
@@ -13237,27 +13483,48 @@ const FacturesShipments = ({ showToast }) => {
                     <td className="px-4 py-3 text-xs text-slate-500">{parseUTC(s.created_at).toLocaleDateString('fr-FR')}</td>
                     <td className="px-4 py-3 text-right">
                       <div className="flex items-center justify-end gap-2">
-                        {s.delivered_at && s.client_email && s.type === 'echantillon' && (
-                          <button
-                            disabled={sendingNotif === s.id}
-                            onClick={async () => {
-                              if (s.client_notified_at || sendingNotif) return;
-                              setSendingNotif(s.id);
-                              try {
-                                await api.patch(`/shipments/${s.id}/notify`);
-                                setShipments(prev => prev.map(sh => sh.id === s.id
-                                  ? { ...sh, client_notified_at: new Date().toISOString() } : sh));
-                                showToast('Email envoyé + task HubSpot créée', 'success');
-                              } catch (err) {
-                                showToast('Erreur: ' + (err.message || 'Envoi échoué'), 'error');
-                              }
-                              setSendingNotif(null);
-                            }}
-                            className={`text-xs ${s.client_notified_at ? 'text-slate-400' : 'text-emerald-600 hover:text-emerald-800'} ${sendingNotif === s.id ? 'opacity-50' : ''}`}
-                            title={s.client_notified_at ? `Email client envoyé le ${parseUTC(s.client_notified_at).toLocaleDateString('fr-FR')}` : 'Envoyer email confirmation réception'}>
-                            {sendingNotif === s.id ? '⏳' : s.client_notified_at ? '✅' : '✉️'}
-                          </button>
-                        )}
+                        {s.type === 'echantillon' && (() => {
+                          // Déterminer le type de notification et la colonne notified
+                          const code = String(s.wms_status_code || '').toUpperCase();
+                          let notifType = null;
+                          let notifiedAt = null;
+                          let icon = '✉️';
+                          let title = '';
+                          if (s.delivered_at) {
+                            notifType = 'delivered'; notifiedAt = s.client_notified_at; icon = '✉️';
+                            title = notifiedAt ? `Email livraison envoyé le ${parseUTC(notifiedAt).toLocaleDateString('fr-FR')}` : 'Envoyer email confirmation réception';
+                          } else if (code === 'PRP') {
+                            notifType = 'pickup'; notifiedAt = s.pickup_notified_at; icon = '📦';
+                            title = notifiedAt ? `Email point de retrait envoyé le ${parseUTC(notifiedAt).toLocaleDateString('fr-FR')}` : 'Envoyer email point de retrait';
+                          } else if (code === 'RET') {
+                            notifType = 'returned'; notifiedAt = s.returned_notified_at; icon = '⚠️';
+                            title = notifiedAt ? `Notif retour envoyée le ${parseUTC(notifiedAt).toLocaleDateString('fr-FR')}` : 'Envoyer notification retour';
+                          } else if (code === 'ECH') {
+                            notifType = 'failed'; notifiedAt = s.failed_notified_at; icon = '❌';
+                            title = notifiedAt ? `Notif échec envoyée le ${parseUTC(notifiedAt).toLocaleDateString('fr-FR')}` : 'Envoyer notification échec';
+                          }
+                          if (!notifType) return null;
+                          return (
+                            <button
+                              disabled={sendingNotif === s.id}
+                              onClick={async () => {
+                                if (notifiedAt || sendingNotif) return;
+                                setSendingNotif(s.id);
+                                try {
+                                  await api.patch(`/shipments/${s.id}/notify`, { notifType });
+                                  loadShipments();
+                                  showToast('Notification envoyée', 'success');
+                                } catch (err) {
+                                  showToast('Erreur: ' + (err.message || 'Envoi échoué'), 'error');
+                                }
+                                setSendingNotif(null);
+                              }}
+                              className={`text-xs ${notifiedAt ? 'text-slate-400' : 'text-emerald-600 hover:text-emerald-800'} ${sendingNotif === s.id ? 'opacity-50' : ''}`}
+                              title={title}>
+                              {sendingNotif === s.id ? '⏳' : notifiedAt ? '✅' : icon}
+                            </button>
+                          );
+                        })()}
                         <button onClick={() => refreshWMS(s.id)}
                           className="text-xs text-blue-600 hover:text-blue-800" title="Rafraîchir WMS">
                           🔄

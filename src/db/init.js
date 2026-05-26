@@ -1044,6 +1044,13 @@ const migrations = [
   'ALTER TABLE shipments ADD COLUMN client_notified_at TEXT',
   // Notification point de retrait envoyée au client
   'ALTER TABLE shipments ADD COLUMN pickup_notified_at TEXT',
+  // Timestamps pour retour, échec et point de retrait (pour notifications configurables)
+  'ALTER TABLE shipments ADD COLUMN returned_at TEXT',
+  'ALTER TABLE shipments ADD COLUMN failed_at TEXT',
+  'ALTER TABLE shipments ADD COLUMN pickup_at TEXT',
+  // Notifications retour + échec envoyées
+  'ALTER TABLE shipments ADD COLUMN returned_notified_at TEXT',
+  'ALTER TABLE shipments ADD COLUMN failed_notified_at TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
@@ -1052,6 +1059,24 @@ for (const sql of migrations) {
       console.error('⚠️  Erreur migration:', sql, '-', e.message);
     }
   }
+}
+
+// ─── Migration : backfill returned_at/failed_at/pickup_at + marquer comme notifiés ──
+try {
+  const backfillDone = db.prepare("SELECT valeur FROM config WHERE cle = 'migration_shipment_notif_timestamps_v1'").get();
+  if (!backfillDone) {
+    // Remplir les timestamps depuis last_wms_check pour les shipments existants
+    db.prepare(`UPDATE shipments SET returned_at = COALESCE(returned_at, last_wms_check) WHERE wms_status_code = 'RET' AND returned_at IS NULL`).run();
+    db.prepare(`UPDATE shipments SET failed_at = COALESCE(failed_at, last_wms_check) WHERE wms_status_code = 'ECH' AND failed_at IS NULL`).run();
+    db.prepare(`UPDATE shipments SET pickup_at = COALESCE(pickup_at, last_wms_check) WHERE wms_status_code = 'PRP' AND pickup_at IS NULL`).run();
+    // Marquer comme déjà notifiés pour éviter un backlog d'envoi
+    db.prepare(`UPDATE shipments SET returned_notified_at = datetime('now') WHERE wms_status_code = 'RET' AND returned_notified_at IS NULL`).run();
+    db.prepare(`UPDATE shipments SET failed_notified_at = datetime('now') WHERE wms_status_code = 'ECH' AND failed_notified_at IS NULL`).run();
+    db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('migration_shipment_notif_timestamps_v1', '1')").run();
+    console.log('✅ Migration shipment notification timestamps : backfill terminé');
+  }
+} catch (e) {
+  console.error('⚠️  Erreur migration shipment notif timestamps:', e.message);
 }
 
 // ─── Migration : statut "Échantillon envoyé" pour leads ayant déjà un échantillon ──

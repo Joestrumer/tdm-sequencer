@@ -224,6 +224,7 @@ async function updateShipmentDelivery(db, shipment) {
         UPDATE shipments
         SET wms_status = ?, wms_status_code = 'RET',
             carrier_name = COALESCE(carrier_name, ?),
+            returned_at = COALESCE(returned_at, datetime('now')),
             last_wms_check = datetime('now')
         WHERE id = ?
       `).run(
@@ -239,6 +240,7 @@ async function updateShipmentDelivery(db, shipment) {
         UPDATE shipments
         SET wms_status = ?, wms_status_code = 'PRP',
             carrier_name = COALESCE(carrier_name, ?),
+            pickup_at = COALESCE(pickup_at, datetime('now')),
             last_wms_check = datetime('now')
         WHERE id = ?
       `).run(
@@ -254,6 +256,7 @@ async function updateShipmentDelivery(db, shipment) {
         UPDATE shipments
         SET wms_status = ?, wms_status_code = 'ECH',
             carrier_name = COALESCE(carrier_name, ?),
+            failed_at = COALESCE(failed_at, datetime('now')),
             last_wms_check = datetime('now')
         WHERE id = ?
       `).run(

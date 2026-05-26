@@ -5,15 +5,14 @@
  * 1. Interroge le WMS Endurance pour récupérer tracking + statut expédition
  * 2. Pour les colis expédiés avec tracking, interroge l'API La Poste
  *    pour détecter la livraison (Colissimo / Chronopost)
- * 3. Envoie automatiquement l'email client + task HubSpot quand un échantillon est livré
+ * 3. Envoie automatiquement les notifications configurables (email + task HubSpot)
  */
 
 const cron = require('node-cron');
 const logger = require('../config/logger');
 const wmsService = require('../services/wmsService');
 const carrierTracking = require('../services/carrierTrackingService');
-const brevoService = require('../services/brevoService');
-const hubspotService = require('../services/hubspotService');
+const { sendNotification, notifyPendingAll } = require('../services/shipmentNotificationService');
 
 let db;
 
@@ -23,208 +22,6 @@ const clean = (v) => {
   const s = String(v).trim();
   return JUNK.has(s.toLowerCase()) ? null : s;
 };
-
-// ─── Helpers ────────────────────────────────────────────────────────────────
-function buildTrackingUrl(carrier, trackingNumber) {
-  if (!trackingNumber) return '#';
-  const t = (carrier || '').toLowerCase();
-  if (t.includes('chronopost')) return `https://www.chronopost.fr/tracking-no-powerful/tracking/suivi?listeNumerosLT=${trackingNumber}`;
-  if (t.includes('colissimo')) return `https://www.laposte.fr/outils/suivre-vos-envois?code=${trackingNumber}`;
-  if (t.includes('ups')) return `https://www.ups.com/track?tracknum=${trackingNumber}`;
-  if (t.includes('dhl')) return `https://www.dhl.com/fr-fr/home/suivi.html?tracking-id=${trackingNumber}`;
-  if (t.includes('tnt') || t.includes('fedex')) return `https://www.fedex.com/fedextrack/?trknbr=${trackingNumber}`;
-  return `https://www.laposte.fr/outils/suivre-vos-envois?code=${trackingNumber}`;
-}
-
-function escapeHtml(str) {
-  if (!str) return '';
-  return String(str).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
-}
-
-// Extraire le prénom depuis client_name (format "HOTEL - Prénom NOM") en priorité,
-// puis fallback sur client_prenom (issu du lead en base, pas toujours fiable)
-function extrairePrenom(shipment) {
-  if (shipment.client_name && shipment.client_name.includes(' - ')) {
-    const apres = shipment.client_name.split(' - ')[1].trim();
-    const parts = apres.split(/\s+/);
-    // Trouver le premier mot qui n'est pas tout en majuscules (= le prénom en casse mixte)
-    const prenom = parts.find(p => p !== p.toUpperCase()) || parts[0];
-    if (prenom) return prenom.charAt(0).toUpperCase() + prenom.slice(1).toLowerCase();
-  }
-  return shipment.client_prenom || '';
-}
-
-// ─── Envoi automatique email client + task HubSpot ──────────────────────────
-async function autoNotifyClient(shipment) {
-  // Recharger le shipment pour avoir delivered_at à jour
-  const fresh = db.prepare('SELECT * FROM shipments WHERE id = ?').get(shipment.id);
-  if (!fresh || fresh.type !== 'echantillon' || !fresh.client_email || !fresh.delivered_at) return;
-  if (fresh.client_notified_at) return; // Déjà envoyé
-
-  const prenom = extrairePrenom(fresh);
-  const trackingLink = buildTrackingUrl(fresh.carrier_name, fresh.tracking_number);
-  const signature = brevoService.getSignature(db);
-
-  const htmlContent = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;">
-  <p>Bonjour ${escapeHtml(prenom)},</p>
-  <p>J'espère que vous allez bien.</p>
-  <p>Le colis apparait comme livré. Pouvez-vous me confirmer l'avoir bien reçu ?</p>
-  <p>On fait le point quand vous avez pu les tester mais n'hésitez pas si vous avez des questions d'ici là.</p>
-  ${fresh.tracking_number ? `<p>Vous pouvez suivre votre colis ici : <a href="${trackingLink}">${escapeHtml(fresh.tracking_number)}</a></p>` : ''}
-  <p>Bonne journée,</p>
-  <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:16px;">
-    ${signature}
-  </div>
-</div>`;
-
-  // Envoyer via Brevo (BCC Hugo)
-  await brevoService.brevoSendEmail({
-    sender: brevoService.SENDER,
-    to: [{ email: fresh.client_email, name: prenom || fresh.client_name }],
-    bcc: [{ email: 'hugo@terredemars.com', name: 'Hugo Montiel' }],
-    subject: 'Terre de Mars - Confirmation de réception de vos échantillons',
-    htmlContent,
-    replyTo: { email: 'hugo@terredemars.com', name: 'Hugo Montiel' },
-  });
-
-  // Créer task HubSpot (optionnel)
-  try {
-    if (process.env.HUBSPOT_API_KEY) {
-      const deliveredDate = new Date(fresh.delivered_at).toLocaleDateString('fr-FR');
-
-      const lead = db.prepare('SELECT hubspot_id FROM leads WHERE email = ? LIMIT 1').get(fresh.client_email);
-      const contactId = lead?.hubspot_id ? parseInt(lead.hubspot_id) : null;
-
-      const domaine = fresh.client_email.split('@')[1];
-      const company = await hubspotService.trouverCompanyParDomaine(domaine);
-      const companyId = company?.id ? parseInt(company.id) : null;
-
-      // +5 jours ouvrés
-      let taskDate = new Date();
-      let businessDays = 0;
-      while (businessDays < 5) {
-        taskDate.setDate(taskDate.getDate() + 1);
-        if (taskDate.getDay() !== 0 && taskDate.getDay() !== 6) businessDays++;
-      }
-
-      const associations = {};
-      if (contactId) associations.contactIds = [contactId];
-      if (companyId) associations.companyIds = [parseInt(companyId)];
-
-      await hubspotService.hubspotFetch('/engagements/v1/engagements', {
-        method: 'POST',
-        body: JSON.stringify({
-          engagement: {
-            active: true,
-            type: 'TASK',
-            timestamp: taskDate.getTime(),
-            ownerId: parseInt(hubspotService.HUGO_OWNER_ID),
-          },
-          associations,
-          metadata: {
-            subject: `retour echantillon (reçu le ${deliveredDate})`,
-            body: `Relancer ${fresh.client_name} suite à la réception des échantillons.`,
-            status: 'NOT_STARTED',
-            priority: 'HIGH',
-            taskType: 'TODO',
-          }
-        }),
-      });
-      logger.info('📋 HubSpot task "retour echantillon" créée', { email: fresh.client_email, taskDate: taskDate.toISOString().split('T')[0] });
-    }
-  } catch (hsErr) {
-    logger.error('HubSpot task échouée (non bloquant)', { error: hsErr.message, email: fresh.client_email });
-  }
-
-  // Marquer comme notifié
-  db.prepare("UPDATE shipments SET client_notified_at = datetime('now') WHERE id = ?").run(fresh.id);
-  logger.info(`✉️ Email auto envoyé à ${fresh.client_email} (${fresh.client_name})`);
-}
-
-// ─── Notification point de retrait : email client + task HubSpot ─────────────
-async function notifyPickupPoint(shipment) {
-  // Recharger pour vérifier pickup_notified_at
-  const fresh = db.prepare('SELECT * FROM shipments WHERE id = ?').get(shipment.id);
-  if (!fresh || !fresh.client_email || fresh.pickup_notified_at) return;
-  if (fresh.type !== 'echantillon') return;
-
-  const prenom = extrairePrenom(fresh);
-  const trackingLink = buildTrackingUrl(fresh.carrier_name, fresh.tracking_number);
-  const signature = brevoService.getSignature(db);
-
-  const htmlContent = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;">
-  <p>Bonjour ${escapeHtml(prenom)},</p>
-  <p>J'espère que vous allez bien.</p>
-  <p>Votre colis n'a pas pu vous être remis et <strong>vous attend dans votre point de retrait</strong>.</p>
-  <p>Pensez à le récupérer rapidement pour éviter un retour à l'expéditeur.</p>
-  ${fresh.tracking_number ? `<p>Vous pouvez suivre votre colis ici : <a href="${trackingLink}">${escapeHtml(fresh.tracking_number)}</a></p>` : ''}
-  <p>N'hésitez pas si vous avez des questions.</p>
-  <p>Bonne journée,</p>
-  <div style="border-top:1px solid #e5e0d5;padding-top:12px;margin-top:16px;">
-    ${signature}
-  </div>
-</div>`;
-
-  // Envoyer via Brevo (BCC Hugo)
-  await brevoService.brevoSendEmail({
-    sender: brevoService.SENDER,
-    to: [{ email: fresh.client_email, name: prenom || fresh.client_name }],
-    bcc: [{ email: 'hugo@terredemars.com', name: 'Hugo Montiel' }],
-    subject: 'Terre de Mars - Votre colis vous attend en point de retrait',
-    htmlContent,
-    replyTo: { email: 'hugo@terredemars.com', name: 'Hugo Montiel' },
-  });
-
-  // Créer task HubSpot +5 jours ouvrés (vérifier si récupéré)
-  try {
-    if (process.env.HUBSPOT_API_KEY) {
-      const lead = db.prepare('SELECT hubspot_id FROM leads WHERE email = ? LIMIT 1').get(fresh.client_email);
-      const contactId = lead?.hubspot_id ? parseInt(lead.hubspot_id) : null;
-
-      const domaine = fresh.client_email.split('@')[1];
-      const company = await hubspotService.trouverCompanyParDomaine(domaine);
-      const companyId = company?.id ? parseInt(company.id) : null;
-
-      let taskDate = new Date();
-      let businessDays = 0;
-      while (businessDays < 5) {
-        taskDate.setDate(taskDate.getDate() + 1);
-        if (taskDate.getDay() !== 0 && taskDate.getDay() !== 6) businessDays++;
-      }
-
-      const associations = {};
-      if (contactId) associations.contactIds = [contactId];
-      if (companyId) associations.companyIds = [parseInt(companyId)];
-
-      await hubspotService.hubspotFetch('/engagements/v1/engagements', {
-        method: 'POST',
-        body: JSON.stringify({
-          engagement: {
-            active: true,
-            type: 'TASK',
-            timestamp: taskDate.getTime(),
-            ownerId: parseInt(hubspotService.HUGO_OWNER_ID),
-          },
-          associations,
-          metadata: {
-            subject: `point retrait echantillon - ${fresh.client_name}`,
-            body: `Vérifier si ${fresh.client_name} a récupéré le colis en point de retrait. Tracking: ${fresh.tracking_number || 'N/A'}`,
-            status: 'NOT_STARTED',
-            priority: 'HIGH',
-            taskType: 'TODO',
-          }
-        }),
-      });
-      logger.info('📋 HubSpot task "point retrait" créée', { email: fresh.client_email, taskDate: taskDate.toISOString().split('T')[0] });
-    }
-  } catch (hsErr) {
-    logger.error('HubSpot task pickup échouée (non bloquant)', { error: hsErr.message });
-  }
-
-  // Marquer comme notifié
-  db.prepare("UPDATE shipments SET pickup_notified_at = datetime('now') WHERE id = ?").run(fresh.id);
-  logger.info(`📦 Email point de retrait envoyé à ${fresh.client_email} (${fresh.client_name})`);
-}
 
 // ─── Phase 1 : Refresh WMS Endurance (tracking + statut expédition) ─────────
 async function refreshWMS() {
@@ -292,52 +89,31 @@ async function checkDeliveries() {
   let returned = 0;
   for (const shipment of shipments) {
     const result = await carrierTracking.updateShipmentDelivery(db, shipment);
+
     if (result?.type === 'delivered') {
       delivered++;
       logger.info(`[Carrier Tracking] ${shipment.order_ref} (${shipment.tracking_number}) → Livré`);
-
-      // Envoi automatique email client + task HubSpot
-      try {
-        await autoNotifyClient(shipment);
-      } catch (notifErr) {
+      try { await sendNotification(db, shipment, 'delivered'); } catch (notifErr) {
         logger.error(`[Auto Notify] Erreur pour ${shipment.client_name}:`, notifErr.message);
       }
 
     } else if (result?.type === 'pickup_point') {
       logger.info(`[Carrier Tracking] ${shipment.order_ref} (${shipment.tracking_number}) → Point de retrait`);
-      // Envoyer email au client pour l'informer + task HubSpot
-      try {
-        await notifyPickupPoint(shipment);
-      } catch (notifErr) {
+      try { await sendNotification(db, shipment, 'pickup'); } catch (notifErr) {
         logger.error(`[Pickup Notify] Erreur pour ${shipment.client_name}:`, notifErr.message);
       }
 
     } else if (result?.type === 'returned') {
       returned++;
       logger.info(`[Carrier Tracking] ${shipment.order_ref} (${shipment.tracking_number}) → Retour à l'expéditeur`);
-      // Envoyer notification à Hugo
-      try {
-        await brevoService.brevoSendEmail({
-          sender: brevoService.SENDER,
-          to: [{ email: 'hugo@terredemars.com', name: 'Hugo Montiel' }],
-          subject: `⚠️ Retour à l'expéditeur : ${shipment.client_name} (${shipment.order_ref})`,
-          htmlContent: `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#1a1a1a;">
-  <p>Bonjour,</p>
-  <p>Le colis suivant est en <strong style="color:#dc2626;">retour à l'expéditeur</strong> :</p>
-  <table border="1" cellpadding="8" cellspacing="0" style="border-collapse:collapse; font-size:14px;">
-    <tr><td style="background:#f5f5f5;font-weight:bold;">Client</td><td>${escapeHtml(shipment.client_name)}</td></tr>
-    <tr><td style="background:#f5f5f5;font-weight:bold;">Email</td><td>${shipment.client_email || '-'}</td></tr>
-    <tr><td style="background:#f5f5f5;font-weight:bold;">Ville</td><td>${escapeHtml(shipment.client_city || '-')}${shipment.client_country ? ', ' + escapeHtml(shipment.client_country) : ''}</td></tr>
-    <tr><td style="background:#f5f5f5;font-weight:bold;">Référence</td><td>${escapeHtml(shipment.order_ref)}</td></tr>
-    <tr><td style="background:#f5f5f5;font-weight:bold;">Tracking</td><td>${shipment.tracking_number || '-'}</td></tr>
-    <tr><td style="background:#f5f5f5;font-weight:bold;">Type</td><td>${shipment.type}</td></tr>
-  </table>
-  <p style="margin-top:16px;color:#666;">Vérifier l'adresse et contacter le client si nécessaire.</p>
-</div>`,
-          replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
-        });
-      } catch (emailErr) {
-        logger.error('[Carrier Tracking] Erreur envoi notif retour:', emailErr.message);
+      try { await sendNotification(db, shipment, 'returned'); } catch (notifErr) {
+        logger.error(`[Return Notify] Erreur pour ${shipment.client_name}:`, notifErr.message);
+      }
+
+    } else if (result?.type === 'failed_delivery') {
+      logger.info(`[Carrier Tracking] ${shipment.order_ref} (${shipment.tracking_number}) → Échec de livraison`);
+      try { await sendNotification(db, shipment, 'failed'); } catch (notifErr) {
+        logger.error(`[Failed Notify] Erreur pour ${shipment.client_name}:`, notifErr.message);
       }
     }
 
@@ -355,46 +131,12 @@ async function checkDeliveries() {
   return delivered;
 }
 
-// ─── Phase 3 : Rattraper les échantillons livrés non notifiés (backlog) ──────
-async function notifyPendingDeliveries() {
-  const pending = db.prepare(`
-    SELECT * FROM shipments
-    WHERE type = 'echantillon'
-      AND delivered_at IS NOT NULL
-      AND client_notified_at IS NULL
-      AND client_email IS NOT NULL
-    ORDER BY delivered_at ASC
-    LIMIT 10
-  `).all();
-
-  if (pending.length === 0) return 0;
-
-  logger.info(`[Auto Notify] ${pending.length} échantillon(s) livré(s) en attente de notification`);
-
-  let sent = 0;
-  for (const shipment of pending) {
-    try {
-      await autoNotifyClient(shipment);
-      sent++;
-      // Pause 2s entre envois
-      await new Promise(r => setTimeout(r, 2000));
-    } catch (err) {
-      logger.error(`[Auto Notify] Erreur ${shipment.client_name}: ${err.message}`);
-    }
-  }
-
-  if (sent > 0) {
-    logger.info(`[Auto Notify] ${sent} email(s) de confirmation envoyé(s)`);
-  }
-  return sent;
-}
-
 // ─── Job principal ───────────────────────────────────────────────────────────
 async function refreshPending() {
   try {
     const wmsUpdated = await refreshWMS();
     const deliveredCount = await checkDeliveries();
-    const notified = await notifyPendingDeliveries();
+    const notified = await notifyPendingAll(db);
 
     if (wmsUpdated > 0 || deliveredCount > 0 || notified > 0) {
       logger.info(`[WMS Refresh] Bilan: ${wmsUpdated} WMS, ${deliveredCount} livraison(s), ${notified} notif(s) envoyée(s)`);
