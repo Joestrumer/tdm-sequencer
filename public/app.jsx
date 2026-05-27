@@ -2711,8 +2711,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               setSelectedIds(currentIds);
             }} disabled={selectedIds.size >= filtered.length} className="px-3 py-1.5 bg-white/20 text-white rounded-lg text-xs font-semibold hover:bg-white/30 disabled:opacity-40">+10</button>
             <button onClick={() => setSelectedIds(new Set())} className="px-3 py-1.5 bg-white/20 text-white rounded-lg text-xs font-semibold hover:bg-white/30">Désélectionner</button>
-            <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer</button>
-            <button onClick={async () => { if(!await confirmDialog(`Arrêter les séquences de ${selectedIds.size} lead(s) ?`, { danger: true, confirmLabel: 'Arrêter' })) return; try { await api.post('/sequences/stop-batch', { lead_ids: Array.from(selectedIds) }); showToast('Séquences arrêtées','success'); setSelectedIds(new Set()); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600">⏹ Arrêter</button>
+            {filtered.some(l => selectedIds.has(l.id) && !l.sequence_active) && <button onClick={() => setShowBulkLaunch(true)} className="px-3 py-1.5 bg-white text-blue-700 rounded-lg text-xs font-semibold hover:bg-blue-50">▶ Lancer</button>}
+            {filtered.some(l => selectedIds.has(l.id) && l.sequence_active) && <button onClick={async () => { if(!await confirmDialog(`Arrêter les séquences de ${selectedIds.size} lead(s) ?`, { danger: true, confirmLabel: 'Arrêter' })) return; try { await api.post('/sequences/stop-batch', { lead_ids: Array.from(selectedIds) }); showToast('Séquences arrêtées','success'); setSelectedIds(new Set()); if(onRefresh) onRefresh(); } catch(e) { showToast('Erreur','error'); } }} className="px-3 py-1.5 bg-orange-500 text-white rounded-lg text-xs font-semibold hover:bg-orange-600">⏹ Arrêter</button>}
             <select
               defaultValue=""
               onChange={async (e) => {
@@ -2738,10 +2738,12 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               <option value="Fin de séquence">Fin de séquence</option>
               <option value="Closed Lost">Closed Lost</option>
             </select>
-            <select
-              defaultValue=""
-              onChange={async (e) => {
-                const newSource = e.target.value;
+            <input
+              list="bulk-source-list"
+              placeholder="Changer source..."
+              onKeyDown={async (e) => {
+                if (e.key !== 'Enter') return;
+                const newSource = e.target.value.trim();
                 if (!newSource) return;
                 e.target.value = '';
                 if (!await confirmDialog(`Changer la source de ${selectedIds.size} lead(s) → "${newSource}" ?`, { confirmLabel: 'Confirmer' })) return;
@@ -2752,17 +2754,30 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                   if (onRefresh) onRefresh();
                 } catch (err) { showToast('Erreur: ' + err.message, 'error'); }
               }}
-              className="px-3 py-1.5 bg-white text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
-            >
-              <option value="">Changer source...</option>
-              <option value="Site web">Site web</option>
-              <option value="LinkedIn">LinkedIn</option>
-              <option value="HubSpot">HubSpot</option>
-              <option value="Import CSV">Import CSV</option>
-              <option value="Salon">Salon</option>
-              <option value="Recommandation">Recommandation</option>
-              <option value="Partenaire">Partenaire</option>
-            </select>
+              onChange={async (e) => {
+                const val = e.target.value;
+                const options = ["Site web", "LinkedIn", "HubSpot", "Import CSV", "Salon", "Recommandation", "Partenaire"];
+                if (!options.includes(val)) return;
+                e.target.value = '';
+                if (!await confirmDialog(`Changer la source de ${selectedIds.size} lead(s) → "${val}" ?`, { confirmLabel: 'Confirmer' })) return;
+                try {
+                  await api.patch('/leads/bulk-source', { lead_ids: Array.from(selectedIds), source: val });
+                  showToast(`${selectedIds.size} lead(s) → source "${val}"`, 'success');
+                  setSelectedIds(new Set());
+                  if (onRefresh) onRefresh();
+                } catch (err) { showToast('Erreur: ' + err.message, 'error'); }
+              }}
+              className="px-3 py-1.5 bg-white text-slate-700 rounded-lg text-xs font-semibold w-36"
+            />
+            <datalist id="bulk-source-list">
+              <option value="Site web" />
+              <option value="LinkedIn" />
+              <option value="HubSpot" />
+              <option value="Import CSV" />
+              <option value="Salon" />
+              <option value="Recommandation" />
+              <option value="Partenaire" />
+            </datalist>
             <button onClick={async () => { const ids = Array.from(selectedIds); if(!await confirmDialog('Supprimer ' + ids.length + ' leads ?', { danger: true, confirmLabel: 'Supprimer' })) return; const results = await Promise.allSettled(ids.map(id => api.delete('/leads/' + id))); const errCount = results.filter(r => r.status === 'rejected').length; setSelectedIds(new Set()); if(onRefresh) onRefresh(); showToast(errCount ? `${ids.length - errCount} supprimé(s), ${errCount} erreur(s)` : `${ids.length} lead(s) supprimé(s)`, errCount ? 'error' : 'success'); }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50">✕ Supprimer</button>
             <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-blue-200 hover:text-white text-xs">Annuler</button>
           </div>
