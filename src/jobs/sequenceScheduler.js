@@ -89,6 +89,89 @@ function prochaineDateEnvoi(joursDelai) {
   return formatSQLite(date);
 }
 
+// ─── Calcul de la prochaine date d'envoi OPTIMALE ───────────────────────────
+function prochaineDateEnvoiOptimale(joursDelai) {
+  // Toggle : si désactivé, fallback sur la version standard
+  const toggle = db ? getConfigVal(db, 'envoi_optimal', 'SEND_OPTIMAL', '1') : '1';
+  if (toggle === '0') return prochaineDateEnvoi(joursDelai);
+
+  // Vérifier qu'il y a assez de données (min 50 emails sur 30j)
+  const countEmails = db.prepare(`
+    SELECT COUNT(*) as n FROM emails WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+  `).get().n;
+  if (countEmails < 50) return prochaineDateEnvoi(joursDelai);
+
+  // Offset Paris pour ajuster les heures UTC
+  const offsetParis = (() => {
+    const now = new Date();
+    const utc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+    const paris = new Date(now.toLocaleString('en-US', { timeZone: process.env.FUSEAU || 'Europe/Paris' }));
+    return Math.round((paris - utc) / 3600000);
+  })();
+  const tzAdjust = `+${offsetParis} hours`;
+
+  // Trouver les 3 meilleures heures par taux d'ouverture (min 5 emails par slot)
+  const bestSlots = db.prepare(`
+    SELECT CAST(strftime('%H', datetime(envoye_at, ?)) AS INTEGER) as heure,
+           COUNT(*) as envoyes,
+           SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
+    FROM emails
+    WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+    GROUP BY heure
+    HAVING envoyes >= 5
+    ORDER BY CAST(ouverts AS REAL) / envoyes DESC
+    LIMIT 3
+  `).all(tzAdjust);
+
+  if (!bestSlots.length) return prochaineDateEnvoi(joursDelai);
+
+  // Fenêtre d'envoi config
+  const rawDebut = getConfigVal(db, 'heure_debut', 'SEND_HOUR_START', '8');
+  const rawFin = getConfigVal(db, 'heure_fin', 'SEND_HOUR_END', '18');
+  const [hD] = parseHeurMinute(rawDebut, 8, 0);
+  const [hF] = parseHeurMinute(rawFin, 18, 0);
+
+  // Filtrer les heures dans la fenêtre d'envoi
+  const validSlots = bestSlots.filter(s => s.heure >= hD && s.heure < hF);
+  if (!validSlots.length) return prochaineDateEnvoi(joursDelai);
+
+  const bestHeure = validSlots[0].heure;
+
+  // Jours actifs
+  const rawJours = getConfigVal(db, 'jours_actifs', 'ACTIVE_DAYS', '1,2,3,4,5');
+  const jourMap = { lun: 1, mar: 2, mer: 3, jeu: 4, ven: 5, sam: 6, dim: 0 };
+  const joursActifs = rawJours.split(',').map(j => jourMap[j.trim()] !== undefined ? jourMap[j.trim()] : Number(j));
+
+  // Construire la date : joursDelai + skip jours inactifs + heure optimale
+  const now = maintenant_paris();
+  let date = new Date(now.getTime());
+  date.setDate(date.getDate() + joursDelai);
+
+  // Avancer au prochain jour actif si nécessaire
+  let tentatives = 0;
+  while (!joursActifs.includes(date.getDay()) && tentatives < 7) {
+    date.setDate(date.getDate() + 1);
+    tentatives++;
+  }
+
+  // Heure optimale + offset aléatoire 0-30 min pour variation naturelle
+  const randomOffset = Math.floor(Math.random() * 31);
+  date.setHours(bestHeure, randomOffset, 0, 0);
+
+  // Si la date est déjà passée, avancer au prochain jour actif
+  if (date <= now) {
+    date.setDate(date.getDate() + 1);
+    tentatives = 0;
+    while (!joursActifs.includes(date.getDay()) && tentatives < 7) {
+      date.setDate(date.getDate() + 1);
+      tentatives++;
+    }
+    date.setHours(bestHeure, Math.floor(Math.random() * 31), 0, 0);
+  }
+
+  return formatSQLite(date);
+}
+
 // ─── Avancer l'inscription à l'étape suivante ─────────────────────────────────
 async function avancerInscription(inscription, etapesParsed, lead) {
   const prochainIndex = inscription.etape_courante + 1;
@@ -120,7 +203,7 @@ async function avancerInscription(inscription, etapesParsed, lead) {
     }
   } else {
     const prochainEtape = etapesParsed[prochainIndex];
-    const prochainDate  = prochaineDateEnvoi(prochainEtape.jour_delai);
+    const prochainDate  = prochaineDateEnvoiOptimale(prochainEtape.jour_delai);
     db.transaction(() => {
       db.prepare(`UPDATE inscriptions SET etape_courante=?, prochain_envoi=? WHERE id=?`)
         .run(prochainIndex, prochainDate, inscription.id);
@@ -265,7 +348,7 @@ function inscrireLead(leadId, sequenceId, scheduledAt) {
     devDate.setMinutes(devDate.getMinutes() + 1);
     prochainEnvoi = formatSQLite(devDate);
   } else {
-    prochainEnvoi = prochaineDateEnvoi(premiereEtape.jour_delai || 0);
+    prochainEnvoi = prochaineDateEnvoiOptimale(premiereEtape.jour_delai || 0);
   }
 
   // Vérifier si une inscription active existe déjà pour éviter de reset etape_courante
@@ -326,5 +409,6 @@ module.exports = {
   inscrireLead,
   traiterInscriptionDirect,
   prochaineDateEnvoi,
+  prochaineDateEnvoiOptimale,
   lancerVerification,
 };

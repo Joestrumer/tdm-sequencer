@@ -291,5 +291,141 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/dashboard/send-analytics — Analyse des créneaux d'envoi
+  router.get('/send-analytics', (req, res) => {
+    try {
+      // Offset Paris dynamique (UTC+1 ou UTC+2 selon DST)
+      const offsetParis = (() => {
+        const now = new Date();
+        const utc = new Date(now.toLocaleString('en-US', { timeZone: 'UTC' }));
+        const paris = new Date(now.toLocaleString('en-US', { timeZone: process.env.FUSEAU || 'Europe/Paris' }));
+        return Math.round((paris - utc) / 3600000);
+      })();
+      const tzAdjust = `+${offsetParis} hours`;
+
+      // Total emails 30j
+      const totalEmails = db.prepare(`
+        SELECT COUNT(*) as count FROM emails
+        WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+      `).get().count;
+
+      // Q1 — Heatmap ouvertures
+      const heatmapOuvertures = db.prepare(`
+        SELECT CAST(strftime('%w', datetime(created_at, ?)) AS INTEGER) as j,
+               CAST(strftime('%H', datetime(created_at, ?)) AS INTEGER) as h,
+               COUNT(*) as n
+        FROM events
+        WHERE type = 'ouverture' AND created_at >= datetime('now', '-30 days')
+        GROUP BY j, h
+      `).all(tzAdjust, tzAdjust).map(r => [r.j, r.h, r.n]);
+
+      // Q2 — Heatmap clics
+      const heatmapClics = db.prepare(`
+        SELECT CAST(strftime('%w', datetime(created_at, ?)) AS INTEGER) as j,
+               CAST(strftime('%H', datetime(created_at, ?)) AS INTEGER) as h,
+               COUNT(*) as n
+        FROM events
+        WHERE type = 'clic' AND created_at >= datetime('now', '-30 days')
+        GROUP BY j, h
+      `).all(tzAdjust, tzAdjust).map(r => [r.j, r.h, r.n]);
+
+      // Q3 — Heatmap réponses
+      const heatmapReponses = db.prepare(`
+        SELECT CAST(strftime('%w', datetime(created_at, ?)) AS INTEGER) as j,
+               CAST(strftime('%H', datetime(created_at, ?)) AS INTEGER) as h,
+               COUNT(*) as n
+        FROM events
+        WHERE type = 'réponse' AND created_at >= datetime('now', '-30 days')
+        GROUP BY j, h
+      `).all(tzAdjust, tzAdjust).map(r => [r.j, r.h, r.n]);
+
+      // Q4 — Taux ouverture par heure d'envoi
+      const tauxParHeure = db.prepare(`
+        SELECT CAST(strftime('%H', datetime(envoye_at, ?)) AS INTEGER) as heure,
+               COUNT(*) as envoyes,
+               SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
+        FROM emails
+        WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+        GROUP BY heure ORDER BY heure
+      `).all(tzAdjust).map(r => ({
+        heure: r.heure,
+        envoyes: r.envoyes,
+        ouverts: r.ouverts,
+        taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0
+      }));
+
+      // Q5 — Taux ouverture par jour d'envoi
+      const tauxParJour = db.prepare(`
+        SELECT CAST(strftime('%w', datetime(envoye_at, ?)) AS INTEGER) as jour,
+               COUNT(*) as envoyes,
+               SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
+        FROM emails
+        WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+        GROUP BY jour ORDER BY jour
+      `).all(tzAdjust).map(r => ({
+        jour: r.jour,
+        envoyes: r.envoyes,
+        ouverts: r.ouverts,
+        taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0
+      }));
+
+      // Q6 — Meilleurs créneaux (jour × heure)
+      const creneauxRaw = db.prepare(`
+        SELECT CAST(strftime('%w', datetime(envoye_at, ?)) AS INTEGER) as jour,
+               CAST(strftime('%H', datetime(envoye_at, ?)) AS INTEGER) as heure,
+               COUNT(*) as envoyes,
+               SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
+        FROM emails
+        WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+        GROUP BY jour, heure
+        HAVING envoyes >= 5
+      `).all(tzAdjust, tzAdjust);
+
+      const joursLabels = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+      const topCreneaux = creneauxRaw
+        .map(r => ({
+          jour: r.jour,
+          heure: r.heure,
+          envoyes: r.envoyes,
+          ouverts: r.ouverts,
+          taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0,
+          label: `${joursLabels[r.jour]} ${r.heure}h`
+        }))
+        .sort((a, b) => b.taux - a.taux)
+        .slice(0, 5);
+
+      // Meilleur créneau global
+      const meilleurCreneau = topCreneaux.length > 0 ? topCreneaux[0] : null;
+
+      // Meilleur jour / meilleure heure individuels
+      const meilleurJour = tauxParJour.length > 0
+        ? tauxParJour.reduce((best, r) => r.taux > best.taux ? r : best, tauxParJour[0])
+        : null;
+      const meilleureHeure = tauxParHeure.length > 0
+        ? tauxParHeure.reduce((best, r) => r.taux > best.taux ? r : best, tauxParHeure[0])
+        : null;
+
+      res.json({
+        periode: '30 jours',
+        totalEmails,
+        heatmap: {
+          ouvertures: heatmapOuvertures,
+          clics: heatmapClics,
+          reponses: heatmapReponses
+        },
+        tauxParHeure,
+        tauxParJour,
+        meilleurCreneau,
+        meilleurJour,
+        meilleureHeure,
+        topCreneaux
+      });
+
+    } catch (err) {
+      logger.error('GET /dashboard/send-analytics erreur', { error: err.message });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   return router;
 };

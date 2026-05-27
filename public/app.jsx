@@ -563,6 +563,51 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
   );
 };
 
+// ─── Composant réutilisable : Créneaux recommandés ──────────────────────────
+const CreneauRecommande = ({ onSelect }) => {
+  const [creneaux, setCreneaux] = useState(null);
+  useEffect(() => {
+    api.get('/dashboard/send-analytics').then(data => {
+      if (data?.topCreneaux?.length) setCreneaux(data.topCreneaux.slice(0, 3));
+    }).catch(() => {});
+  }, []);
+
+  if (!creneaux || creneaux.length === 0) return null;
+
+  const joursNoms = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+
+  const getNextOccurrence = (jour, heure) => {
+    const now = new Date();
+    const date = new Date(now);
+    // Trouver le prochain jour de la semaine correspondant
+    const diff = (jour - date.getDay() + 7) % 7 || 7; // au minimum dans 1 jour
+    date.setDate(date.getDate() + diff);
+    date.setHours(heure, 0, 0, 0);
+    return date;
+  };
+
+  return (
+    <div className="mt-3">
+      <p className="text-xs text-slate-500 mb-1.5">Créneaux recommandés (basé sur vos données)</p>
+      <div className="flex flex-wrap gap-1.5">
+        {creneaux.map((c, i) => (
+          <button
+            key={i}
+            type="button"
+            onClick={() => {
+              const date = getNextOccurrence(c.jour, c.heure);
+              onSelect(date);
+            }}
+            className="px-2.5 py-1.5 text-xs font-medium bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors"
+          >
+            {c.label} — {c.taux}% ouv.
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
   useEscapeClose(onClose);
   const [selected, setSelected] = useState(sequences[0]?.id);
@@ -624,6 +669,7 @@ const ModalLaunchSequence = ({ lead, sequences, onClose, onLaunch }) => {
           <div className="mt-4 pt-4 border-t border-slate-100">
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Programmer l'envoi (optionnel)</label>
             <input type="datetime-local" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 bg-white" />
+            <CreneauRecommande onSelect={(date) => setScheduledDate(date.toISOString().slice(0, 16))} />
           </div>
           {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée ! Email en cours d'envoi...</p>}
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
@@ -1385,6 +1431,8 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
 const VueDashboard = ({ showToast }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [analytics, setAnalytics] = useState(null);
+  const [heatmapMetric, setHeatmapMetric] = useState('ouvertures');
 
   const loadDashboard = async () => {
     setLoading(true);
@@ -1401,6 +1449,11 @@ const VueDashboard = ({ showToast }) => {
     loadDashboard();
     const interval = setInterval(() => { if (!document.hidden) loadDashboard(); }, 60000);
     return () => clearInterval(interval);
+  }, []);
+
+  // Charger les analytics une seule fois (pas dans l'interval 60s)
+  useEffect(() => {
+    api.get('/dashboard/send-analytics').then(setAnalytics).catch(() => {});
   }, []);
 
   if (loading || !data) {
@@ -1540,6 +1593,135 @@ const VueDashboard = ({ showToast }) => {
                 <div className="w-3 h-3 rounded-sm bg-slate-300" />
                 <span className="text-xs text-slate-500">Week-end</span>
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Analyse des créneaux d'envoi ── */}
+      {analytics && (() => {
+        const joursNoms = ['Dim.', 'Lun.', 'Mar.', 'Mer.', 'Jeu.', 'Ven.', 'Sam.'];
+        const joursComplets = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+        const heures = [8, 9, 10, 11, 12, 13, 14, 15, 16, 17];
+        const metricLabels = { ouvertures: 'Ouvertures', clics: 'Clics', reponses: 'Réponses' };
+
+        // Construire la matrice depuis les données heatmap
+        const buildMatrix = (data) => {
+          const m = {};
+          for (const [j, h, n] of data) {
+            if (!m[j]) m[j] = {};
+            m[j][h] = n;
+          }
+          return m;
+        };
+
+        const currentData = analytics.heatmap[heatmapMetric] || [];
+        const matrix = buildMatrix(currentData);
+
+        // Trouver le max pour l'échelle de couleurs
+        let maxVal = 0;
+        for (const [, , n] of currentData) { if (n > maxVal) maxVal = n; }
+
+        const getColor = (val) => {
+          if (!val || val === 0) return 'bg-slate-50';
+          const ratio = val / maxVal;
+          if (ratio < 0.2) return 'bg-emerald-100';
+          if (ratio < 0.4) return 'bg-emerald-200';
+          if (ratio < 0.6) return 'bg-emerald-300';
+          if (ratio < 0.8) return 'bg-emerald-400';
+          return 'bg-emerald-500';
+        };
+
+        const getTextColor = (val) => {
+          if (!val || val === 0) return 'text-slate-300';
+          const ratio = val / maxVal;
+          return ratio >= 0.6 ? 'text-white' : 'text-emerald-800';
+        };
+
+        return (
+          <div className="bg-white rounded-xl border border-slate-100 p-5">
+            <div className="flex items-center justify-between mb-4">
+              <div>
+                <h3 className="text-sm font-semibold text-slate-800">Analyse des créneaux d'envoi</h3>
+                <p className="text-xs text-slate-400 mt-0.5">Derniers {analytics.periode} — {analytics.totalEmails} emails</p>
+              </div>
+              <div className="flex gap-1">
+                {Object.entries(metricLabels).map(([key, label]) => (
+                  <button
+                    key={key}
+                    onClick={() => setHeatmapMetric(key)}
+                    className={`px-3 py-1.5 text-xs font-medium rounded-lg transition-colors ${
+                      heatmapMetric === key
+                        ? 'bg-emerald-100 text-emerald-700'
+                        : 'text-slate-500 hover:bg-slate-100'
+                    }`}
+                  >{label}</button>
+                ))}
+              </div>
+            </div>
+
+            {/* Mini-cards résumé */}
+            <div className="grid grid-cols-3 gap-3 mb-4">
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-slate-500 mb-1">Meilleur jour</div>
+                <div className="text-sm font-bold text-slate-800">
+                  {analytics.meilleurJour ? joursComplets[analytics.meilleurJour.jour] : '—'}
+                </div>
+                {analytics.meilleurJour && <div className="text-xs text-emerald-600 mt-0.5">{analytics.meilleurJour.taux}% ouv.</div>}
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-slate-500 mb-1">Meilleure heure</div>
+                <div className="text-sm font-bold text-slate-800">
+                  {analytics.meilleureHeure ? `${analytics.meilleureHeure.heure}h` : '—'}
+                </div>
+                {analytics.meilleureHeure && <div className="text-xs text-emerald-600 mt-0.5">{analytics.meilleureHeure.taux}% ouv.</div>}
+              </div>
+              <div className="bg-slate-50 rounded-lg p-3 text-center">
+                <div className="text-xs text-slate-500 mb-1">Meilleur taux</div>
+                <div className="text-sm font-bold text-emerald-600">
+                  {analytics.meilleurCreneau ? `${analytics.meilleurCreneau.taux}%` : '—'}
+                </div>
+                {analytics.meilleurCreneau && <div className="text-xs text-slate-500 mt-0.5">{analytics.meilleurCreneau.label}</div>}
+              </div>
+            </div>
+
+            {/* Heatmap CSS Grid */}
+            <div style={{ display: 'grid', gridTemplateColumns: '60px repeat(10, 1fr)', gap: '2px' }}>
+              {/* Header row */}
+              <div className="text-xs text-slate-400 font-medium flex items-center" />
+              {heures.map(h => (
+                <div key={h} className="text-xs text-slate-500 font-medium text-center py-1">{h}h</div>
+              ))}
+              {/* Data rows */}
+              {[1, 2, 3, 4, 5, 6, 0].map(jour => (
+                <React.Fragment key={jour}>
+                  <div className="text-xs text-slate-600 font-medium flex items-center">{joursNoms[jour]}</div>
+                  {heures.map(h => {
+                    const val = matrix[jour]?.[h] || 0;
+                    return (
+                      <div
+                        key={h}
+                        className={`${getColor(val)} rounded-sm flex items-center justify-center text-xs font-medium ${getTextColor(val)} transition-colors`}
+                        style={{ minHeight: '28px' }}
+                        title={`${joursNoms[jour]} ${h}h : ${val} ${metricLabels[heatmapMetric].toLowerCase()}`}
+                      >
+                        {val > 0 ? val : ''}
+                      </div>
+                    );
+                  })}
+                </React.Fragment>
+              ))}
+            </div>
+
+            {/* Légende */}
+            <div className="flex items-center gap-2 mt-3 pt-3 border-t border-slate-100">
+              <span className="text-xs text-slate-400">Peu</span>
+              <div className="flex gap-0.5">
+                {['bg-slate-50', 'bg-emerald-100', 'bg-emerald-200', 'bg-emerald-300', 'bg-emerald-400', 'bg-emerald-500'].map((c, i) => (
+                  <div key={i} className={`w-5 h-3 rounded-sm ${c}`} />
+                ))}
+              </div>
+              <span className="text-xs text-slate-400">Beaucoup</span>
             </div>
           </div>
         );
@@ -1980,6 +2162,7 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
           <div className="mt-4 pt-4 border-t border-slate-100">
             <label className="block text-xs font-medium text-slate-600 mb-1.5">Programmer l'envoi (optionnel)</label>
             <input type="datetime-local" value={scheduledDate} onChange={e => setScheduledDate(e.target.value)} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-300 bg-white" />
+            <CreneauRecommande onSelect={(date) => setScheduledDate(date.toISOString().slice(0, 16))} />
           </div>
           {status === "done" && <p className="mt-3 text-xs text-emerald-600 font-medium">✓ Séquence lancée pour {count} leads !</p>}
           {status === "error" && <p className="mt-3 text-xs text-red-500">✗ {errMsg}</p>}
@@ -16655,6 +16838,10 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
                     Programmer
                   </button>
                 </div>
+                <CreneauRecommande onSelect={(date) => {
+                  setScheduleDate(date.toISOString().slice(0, 10));
+                  setScheduleTime(String(date.getHours()).padStart(2, '0') + ':00');
+                }} />
               </div>
 
               {/* Envoyer maintenant */}
