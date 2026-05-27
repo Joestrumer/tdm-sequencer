@@ -110,16 +110,17 @@ function prochaineDateEnvoiOptimale(joursDelai) {
   })();
   const tzAdjust = `+${offsetParis} hours`;
 
-  // Trouver les 3 meilleures heures par taux d'ouverture (min 5 emails par slot)
+  // Trouver les 3 meilleures heures par taux de réponse (min 3 emails par slot)
   const bestSlots = db.prepare(`
-    SELECT CAST(strftime('%H', datetime(envoye_at, ?)) AS INTEGER) as heure,
-           COUNT(*) as envoyes,
-           SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
-    FROM emails
-    WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+    SELECT CAST(strftime('%H', datetime(e.envoye_at, ?)) AS INTEGER) as heure,
+           COUNT(DISTINCT e.id) as envoyes,
+           COUNT(DISTINCT CASE WHEN ev.id IS NOT NULL THEN e.id END) as repondus
+    FROM emails e
+    LEFT JOIN events ev ON ev.email_id = e.id AND ev.type = 'réponse'
+    WHERE e.envoye_at >= datetime('now', '-30 days') AND e.statut != 'erreur'
     GROUP BY heure
-    HAVING envoyes >= 5
-    ORDER BY CAST(ouverts AS REAL) / envoyes DESC
+    HAVING envoyes >= 3 AND repondus > 0
+    ORDER BY CAST(repondus AS REAL) / envoyes DESC
     LIMIT 3
   `).all(tzAdjust);
 

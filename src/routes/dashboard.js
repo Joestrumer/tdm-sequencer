@@ -339,46 +339,54 @@ module.exports = (db) => {
         GROUP BY j, h
       `).all(tzAdjust, tzAdjust).map(r => [r.j, r.h, r.n]);
 
-      // Q4 — Taux ouverture par heure d'envoi
+      // Q4 — Taux réponse par heure d'envoi
       const tauxParHeure = db.prepare(`
-        SELECT CAST(strftime('%H', datetime(envoye_at, ?)) AS INTEGER) as heure,
-               COUNT(*) as envoyes,
-               SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
-        FROM emails
-        WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+        SELECT CAST(strftime('%H', datetime(e.envoye_at, ?)) AS INTEGER) as heure,
+               COUNT(DISTINCT e.id) as envoyes,
+               COUNT(DISTINCT CASE WHEN e.ouvertures > 0 THEN e.id END) as ouverts,
+               COUNT(DISTINCT CASE WHEN ev.id IS NOT NULL THEN e.id END) as repondus
+        FROM emails e
+        LEFT JOIN events ev ON ev.email_id = e.id AND ev.type = 'réponse'
+        WHERE e.envoye_at >= datetime('now', '-30 days') AND e.statut != 'erreur'
         GROUP BY heure ORDER BY heure
       `).all(tzAdjust).map(r => ({
         heure: r.heure,
         envoyes: r.envoyes,
         ouverts: r.ouverts,
-        taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0
+        repondus: r.repondus,
+        taux: r.envoyes > 0 ? Math.round(r.repondus / r.envoyes * 1000) / 10 : 0
       }));
 
-      // Q5 — Taux ouverture par jour d'envoi
+      // Q5 — Taux réponse par jour d'envoi
       const tauxParJour = db.prepare(`
-        SELECT CAST(strftime('%w', datetime(envoye_at, ?)) AS INTEGER) as jour,
-               COUNT(*) as envoyes,
-               SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
-        FROM emails
-        WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+        SELECT CAST(strftime('%w', datetime(e.envoye_at, ?)) AS INTEGER) as jour,
+               COUNT(DISTINCT e.id) as envoyes,
+               COUNT(DISTINCT CASE WHEN e.ouvertures > 0 THEN e.id END) as ouverts,
+               COUNT(DISTINCT CASE WHEN ev.id IS NOT NULL THEN e.id END) as repondus
+        FROM emails e
+        LEFT JOIN events ev ON ev.email_id = e.id AND ev.type = 'réponse'
+        WHERE e.envoye_at >= datetime('now', '-30 days') AND e.statut != 'erreur'
         GROUP BY jour ORDER BY jour
       `).all(tzAdjust).map(r => ({
         jour: r.jour,
         envoyes: r.envoyes,
         ouverts: r.ouverts,
-        taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0
+        repondus: r.repondus,
+        taux: r.envoyes > 0 ? Math.round(r.repondus / r.envoyes * 1000) / 10 : 0
       }));
 
-      // Q6 — Meilleurs créneaux (jour × heure)
+      // Q6 — Meilleurs créneaux par taux de réponse (jour × heure)
       const creneauxRaw = db.prepare(`
-        SELECT CAST(strftime('%w', datetime(envoye_at, ?)) AS INTEGER) as jour,
-               CAST(strftime('%H', datetime(envoye_at, ?)) AS INTEGER) as heure,
-               COUNT(*) as envoyes,
-               SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
-        FROM emails
-        WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
+        SELECT CAST(strftime('%w', datetime(e.envoye_at, ?)) AS INTEGER) as jour,
+               CAST(strftime('%H', datetime(e.envoye_at, ?)) AS INTEGER) as heure,
+               COUNT(DISTINCT e.id) as envoyes,
+               COUNT(DISTINCT CASE WHEN e.ouvertures > 0 THEN e.id END) as ouverts,
+               COUNT(DISTINCT CASE WHEN ev.id IS NOT NULL THEN e.id END) as repondus
+        FROM emails e
+        LEFT JOIN events ev ON ev.email_id = e.id AND ev.type = 'réponse'
+        WHERE e.envoye_at >= datetime('now', '-30 days') AND e.statut != 'erreur'
         GROUP BY jour, heure
-        HAVING envoyes >= 5
+        HAVING envoyes >= 3
       `).all(tzAdjust, tzAdjust);
 
       const joursLabels = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
@@ -387,10 +395,11 @@ module.exports = (db) => {
           jour: r.jour,
           heure: r.heure,
           envoyes: r.envoyes,
-          ouverts: r.ouverts,
-          taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0,
+          repondus: r.repondus,
+          taux: r.envoyes > 0 ? Math.round(r.repondus / r.envoyes * 1000) / 10 : 0,
           label: `${joursLabels[r.jour]} ${r.heure}h`
         }))
+        .filter(r => r.repondus > 0)
         .sort((a, b) => b.taux - a.taux)
         .slice(0, 5);
 
