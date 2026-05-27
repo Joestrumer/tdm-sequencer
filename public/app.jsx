@@ -600,7 +600,7 @@ const CreneauRecommande = ({ onSelect }) => {
             }}
             className="px-2.5 py-1.5 text-xs font-medium bg-emerald-50 border border-emerald-200 text-emerald-700 rounded-lg hover:bg-emerald-100 transition-colors"
           >
-            {c.label} — {c.taux}% rép.
+            {c.label} — {c.taux}% ouv.
           </button>
         ))}
       </div>
@@ -1432,7 +1432,7 @@ const VueDashboard = ({ showToast }) => {
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
-  const [heatmapMetric, setHeatmapMetric] = useState('reponses');
+  const [heatmapMetric, setHeatmapMetric] = useState('ouvertures');
 
   const loadDashboard = async () => {
     setLoading(true);
@@ -1667,17 +1667,17 @@ const VueDashboard = ({ showToast }) => {
                 <div className="text-sm font-bold text-slate-800">
                   {analytics.meilleurJour ? joursComplets[analytics.meilleurJour.jour] : '—'}
                 </div>
-                {analytics.meilleurJour && <div className="text-xs text-emerald-600 mt-0.5">{analytics.meilleurJour.taux}% rép.</div>}
+                {analytics.meilleurJour && <div className="text-xs text-emerald-600 mt-0.5">{analytics.meilleurJour.taux}% ouv.</div>}
               </div>
               <div className="bg-slate-50 rounded-lg p-3 text-center">
                 <div className="text-xs text-slate-500 mb-1">Meilleure heure</div>
                 <div className="text-sm font-bold text-slate-800">
                   {analytics.meilleureHeure ? `${analytics.meilleureHeure.heure}h` : '—'}
                 </div>
-                {analytics.meilleureHeure && <div className="text-xs text-emerald-600 mt-0.5">{analytics.meilleureHeure.taux}% rép.</div>}
+                {analytics.meilleureHeure && <div className="text-xs text-emerald-600 mt-0.5">{analytics.meilleureHeure.taux}% ouv.</div>}
               </div>
               <div className="bg-slate-50 rounded-lg p-3 text-center">
-                <div className="text-xs text-slate-500 mb-1">Meilleur taux rép.</div>
+                <div className="text-xs text-slate-500 mb-1">Meilleur taux</div>
                 <div className="text-sm font-bold text-emerald-600">
                   {analytics.meilleurCreneau ? `${analytics.meilleurCreneau.taux}%` : '—'}
                 </div>
