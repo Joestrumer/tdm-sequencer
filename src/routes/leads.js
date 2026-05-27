@@ -166,6 +166,31 @@ module.exports = (db) => {
     }
   });
 
+  // PATCH /api/leads/bulk-source — Changer la source de plusieurs leads
+  router.patch('/bulk-source', (req, res) => {
+    try {
+      const { lead_ids, source } = req.body;
+      if (!lead_ids || !Array.isArray(lead_ids) || lead_ids.length === 0 || typeof source !== 'string') {
+        return res.status(400).json({ erreur: 'lead_ids (array non vide) et source (string) requis' });
+      }
+
+      const update = db.prepare(`UPDATE leads SET source = ?, updated_at = datetime('now') WHERE id = ?`);
+
+      let changed = 0;
+      db.transaction(() => {
+        for (const id of lead_ids) {
+          const r = update.run(source, id);
+          if (r.changes > 0) changed++;
+        }
+      })();
+
+      logger.info(`📝 Bulk source: ${changed} lead(s) → "${source}"`);
+      res.json({ changed, source });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // PATCH /api/leads/:id — Mettre à jour un lead
   router.patch('/:id', (req, res) => {
     try {

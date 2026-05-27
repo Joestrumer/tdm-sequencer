@@ -2738,6 +2738,31 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               <option value="Fin de séquence">Fin de séquence</option>
               <option value="Closed Lost">Closed Lost</option>
             </select>
+            <select
+              defaultValue=""
+              onChange={async (e) => {
+                const newSource = e.target.value;
+                if (!newSource) return;
+                e.target.value = '';
+                if (!await confirmDialog(`Changer la source de ${selectedIds.size} lead(s) → "${newSource}" ?`, { confirmLabel: 'Confirmer' })) return;
+                try {
+                  await api.patch('/leads/bulk-source', { lead_ids: Array.from(selectedIds), source: newSource });
+                  showToast(`${selectedIds.size} lead(s) → source "${newSource}"`, 'success');
+                  setSelectedIds(new Set());
+                  if (onRefresh) onRefresh();
+                } catch (err) { showToast('Erreur: ' + err.message, 'error'); }
+              }}
+              className="px-3 py-1.5 bg-white text-slate-700 rounded-lg text-xs font-semibold cursor-pointer"
+            >
+              <option value="">Changer source...</option>
+              <option value="Site web">Site web</option>
+              <option value="LinkedIn">LinkedIn</option>
+              <option value="HubSpot">HubSpot</option>
+              <option value="Import CSV">Import CSV</option>
+              <option value="Salon">Salon</option>
+              <option value="Recommandation">Recommandation</option>
+              <option value="Partenaire">Partenaire</option>
+            </select>
             <button onClick={async () => { const ids = Array.from(selectedIds); if(!await confirmDialog('Supprimer ' + ids.length + ' leads ?', { danger: true, confirmLabel: 'Supprimer' })) return; const results = await Promise.allSettled(ids.map(id => api.delete('/leads/' + id))); const errCount = results.filter(r => r.status === 'rejected').length; setSelectedIds(new Set()); if(onRefresh) onRefresh(); showToast(errCount ? `${ids.length - errCount} supprimé(s), ${errCount} erreur(s)` : `${ids.length} lead(s) supprimé(s)`, errCount ? 'error' : 'success'); }} className="px-3 py-1.5 bg-red-500 text-white rounded-lg text-xs font-semibold hover:bg-red-600 disabled:opacity-50">✕ Supprimer</button>
             <button onClick={() => setSelectedIds(new Set())} className="ml-auto text-blue-200 hover:text-white text-xs">Annuler</button>
           </div>
