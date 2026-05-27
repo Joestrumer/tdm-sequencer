@@ -303,6 +303,16 @@ module.exports = (db) => {
       })();
       const tzAdjust = `+${offsetParis} hours`;
 
+      // Fenêtre d'envoi config (pour filtrer les heures/jours pertinents)
+      const cfgDebut = db.prepare("SELECT valeur FROM config WHERE cle = 'heure_debut'").get();
+      const cfgFin = db.prepare("SELECT valeur FROM config WHERE cle = 'heure_fin'").get();
+      const cfgJours = db.prepare("SELECT valeur FROM config WHERE cle = 'jours_actifs'").get();
+      const heureDebut = parseInt(cfgDebut?.valeur || process.env.SEND_HOUR_START || '8') || 8;
+      const heureFin = parseInt(cfgFin?.valeur || process.env.SEND_HOUR_END || '18') || 18;
+      const rawJours = cfgJours?.valeur || process.env.ACTIVE_DAYS || '1,2,3,4,5';
+      const jourMap = { lun: 1, mar: 2, mer: 3, jeu: 4, ven: 5, sam: 6, dim: 0 };
+      const joursActifs = rawJours.split(',').map(j => jourMap[j.trim()] !== undefined ? jourMap[j.trim()] : Number(j));
+
       // Total emails 30j
       const totalEmails = db.prepare(`
         SELECT COUNT(*) as count FROM emails
@@ -339,37 +349,45 @@ module.exports = (db) => {
         GROUP BY j, h
       `).all(tzAdjust, tzAdjust).map(r => [r.j, r.h, r.n]);
 
-      // Q4 — Taux ouverture par heure d'envoi
+      // Q4 — Taux ouverture par heure d'envoi (fenêtre d'envoi uniquement, min 5 emails)
       const tauxParHeure = db.prepare(`
         SELECT CAST(strftime('%H', datetime(envoye_at, ?)) AS INTEGER) as heure,
                COUNT(*) as envoyes,
                SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
         FROM emails
         WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
-        GROUP BY heure ORDER BY heure
-      `).all(tzAdjust).map(r => ({
-        heure: r.heure,
-        envoyes: r.envoyes,
-        ouverts: r.ouverts,
-        taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0
-      }));
+        GROUP BY heure
+        HAVING envoyes >= 5
+        ORDER BY heure
+      `).all(tzAdjust)
+        .filter(r => r.heure >= heureDebut && r.heure < heureFin)
+        .map(r => ({
+          heure: r.heure,
+          envoyes: r.envoyes,
+          ouverts: r.ouverts,
+          taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0
+        }));
 
-      // Q5 — Taux ouverture par jour d'envoi
+      // Q5 — Taux ouverture par jour d'envoi (jours actifs uniquement, min 5 emails)
       const tauxParJour = db.prepare(`
         SELECT CAST(strftime('%w', datetime(envoye_at, ?)) AS INTEGER) as jour,
                COUNT(*) as envoyes,
                SUM(CASE WHEN ouvertures > 0 THEN 1 ELSE 0 END) as ouverts
         FROM emails
         WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
-        GROUP BY jour ORDER BY jour
-      `).all(tzAdjust).map(r => ({
-        jour: r.jour,
-        envoyes: r.envoyes,
-        ouverts: r.ouverts,
-        taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0
-      }));
+        GROUP BY jour
+        HAVING envoyes >= 5
+        ORDER BY jour
+      `).all(tzAdjust)
+        .filter(r => joursActifs.includes(r.jour))
+        .map(r => ({
+          jour: r.jour,
+          envoyes: r.envoyes,
+          ouverts: r.ouverts,
+          taux: r.envoyes > 0 ? Math.round(r.ouverts / r.envoyes * 1000) / 10 : 0
+        }));
 
-      // Q6 — Meilleurs créneaux (jour × heure)
+      // Q6 — Meilleurs créneaux (jour × heure, fenêtre d'envoi + jours actifs)
       const creneauxRaw = db.prepare(`
         SELECT CAST(strftime('%w', datetime(envoye_at, ?)) AS INTEGER) as jour,
                CAST(strftime('%H', datetime(envoye_at, ?)) AS INTEGER) as heure,
@@ -379,7 +397,8 @@ module.exports = (db) => {
         WHERE envoye_at >= datetime('now', '-30 days') AND statut != 'erreur'
         GROUP BY jour, heure
         HAVING envoyes >= 5
-      `).all(tzAdjust, tzAdjust);
+      `).all(tzAdjust, tzAdjust)
+        .filter(r => r.heure >= heureDebut && r.heure < heureFin && joursActifs.includes(r.jour));
 
       const joursLabels = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
       const topCreneaux = creneauxRaw
