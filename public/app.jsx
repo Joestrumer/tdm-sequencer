@@ -18,13 +18,36 @@ function parseTags(tags) {
   try { return JSON.parse(tags || "[]"); } catch(e) { return []; }
 }
 
-// ─── FILE SYSTEM ACCESS API HELPER ─────────────────────────────────────────────
+// ─── FILE SYSTEM ACCESS API HELPER (IndexedDB pour persister le handle) ──────
+const _idbName = 'tdm-fs-handles';
+const _idbStore = 'handles';
+function _openIDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(_idbName, 1);
+    req.onupgradeneeded = () => req.result.createObjectStore(_idbStore);
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+async function _saveHandleIDB(key, handle) {
+  try { const db = await _openIDB(); const tx = db.transaction(_idbStore, 'readwrite'); tx.objectStore(_idbStore).put(handle, key); } catch(e) {}
+}
+async function _getHandleIDB(key) {
+  try { const db = await _openIDB(); return new Promise((resolve) => { const tx = db.transaction(_idbStore, 'readonly'); const req = tx.objectStore(_idbStore).get(key); req.onsuccess = () => resolve(req.result || null); req.onerror = () => resolve(null); }); } catch(e) { return null; }
+}
+async function _removeHandleIDB(key) {
+  try { const db = await _openIDB(); const tx = db.transaction(_idbStore, 'readwrite'); tx.objectStore(_idbStore).delete(key); } catch(e) {}
+}
+
 async function saveFileWithPicker(blob, fileName) {
   if (!window.showDirectoryPicker) return false;
   try {
     let dirHandle = null;
-    const savedHandleName = localStorage.getItem('csvDirHandleName');
-    if (savedHandleName && window.savedCSVDirHandle) {
+    // Essayer de récupérer le handle persisté (IndexedDB)
+    if (!window.savedCSVDirHandle) {
+      window.savedCSVDirHandle = await _getHandleIDB('csvDir');
+    }
+    if (window.savedCSVDirHandle) {
       try {
         const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
         if (permission === 'granted' || await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
@@ -35,7 +58,7 @@ async function saveFileWithPicker(blob, fileName) {
     if (!dirHandle) {
       dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
       window.savedCSVDirHandle = dirHandle;
-      localStorage.setItem('csvDirHandleName', dirHandle.name);
+      await _saveHandleIDB('csvDir', dirHandle);
     }
     const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
@@ -46,7 +69,7 @@ async function saveFileWithPicker(blob, fileName) {
     if (fsErr.name !== 'AbortError') {
       console.warn('File System Access fallback:', fsErr);
       delete window.savedCSVDirHandle;
-      localStorage.removeItem('csvDirHandleName');
+      await _removeHandleIDB('csvDir');
     }
     return false;
   }
