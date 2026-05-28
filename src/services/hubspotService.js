@@ -13,6 +13,28 @@ const logger = require('../config/logger');
 const HUBSPOT_BASE = 'https://api.hubapi.com';
 const HUGO_OWNER_ID = '450706644';
 
+// Domaines email personnels — ne pas les utiliser pour chercher/créer des companies
+const PERSONAL_EMAIL_DOMAINS = new Set([
+  'gmail.com', 'googlemail.com',
+  'hotmail.com', 'hotmail.fr', 'hotmail.co.uk', 'hotmail.de', 'hotmail.it', 'hotmail.es',
+  'outlook.com', 'outlook.fr',
+  'live.com', 'live.fr',
+  'msn.com',
+  'yahoo.com', 'yahoo.fr', 'yahoo.co.uk', 'yahoo.de', 'yahoo.it', 'yahoo.es',
+  'ymail.com',
+  'aol.com',
+  'icloud.com', 'me.com', 'mac.com',
+  'protonmail.com', 'proton.me',
+  'gmx.com', 'gmx.fr', 'gmx.de',
+  'mail.com',
+  'zoho.com',
+  'free.fr', 'laposte.net', 'orange.fr', 'sfr.fr', 'wanadoo.fr', 'bbox.fr', 'numericable.fr',
+]);
+
+function isPersonalEmail(domaine) {
+  return !domaine || PERSONAL_EMAIL_DOMAINS.has(domaine.toLowerCase());
+}
+
 function getApiKey() {
   return process.env.HUBSPOT_API_KEY;
 }
@@ -100,6 +122,52 @@ async function trouverCompanyParDomaine(domaine) {
     });
     const c = res?.results?.[0];
     return c ? { id: c.id, nom: c.properties.name, domaine: c.properties.domain } : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// ─── Chercher une company par nom d'établissement ───────────────────────────
+async function trouverCompanyParNom(nom) {
+  if (!getApiKey() || !nom) return null;
+  try {
+    const res = await hubspotFetch('/crm/v3/objects/companies/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filterGroups: [{
+          filters: [{ propertyName: 'name', operator: 'CONTAINS_TOKEN', value: nom }]
+        }],
+        properties: ['name', 'domain', 'city'],
+        limit: 1,
+      }),
+    });
+    const c = res?.results?.[0];
+    return c ? { id: c.id, nom: c.properties.name, domaine: c.properties.domain } : null;
+  } catch (err) {
+    return null;
+  }
+}
+
+// ─── Chercher une company via un contact existant (par email) ───────────────
+async function trouverCompanyParContact(email) {
+  if (!getApiKey() || !email) return null;
+  try {
+    const search = await hubspotFetch('/crm/v3/objects/contacts/search', {
+      method: 'POST',
+      body: JSON.stringify({
+        filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }],
+        limit: 1,
+      }),
+    });
+    const contactId = search?.results?.[0]?.id;
+    if (!contactId) return null;
+
+    const assoc = await hubspotFetch(`/crm/v4/objects/contacts/${contactId}/associations/companies`);
+    const companyObjId = assoc?.results?.[0]?.toObjectId;
+    if (!companyObjId) return null;
+
+    const company = await hubspotFetch(`/crm/v3/objects/companies/${companyObjId}?properties=name,domain,city`);
+    return company ? { id: company.id, nom: company.properties?.name, domaine: company.properties?.domain } : null;
   } catch (err) {
     return null;
   }
@@ -218,12 +286,28 @@ async function syncContact(db, lead) {
       const domaine = lead.email?.split('@')[1];
       let companyId = lead.company_hubspot_id;
 
-      if (!companyId && domaine) {
-        const company = await trouverCompanyParDomaine(domaine);
-        if (company) {
-          companyId = company.id;
+      if (!companyId) {
+        if (domaine && !isPersonalEmail(domaine)) {
+          // Domaine pro → chercher par domaine
+          const company = await trouverCompanyParDomaine(domaine);
+          if (company) {
+            companyId = company.id;
+          } else {
+            companyId = await creerCompany(lead.hotel, domaine, lead.ville);
+          }
         } else {
-          companyId = await creerCompany(lead.hotel, domaine, lead.ville);
+          // Email perso → chercher par contact existant ou par nom d'établissement
+          const companyViaContact = await trouverCompanyParContact(lead.email);
+          if (companyViaContact) {
+            companyId = companyViaContact.id;
+          } else {
+            const companyViaNom = await trouverCompanyParNom(lead.hotel);
+            if (companyViaNom) {
+              companyId = companyViaNom.id;
+            } else {
+              companyId = await creerCompany(lead.hotel, '', lead.ville);
+            }
+          }
         }
       }
 
@@ -539,13 +623,30 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
     let companyName = mapping?.file_name || clientName;
     let contactId = null;
 
-    // 2. Fallback : chercher par domaine email si pas de mapping
+    // 2. Fallback : chercher par domaine email (sauf email perso) ou par contact/nom
     const domaine = clientEmail?.split('@')[1];
-    if (!companyId && domaine) {
+    const domaineEstPerso = isPersonalEmail(domaine);
+    if (!companyId && domaine && !domaineEstPerso) {
       const company = await trouverCompanyParDomaine(domaine);
       if (company) {
         companyId = company.id;
         companyName = company.nom;
+      }
+    }
+    // Email perso → chercher par contact existant ou par nom d'établissement
+    if (!companyId && domaineEstPerso) {
+      const companyViaContact = await trouverCompanyParContact(clientEmail);
+      if (companyViaContact) {
+        companyId = companyViaContact.id;
+        companyName = companyViaContact.nom || companyName;
+      } else {
+        const dashIdx = clientName.lastIndexOf(' - ');
+        const hotelNom = dashIdx > 0 ? clientName.substring(0, dashIdx).trim() : clientName;
+        const companyViaNom = await trouverCompanyParNom(hotelNom);
+        if (companyViaNom) {
+          companyId = companyViaNom.id;
+          companyName = companyViaNom.nom || companyName;
+        }
       }
     }
 
@@ -557,7 +658,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
       if (clientAddress) updateProps.address = clientAddress;
       if (clientZip) updateProps.zip = clientZip;
       if (clientPhone) updateProps.phone = clientPhone;
-      if (domaine) updateProps.domain = domaine;
+      if (domaine && !domaineEstPerso) updateProps.domain = domaine;
       await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
         method: 'PATCH',
         body: JSON.stringify({ properties: updateProps }),
@@ -598,7 +699,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
         type: 'PROSPECT',
         hubspot_owner_id: HUGO_OWNER_ID,
       };
-      if (domaine) companyProps.domain = domaine;
+      if (domaine && !domaineEstPerso) companyProps.domain = domaine;
       if (clientCity) companyProps.city = clientCity;
       if (clientCountry) companyProps.country = clientCountry;
       if (clientAddress) companyProps.address = clientAddress;
