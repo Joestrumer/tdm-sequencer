@@ -11693,7 +11693,7 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
 // ─── Factures Batch ───────────────────────────────────────────────────────────
 const FacturesBatch = ({ showToast }) => {
   const [orders, setOrders] = useState([]);
-  const [nextId, setNextId] = useState(1);
+  const nextIdRef = useRef(1);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
   const [manualText, setManualText] = useState('');
@@ -11705,12 +11705,12 @@ const FacturesBatch = ({ showToast }) => {
   const [createHubspotDeal, setCreateHubspotDeal] = useState(true);
 
   const addOrder = (products, client = null, orderNumber = '', deliveryAddr = '') => {
+    const id = nextIdRef.current++;
     const shippingId = client ? getShippingIdForClient(client, deliveryAddr) : '1302';
-    setOrders(prev => [...prev, { id: nextId, products, client, calculation: null, shippingId, orderNumber, deliveryAddress: deliveryAddr, expanded: !client }]);
-    setNextId(n => n + 1);
+    setOrders(prev => [...prev, { id, products, client, calculation: null, shippingId, orderNumber, deliveryAddress: deliveryAddr, expanded: !client }]);
     // Auto-calculate if client is already set
     if (client) {
-      calculateOrder(nextId, products, client);
+      calculateOrder(id, products, client);
     }
   };
 
