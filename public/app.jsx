@@ -11706,7 +11706,7 @@ const FacturesBatch = ({ showToast }) => {
 
   const addOrder = (products, client = null, orderNumber = '', deliveryAddr = '') => {
     const shippingId = client ? getShippingIdForClient(client, deliveryAddr) : '1302';
-    setOrders(prev => [...prev, { id: nextId, products, client, calculation: null, shippingId, orderNumber, deliveryAddress: deliveryAddr, expanded: false }]);
+    setOrders(prev => [...prev, { id: nextId, products, client, calculation: null, shippingId, orderNumber, deliveryAddress: deliveryAddr, expanded: !client }]);
     setNextId(n => n + 1);
     // Auto-calculate if client is already set
     if (client) {
@@ -11827,16 +11827,33 @@ const FacturesBatch = ({ showToast }) => {
 
   const updateOrderProduct = (orderId, productIndex, field, value) => {
     setOrders(prev => prev.map(o => {
-      if (o.id !== orderId || !o.calculation?.products) return o;
-      const newProducts = [...o.calculation.products];
-      const p = { ...newProducts[productIndex], [field]: value };
-      const qty = p.quantite || p.quantity || 1;
-      const priceHT = p.prix_ht || ((p.total_ht || 0) / qty / (1 - (p.discount || 0) / 100) || 0);
-      const discount = p.discount || 0;
-      const tva = p.tva || 20;
-      const lineHT = priceHT * (1 - discount / 100) * qty;
-      newProducts[productIndex] = { ...p, prix_ht: priceHT, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
-      return { ...o, calculation: { ...o.calculation, products: newProducts } };
+      if (o.id !== orderId) return o;
+      // Update calculation products if available
+      if (o.calculation?.products) {
+        const newProducts = [...o.calculation.products];
+        const p = { ...newProducts[productIndex], [field]: value };
+        const qty = p.quantite || p.quantity || 1;
+        const priceHT = p.prix_ht || ((p.total_ht || 0) / qty / (1 - (p.discount || 0) / 100) || 0);
+        const discount = p.discount || 0;
+        const tva = p.tva || 20;
+        const lineHT = priceHT * (1 - discount / 100) * qty;
+        newProducts[productIndex] = { ...p, prix_ht: priceHT, total_ht: Math.round(lineHT * 100) / 100, total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100 };
+        return { ...o, calculation: { ...o.calculation, products: newProducts } };
+      }
+      // Update raw products (before calculation)
+      if (o.products) {
+        const newProducts = [...o.products];
+        newProducts[productIndex] = { ...newProducts[productIndex], [field]: value };
+        return { ...o, products: newProducts };
+      }
+      return o;
+    }));
+  };
+
+  const removeRawProduct = (orderId, productIndex) => {
+    setOrders(prev => prev.map(o => {
+      if (o.id !== orderId || !o.products) return o;
+      return { ...o, products: o.products.filter((_, idx) => idx !== productIndex) };
     }));
   };
 
@@ -12172,6 +12189,46 @@ const FacturesBatch = ({ showToast }) => {
                         className="px-2 py-1 bg-amber-600 text-white text-xs rounded hover:bg-amber-700">
                         Recalculer prix actuels
                       </button>
+                    </div>
+                  )}
+
+                  {/* Raw products table (before calculation) */}
+                  {!calc && order.products?.length > 0 && (
+                    <div className="border border-slate-200 rounded-lg overflow-hidden bg-white">
+                      <table className="w-full text-sm">
+                        <thead className="bg-slate-50">
+                          <tr>
+                            <th className="text-left px-3 py-1.5 text-xs font-semibold text-slate-500">Réf</th>
+                            <th className="text-left px-3 py-1.5 text-xs font-semibold text-slate-500">Produit</th>
+                            <th className="text-right px-3 py-1.5 text-xs font-semibold text-slate-500">Qté</th>
+                            <th className="px-2 py-1.5 w-8"></th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {order.products.map((p, i) => (
+                            <tr key={`${p.ref}_${i}`} className="hover:bg-slate-50">
+                              <td className="px-3 py-1.5">
+                                <input type="text" value={p.ref || ''}
+                                  onChange={e => updateOrderProduct(order.id, i, 'ref', e.target.value.toUpperCase())}
+                                  className="w-24 border border-slate-200 rounded px-1 py-0.5 text-xs font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                              </td>
+                              <td className="px-3 py-1.5 text-xs text-slate-400">{p.nom || ''}</td>
+                              <td className="px-3 py-1.5 text-right">
+                                <input type="number" min="1" value={p.quantite || p.quantity || 1}
+                                  onChange={e => {
+                                    const val = Math.max(1, parseInt(e.target.value) || 1);
+                                    updateOrderProduct(order.id, i, 'quantite', val);
+                                  }}
+                                  className="w-14 border border-slate-200 rounded px-1 py-0.5 text-xs text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                              </td>
+                              <td className="px-2 py-1.5 text-center">
+                                <button onClick={() => removeRawProduct(order.id, i)}
+                                  className="text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
                     </div>
                   )}
 

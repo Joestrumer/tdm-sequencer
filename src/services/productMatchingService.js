@@ -528,7 +528,7 @@ function parseOrderText(text) {
     const hn = r.match(/^[HN]-?(\d{3})$/);
     if (hn) {
       const num = hn[1];
-      const is5L = /(^| )5\s*l( |$)|\b5l\b|\b5\s*litre|\b5\s*litres\b/.test(lineNorm);
+      const is5L = /(^| )5\s*l( |$)|\b5l\b|\b5\s*litre|\b5\s*litres\b|\bbidons?\b/.test(lineNorm);
       return is5L ? `P${num}-5000` : `P${num}`;
     }
 
@@ -536,7 +536,7 @@ function parseOrderText(text) {
     if (p) {
       const base = `P${p[1]}`;
       const hasSuffix = !!p[2];
-      const is5L = /(^| )5\s*l( |$)|\b5l\b|\b5\s*litre|\b5\s*litres\b/.test(lineNorm);
+      const is5L = /(^| )5\s*l( |$)|\b5l\b|\b5\s*litre|\b5\s*litres\b|\bbidons?\b/.test(lineNorm);
       if (!hasSuffix && is5L) return `${base}-5000`;
       return r;
     }
@@ -652,7 +652,7 @@ function parseOrderText(text) {
     if (emailMatch) {
       const codeNum = emailMatch[1].padStart(3, '0');
       const unitQty = parseInt(emailMatch[3], 10);
-      const is5L = /5\s*l\b/i.test(line);
+      const is5L = /5\s*l\b|\bbidons?\b/i.test(line);
       const ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
       if (unitQty > 0) {
         const existing = products.find(p => p.ref === ref);
@@ -669,7 +669,7 @@ function parseOrderText(text) {
     if (emailSimpleMatch) {
       const codeNum = emailSimpleMatch[1].padStart(3, '0');
       const qty = parseInt(emailSimpleMatch[2], 10);
-      const is5L = /5\s*l\b/i.test(line);
+      const is5L = /5\s*l\b|\bbidons?\b/i.test(line);
       const ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
       if (qty > 0 && qty < 9999) {
         const existing = products.find(p => p.ref === ref);
@@ -691,7 +691,7 @@ function parseOrderText(text) {
         ref = localNormalizeRef(refDescQtyMatch[2], lineNorm);
       } else {
         const codeNum = refDescQtyMatch[3].padStart(3, '0');
-        const is5L = /5\s*l/i.test(line);
+        const is5L = /5\s*l|\bbidons?\b/i.test(line);
         ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
       }
       const qty = parseInt(refDescQtyMatch[4], 10);
@@ -733,7 +733,7 @@ function parseOrderText(text) {
         ref = localNormalizeRef(refStartMatch[3], lineNorm);
       } else {
         const codeNum = refStartMatch[2].replace(/^0+/, '').padStart(3, '0');
-        const is5L = /5\s*l/i.test(line);
+        const is5L = /5\s*l|\bbidons?\b/i.test(line);
         ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
       }
       const qty = parseInt(refStartMatch[4], 10);
@@ -772,7 +772,7 @@ function parseOrderText(text) {
         const numRef = line.match(/^\s*0*(\d{1,3})\b/);
         if (numRef) {
           const codeNum = numRef[1].padStart(3, '0');
-          const is5L = /5\s*l/i.test(line);
+          const is5L = /5\s*l|\bbidons?\b/i.test(line);
           ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
         }
       }
@@ -792,7 +792,7 @@ function parseOrderText(text) {
     if (qtyUnitMatch && !foundAny) {
       const qty = parseInt(qtyUnitMatch[1], 10);
       const rest = qtyUnitMatch[2].trim();
-      const is5L = /5\s*l/i.test(line);
+      const is5L = /5\s*l|\bbidons?\b/i.test(line);
       let ref = null;
       // Chercher un P-ref dans le texte
       const pRefInRest = rest.match(/\b(P\d{3}(?:-\d+[A-Za-z]*)?)\b/i);
@@ -882,7 +882,7 @@ function parseOrderText(text) {
     if (!refFromName) {
       const hn = lineNorm.match(/\b([hn])\s*-\s*(\d{3})\b/);
       if (hn) {
-        const is5L = /\b5\s*l\b|\b5l\b|\b5\s*litre|\b5\s*litres\b/.test(lineNorm);
+        const is5L = /\b5\s*l\b|\b5l\b|\b5\s*litre|\b5\s*litres\b|\bbidons?\b/.test(lineNorm);
         refFromName = is5L ? `P${hn[2]}-5000` : `P${hn[2]}`;
       }
     }
