@@ -11780,31 +11780,39 @@ const FacturesBatch = ({ showToast }) => {
   };
 
   const handleImportInvoice = async () => {
-    const idOrNumber = importInvoiceId.trim();
-    if (!idOrNumber) return;
+    const raw = importInvoiceId.trim();
+    if (!raw) return;
+    // Split by commas, semicolons, or newlines to allow multiple imports
+    const entries = raw.split(/[,;\n]+/).map(s => s.trim()).filter(Boolean);
+    if (entries.length === 0) return;
     setImportLoading(true);
-    try {
-      let invoiceId = null;
-      const results = await api.get('/factures/invoices/search?number=' + encodeURIComponent(idOrNumber));
-      const list = Array.isArray(results) ? results : [];
-      if (list.length > 0) {
-        invoiceId = list[0].id;
-      } else if (/^\d+$/.test(idOrNumber)) {
-        invoiceId = idOrNumber;
-      } else {
-        showToast('Aucune facture trouvée pour "' + idOrNumber + '"', 'error');
-        setImportLoading(false);
-        return;
+    let imported = 0, errors = 0;
+    for (const idOrNumber of entries) {
+      try {
+        let invoiceId = null;
+        const results = await api.get('/factures/invoices/search?number=' + encodeURIComponent(idOrNumber));
+        const list = Array.isArray(results) ? results : [];
+        if (list.length > 0) {
+          invoiceId = list[0].id;
+        } else if (/^\d+$/.test(idOrNumber)) {
+          invoiceId = idOrNumber;
+        } else {
+          showToast('Aucune facture trouvée pour "' + idOrNumber + '"', 'error');
+          errors++;
+          continue;
+        }
+        const data = await api.get('/factures/invoices/' + invoiceId + '/products');
+        if (data.erreur) { showToast(idOrNumber + ': ' + data.erreur, 'error'); errors++; continue; }
+        if (!data.products || data.products.length === 0) { showToast(idOrNumber + ': aucun produit', 'error'); errors++; continue; }
+        addOrder(data.products, data.client || null, data.invoiceNumber || idOrNumber, data.delivery_address || '');
+        imported++;
+      } catch (err) {
+        showToast(idOrNumber + ': ' + err.message, 'error');
+        errors++;
       }
-      const data = await api.get('/factures/invoices/' + invoiceId + '/products');
-      if (data.erreur) { showToast(data.erreur, 'error'); setImportLoading(false); return; }
-      if (!data.products || data.products.length === 0) { showToast('Aucun produit trouvé dans cette facture', 'error'); setImportLoading(false); return; }
-      addOrder(data.products, data.client || null, data.invoiceNumber || '', data.delivery_address || '');
-      setImportInvoiceId('');
-      showToast('Facture importée — ' + data.products.length + ' produit(s)', 'success');
-    } catch (err) {
-      showToast('Erreur import: ' + err.message, 'error');
     }
+    setImportInvoiceId('');
+    if (imported > 0) showToast(imported + ' facture(s) importée(s)', 'success');
     setImportLoading(false);
   };
 
@@ -12089,6 +12097,59 @@ const FacturesBatch = ({ showToast }) => {
     }
   };
 
+  // CSV + Email logisticien directement depuis les commandes importées (sans créer de facture)
+  const csvEmailDirect = async () => {
+    const eligibleOrders = orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length));
+    if (eligibleOrders.length === 0) { showToast('Aucune commande avec client + produits', 'error'); return; }
+    setProcessing(true);
+    try {
+      const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
+      const batchOrders = eligibleOrders.map(order => ({
+        invoiceData: {
+          products: order.calculation?.products || order.products || [],
+          orderNumber: order.orderNumber || '',
+          number: order.orderNumber || '',
+        },
+        client: order.client || {},
+        shippingId: order.shippingId || '1302',
+        deliveryAddress: order.deliveryAddress || '',
+      }));
+      const res = await fetch('/api/factures/csv-logisticien-batch', {
+        method: 'POST',
+        headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ orders: batchOrders }),
+      });
+      if (!res.ok) {
+        const errData = await res.json().catch(() => ({}));
+        throw new Error(errData.erreur || 'Erreur CSV: ' + res.status);
+      }
+      const blob = await res.blob();
+      const fileName = `logisticien-batch-${eligibleOrders.length}-commandes.csv`;
+
+      const dirName = await saveFileWithPicker(blob, fileName);
+      if (dirName) {
+        showToast(`CSV sauvé: ${dirName}/${fileName}`, 'success');
+      } else {
+        downloadFallback(blob, fileName);
+        showToast('CSV téléchargé', 'success');
+      }
+
+      const orderLines = eligibleOrders.map((order, i) => {
+        const num = order.orderNumber || '?';
+        const partner = order.client?.name || '';
+        return `${i + 1}. ${partner} — N°${num}`;
+      }).join('\n');
+      const orderNums = eligibleOrders.map(o => o.orderNumber || '?').join(', ');
+      const subject = encodeURIComponent(`Commandes batch — ${orderNums}`);
+      const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV groupé pour ${eligibleOrders.length} commande(s) :\n\n${orderLines}\n\nCordialement`);
+      const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+      window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_self');
+    } catch (err) {
+      showToast('Erreur CSV: ' + err.message, 'error');
+    }
+    setProcessing(false);
+  };
+
   return (
     <div className="space-y-4">
       <div className="bg-white rounded-2xl border border-slate-100 p-6 space-y-4">
@@ -12111,10 +12172,11 @@ const FacturesBatch = ({ showToast }) => {
         </div>
 
         <div className="flex gap-2">
-          <input type="text" value={importInvoiceId} onChange={e => setImportInvoiceId(e.target.value)}
-            placeholder="Importer facture VF (n° ou ID)"
-            onKeyDown={e => e.key === 'Enter' && handleImportInvoice()}
-            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          <textarea value={importInvoiceId} onChange={e => setImportInvoiceId(e.target.value)}
+            placeholder="Importer facture(s) VF — un n° par ligne ou séparés par des virgules"
+            rows={1}
+            onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleImportInvoice(); } }}
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono resize-y min-h-[2.5rem] focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
           <button onClick={handleImportInvoice} disabled={!importInvoiceId.trim() || importLoading}
             className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 whitespace-nowrap">
             {importLoading ? 'Import...' : 'Importer'}
@@ -12410,6 +12472,10 @@ const FacturesBatch = ({ showToast }) => {
                 {processing ? '...' : 'Logger uniquement'}
               </button>
             </div>
+            <button onClick={csvEmailDirect} disabled={processing || orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length === 0}
+              className="w-full py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
+              {processing ? 'Génération...' : `CSV + Email Logisticien (${orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length} commande(s))`}
+            </button>
           </>
         )}
 
