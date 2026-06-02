@@ -15478,7 +15478,11 @@ const VueBlocklist = ({ onRefresh, showToast }) => {
               <label className="text-xs font-medium text-slate-600 mb-2 block">
                 {newEntry.type === 'email' ? 'Adresse email' : 'Domaine (ex: example.com)'}
               </label>
-              <input value={newEntry.value} onChange={e => setNewEntry({...newEntry, value: e.target.value})} placeholder={newEntry.type === 'email' ? 'contact@example.com' : 'example.com'} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+              <input value={newEntry.value} onChange={e => {
+                const val = e.target.value;
+                const autoType = val.includes('@') ? 'email' : 'domain';
+                setNewEntry({...newEntry, value: val, type: autoType});
+              }} placeholder={newEntry.type === 'email' ? 'contact@example.com' : 'example.com'} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
             </div>
             <div>
               <label className="text-xs font-medium text-slate-600 mb-2 block">Raison (optionnel)</label>

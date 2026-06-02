@@ -1819,5 +1819,16 @@ try {
   console.error('⚠️  Erreur migration client_notified_at v3:', e.message);
 }
 
+// ─── Data fix : corriger les types blocklist mal assignés ────────────────────
+try {
+  const fixDomains = db.prepare(`UPDATE email_blocklist SET type = 'domain' WHERE type = 'email' AND value NOT LIKE '%@%'`).run();
+  const fixEmails = db.prepare(`UPDATE email_blocklist SET type = 'email' WHERE type = 'domain' AND value LIKE '%@%'`).run();
+  if (fixDomains.changes || fixEmails.changes) {
+    console.log(`🔧 Blocklist fix-types: ${fixDomains.changes} domaine(s), ${fixEmails.changes} email(s) corrigé(s)`);
+  }
+} catch (e) {
+  console.error('⚠️  Erreur fix blocklist types:', e.message);
+}
+
 console.log('✅ Base de données initialisée :', DB_PATH);
 module.exports = db;

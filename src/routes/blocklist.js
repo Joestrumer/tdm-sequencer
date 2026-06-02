@@ -22,21 +22,26 @@ module.exports = (db) => {
   // POST /api/blocklist — Ajouter une entrée à la blocklist
   router.post('/', (req, res) => {
     try {
-      const { type, value, raison } = req.body;
+      let { type, value, raison } = req.body;
 
-      if (!type || !value) {
-        return res.status(400).json({ erreur: 'type et value requis' });
+      if (!value) {
+        return res.status(400).json({ erreur: 'value requis' });
       }
 
-      if (type !== 'email' && type !== 'domain') {
-        return res.status(400).json({ erreur: 'type doit être "email" ou "domain"' });
+      const val = value.toLowerCase().trim();
+
+      // Auto-détection du type : si pas de @, c'est un domaine
+      if (!val.includes('@')) {
+        type = 'domain';
+      } else {
+        type = 'email';
       }
 
       const id = uuidv4();
       db.prepare(`
         INSERT INTO email_blocklist (id, type, value, raison)
         VALUES (?, ?, ?, ?)
-      `).run(id, type, value.toLowerCase().trim(), raison || null);
+      `).run(id, type, val, raison || null);
 
       const entry = db.prepare('SELECT * FROM email_blocklist WHERE id = ?').get(id);
       logger.info('📛 Ajout blocklist', { type, value });
@@ -136,6 +141,29 @@ module.exports = (db) => {
         entry: blocked || null,
         canOverride: blocked?.override_allowed === 1,
       });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // POST /api/blocklist/fix-types — Corriger les entrées dont le type ne correspond pas au format
+  router.post('/fix-types', (req, res) => {
+    try {
+      // Domaines stockés en type "email" (pas de @)
+      const fixedDomains = db.prepare(`
+        UPDATE email_blocklist SET type = 'domain'
+        WHERE type = 'email' AND value NOT LIKE '%@%'
+      `).run();
+
+      // Emails stockés en type "domain" (contient @)
+      const fixedEmails = db.prepare(`
+        UPDATE email_blocklist SET type = 'email'
+        WHERE type = 'domain' AND value LIKE '%@%'
+      `).run();
+
+      const total = fixedDomains.changes + fixedEmails.changes;
+      logger.info(`🔧 Blocklist fix-types: ${fixedDomains.changes} domaine(s), ${fixedEmails.changes} email(s) corrigé(s)`);
+      res.json({ fixed: total, domains_fixed: fixedDomains.changes, emails_fixed: fixedEmails.changes });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }
