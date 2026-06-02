@@ -1370,8 +1370,8 @@ const ModalEmailEditor = ({ seq, onClose, onSave }) => {
               <button onClick={() => { setShowTestModal(false); setTestEmail(""); }} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800">
                 Annuler
               </button>
-              <button onClick={envoyerTestEmail} disabled={testLoading || !testEmail.trim()} className="px-5 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
-                {testLoading ? "Envoi..." : "⚡ Envoyer le test"}
+              <button onClick={envoyerTestEmail} disabled={testLoading || testInProgress || !testEmail.trim()} className="px-5 py-2 text-sm font-medium bg-blue-600 text-white rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
+                {testLoading || testInProgress ? "Envoi..." : "⚡ Envoyer le test"}
               </button>
             </div>
           </div>
@@ -2239,6 +2239,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [showTooltip, setShowTooltip] = useState(null);   // "csv" | "sync" | "trigger" | null
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
   const csvRef = useRef(null);
+  const detailLoadingRef = useRef(null); // ID du lead dont on charge le détail
 
   const toggleTooltip = (key, e) => {
     if (showTooltip === key) { setShowTooltip(null); return; }
@@ -2529,6 +2530,8 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 
   const ouvrirDetail = async (lead) => {
     if (selectedLead?.id === lead.id) { setSelectedLead(null); setDetailData(null); return; }
+    const loadingId = lead.id;
+    detailLoadingRef.current = loadingId;
     setSelectedLead(lead);
     setHsDetails(null);
     setDetailData(null);
@@ -2537,9 +2540,11 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     setLoadingDetail(true);
     try {
       const data = await api.get(`/leads/${lead.id}`);
+      // Ignorer la réponse si l'utilisateur a cliqué sur un autre lead entre-temps
+      if (detailLoadingRef.current !== loadingId) return;
       setDetailData(data);
     } catch(e) { console.error('Erreur détail lead', e); }
-    setLoadingDetail(false);
+    if (detailLoadingRef.current === loadingId) setLoadingDetail(false);
     if (lead.hubspot_id) chargerHubspot(lead);
   };
 
@@ -4872,7 +4877,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
 
   // Supprimer l'email d'un hôtel (efface le champ)
   const handleDeleteEmail = async (hotelId) => {
-    if (!confirm('Supprimer cet email ? L\'hôtel pourra être re-scrappé.')) return;
+    if (!await confirmDialog('Supprimer cet email ? L\'hôtel pourra être re-scrappé.', { danger: true, confirmLabel: 'Supprimer' })) return;
     try {
       await api.delete(`/prospection/emails-generiques/${hotelId}`);
       showToast('Email supprimé', 'success');
@@ -6030,7 +6035,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                       const exemples = res.details.slice(0, 5).map(d => d.email + ' (' + d.reason + ')').join('\n');
                       msg += res.bad_emails + ' email(s) invalide(s) a exclure :\n' + exemples + (res.bad_emails > 5 ? '\n... et ' + (res.bad_emails - 5) + ' autre(s)' : '');
                     }
-                    if (confirm(msg.trim() + '\n\nAppliquer le nettoyage ?')) {
+                    if (await confirmDialog(msg.trim() + '\n\nAppliquer le nettoyage ?', { confirmLabel: 'Appliquer' })) {
                       const res2 = await api.post('/prospection/emails-generiques/auto-clean', { dry_run: false });
                       const actions = [];
                       if (res2.fixed_emails > 0) actions.push(res2.fixed_emails + ' corrige(s)');
@@ -14589,7 +14594,7 @@ const VueSegmentsConfig = () => {
         _segmentsCache = [..._segmentsCache, newForm.nom.trim()];
         setMsg('Segment créé');
       }
-    } catch (e) { setMsg('Erreur'); }
+    } catch (e) { setMsg(e.message || 'Erreur'); }
     setSaving(false);
   };
 
@@ -14603,7 +14608,7 @@ const VueSegmentsConfig = () => {
         api.get('/segments').then(data => { if (Array.isArray(data)) _segmentsCache = data.map(s => s.nom); });
         setMsg('Segment modifié');
       }
-    } catch (e) { setMsg('Erreur'); }
+    } catch (e) { setMsg(e.message || 'Erreur'); }
     setSaving(false);
   };
 
@@ -14701,7 +14706,7 @@ const VueBraveSearchConfig = () => {
       setConfigured(true);
       setBraveKey('');
       setMsg('Clé API Brave Search sauvegardée');
-    } catch(e) { setMsg('Erreur'); }
+    } catch(e) { setMsg(e.message || 'Erreur'); }
     setSaving(false);
   };
 
@@ -14792,7 +14797,7 @@ const VuePappersConfig = () => {
       setConfigured(true);
       setPappersKey('');
       setMsg('Clé API Pappers sauvegardée');
-    } catch(e) { setMsg('Erreur'); }
+    } catch(e) { setMsg(e.message || 'Erreur'); }
     setSaving(false);
   };
 
@@ -14852,7 +14857,7 @@ const VueLushaConfig = () => {
       setConfigured(true);
       setLushaKey('');
       setMsg('Clé API Lusha sauvegardée');
-    } catch(e) { setMsg('Erreur'); }
+    } catch(e) { setMsg(e.message || 'Erreur'); }
     setSaving(false);
   };
 
@@ -14912,7 +14917,7 @@ const VueLemlistConfig = () => {
       setConfigured(true);
       setLemlistKey('');
       setMsg('Clé API Lemlist sauvegardée');
-    } catch(e) { setMsg('Erreur'); }
+    } catch(e) { setMsg(e.message || 'Erreur'); }
     setSaving(false);
   };
 
@@ -14974,7 +14979,7 @@ const VueGooglePlacesConfig = () => {
       setConfigured(true);
       setGpKey('');
       setMsg('Cle API Google Places sauvegardee');
-    } catch(e) { setMsg('Erreur'); }
+    } catch(e) { setMsg(e.message || 'Erreur'); }
     setSaving(false);
   };
 
@@ -15077,7 +15082,7 @@ const VueApiExterne = () => {
       setCurrentKey(apiKey.substring(0, 8) + '••••••••');
       setApiKey('');
       setMsg('Clé API externe sauvegardée');
-    } catch(e) { setMsg('Erreur'); }
+    } catch(e) { setMsg(e.message || 'Erreur'); }
     setSaving(false);
   };
 
@@ -19029,6 +19034,7 @@ function ModalPartnerDetail({ partner, onClose, showToast }) {
 // ─── PARTNER SEGMENTS (Tab 3) ───────────────────────────────────────────────
 
 function VuePartnerSegments({ showToast, readOnly, ownerId }) {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [segments, setSegments] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showBuilder, setShowBuilder] = useState(false);
@@ -19047,7 +19053,7 @@ function VuePartnerSegments({ showToast, readOnly, ownerId }) {
   useEffect(() => { charger(); }, []);
 
   const supprimer = async (id) => {
-    if (!confirm('Supprimer ce segment ?')) return;
+    if (!await confirmDialog('Supprimer ce segment ?', { danger: true, confirmLabel: 'Supprimer' })) return;
     try { await api.delete(`/partner-center/segments/${id}`); charger(); showToast('Segment supprimé', 'success'); }
     catch (e) { showToast('Erreur: ' + e.message, 'error'); }
   };
@@ -19056,6 +19062,7 @@ function VuePartnerSegments({ showToast, readOnly, ownerId }) {
 
   return (
     <div className="space-y-4">
+      {confirmDialogEl}
       {!readOnly && (
         <div className="flex justify-end">
           <button onClick={() => { setEditSegment(null); setShowBuilder(true); }}
@@ -19273,6 +19280,7 @@ function ModalSegmentBuilder({ segment, onClose, onSave, showToast }) {
 // ─── PARTNER CAMPAIGNS (Tab 4) ──────────────────────────────────────────────
 
 function VuePartnerCampaigns({ showToast, readOnly, initialSubTab }) {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [subTab, setSubTab] = useState(initialSubTab || 'campaigns');
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -19290,7 +19298,7 @@ function VuePartnerCampaigns({ showToast, readOnly, initialSubTab }) {
   useEffect(() => { charger(); }, []);
 
   const supprimer = async (id) => {
-    if (!confirm('Supprimer cette campagne ?')) return;
+    if (!await confirmDialog('Supprimer cette campagne ?', { danger: true, confirmLabel: 'Supprimer' })) return;
     try { await api.delete(`/partner-center/campaigns/${id}`); charger(); showToast('Campagne supprimée', 'success'); }
     catch (e) { showToast('Erreur: ' + e.message, 'error'); }
   };
@@ -19314,6 +19322,7 @@ function VuePartnerCampaigns({ showToast, readOnly, initialSubTab }) {
 
   return (
     <div className="space-y-4">
+      {confirmDialogEl}
       <div className="flex items-center justify-between">
         <div className="flex gap-1 bg-slate-50 rounded-lg p-0.5">
           <button onClick={() => setSubTab('campaigns')} className={`px-3 py-1.5 rounded-md text-xs font-medium ${subTab === 'campaigns' ? 'bg-white shadow-sm text-slate-800' : 'text-slate-500'}`}>Campagnes</button>
@@ -19560,6 +19569,7 @@ function ModalPartnerCampaignEditor({ campaign, onClose, onSave, showToast }) {
 }
 
 function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, readOnly }) {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [recipients, setRecipients] = useState([]);
   const [stats, setStats] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -19629,7 +19639,7 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
   };
 
   const envoyer = async () => {
-    if (!confirm(`Envoyer à ${recipients.length} destinataire(s) ?`)) return;
+    if (!await confirmDialog(`Envoyer à ${recipients.length} destinataire(s) ?`, { confirmLabel: 'Envoyer' })) return;
     setSending(true);
     try {
       await api.post(`/partner-center/campaigns/${campaign.id}/send-now`);
@@ -19641,6 +19651,7 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
 
   return (
     <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4" onClick={onClose}>
+      {confirmDialogEl}
       <div className="bg-white rounded-2xl w-full max-w-3xl max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
         <div className="flex-shrink-0 p-5 border-b border-slate-100">
           <div className="flex items-center justify-between">
@@ -19825,6 +19836,7 @@ function ModalPartnerCampaignDetail({ campaign, onClose, showToast, onRefresh, r
 // ─── PARTNER TEMPLATES ──────────────────────────────────────────────────────
 
 function VuePartnerTemplates({ showToast, readOnly }) {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [templates, setTemplates] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
@@ -19840,7 +19852,7 @@ function VuePartnerTemplates({ showToast, readOnly }) {
   useEffect(() => { charger(); }, []);
 
   const supprimer = async (id) => {
-    if (!confirm('Supprimer ce template ?')) return;
+    if (!await confirmDialog('Supprimer ce template ?', { danger: true, confirmLabel: 'Supprimer' })) return;
     try { await api.delete(`/partner-center/templates/${id}`); charger(); showToast('Template supprimé', 'success'); }
     catch (e) { showToast('Erreur: ' + e.message, 'error'); }
   };
@@ -19849,6 +19861,7 @@ function VuePartnerTemplates({ showToast, readOnly }) {
 
   return (
     <div className="space-y-4">
+      {confirmDialogEl}
       {!readOnly && (
         <div className="flex justify-end">
           <button onClick={() => { setEditTemplate(null); setShowEditor(true); }}
@@ -19979,6 +19992,7 @@ function ModalPartnerTemplateEditor({ template, onClose, onSave, showToast }) {
 // ─── PARTNER ANNIVERSARIES (sous-onglet Communications) ────────────────────
 
 function VuePartnerAnniversaries({ showToast, readOnly }) {
+  const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [campaigns, setCampaigns] = useState([]);
   const [loading, setLoading] = useState(true);
   const [showEditor, setShowEditor] = useState(false);
@@ -20001,7 +20015,7 @@ function VuePartnerAnniversaries({ showToast, readOnly }) {
   useEffect(() => { charger(); }, []);
 
   const supprimer = async (id) => {
-    if (!confirm('Supprimer cette campagne anniversaire ?')) return;
+    if (!await confirmDialog('Supprimer cette campagne anniversaire ?', { danger: true, confirmLabel: 'Supprimer' })) return;
     try { await api.delete(`/partner-center/campaigns/${id}`); charger(); showToast('Campagne supprimée', 'success'); }
     catch (e) { showToast('Erreur: ' + e.message, 'error'); }
   };
@@ -20033,6 +20047,7 @@ function VuePartnerAnniversaries({ showToast, readOnly }) {
 
   return (
     <div className="space-y-4">
+      {confirmDialogEl}
       {/* Config globale */}
       <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between gap-4">
         <div className="flex items-center gap-4">
