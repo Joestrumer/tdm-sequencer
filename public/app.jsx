@@ -18070,7 +18070,7 @@ const VuePartenaires = ({ showToast }) => {
 
 // ─── MODAL PROFIL UTILISATEUR ─────────────────────────────────────────────────
 
-const ModalProfile = ({ onClose, showToast }) => {
+const ModalProfile = ({ onClose, showToast, setCurrentUser }) => {
   useEscapeClose(onClose);
   const [currentUser] = useState(() => {
     try { return JSON.parse(sessionStorage.getItem('tdm_user') || 'null'); } catch { return null; }
@@ -18081,6 +18081,37 @@ const ModalProfile = ({ onClose, showToast }) => {
   const [vfToken, setVfToken] = useState('');
   const [saving, setSaving] = useState(false);
   const [testingVf, setTestingVf] = useState(false);
+
+  // Legacy admin : formulaire de création de compte
+  const isLegacy = currentUser?.id === '_legacy_admin';
+  const [regEmail, setRegEmail] = useState(currentUser?.email || '');
+  const [regNom, setRegNom] = useState(currentUser?.nom || '');
+  const [regPwd, setRegPwd] = useState('');
+  const [regConfirm, setRegConfirm] = useState('');
+  const [creating, setCreating] = useState(false);
+
+  const handleCreateAccount = async () => {
+    if (!regEmail || !regNom || !regPwd) { showToast('Tous les champs sont requis', 'error'); return; }
+    if (regPwd !== regConfirm) { showToast('Les mots de passe ne correspondent pas', 'error'); return; }
+    if (regPwd.length < 6) { showToast('Mot de passe trop court (min 6 caractères)', 'error'); return; }
+    setCreating(true);
+    try {
+      // Créer le compte
+      const createRes = await api.post('/users', { email: regEmail, nom: regNom, password: regPwd, role: 'admin' });
+      if (createRes.erreur) throw new Error(createRes.erreur);
+      // Auto-login avec le nouveau compte
+      const loginRes = await api.post('/auth/login', { email: regEmail, password: regPwd });
+      if (!loginRes.token) throw new Error('Erreur de connexion après création');
+      // Mettre à jour la session
+      window.AUTH_TOKEN = loginRes.token;
+      sessionStorage.setItem('tdm_token', loginRes.token);
+      sessionStorage.setItem('tdm_user', JSON.stringify(loginRes.user));
+      if (setCurrentUser) setCurrentUser(loginRes.user);
+      showToast('Compte créé ! Vous êtes maintenant connecté.', 'success');
+      onClose();
+    } catch (e) { showToast(e.message, 'error'); }
+    setCreating(false);
+  };
 
   const handleChangePassword = async () => {
     if (!oldPwd || !newPwd) return;
@@ -18134,52 +18165,83 @@ const ModalProfile = ({ onClose, showToast }) => {
         </div>
 
         <div className="flex-1 overflow-y-auto p-6 space-y-6">
-          {/* Changer mot de passe */}
-          <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Changer le mot de passe</h3>
-            <div className="space-y-2">
-              <input type="password" value={oldPwd} onChange={e => setOldPwd(e.target.value)} placeholder="Ancien mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
-              <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="Nouveau mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
-              <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} placeholder="Confirmer le mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
-              <button onClick={handleChangePassword} disabled={saving || !oldPwd || !newPwd} className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
-                {saving ? 'Enregistrement...' : 'Modifier'}
-              </button>
-            </div>
-          </div>
-
-          {/* Clé VosFactures */}
-          <div>
-            <h3 className="text-sm font-semibold text-slate-700 mb-3">Clé API VosFactures</h3>
-            <p className="text-xs text-slate-400 mb-2">Votre clé personnelle pour accéder à vos propres clients/factures.</p>
-            <div className="flex gap-2">
-              <input type="text" value={vfToken} onChange={e => setVfToken(e.target.value)} placeholder="Clé API VosFactures..." className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg font-mono" />
-              <button onClick={handleSaveVfToken} disabled={saving} className="px-3 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
-                Sauver
-              </button>
-            </div>
-            <button onClick={handleTestVf} disabled={testingVf} className="mt-2 text-xs text-indigo-600 hover:text-indigo-800">
-              {testingVf ? 'Test en cours...' : 'Tester la connexion'}
-            </button>
-          </div>
-
-          {/* Permissions (lecture seule pour les membres) */}
-          {currentUser?.role !== 'admin' && (
-            <div>
-              <h3 className="text-sm font-semibold text-slate-700 mb-3">Vos permissions</h3>
-              <div className="space-y-1">
-                {Object.entries(PERM_LABELS).map(([key, label]) => {
-                  const perm = currentUser?.permissions?.[key];
-                  return (
-                    <div key={key} className="flex justify-between text-xs py-1">
-                      <span className="text-slate-600">{label}</span>
-                      <span className={perm === 'rw' ? 'text-emerald-600 font-medium' : perm === 'r' ? 'text-blue-600 font-medium' : 'text-slate-300'}>
-                        {perm === 'rw' ? 'Lecture + Écriture' : perm === 'r' ? 'Lecture seule' : 'Aucun'}
-                      </span>
-                    </div>
-                  );
-                })}
+          {isLegacy ? (
+            <>
+              {/* Bandeau d'alerte legacy admin */}
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-4">
+                <div className="flex gap-2">
+                  <span className="text-amber-600 text-lg leading-none">&#9888;</span>
+                  <div>
+                    <p className="text-sm font-medium text-amber-800">Connexion via AUTH_SECRET</p>
+                    <p className="text-xs text-amber-600 mt-1">Vous utilisez un accès temporaire. Créez un vrai compte pour bénéficier du changement de mot de passe, de la clé VosFactures et d'une connexion sécurisée par email.</p>
+                  </div>
+                </div>
               </div>
-            </div>
+
+              {/* Formulaire de création de compte */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">Créer mon compte</h3>
+                <div className="space-y-2">
+                  <input type="email" value={regEmail} onChange={e => setRegEmail(e.target.value)} placeholder="Email" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <input type="text" value={regNom} onChange={e => setRegNom(e.target.value)} placeholder="Nom" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <input type="password" value={regPwd} onChange={e => setRegPwd(e.target.value)} placeholder="Mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <input type="password" value={regConfirm} onChange={e => setRegConfirm(e.target.value)} placeholder="Confirmer le mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <button onClick={handleCreateAccount} disabled={creating || !regEmail || !regNom || !regPwd} className="w-full px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+                    {creating ? 'Création en cours...' : 'Créer mon compte'}
+                  </button>
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Changer mot de passe */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">Changer le mot de passe</h3>
+                <div className="space-y-2">
+                  <input type="password" value={oldPwd} onChange={e => setOldPwd(e.target.value)} placeholder="Ancien mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <input type="password" value={newPwd} onChange={e => setNewPwd(e.target.value)} placeholder="Nouveau mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <input type="password" value={confirmPwd} onChange={e => setConfirmPwd(e.target.value)} placeholder="Confirmer le mot de passe" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <button onClick={handleChangePassword} disabled={saving || !oldPwd || !newPwd} className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+                    {saving ? 'Enregistrement...' : 'Modifier'}
+                  </button>
+                </div>
+              </div>
+
+              {/* Clé VosFactures */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">Clé API VosFactures</h3>
+                <p className="text-xs text-slate-400 mb-2">Votre clé personnelle pour accéder à vos propres clients/factures.</p>
+                <div className="flex gap-2">
+                  <input type="text" value={vfToken} onChange={e => setVfToken(e.target.value)} placeholder="Clé API VosFactures..." className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg font-mono" />
+                  <button onClick={handleSaveVfToken} disabled={saving} className="px-3 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+                    Sauver
+                  </button>
+                </div>
+                <button onClick={handleTestVf} disabled={testingVf} className="mt-2 text-xs text-indigo-600 hover:text-indigo-800">
+                  {testingVf ? 'Test en cours...' : 'Tester la connexion'}
+                </button>
+              </div>
+
+              {/* Permissions (lecture seule pour les membres) */}
+              {currentUser?.role !== 'admin' && (
+                <div>
+                  <h3 className="text-sm font-semibold text-slate-700 mb-3">Vos permissions</h3>
+                  <div className="space-y-1">
+                    {Object.entries(PERM_LABELS).map(([key, label]) => {
+                      const perm = currentUser?.permissions?.[key];
+                      return (
+                        <div key={key} className="flex justify-between text-xs py-1">
+                          <span className="text-slate-600">{label}</span>
+                          <span className={perm === 'rw' ? 'text-emerald-600 font-medium' : perm === 'r' ? 'text-blue-600 font-medium' : 'text-slate-300'}>
+                            {perm === 'rw' ? 'Lecture + Écriture' : perm === 'r' ? 'Lecture seule' : 'Aucun'}
+                          </span>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
@@ -23326,7 +23388,7 @@ function App() {
       <Toast toast={toast} onDismiss={() => setToast(t => ({ ...t, visible: false }))} />
 
       {showSeqEditor && <ModalEmailEditor seq={editSeq} onClose={() => { setShowSeqEditor(false); setEditSeq(null); }} onSave={saveSeq} />}
-      {showProfile && <ModalProfile onClose={() => setShowProfile(false)} showToast={showToast} />}
+      {showProfile && <ModalProfile onClose={() => setShowProfile(false)} showToast={showToast} setCurrentUser={setCurrentUser} />}
 
       {/* Sidebar — desktop only */}
       <div className="hidden md:flex fixed left-0 top-0 h-full w-56 bg-white border-r border-slate-100 flex-col z-40">
@@ -23370,7 +23432,7 @@ function App() {
           })}
         </nav>
         <div className="p-4 border-t border-slate-100 space-y-2">
-          <div className="flex items-center gap-2.5">
+          <button onClick={() => setShowProfile(true)} className="w-full flex items-center gap-2.5 rounded-lg p-1.5 -m-1.5 hover:bg-slate-50 transition-colors text-left">
             <div className="w-7 h-7 rounded-full bg-slate-200 flex items-center justify-center text-xs font-bold text-slate-600">
               {(currentUser?.nom || 'U').charAt(0).toUpperCase()}
             </div>
@@ -23378,13 +23440,8 @@ function App() {
               <div className="text-xs font-medium text-slate-800 truncate">{currentUser?.nom || 'Utilisateur'}</div>
               <div className="text-xs text-slate-400 truncate">{isAdmin ? 'Admin' : 'Commercial'}</div>
             </div>
-          </div>
+          </button>
           <div className="flex gap-1.5">
-            {currentUser?.id !== '_legacy_admin' && (
-              <button onClick={() => setShowProfile(true)} className="flex-1 text-xs text-slate-500 hover:text-slate-700 hover:bg-slate-50 px-2 py-1.5 rounded-lg transition-colors">
-                Profil
-              </button>
-            )}
             <button onClick={handleLogout} className="flex-1 text-xs text-red-500 hover:text-red-700 hover:bg-red-50 px-2 py-1.5 rounded-lg transition-colors">
               Déconnexion
             </button>
