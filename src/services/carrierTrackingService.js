@@ -50,13 +50,15 @@ async function checkLaPoste(trackingNumber) {
 
   const lastEvent = shipment.event?.[0];
   const isFinal = !!shipment.isFinal;
-  const deliveredCodes = ['DI1', 'DI2', 'AG1'];
+  const deliveredCodes = ['DI1', 'DI2', 'AG1', 'LI1', 'LI2'];
   const returnCodes = ['RE1', 'RI1', 'RI2'];
   const failedDeliveryCodes = ['ND1', 'ND2'];
   const label = lastEvent?.label || '';
   const labelLow = label.toLowerCase();
 
-  const delivered = isFinal || deliveredCodes.includes(lastEvent?.code);
+  const delivered = isFinal || deliveredCodes.includes(lastEvent?.code)
+    || labelLow.includes('a été retiré')
+    || labelLow.includes('a été remis');
   const returned = returnCodes.includes(lastEvent?.code) || labelLow.includes('retour');
   // "ne peut pas être livré", "ne peut être livré", "n'a pas pu vous être remis"
   const failedDelivery = failedDeliveryCodes.includes(lastEvent?.code)
@@ -65,9 +67,10 @@ async function checkLaPoste(trackingNumber) {
     || labelLow.includes('pas pu vous être remis')
     || labelLow.includes('pas pu vous remettre')
     || labelLow.includes('indépendante de notre volonté');
-  // "point de retrait", "nous sommes passés"
-  const atPickupPoint = labelLow.includes('point de retrait')
-    || labelLow.includes('nous sommes passés');
+  // "point de retrait", "nous sommes passés" (mais pas si déjà retiré)
+  const atPickupPoint = !delivered
+    && (labelLow.includes('point de retrait')
+    || labelLow.includes('nous sommes passés'));
 
   return {
     delivered,
