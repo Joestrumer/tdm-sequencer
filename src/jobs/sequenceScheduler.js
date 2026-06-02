@@ -9,7 +9,7 @@
 const cron    = require('node-cron');
 const { v4: uuidv4 } = require('uuid');
 const logger  = require('../config/logger');
-const { envoyerEmail, estDansLaFenetreEnvoi, substituerVariables, getConfigVal, parseHeurMinute } = require('../services/brevoService');
+const { envoyerEmail, estDansLaFenetreEnvoi, substituerVariables, getConfigVal, parseHeurMinute, estBloque } = require('../services/brevoService');
 const hubspot = require('../services/hubspotService');
 const { addOrUpdateTag } = require('../utils/leadTags');
 const { checkImapReplies } = require('../services/imapReplyService');
@@ -218,6 +218,13 @@ async function _traiter(inscription) {
   const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(inscription.lead_id);
   if (!lead || lead.unsubscribed || lead.statut === 'Désabonné') {
     db.prepare(`UPDATE inscriptions SET statut='terminé' WHERE id=?`).run(inscription.id);
+    return;
+  }
+
+  // Vérifier la blocklist (email ou domaine bloqué)
+  if (lead.email && estBloque(db, lead.email)) {
+    db.prepare(`UPDATE inscriptions SET statut='terminé' WHERE id=?`).run(inscription.id);
+    logger.warn(`⛔ Inscription ${inscription.id} terminée (blocklist)`, { email: lead.email });
     return;
   }
 

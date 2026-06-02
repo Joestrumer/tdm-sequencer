@@ -123,11 +123,11 @@ module.exports = (db) => {
       const email = req.params.email.toLowerCase().trim();
       const domain = email.split('@')[1];
 
-      // Vérifier email exact
-      const emailBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = "email" AND value = ?').get(email);
+      // Vérifier email exact (LOWER+TRIM pour robustesse)
+      const emailBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = "email" AND LOWER(TRIM(value)) = ?').get(email);
 
       // Vérifier domaine
-      const domainBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = "domain" AND value = ?').get(domain);
+      const domainBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = "domain" AND LOWER(TRIM(value)) = ?').get(domain);
 
       const blocked = emailBlock || domainBlock;
 

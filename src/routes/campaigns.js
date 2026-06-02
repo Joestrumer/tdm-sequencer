@@ -5,7 +5,7 @@
 const express = require('express');
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
-const { envoyerEmailCampagne, texteVersHtml, substituerVariables, verifierBlocklist, SENDER, PUBLIC_URL } = require('../services/brevoService');
+const { envoyerEmailCampagne, texteVersHtml, substituerVariables, verifierBlocklist, estBloque, SENDER, PUBLIC_URL } = require('../services/brevoService');
 const { lancerCampagne } = require('../jobs/campaignSender');
 
 module.exports = (db) => {
@@ -157,6 +157,7 @@ module.exports = (db) => {
       const { mode, filters, recipients } = req.body;
       let added = 0;
       let skipped = 0;
+      let blocked = 0;
 
       // Emails déjà présents pour déduplication
       const existingEmails = new Set(
@@ -210,6 +211,7 @@ module.exports = (db) => {
         const insertMany = db.transaction(() => {
           for (const lead of leadsToAdd) {
             if (existingEmails.has(lead.email.toLowerCase())) { skipped++; continue; }
+            if (estBloque(db, lead.email)) { blocked++; continue; }
             stmtInsert.run(uuidv4(), req.params.id, lead.id, lead.email, lead.prenom, lead.nom, lead.hotel, lead.ville, lead.segment);
             existingEmails.add(lead.email.toLowerCase());
             added++;
@@ -226,6 +228,7 @@ module.exports = (db) => {
             if (!r.email) continue;
             const email = r.email.toLowerCase().trim();
             if (existingEmails.has(email)) { skipped++; continue; }
+            if (estBloque(db, email)) { blocked++; continue; }
             stmtInsert.run(uuidv4(), req.params.id, null, email, r.prenom || '', r.nom || '', r.hotel || '', r.ville || '', r.segment || '');
             existingEmails.add(email);
             added++;
@@ -240,7 +243,7 @@ module.exports = (db) => {
       const total = db.prepare('SELECT COUNT(*) as n FROM campaign_recipients WHERE campaign_id = ?').get(req.params.id).n;
       db.prepare('UPDATE campaigns SET total_recipients = ? WHERE id = ?').run(total, req.params.id);
 
-      res.json({ added, skipped, total });
+      res.json({ added, skipped, blocked, total });
     } catch (err) {
       logger.error('Erreur POST recipients', { error: err.message });
       res.status(500).json({ erreur: err.message });

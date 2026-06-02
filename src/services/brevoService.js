@@ -321,19 +321,31 @@ function verifierBlocklist(db, email) {
   const emailLower = email.toLowerCase().trim();
   const domain = emailLower.includes('@') ? emailLower.split('@')[1] : null;
 
-  // Vérifier email exact
-  const emailBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = ? AND value = ?').get('email', emailLower);
+  // Vérifier email exact (LOWER + TRIM pour gérer les valeurs mal normalisées)
+  const emailBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = ? AND LOWER(TRIM(value)) = ?').get('email', emailLower);
   if (emailBlock && !emailBlock.override_allowed) {
     throw new Error(`Email bloqué par la blocklist : ${email} (raison: ${emailBlock.raison || 'non spécifiée'})`);
   }
 
   // Vérifier domaine
-  const domainBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = ? AND value = ?').get('domain', domain);
-  if (domainBlock && !domainBlock.override_allowed) {
-    throw new Error(`Domaine bloqué par la blocklist : ${domain} (raison: ${domainBlock.raison || 'non spécifiée'})`);
+  if (domain) {
+    const domainBlock = db.prepare('SELECT * FROM email_blocklist WHERE type = ? AND LOWER(TRIM(value)) = ?').get('domain', domain);
+    if (domainBlock && !domainBlock.override_allowed) {
+      throw new Error(`Domaine bloqué par la blocklist : ${domain} (raison: ${domainBlock.raison || 'non spécifiée'})`);
+    }
   }
 
   return true;
+}
+
+// ─── Vérifier si un email est bloqué (sans throw, retourne boolean) ─────────
+function estBloque(db, email) {
+  try {
+    verifierBlocklist(db, email);
+    return false;
+  } catch (_) {
+    return true;
+  }
 }
 
 // ─── Envoi principal ─────────────────────────────────────────────────────────
@@ -569,6 +581,7 @@ module.exports = {
   brevoSendEmail,
   texteVersHtml,
   verifierBlocklist,
+  estBloque,
   nettoyerHtml,
   getSignature,
   PUBLIC_URL,
