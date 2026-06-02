@@ -215,6 +215,10 @@ async function avancerInscription(inscription, etapesParsed, lead) {
 
 // ─── Traiter une inscription (noyau partagé) ──────────────────────────────────
 async function _traiter(inscription) {
+  // Re-vérifier que l'inscription est toujours active (protection contre race condition)
+  const freshInscription = db.prepare('SELECT statut FROM inscriptions WHERE id = ?').get(inscription.id);
+  if (!freshInscription || freshInscription.statut !== 'actif') return;
+
   const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(inscription.lead_id);
   if (!lead || lead.unsubscribed || lead.statut === 'Désabonné') {
     db.prepare(`UPDATE inscriptions SET statut='terminé' WHERE id=?`).run(inscription.id);

@@ -3,6 +3,7 @@
  */
 const cron = require('node-cron');
 const { randomUUID } = require('crypto');
+const logger = require('../config/logger');
 
 function initialiser(db) {
   // 1x/jour à 8h
@@ -40,14 +41,14 @@ function initialiser(db) {
       }
 
       if (alertes > 0) {
-        console.log(`🔔 ${alertes} alerte(s) inactivité partenaire générée(s)`);
+        logger.info(`🔔 ${alertes} alerte(s) inactivité partenaire générée(s)`);
       }
     } catch (e) {
-      console.error('❌ Erreur partnerAlertChecker:', e.message);
+      logger.error('❌ Erreur partnerAlertChecker', { error: e.message });
     }
   });
 
-  console.log('🔔 Partner alert checker initialisé (8h quotidien)');
+  logger.info('🔔 Partner alert checker initialisé (8h quotidien)');
 }
 
 module.exports = { initialiser };

@@ -4,13 +4,15 @@
  */
 const cron = require('node-cron');
 const { randomUUID } = require('crypto');
+const logger = require('../config/logger');
+const { substituteVars } = require('../utils/partnerVars');
 
 let _db = null;
 
 function initialiser(db) {
   _db = db;
   cron.schedule('0 9 * * *', () => traiterAnniversaires());
-  console.log('🎉 Anniversary scheduler initialisé (quotidien 9h)');
+  logger.info('🎉 Anniversary scheduler initialisé (quotidien 9h)');
 }
 
 async function traiterAnniversaires() {
@@ -47,16 +49,16 @@ async function traiterAnniversaires() {
     const daysBefore = campaign.days_before != null ? campaign.days_before : (globalConfig.days_before || 0);
 
     // Trouver partenaires dont anniversaire = dans days_before jours
+    // Comparaison directe mois/jour (plus fiable que julianday, gère les années bissextiles)
     let query = `
       SELECT hp.*,
         CAST(strftime('%Y', 'now') AS INTEGER) - CAST(strftime('%Y', hp.partner_since) AS INTEGER) as years_at_anniversary
       FROM hubspot_partners hp
       WHERE hp.partner_since IS NOT NULL AND hp.partner_since != ''
-        AND CASE
-          WHEN julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) >= julianday('now')
-          THEN CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER), CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
-          ELSE CAST(julianday(printf('%04d-%02d-%02d', CAST(strftime('%Y','now') AS INTEGER)+1, CAST(strftime('%m',hp.partner_since) AS INTEGER), CAST(strftime('%d',hp.partner_since) AS INTEGER))) - julianday('now') AS INTEGER)
-        END = ?
+        AND ABS(
+          CAST(julianday(strftime('%Y', 'now') || strftime('-%m-%d', hp.partner_since)) AS INTEGER)
+          - CAST(julianday(date('now', '+' || ? || ' days')) AS INTEGER)
+        ) <= 0
     `;
     const params = [daysBefore];
 
@@ -122,27 +124,16 @@ async function traiterAnniversaires() {
 
             await new Promise(r => setTimeout(r, 2000));
           } catch (sendErr) {
-            console.error(`🎉 Anniversary [${campaign.nom}]: erreur envoi → ${contact.email}:`, sendErr.message);
+            logger.error(`🎉 Anniversary [${campaign.nom}]: erreur envoi → ${contact.email}`, { error: sendErr.message });
           }
         }
       } catch (err) {
-        console.error(`🎉 Anniversary [${campaign.nom}]: erreur partenaire ${partner.name}:`, err.message);
+        logger.error(`🎉 Anniversary [${campaign.nom}]: erreur partenaire ${partner.name}`, { error: err.message });
       }
     }
   }
 
-  if (totalSent > 0) console.log(`🎉 ${totalSent} email(s) anniversaire envoyé(s)`);
-}
-
-function substituteVars(text, data) {
-  if (!text) return '';
-  return text
-    .replace(/\{\{prenom\}\}/g, data.prenom || '')
-    .replace(/\{\{nom\}\}/g, data.nom || '')
-    .replace(/\{\{hotel\}\}/g, data.hotel || '')
-    .replace(/\{\{business_type\}\}/g, data.business_type || '')
-    .replace(/\{\{partner_since\}\}/g, data.partner_since || '')
-    .replace(/\{\{anniversaire_annees\}\}/g, String(data.anniversaire_annees || ''));
+  if (totalSent > 0) logger.info(`🎉 ${totalSent} email(s) anniversaire envoyé(s)`);
 }
 
 module.exports = { initialiser };

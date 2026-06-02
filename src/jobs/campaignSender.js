@@ -97,10 +97,10 @@ async function traiterBatch(campaign) {
 
     try {
       let options = {};
-      try { if (campaign.options) options = JSON.parse(campaign.options); } catch(_) {}
+      try { if (campaign.options) options = JSON.parse(campaign.options); } catch(e) { logger.warn('JSON options corrompu', { campaignId: campaign.id, error: e.message }); }
 
       let pieceJointe = null;
-      try { if (campaign.piece_jointe) pieceJointe = JSON.parse(campaign.piece_jointe); } catch(_) {}
+      try { if (campaign.piece_jointe) pieceJointe = JSON.parse(campaign.piece_jointe); } catch(e) { logger.warn('JSON piece_jointe corrompu', { campaignId: campaign.id, error: e.message }); }
 
       await envoyerEmailCampagne(db, {
         lead,
@@ -198,7 +198,7 @@ function lancerCampagne(campaignId) {
   logger.info(`🚀 Campagne lancée : ${campaign.nom} (${recipientCount} destinataires)`);
 
   // Déclencher un tick immédiat
-  setImmediate(tick);
+  setImmediate(() => tick().catch(err => logger.error('Erreur tick immédiat', { error: err.message })));
 }
 
 // ─── Initialisation ─────────────────────────────────────────────────────────

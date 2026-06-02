@@ -4,6 +4,8 @@
  */
 const cron = require('node-cron');
 const { randomUUID } = require('crypto');
+const logger = require('../config/logger');
+const { substituteVars } = require('../utils/partnerVars');
 
 let _db = null;
 
@@ -11,7 +13,7 @@ function initialiser(db) {
   _db = db;
   // Tous les jours à 9h
   cron.schedule('0 9 * * *', () => traiterMilestones());
-  console.log('🎂 Partner milestone scheduler initialisé (quotidien 9h)');
+  logger.info('🎂 Partner milestone scheduler initialisé (quotidien 9h)');
 }
 
 async function traiterMilestones() {
@@ -84,28 +86,29 @@ async function traiterMilestones() {
             _db.prepare('INSERT INTO partner_milestone_logs (id, milestone_id, partner_id, contact_id, statut) VALUES (?, ?, ?, ?, ?)').run(
               randomUUID(), milestone.id, partner.id, contact.id, 'erreur'
             );
-            console.error(`Erreur envoi milestone ${milestone.id} → ${contact.email}:`, sendErr.message);
+            logger.error(`Erreur envoi milestone ${milestone.id} → ${contact.email}`, { error: sendErr.message });
           }
         }
       } catch (err) {
-        console.error(`Erreur traitement milestone ${milestone.id}:`, err.message);
+        logger.error(`Erreur traitement milestone ${milestone.id}`, { error: err.message });
       }
     }
   }
 
-  if (totalSent > 0) console.log(`🎂 ${totalSent} email(s) milestone envoyé(s)`);
+  if (totalSent > 0) logger.info(`🎂 ${totalSent} email(s) milestone envoyé(s)`);
 }
 
 function getEligiblePartners(program, milestone) {
   if (!_db) return [];
 
   if (milestone.trigger_type === 'partner_since_anniversary') {
-    // Partenaires dont l'anniversaire est aujourd'hui (±1 jour)
+    // Partenaires dont l'anniversaire est aujourd'hui (±1 jour) — comparaison mois/jour directe
     return _db.prepare(`
       SELECT * FROM hubspot_partners
       WHERE partner_since IS NOT NULL
       AND ABS(
-        CAST(julianday('now') AS INTEGER) % 365 - CAST(julianday(partner_since) AS INTEGER) % 365
+        CAST(julianday(strftime('%Y', 'now') || strftime('-%m-%d', partner_since)) AS INTEGER)
+        - CAST(julianday('now') AS INTEGER)
       ) <= 1
     `).all();
   }
@@ -132,17 +135,6 @@ function getEligiblePartners(program, milestone) {
   }
 
   return [];
-}
-
-function substituteVars(text, data) {
-  if (!text) return '';
-  return text
-    .replace(/\{\{prenom\}\}/g, data.prenom || '')
-    .replace(/\{\{nom\}\}/g, data.nom || '')
-    .replace(/\{\{hotel\}\}/g, data.hotel || '')
-    .replace(/\{\{business_type\}\}/g, data.business_type || '')
-    .replace(/\{\{partner_since\}\}/g, data.partner_since || '')
-    .replace(/\{\{anniversaire_annees\}\}/g, String(data.anniversaire_annees || ''));
 }
 
 module.exports = { initialiser };

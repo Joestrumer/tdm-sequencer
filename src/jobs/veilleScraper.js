@@ -397,8 +397,8 @@ function initialiser(database) {
   planifierCrons();
 
   // Cron enrichissement : toutes les 30 minutes
-  cron.schedule('*/30 * * * *', () => {
-    runEnrichmentPipeline();
+  cron.schedule('*/30 * * * *', async () => {
+    try { await runEnrichmentPipeline(); } catch (err) { logger.error('Veille enrichment cron erreur', { error: err.message }); }
   });
   logger.info('Veille: cron enrichissement planifié (toutes les 30 min)');
 

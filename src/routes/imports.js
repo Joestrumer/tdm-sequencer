@@ -10,7 +10,7 @@ const csv = require('csv-parse/sync');
 const chardet = require('chardet');
 const logger = require('../config/logger');
 
-const upload = multer({ dest: 'uploads/' });
+const upload = multer({ dest: 'uploads/', limits: { fileSize: 50 * 1024 * 1024 } }); // 50 MB max
 
 module.exports = (db) => {
   const router = express.Router();

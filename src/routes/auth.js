@@ -5,6 +5,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
+const logger = require('../config/logger');
 const { JWT_SECRET } = require('../middleware/auth');
 
 module.exports = (db) => {
@@ -49,8 +50,9 @@ module.exports = (db) => {
       }
     }
 
-    // Mode 2 : fallback AUTH_SECRET (rétro-compatibilité)
+    // Mode 2 : fallback AUTH_SECRET (rétro-compatibilité — DEPRECIÉ, créer un user dans la table users)
     if (process.env.AUTH_SECRET && password === process.env.AUTH_SECRET) {
+      logger.warn('⚠️ Login via AUTH_SECRET (déprécié) — créer un utilisateur dans la table users pour sécuriser l\'accès');
       return res.json({
         token: process.env.AUTH_SECRET,
         user: {
