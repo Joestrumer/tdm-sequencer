@@ -17590,7 +17590,7 @@ const VueCommandes = ({ showToast }) => {
 };
 
 // ─── VUE PARTENAIRES (onglet dédié) ──────────────────────────────────────────
-const VuePartenaires = ({ showToast }) => {
+const VuePartenaires = ({ showToast, readOnly }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -17601,11 +17601,16 @@ const VuePartenaires = ({ showToast }) => {
   const [showPwd, setShowPwd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
-  const [tab, setTab] = useState("tous"); // "tous" | "portail"
+  const [tab, setTab] = useState("tous"); // "tous" | "portail" | "remises"
   const [catalog, setCatalog] = useState([]);
   const [discounts, setDiscounts] = useState([]);
   const [newDiscount, setNewDiscount] = useState({ product_code: '', discount_pct: '' });
   const [amenities, setAmenities] = useState({});
+  const [allDiscounts, setAllDiscounts] = useState([]);
+  const [allDiscountsLoading, setAllDiscountsLoading] = useState(false);
+  const [newGlobalDiscount, setNewGlobalDiscount] = useState({ client_name: '', product_code: '', discount_pct: '' });
+  const [editingDiscountId, setEditingDiscountId] = useState(null);
+  const [editingDiscountPct, setEditingDiscountPct] = useState('');
 
   const charger = async () => {
     setLoading(true);
@@ -17637,6 +17642,17 @@ const VuePartenaires = ({ showToast }) => {
       showToast('Erreur réseau', "error");
     }
     setSyncing(false);
+  };
+
+  const loadAllDiscounts = async () => {
+    setAllDiscountsLoading(true);
+    try {
+      const data = await api.get('/reference/discounts');
+      if (Array.isArray(data)) setAllDiscounts(data);
+    } catch (e) {
+      showToast('Erreur chargement remises', 'error');
+    }
+    setAllDiscountsLoading(false);
   };
 
   const filtered = useMemo(() => {
@@ -17729,17 +17745,203 @@ const VuePartenaires = ({ showToast }) => {
   }, [partners, selectedId]);
 
   return (
-    <div className="flex gap-6 max-w-5xl">
+    <div className="max-w-5xl space-y-3">
+      {/* Tabs */}
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-0.5" style={{ maxWidth: tab === 'remises' ? '100%' : '288px' }}>
+        <button onClick={() => { setTab("tous"); setSelectedId(null); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "tous" ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          Tous ({partners.length})
+        </button>
+        <button onClick={() => { setTab("portail"); setSelectedId(null); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "portail" ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          Accès portail ({portalCount})
+        </button>
+        <button onClick={() => { setTab("remises"); setSelectedId(null); loadAllDiscounts(); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "remises" ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          Remises ({allDiscounts.length})
+        </button>
+      </div>
+
+      {tab === "remises" ? (
+        /* ── Vue globale Remises ── */
+        <div className="space-y-4 animate-fade-in">
+          {/* Formulaire d'ajout */}
+          {!readOnly && (
+            <div className="bg-white rounded-2xl border border-slate-100 p-4">
+              <div className="flex items-center gap-2">
+                <select
+                  value={newGlobalDiscount.client_name}
+                  onChange={e => setNewGlobalDiscount(d => ({ ...d, client_name: e.target.value }))}
+                  className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                >
+                  <option value="">Sélectionner un partenaire...</option>
+                  {partners.filter(p => p.vf_client_id && p.actif).map(p => <option key={p.id} value={p.nom}>{p.nom}</option>)}
+                </select>
+                <select
+                  value={newGlobalDiscount.product_code}
+                  onChange={e => setNewGlobalDiscount(d => ({ ...d, product_code: e.target.value }))}
+                  className="flex-1 border border-slate-200 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400"
+                >
+                  <option value="">Sélectionner un produit...</option>
+                  {catalog.filter(c => c.ref !== 'FP' && c.ref !== 'FE').map(c => <option key={c.ref} value={c.ref}>{c.ref} — {c.nom}</option>)}
+                </select>
+                <input
+                  type="number"
+                  value={newGlobalDiscount.discount_pct}
+                  onChange={e => setNewGlobalDiscount(d => ({ ...d, discount_pct: e.target.value }))}
+                  placeholder="%"
+                  className="w-20 border border-slate-200 rounded-lg px-2 py-1.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+                  min="0" max="100" step="0.5"
+                />
+                <button
+                  onClick={async () => {
+                    if (!newGlobalDiscount.client_name || !newGlobalDiscount.product_code || !newGlobalDiscount.discount_pct) return;
+                    try {
+                      const res = await api.post('/reference/discounts', {
+                        client_name: newGlobalDiscount.client_name,
+                        product_code: newGlobalDiscount.product_code,
+                        discount_pct: parseFloat(newGlobalDiscount.discount_pct),
+                      });
+                      if (res.ok) {
+                        showToast('Remise ajoutée', 'success');
+                        setNewGlobalDiscount({ client_name: '', product_code: '', discount_pct: '' });
+                        loadAllDiscounts();
+                      } else {
+                        showToast(res.erreur || 'Erreur', 'error');
+                      }
+                    } catch (e) {
+                      showToast('Erreur réseau', 'error');
+                    }
+                  }}
+                  disabled={!newGlobalDiscount.client_name || !newGlobalDiscount.product_code || !newGlobalDiscount.discount_pct}
+                  className="text-xs px-4 py-1.5 bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-30 disabled:cursor-not-allowed flex-shrink-0"
+                >+ Ajouter</button>
+              </div>
+            </div>
+          )}
+
+          {/* Tableau global des remises */}
+          {allDiscountsLoading ? (
+            <div className="text-xs text-slate-400 py-4 text-center">Chargement des remises...</div>
+          ) : allDiscounts.length === 0 ? (
+            <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
+              <div className="text-slate-300 text-4xl mb-3">%</div>
+              <div className="text-sm text-slate-400">Aucune remise enregistrée.</div>
+            </div>
+          ) : (
+            <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b border-slate-200 bg-slate-50">
+                    <th className="text-left py-2.5 px-4 text-slate-500 font-medium">Partenaire</th>
+                    <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Ref</th>
+                    <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Produit</th>
+                    <th className="text-right py-2.5 px-3 text-slate-500 font-medium">Remise %</th>
+                    {!readOnly && <th className="w-20 py-2.5 px-3"></th>}
+                  </tr>
+                </thead>
+                <tbody>
+                  {(() => {
+                    const grouped = {};
+                    allDiscounts.forEach(d => {
+                      if (!grouped[d.client_name]) grouped[d.client_name] = [];
+                      grouped[d.client_name].push(d);
+                    });
+                    const rows = [];
+                    Object.keys(grouped).sort((a, b) => a.localeCompare(b, 'fr')).forEach(clientName => {
+                      const group = grouped[clientName];
+                      group.forEach((d, i) => {
+                        const prod = catalog.find(c => c.ref === d.product_code);
+                        rows.push(
+                          <tr key={d.id} className={`border-b border-slate-50 ${i === 0 ? 'border-t border-slate-100' : ''}`}>
+                            <td className="py-2 px-4 text-slate-900 font-medium">{i === 0 ? clientName : ''}</td>
+                            <td className="py-2 px-3 font-mono text-slate-600">{d.product_code}</td>
+                            <td className="py-2 px-3 text-slate-600">{prod ? prod.nom : '—'}</td>
+                            <td className="py-2 px-3 text-right">
+                              {editingDiscountId === d.id ? (
+                                <input
+                                  type="number"
+                                  value={editingDiscountPct}
+                                  onChange={e => setEditingDiscountPct(e.target.value)}
+                                  onKeyDown={async e => {
+                                    if (e.key === 'Escape') { setEditingDiscountId(null); setEditingDiscountPct(''); }
+                                    if (e.key === 'Enter') {
+                                      try {
+                                        const res = await api.post('/reference/discounts', {
+                                          client_name: d.client_name,
+                                          product_code: d.product_code,
+                                          discount_pct: parseFloat(editingDiscountPct),
+                                        });
+                                        if (res.ok) {
+                                          showToast('Remise modifiée', 'success');
+                                          setEditingDiscountId(null);
+                                          setEditingDiscountPct('');
+                                          loadAllDiscounts();
+                                        }
+                                      } catch (e) { showToast('Erreur réseau', 'error'); }
+                                    }
+                                  }}
+                                  className="w-16 border border-blue-300 rounded px-2 py-0.5 text-xs text-right focus:outline-none focus:ring-1 focus:ring-blue-400"
+                                  min="0" max="100" step="0.5"
+                                  autoFocus
+                                />
+                              ) : (
+                                <span
+                                  className={`text-emerald-600 font-medium ${!readOnly ? 'cursor-pointer hover:underline' : ''}`}
+                                  onClick={() => { if (!readOnly) { setEditingDiscountId(d.id); setEditingDiscountPct(String(d.discount_pct)); } }}
+                                >{d.discount_pct}%</span>
+                              )}
+                            </td>
+                            {!readOnly && (
+                              <td className="py-2 px-3 text-right">
+                                <div className="flex items-center justify-end gap-1">
+                                  {editingDiscountId === d.id ? (
+                                    <>
+                                      <button onClick={async () => {
+                                        try {
+                                          const res = await api.post('/reference/discounts', {
+                                            client_name: d.client_name,
+                                            product_code: d.product_code,
+                                            discount_pct: parseFloat(editingDiscountPct),
+                                          });
+                                          if (res.ok) {
+                                            showToast('Remise modifiée', 'success');
+                                            setEditingDiscountId(null);
+                                            setEditingDiscountPct('');
+                                            loadAllDiscounts();
+                                          }
+                                        } catch (e) { showToast('Erreur réseau', 'error'); }
+                                      }} className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-600 hover:bg-emerald-100">OK</button>
+                                      <button onClick={() => { setEditingDiscountId(null); setEditingDiscountPct(''); }} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200">Annuler</button>
+                                    </>
+                                  ) : (
+                                    <>
+                                      <button onClick={() => { setEditingDiscountId(d.id); setEditingDiscountPct(String(d.discount_pct)); }} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200">modifier</button>
+                                      <button onClick={async () => {
+                                        if (!await confirmDialog(`Supprimer la remise ${d.product_code} (${d.discount_pct}%) pour ${d.client_name} ?`, { danger: true, confirmLabel: 'Supprimer' })) return;
+                                        try {
+                                          await api.delete(`/reference/discounts/${d.id}`);
+                                          showToast('Remise supprimée', 'success');
+                                          loadAllDiscounts();
+                                        } catch (e) { showToast('Erreur suppression', 'error'); }
+                                      }} className="text-[10px] px-1.5 py-0.5 rounded bg-red-50 text-red-500 hover:bg-red-100">supprimer</button>
+                                    </>
+                                  )}
+                                </div>
+                              </td>
+                            )}
+                          </tr>
+                        );
+                      });
+                    });
+                    return rows;
+                  })()}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+      ) : (
+      <div className="flex gap-6">
       {/* Liste gauche */}
       <div className="w-72 flex-shrink-0 space-y-3">
-        <div className="flex gap-1 bg-slate-100 rounded-xl p-0.5">
-          <button onClick={() => { setTab("tous"); setSelectedId(null); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "tous" ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-            Tous ({partners.length})
-          </button>
-          <button onClick={() => { setTab("portail"); setSelectedId(null); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "portail" ? 'bg-white text-emerald-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
-            Accès portail ({portalCount})
-          </button>
-        </div>
         <div className="flex gap-2">
           <input
             type="text"
@@ -18063,6 +18265,8 @@ const VuePartenaires = ({ showToast }) => {
           </div>
         )}
       </div>
+      </div>
+      )}
       {confirmDialogEl}
     </div>
   );
