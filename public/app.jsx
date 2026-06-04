@@ -11693,13 +11693,26 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
       {loading && <p className="text-xs text-slate-400">Chargement des clients VosFactures...</p>}
       {erreur && <p className="text-xs text-red-500 bg-red-50 rounded-lg px-3 py-2">{erreur}</p>}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
-        {clients.map(c => (
-          <button key={c.id} onClick={() => onSelect(c)}
-            className="text-left p-3 border border-slate-200 rounded-xl hover:border-slate-400 hover:bg-slate-50 transition-colors">
-            <div className="text-sm font-medium text-slate-800">{c.name || c.shortcut}</div>
-            {c.city && <div className="text-xs text-slate-400">{c.city}</div>}
-          </button>
-        ))}
+        {clients.map(c => {
+          const billingAddr = [c.street, [c.post_code, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+          const deliveryAddr = (c.delivery_address || '').trim();
+          const showDelivery = deliveryAddr && deliveryAddr !== billingAddr;
+          return (
+            <button key={c.id} onClick={() => onSelect(c)}
+              className="text-left p-3 border border-slate-200 rounded-xl hover:border-slate-400 hover:bg-slate-50 transition-colors">
+              <div className="text-sm font-medium text-slate-800">{c.name || c.shortcut}</div>
+              {c.shortcut && c.shortcut !== c.name && (
+                <div className="text-xs text-blue-500 font-medium">{c.shortcut}</div>
+              )}
+              {billingAddr && (
+                <div className="text-xs text-slate-400 mt-0.5">{billingAddr}</div>
+              )}
+              {showDelivery && (
+                <div className="text-xs text-amber-500 mt-0.5">Livraison : {deliveryAddr}</div>
+              )}
+            </button>
+          );
+        })}
       </div>
       {query.length >= 2 && !loading && !erreur && clients.length === 0 && (
         <p className="text-xs text-slate-400 text-center">Aucun client trouvé</p>
@@ -13201,14 +13214,29 @@ const FacturesSamples = ({ showToast }) => {
             {searchingClient && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">Recherche...</div>}
           </div>
           {clientResults.length > 0 && (
-            <div className="absolute z-50 left-0 right-0 bg-white border border-slate-200 rounded-lg mt-1 max-h-48 overflow-y-auto shadow-lg">
-              {clientResults.slice(0, 10).map(c => (
-                <button key={c.id} onClick={() => selectClient(c)}
-                  className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 border-b border-slate-50 last:border-0">
-                  <span className="font-medium">{c.name}</span>
-                  {c.city && <span className="text-slate-400 ml-2">{c.city}</span>}
-                </button>
-              ))}
+            <div className="absolute z-50 left-0 right-0 bg-white border border-slate-200 rounded-lg mt-1 max-h-64 overflow-y-auto shadow-lg">
+              {clientResults.slice(0, 10).map(c => {
+                const billingAddr = [c.street, [c.post_code, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
+                const deliveryAddr = (c.delivery_address || '').trim();
+                const showDelivery = deliveryAddr && deliveryAddr !== billingAddr;
+                return (
+                  <button key={c.id} onClick={() => selectClient(c)}
+                    className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                    <div className="flex items-baseline gap-2">
+                      <span className="font-medium">{c.name}</span>
+                      {c.shortcut && c.shortcut !== c.name && (
+                        <span className="text-xs text-blue-500 font-medium">({c.shortcut})</span>
+                      )}
+                    </div>
+                    {billingAddr && (
+                      <div className="text-xs text-slate-400 mt-0.5">{billingAddr}</div>
+                    )}
+                    {showDelivery && (
+                      <div className="text-xs text-amber-500 mt-0.5">Livraison : {deliveryAddr}</div>
+                    )}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>
