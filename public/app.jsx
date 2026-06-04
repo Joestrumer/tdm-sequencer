@@ -11702,10 +11702,10 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
               className="text-left p-3 border border-slate-200 rounded-xl hover:border-slate-400 hover:bg-slate-50 transition-colors">
               <div className="text-sm font-medium text-slate-800">{c.name || c.shortcut}</div>
               {c.shortcut && c.shortcut !== c.name && (
-                <div className="text-xs text-blue-500 font-medium">{c.shortcut}</div>
+                <div className="text-xs text-blue-500 mt-0.5">Nom interne : {c.shortcut}</div>
               )}
               {billingAddr && (
-                <div className="text-xs text-slate-400 mt-0.5">{billingAddr}</div>
+                <div className="text-xs text-slate-400 mt-0.5">Facturation : {billingAddr}</div>
               )}
               {showDelivery && (
                 <div className="text-xs text-amber-500 mt-0.5">Livraison : {deliveryAddr}</div>
@@ -13222,14 +13222,12 @@ const FacturesSamples = ({ showToast }) => {
                 return (
                   <button key={c.id} onClick={() => selectClient(c)}
                     className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 border-b border-slate-100 last:border-0">
-                    <div className="flex items-baseline gap-2">
-                      <span className="font-medium">{c.name}</span>
-                      {c.shortcut && c.shortcut !== c.name && (
-                        <span className="text-xs text-blue-500 font-medium">({c.shortcut})</span>
-                      )}
-                    </div>
+                    <span className="font-medium">{c.name}</span>
+                    {c.shortcut && c.shortcut !== c.name && (
+                      <div className="text-xs text-blue-500 mt-0.5">Nom interne : {c.shortcut}</div>
+                    )}
                     {billingAddr && (
-                      <div className="text-xs text-slate-400 mt-0.5">{billingAddr}</div>
+                      <div className="text-xs text-slate-400 mt-0.5">Facturation : {billingAddr}</div>
                     )}
                     {showDelivery && (
                       <div className="text-xs text-amber-500 mt-0.5">Livraison : {deliveryAddr}</div>
