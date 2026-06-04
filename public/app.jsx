@@ -11264,7 +11264,8 @@ const FacturesSingle = ({ showToast }) => {
                 <div className="flex-1">
                   <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">Facturation</div>
                   <div className="text-sm font-medium text-slate-800">{selectedClient.name}</div>
-                  <div className="text-xs text-slate-500">{selectedClient.street}, {selectedClient.zip} {selectedClient.city}</div>
+                  {selectedClient.street && <div className="text-xs text-slate-500">{selectedClient.street}</div>}
+                  {(selectedClient.zip || selectedClient.city) && <div className="text-xs text-slate-500">{[selectedClient.zip, selectedClient.city].filter(Boolean).join(' ')}</div>}
                 </div>
                 {deliveryAddress && (
                   <div className="flex-1 border-l border-slate-200 pl-4">
@@ -12272,9 +12273,10 @@ const FacturesBatch = ({ showToast }) => {
                       </div>
                       <div className="bg-slate-100 rounded-lg px-3 py-1.5">
                         <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">Facturation</div>
-                        <div className="text-xs text-slate-600">
-                          {[order.client.street, [order.client.post_code || order.client.zip, order.client.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}
-                        </div>
+                        {order.client.street && <div className="text-xs text-slate-600">{order.client.street}</div>}
+                        {(order.client.post_code || order.client.zip || order.client.city) && (
+                          <div className="text-xs text-slate-600">{[order.client.post_code || order.client.zip, order.client.city].filter(Boolean).join(' ')}</div>
+                        )}
                       </div>
                       {order.deliveryAddress && (
                         <div className="bg-amber-50 rounded-lg px-3 py-1.5">
