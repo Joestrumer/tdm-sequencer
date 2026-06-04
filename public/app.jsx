@@ -11258,7 +11258,7 @@ const FacturesSingle = ({ showToast }) => {
           </div>
 
           {selectedClient && (
-            <div className="bg-slate-50 rounded-xl p-3">
+            <div className="bg-slate-50 rounded-xl p-3 space-y-2">
               <div className="flex items-start gap-4">
                 <div className="flex-1">
                   <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">Facturation</div>
@@ -11267,13 +11267,19 @@ const FacturesSingle = ({ showToast }) => {
                 </div>
                 {deliveryAddress && (
                   <div className="flex-1 border-l border-slate-200 pl-4">
-                    <div className="text-[10px] font-medium text-blue-500 uppercase tracking-wide mb-0.5">Livraison</div>
+                    <div className="text-[10px] font-medium text-amber-500 uppercase tracking-wide mb-0.5">Livraison</div>
                     {deliveryAddress.split('\n').map((line, i) => (
                       <div key={i} className={`text-xs ${i === 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>{line}</div>
                     ))}
                   </div>
                 )}
               </div>
+              {sendEmail && selectedClient.email && (
+                <div className="text-xs text-slate-500">
+                  <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">Email : </span>
+                  {selectedClient.email}
+                </div>
+              )}
             </div>
           )}
 
@@ -12259,16 +12265,27 @@ const FacturesBatch = ({ showToast }) => {
                       <div className="flex items-center justify-between">
                         <div className="text-sm text-slate-700">
                           <span className="font-medium">{order.client.name}</span>
-                          {order.client.city && <span className="text-xs text-slate-400 ml-2">{order.client.city}</span>}
                         </div>
                         <button onClick={() => setOrderClient(order.id, null)} className="text-xs text-slate-500 hover:text-slate-700">Changer client</button>
                       </div>
+                      <div className="bg-slate-100 rounded-lg px-3 py-1.5">
+                        <div className="text-[10px] font-medium text-slate-400 uppercase tracking-wide mb-0.5">Facturation</div>
+                        <div className="text-xs text-slate-600">
+                          {[order.client.street, [order.client.post_code || order.client.zip, order.client.city].filter(Boolean).join(' ')].filter(Boolean).join(', ')}
+                        </div>
+                      </div>
                       {order.deliveryAddress && (
-                        <div className="bg-blue-50 rounded-lg px-3 py-1.5">
-                          <div className="text-[10px] font-medium text-blue-500 uppercase tracking-wide mb-0.5">Livraison</div>
+                        <div className="bg-amber-50 rounded-lg px-3 py-1.5">
+                          <div className="text-[10px] font-medium text-amber-500 uppercase tracking-wide mb-0.5">Livraison</div>
                           {order.deliveryAddress.split('\n').map((line, i) => (
                             <div key={i} className={`text-xs ${i === 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>{line}</div>
                           ))}
+                        </div>
+                      )}
+                      {sendEmail && order.client.email && (
+                        <div className="text-xs text-slate-500 px-1">
+                          <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">Email : </span>
+                          {order.client.email}
                         </div>
                       )}
                     </div>
