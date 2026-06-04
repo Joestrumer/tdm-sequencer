@@ -11380,6 +11380,19 @@ const FacturesSingle = ({ showToast }) => {
                                 }}
                                 className="w-16 border border-slate-200 rounded px-1 py-0.5 text-sm text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
                               <span className="text-xs text-slate-400 ml-0.5">%</span>
+                              {discount > 0 && (
+                                <label className="inline-flex items-center gap-1 ml-1 cursor-pointer" title="Enregistrer cette remise pour ce partenaire">
+                                  <input type="checkbox"
+                                    checked={p.saveDiscount !== false}
+                                    onChange={e => {
+                                      const newProducts = [...calculation.products];
+                                      newProducts[i] = { ...newProducts[i], saveDiscount: e.target.checked };
+                                      setCalculation({ ...calculation, products: newProducts });
+                                    }}
+                                    className="rounded border-slate-300 w-3 h-3" />
+                                  <span className="text-[10px] text-slate-400">Enr.</span>
+                                </label>
+                              )}
                             </div>
                           </td>
                           <td className="px-3 py-2 text-right font-mono font-medium text-slate-900">{(p.total_ht || 0).toFixed(2)}€</td>
@@ -12352,6 +12365,15 @@ const FacturesBatch = ({ showToast }) => {
                                       }}
                                       className="w-14 border border-slate-200 rounded px-1 py-0.5 text-xs text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
                                     <span className="text-xs text-slate-400 ml-0.5">%</span>
+                                    {discount > 0 && (
+                                      <label className="inline-flex items-center gap-1 ml-1 cursor-pointer" title="Enregistrer cette remise pour ce partenaire">
+                                        <input type="checkbox"
+                                          checked={p.saveDiscount !== false}
+                                          onChange={e => updateOrderProduct(order.id, i, 'saveDiscount', e.target.checked)}
+                                          className="rounded border-slate-300 w-3 h-3" />
+                                        <span className="text-[10px] text-slate-400">Enr.</span>
+                                      </label>
+                                    )}
                                   </div>
                                 </td>
                                 <td className="px-3 py-1.5 text-right font-mono text-xs font-medium">{(p.total_ht || 0).toFixed(2)}€</td>

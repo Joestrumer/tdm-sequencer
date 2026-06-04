@@ -448,6 +448,21 @@ module.exports = (db) => {
         JSON.stringify({ orderNumber, canonicalClientName }),
       );
 
+      // Enregistrer les remises si demandé
+      if (canonicalClientName) {
+        for (const p of allProducts) {
+          const discount = p.discount || 0;
+          if (discount > 0 && p.saveDiscount !== false) {
+            const ref = normalizeRef(p.ref);
+            db.prepare(`
+              INSERT INTO vf_client_discounts (client_name, product_code, discount_pct)
+              VALUES (?, ?, ?)
+              ON CONFLICT(client_name, product_code) DO UPDATE SET discount_pct = excluded.discount_pct
+            `).run(canonicalClientName, ref, discount);
+          }
+        }
+      }
+
       // Envoyer email si demandé
       let emailSent = false;
       if (sendEmail && result.id) {
