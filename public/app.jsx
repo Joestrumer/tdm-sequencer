@@ -11241,8 +11241,9 @@ const FacturesSingle = ({ showToast }) => {
       {/* Step 3: Client */}
       {step === 3 && <FacturesClientSearch onSelect={(client) => {
         setSelectedClient(client);
+        if (!deliveryAddress && client.delivery_address) setDeliveryAddress(client.delivery_address);
         doCalculation(client);
-        setShippingId(getShippingIdForClient(client));
+        setShippingId(getShippingIdForClient(client, client.delivery_address || ''));
         setStep(4);
       }} onBack={() => setStep(2)} onModifySaisie={() => setStep(1)} />}
 
@@ -11859,8 +11860,9 @@ const FacturesBatch = ({ showToast }) => {
 
   const setOrderClient = async (orderId, client) => {
     const order = orders.find(o => o.id === orderId);
-    const shippingId = getShippingIdForClient(client, order?.deliveryAddress || '');
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId } : o));
+    const deliveryAddr = order?.deliveryAddress || (client?.delivery_address || '');
+    const shippingId = getShippingIdForClient(client, deliveryAddr);
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId, deliveryAddress: o.deliveryAddress || (client?.delivery_address || '') } : o));
     if (order) {
       calculateOrder(orderId, order.products, client);
     }
