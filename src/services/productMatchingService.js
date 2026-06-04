@@ -724,7 +724,7 @@ function parseOrderText(text) {
     }
 
     // Format ref au début, quantité à la fin : "P014-5000 – Description – 6 bidons", "011- Lotion 500ml – 6"
-    const refStartMatch = line.match(/^\s*(?:(P\d{3}(?:-\d+[A-Za-z]*)?)|(0?\d{2,3})|([HhNn]\s*-?\s*\d{3}))\s*[-–—.]?\s+.+?[-–—:,]\s*(\d+)\s*(?:bidons?|pi[eè]ces?|flacons?|bouteilles?|unit[eé]s?|pompes?|pcs)?\s*$/i);
+    const refStartMatch = line.match(/^\s*(?:(P\d{3}(?:-\d+[A-Za-z]*)?)|(0?\d{2,3})(?!\s*x\b)|([HhNn]\s*-?\s*\d{3}))\s*[-–—.]?\s+.+?[-–—:,]\s*(\d+)\s*(?:bidons?|pi[eè]ces?|flacons?|bouteilles?|unit[eé]s?|pompes?|pcs)?\s*$/i);
     if (refStartMatch) {
       let ref;
       if (refStartMatch[1]) {
