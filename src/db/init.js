@@ -937,6 +937,64 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_maps_prospects_rating ON maps_prospects(rating);
 `);
 
+// ─── Instagram Scraping ─────────────────────────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS instagram_scrape_jobs (
+    id TEXT PRIMARY KEY,
+    instagram_url TEXT NOT NULL,
+    instagram_username TEXT NOT NULL,
+    instagram_user_id TEXT,
+    status TEXT DEFAULT 'pending',
+    total_following INTEGER DEFAULT 0,
+    processed INTEGER DEFAULT 0,
+    emails_found INTEGER DEFAULT 0,
+    contacts_found INTEGER DEFAULT 0,
+    error_message TEXT,
+    filter_keywords TEXT DEFAULT '[]',
+    options TEXT DEFAULT '{}',
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now')),
+    completed_at TEXT
+  );
+
+  CREATE TABLE IF NOT EXISTS instagram_scraped_accounts (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    job_id TEXT NOT NULL REFERENCES instagram_scrape_jobs(id) ON DELETE CASCADE,
+    instagram_username TEXT NOT NULL,
+    instagram_user_id TEXT,
+    full_name TEXT,
+    bio TEXT,
+    website TEXT,
+    external_url TEXT,
+    business_email TEXT,
+    category TEXT,
+    is_business INTEGER DEFAULT 0,
+    is_private INTEGER DEFAULT 0,
+    follower_count INTEGER,
+    following_count INTEGER,
+    scraped_emails TEXT DEFAULT '[]',
+    best_email TEXT,
+    email_source TEXT,
+    email_confidence TEXT,
+    social_links TEXT DEFAULT '{}',
+    linkedin_contacts TEXT DEFAULT '[]',
+    business_type TEXT,
+    bio_keywords TEXT DEFAULT '[]',
+    scraping_status TEXT DEFAULT 'pending',
+    scraping_error TEXT,
+    imported_as_lead INTEGER DEFAULT 0,
+    lead_id TEXT REFERENCES leads(id),
+    existing_lead_email TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+
+  CREATE INDEX IF NOT EXISTS idx_ig_accounts_job_id ON instagram_scraped_accounts(job_id);
+  CREATE INDEX IF NOT EXISTS idx_ig_accounts_username ON instagram_scraped_accounts(instagram_username);
+  CREATE INDEX IF NOT EXISTS idx_ig_accounts_best_email ON instagram_scraped_accounts(best_email);
+  CREATE INDEX IF NOT EXISTS idx_ig_accounts_scraping_status ON instagram_scraped_accounts(scraping_status);
+  CREATE INDEX IF NOT EXISTS idx_ig_accounts_business_type ON instagram_scraped_accounts(business_type);
+`);
+
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
 const migrations = [
   'ALTER TABLE etapes    ADD COLUMN corps_html   TEXT',

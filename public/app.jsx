@@ -4279,7 +4279,7 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
 
 const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
-  const [activeTab, setActiveTab] = useState('hotels'); // 'hotels', 'contacts' ou 'emails-generiques'
+  const [activeTab, setActiveTab] = useState('hotels'); // 'hotels', 'contacts', 'emails-generiques' ou 'social'
 
   // States sources multi-CSV (nouveau système)
   const [importSources, setImportSources] = useState([]); // Liste des sources CSV importées
@@ -4351,6 +4351,25 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const fileInputRef = useRef(null);
   const pollingIntervalRef = useRef(null);
 
+  // States Instagram Scrap Social
+  const [igJobs, setIgJobs] = useState([]);
+  const [igActiveJob, setIgActiveJob] = useState(null);
+  const [igAccounts, setIgAccounts] = useState([]);
+  const [igAccountsTotal, setIgAccountsTotal] = useState(0);
+  const [igStats, setIgStats] = useState(null);
+  const [igUrl, setIgUrl] = useState('');
+  const [igOptions, setIgOptions] = useState({ max_accounts: 500, skip_private: true, filter_keywords: [] });
+  const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '' });
+  const [selectedIgAccounts, setSelectedIgAccounts] = useState(new Set());
+  const [igConfigured, setIgConfigured] = useState(false);
+  const [showIgConfig, setShowIgConfig] = useState(false);
+  const [igSessionId, setIgSessionId] = useState('');
+  const [igCsrfToken, setIgCsrfToken] = useState('');
+  const [igTestResult, setIgTestResult] = useState(null);
+  const [igTesting, setIgTesting] = useState(false);
+  const [igLaunching, setIgLaunching] = useState(false);
+  const igPollingRef = useRef(null);
+
   // Memo pour parser sourceInfo.colonnes (évite parsing répété à chaque rendu)
   const sourceMapping = React.useMemo(() => {
     if (activeSource === 'hotels_france') return null;
@@ -4367,6 +4386,201 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
       return null;
     }
   }, [activeSource, importSources]);
+
+  // ────────────────────────────────────────────────────────────────────────────
+  // Fonctions Instagram Scrap Social
+  // ────────────────────────────────────────────────────────────────────────────
+
+  const chargerIgConfig = async () => {
+    try {
+      const res = await api.get('/instagram/config');
+      setIgConfigured(res.configured || false);
+    } catch { /* ignore */ }
+  };
+
+  const chargerIgJobs = async () => {
+    try {
+      const res = await api.get('/instagram/jobs');
+      setIgJobs(res || []);
+    } catch { /* ignore */ }
+  };
+
+  const chargerIgAccounts = async (jobId) => {
+    if (!jobId) return;
+    try {
+      const params = new URLSearchParams({ ...igFilters, limit: 200, offset: 0 });
+      Object.keys(params).forEach(key => params.get(key) === '' && params.delete(key));
+      const res = await api.get(`/instagram/jobs/${jobId}/accounts?${params}`);
+      setIgAccounts(res.accounts || []);
+      setIgAccountsTotal(res.total || 0);
+    } catch (err) {
+      showToast('Erreur chargement comptes IG: ' + err.message, 'error');
+    }
+  };
+
+  const pollIgJobStatus = async (jobId) => {
+    try {
+      const res = await api.get(`/instagram/jobs/${jobId}/status`);
+      setIgStats(res.stats || null);
+      // Mettre à jour le job dans la liste
+      setIgJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...res } : j));
+      if (res.status === 'completed' || res.status === 'error' || res.status === 'cancelled') {
+        if (igPollingRef.current) {
+          clearInterval(igPollingRef.current);
+          igPollingRef.current = null;
+        }
+        chargerIgAccounts(jobId);
+        chargerIgJobs();
+      }
+    } catch { /* ignore */ }
+  };
+
+  const startIgPolling = (jobId) => {
+    if (igPollingRef.current) clearInterval(igPollingRef.current);
+    pollIgJobStatus(jobId);
+    igPollingRef.current = setInterval(() => pollIgJobStatus(jobId), 3000);
+  };
+
+  useEffect(() => {
+    return () => {
+      if (igPollingRef.current) clearInterval(igPollingRef.current);
+    };
+  }, []);
+
+  const handleIgLaunch = async () => {
+    if (!igUrl.trim()) return;
+    setIgLaunching(true);
+    try {
+      const res = await api.post('/instagram/scrape', {
+        url: igUrl.trim(),
+        options: igOptions,
+      });
+      if (res.success) {
+        showToast(`Scraping lancé pour @${res.username}`, 'success');
+        setIgUrl('');
+        setIgActiveJob(res.job_id);
+        startIgPolling(res.job_id);
+        chargerIgJobs();
+      }
+    } catch (err) {
+      showToast('Erreur lancement: ' + err.message, 'error');
+    }
+    setIgLaunching(false);
+  };
+
+  const handleIgSelectJob = (jobId) => {
+    setIgActiveJob(jobId);
+    setSelectedIgAccounts(new Set());
+    chargerIgAccounts(jobId);
+    const job = igJobs.find(j => j.id === jobId);
+    if (job && (job.status === 'processing' || job.status === 'fetching_profile' || job.status === 'fetching_following')) {
+      startIgPolling(jobId);
+    } else {
+      if (igPollingRef.current) clearInterval(igPollingRef.current);
+      // Charger les stats
+      pollIgJobStatus(jobId);
+    }
+  };
+
+  const handleIgSaveConfig = async () => {
+    try {
+      await api.post('/instagram/config', { session_id: igSessionId, csrf_token: igCsrfToken });
+      setIgConfigured(true);
+      showToast('Credentials Instagram enregistrées', 'success');
+      setShowIgConfig(false);
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const handleIgTestCredentials = async () => {
+    setIgTesting(true);
+    setIgTestResult(null);
+    try {
+      const res = await api.post('/instagram/test-credentials');
+      setIgTestResult(res);
+    } catch (err) {
+      setIgTestResult({ valid: false, error: err.message });
+    }
+    setIgTesting(false);
+  };
+
+  const handleIgScrapeWebsites = async () => {
+    const ids = Array.from(selectedIgAccounts);
+    if (ids.length === 0) return;
+    try {
+      await api.post('/instagram/accounts/scrape-websites-batch', { account_ids: ids });
+      showToast(`Scraping sites web lancé pour ${ids.length} compte(s)`, 'success');
+      setSelectedIgAccounts(new Set());
+      setTimeout(() => chargerIgAccounts(igActiveJob), 3000);
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const handleIgFindContacts = async () => {
+    const ids = Array.from(selectedIgAccounts);
+    if (ids.length === 0) return;
+    try {
+      await api.post('/instagram/accounts/find-contacts-batch', { account_ids: ids });
+      showToast(`Recherche contacts lancée pour ${ids.length} compte(s)`, 'success');
+      setSelectedIgAccounts(new Set());
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const handleIgCreateLeads = async () => {
+    const ids = Array.from(selectedIgAccounts);
+    if (ids.length === 0) return;
+    try {
+      const res = await api.post('/instagram/accounts/create-leads', { account_ids: ids });
+      showToast(`${res.created} lead(s) créé(s)`, 'success');
+      setSelectedIgAccounts(new Set());
+      chargerIgAccounts(igActiveJob);
+      onRefreshLeads?.();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const handleIgDeleteJob = async (jobId) => {
+    if (!await confirmDialog('Supprimer ce job et tous ses résultats ?')) return;
+    try {
+      await api.delete(`/instagram/jobs/${jobId}`);
+      showToast('Job supprimé', 'success');
+      if (igActiveJob === jobId) {
+        setIgActiveJob(null);
+        setIgAccounts([]);
+        setIgStats(null);
+      }
+      chargerIgJobs();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  const handleIgPauseResume = async (jobId, currentStatus) => {
+    try {
+      if (currentStatus === 'paused') {
+        await api.post(`/instagram/jobs/${jobId}/resume`);
+        showToast('Job repris', 'success');
+        startIgPolling(jobId);
+      } else {
+        await api.post(`/instagram/jobs/${jobId}/pause`);
+        showToast('Job en pause', 'success');
+      }
+      chargerIgJobs();
+    } catch (err) {
+      showToast('Erreur: ' + err.message, 'error');
+    }
+  };
+
+  useEffect(() => {
+    if (activeTab === 'social' && igActiveJob) {
+      chargerIgAccounts(igActiveJob);
+    }
+  }, [igFilters]);
 
   const chargerHotels = async () => {
     setLoading(true);
@@ -5036,6 +5250,21 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           {emailsStats && emailsStats.total_emails > 0 && (
             <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium">
               {emailsStats.total_emails}
+            </span>
+          )}
+        </button>
+        <button
+          onClick={() => { setActiveTab('social'); chargerIgConfig(); chargerIgJobs(); }}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'social'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          📱 Scrap Social
+          {igStats?.total > 0 && (
+            <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-purple-50 text-purple-700 font-medium">
+              {igStats.total}
             </span>
           )}
         </button>
@@ -6650,6 +6879,509 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 className="flex-1 px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50"
               >
                 Annuler
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Contenu onglet Scrap Social (Instagram) */}
+      {activeTab === 'social' && (
+        <>
+          {/* Bannière config si non configuré */}
+          {!igConfigured && (
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-6 flex items-center justify-between">
+              <div>
+                <p className="text-sm font-medium text-amber-800">Credentials Instagram non configurées</p>
+                <p className="text-xs text-amber-600 mt-1">Vous devez configurer votre session Instagram pour utiliser cette fonctionnalité.</p>
+              </div>
+              <button
+                onClick={() => setShowIgConfig(true)}
+                className="px-4 py-2 bg-amber-600 text-white rounded-lg text-sm font-medium hover:bg-amber-700"
+              >
+                Configurer
+              </button>
+            </div>
+          )}
+
+          {/* Input URL + options + bouton lancer */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+            <div className="flex gap-3 items-end">
+              <div className="flex-1">
+                <label className="block text-xs font-medium text-slate-600 mb-1">URL du compte Instagram</label>
+                <input
+                  type="text"
+                  value={igUrl}
+                  onChange={e => setIgUrl(e.target.value)}
+                  placeholder="https://www.instagram.com/aleop.io/"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                  onKeyDown={e => e.key === 'Enter' && handleIgLaunch()}
+                />
+              </div>
+              <div className="w-32">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Max comptes</label>
+                <input
+                  type="number"
+                  value={igOptions.max_accounts}
+                  onChange={e => setIgOptions(o => ({ ...o, max_accounts: parseInt(e.target.value) || 500 }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500"
+                  min={1}
+                  max={5000}
+                />
+              </div>
+              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer pb-2">
+                <input
+                  type="checkbox"
+                  checked={igOptions.skip_private}
+                  onChange={e => setIgOptions(o => ({ ...o, skip_private: e.target.checked }))}
+                  className="w-4 h-4"
+                />
+                Skip privés
+              </label>
+              <button
+                onClick={handleIgLaunch}
+                disabled={igLaunching || !igUrl.trim() || !igConfigured}
+                className="px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {igLaunching ? 'Lancement...' : 'Lancer le scraping'}
+              </button>
+              <button
+                onClick={() => setShowIgConfig(true)}
+                className="p-2 text-slate-400 hover:text-slate-600 rounded-lg hover:bg-slate-100"
+                title="Configurer Instagram"
+              >
+                ⚙️
+              </button>
+            </div>
+          </div>
+
+          {/* Sélecteur de job */}
+          {igJobs.length > 0 && (
+            <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
+              {igJobs.map(job => (
+                <button
+                  key={job.id}
+                  onClick={() => handleIgSelectJob(job.id)}
+                  className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${
+                    igActiveJob === job.id
+                      ? 'bg-purple-600 text-white'
+                      : 'bg-white border border-slate-200 text-slate-700 hover:border-purple-300'
+                  }`}
+                >
+                  @{job.instagram_username}
+                  <span className={`px-1.5 py-0.5 rounded text-[10px] ${
+                    job.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
+                    job.status === 'error' ? 'bg-red-100 text-red-700' :
+                    job.status === 'paused' ? 'bg-amber-100 text-amber-700' :
+                    'bg-blue-100 text-blue-700'
+                  }`}>
+                    {job.status === 'completed' ? 'terminé' :
+                     job.status === 'error' ? 'erreur' :
+                     job.status === 'paused' ? 'pause' :
+                     `${job.processed || 0}/${job.total_following || '?'}`}
+                  </span>
+                  <button
+                    onClick={e => { e.stopPropagation(); handleIgDeleteJob(job.id); }}
+                    className={`ml-1 hover:text-red-300 ${igActiveJob === job.id ? 'text-purple-200' : 'text-slate-300'}`}
+                    title="Supprimer"
+                  >
+                    ×
+                  </button>
+                </button>
+              ))}
+            </div>
+          )}
+
+          {/* Barre de progression si job en cours */}
+          {igActiveJob && (() => {
+            const job = igJobs.find(j => j.id === igActiveJob);
+            if (!job || job.status === 'completed') return null;
+            const pct = job.total_following > 0 ? Math.round((job.processed / job.total_following) * 100) : 0;
+            return (
+              <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-6">
+                <div className="flex items-center justify-between mb-2">
+                  <span className="text-sm font-medium text-purple-800">
+                    {job.status === 'fetching_profile' ? 'Récupération du profil...' :
+                     job.status === 'fetching_following' ? 'Récupération des following...' :
+                     job.status === 'paused' ? 'En pause' :
+                     job.status === 'error' ? `Erreur: ${job.error_message}` :
+                     `Traitement en cours... ${job.processed || 0} / ${job.total_following || '?'}`}
+                  </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs text-purple-600">{pct}%</span>
+                    {(job.status === 'processing' || job.status === 'paused') && (
+                      <button
+                        onClick={() => handleIgPauseResume(job.id, job.status)}
+                        className="text-xs px-2 py-1 rounded bg-purple-200 text-purple-800 hover:bg-purple-300"
+                      >
+                        {job.status === 'paused' ? 'Reprendre' : 'Pause'}
+                      </button>
+                    )}
+                  </div>
+                </div>
+                <div className="w-full bg-purple-200 rounded-full h-2">
+                  <div
+                    className="bg-purple-600 h-2 rounded-full transition-all duration-500"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <div className="flex gap-4 mt-2 text-xs text-purple-600">
+                  <span>{job.emails_found || 0} email(s) trouvé(s)</span>
+                  <span>{job.processed || 0} traité(s)</span>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* Stats */}
+          {igStats && igActiveJob && (
+            <div className="grid grid-cols-4 gap-3 mb-6">
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total comptes</p>
+                <p className="text-2xl font-bold text-slate-900">{igStats.total || 0}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-emerald-200 p-4">
+                <p className="text-xs font-medium text-emerald-600 uppercase tracking-wide mb-1">Avec email</p>
+                <p className="text-2xl font-bold text-emerald-700">{igStats.with_email || 0}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-blue-200 p-4">
+                <p className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Hotels détectés</p>
+                <p className="text-2xl font-bold text-blue-700">{igStats.hotels || 0}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-purple-200 p-4">
+                <p className="text-xs font-medium text-purple-600 uppercase tracking-wide mb-1">Avec site web</p>
+                <p className="text-2xl font-bold text-purple-700">{igStats.with_website || 0}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Filtres + actions en lot */}
+          {igActiveJob && (
+            <div className="flex flex-wrap items-center gap-3 mb-4">
+              <input
+                type="text"
+                placeholder="Rechercher..."
+                value={igFilters.search}
+                onChange={e => setIgFilters(f => ({ ...f, search: e.target.value }))}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-purple-500"
+              />
+              <select
+                value={igFilters.business_type}
+                onChange={e => setIgFilters(f => ({ ...f, business_type: e.target.value }))}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">Tous types</option>
+                <option value="hotel">Hotel</option>
+                <option value="restaurant">Restaurant</option>
+                <option value="spa">Spa</option>
+                <option value="hospitality">Hospitality</option>
+                <option value="retail">Retail</option>
+                <option value="bar">Bar</option>
+                <option value="event">Event</option>
+              </select>
+              <select
+                value={igFilters.has_email}
+                onChange={e => setIgFilters(f => ({ ...f, has_email: e.target.value }))}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">Avec/sans email</option>
+                <option value="true">Avec email</option>
+                <option value="false">Sans email</option>
+              </select>
+
+              {selectedIgAccounts.size > 0 && (
+                <div className="flex items-center gap-2 ml-auto">
+                  <span className="text-xs text-slate-500">{selectedIgAccounts.size} sélectionné(s)</span>
+                  <button onClick={handleIgScrapeWebsites} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">
+                    Scraper sites web
+                  </button>
+                  <button onClick={handleIgFindContacts} className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700">
+                    Chercher contacts
+                  </button>
+                  <button onClick={handleIgCreateLeads} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700">
+                    Convertir en leads
+                  </button>
+                </div>
+              )}
+
+              {igActiveJob && (
+                <a
+                  href={`/api/instagram/jobs/${igActiveJob}/export?${new URLSearchParams(igFilters)}`}
+                  className="ml-auto px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200 flex items-center gap-1"
+                  download
+                >
+                  Exporter CSV
+                </a>
+              )}
+            </div>
+          )}
+
+          {/* Tableau résultats */}
+          {igActiveJob && igAccounts.length > 0 && (
+            <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+              <div className="overflow-x-auto">
+                <table className="w-full">
+                  <thead className="bg-slate-50 border-b border-slate-200">
+                    <tr>
+                      <th className="w-8 px-4 py-3">
+                        <input
+                          type="checkbox"
+                          checked={igAccounts.length > 0 && igAccounts.every(a => selectedIgAccounts.has(a.id))}
+                          ref={el => {
+                            if (el && igAccounts.length > 0) {
+                              const cnt = igAccounts.filter(a => selectedIgAccounts.has(a.id)).length;
+                              el.indeterminate = cnt > 0 && cnt < igAccounts.length;
+                            }
+                          }}
+                          onChange={() => {
+                            if (igAccounts.every(a => selectedIgAccounts.has(a.id))) {
+                              const next = new Set(selectedIgAccounts);
+                              igAccounts.forEach(a => next.delete(a.id));
+                              setSelectedIgAccounts(next);
+                            } else {
+                              const next = new Set(selectedIgAccounts);
+                              igAccounts.forEach(a => next.add(a.id));
+                              setSelectedIgAccounts(next);
+                            }
+                          }}
+                          className="w-4 h-4"
+                        />
+                      </th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Compte</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Bio</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Type</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Site web</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Email</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Statut</th>
+                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-slate-100">
+                    {igAccounts.map(account => (
+                      <tr key={account.id} className={`hover:bg-slate-50 ${account.existing_lead_email ? 'bg-amber-50/50' : ''}`}>
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedIgAccounts.has(account.id)}
+                            onChange={() => {
+                              const next = new Set(selectedIgAccounts);
+                              next.has(account.id) ? next.delete(account.id) : next.add(account.id);
+                              setSelectedIgAccounts(next);
+                            }}
+                            className="w-4 h-4"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex flex-col">
+                            <a
+                              href={`https://www.instagram.com/${account.instagram_username}/`}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-sm font-medium text-purple-600 hover:text-purple-800"
+                            >
+                              @{account.instagram_username}
+                            </a>
+                            {account.full_name && (
+                              <span className="text-xs text-slate-500">{account.full_name}</span>
+                            )}
+                            {account.existing_lead_email && (
+                              <span className="text-[10px] px-1.5 py-0.5 mt-0.5 rounded bg-amber-100 text-amber-700 w-fit">Doublon</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <p className="text-xs text-slate-600 max-w-xs truncate" title={account.bio}>
+                            {account.bio ? account.bio.slice(0, 100) : '-'}
+                          </p>
+                          {account.category && (
+                            <span className="text-[10px] text-slate-400">{account.category}</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {account.business_type ? (
+                            <span className={`px-2 py-0.5 rounded text-xs font-medium ${
+                              account.business_type === 'hotel' ? 'bg-blue-100 text-blue-700' :
+                              account.business_type === 'restaurant' ? 'bg-orange-100 text-orange-700' :
+                              account.business_type === 'spa' ? 'bg-teal-100 text-teal-700' :
+                              'bg-slate-100 text-slate-700'
+                            }`}>
+                              {account.business_type}
+                            </span>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                          {account.is_business === 1 && (
+                            <span className="ml-1 text-[10px] text-slate-400">PRO</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {account.external_url ? (
+                            <a
+                              href={account.external_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="text-xs text-blue-600 hover:text-blue-800 max-w-[160px] truncate block"
+                              title={account.external_url}
+                            >
+                              {account.external_url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 30)}
+                            </a>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          {account.best_email ? (
+                            <div className="flex flex-col">
+                              <span className="text-xs font-medium text-emerald-700">{account.best_email}</span>
+                              <span className="text-[10px] text-slate-400">
+                                {account.email_source === 'instagram_business' ? 'IG Business' : account.email_source || ''}
+                                {account.email_confidence && ` (${account.email_confidence})`}
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`px-2 py-0.5 rounded text-[10px] font-medium ${
+                            account.scraping_status === 'done' ? 'bg-emerald-100 text-emerald-700' :
+                            account.scraping_status === 'error' ? 'bg-red-100 text-red-700' :
+                            account.scraping_status === 'skipped' ? 'bg-slate-100 text-slate-500' :
+                            account.scraping_status === 'scraping_website' ? 'bg-blue-100 text-blue-700' :
+                            'bg-slate-100 text-slate-500'
+                          }`}>
+                            {account.scraping_status === 'done' ? 'OK' :
+                             account.scraping_status === 'scraping_website' ? 'Scraping...' :
+                             account.scraping_status}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-1">
+                            {account.external_url && !account.best_email && (
+                              <button
+                                onClick={async () => {
+                                  try {
+                                    await api.post(`/instagram/accounts/${account.id}/scrape-website`);
+                                    showToast('Scraping lancé', 'success');
+                                    setTimeout(() => chargerIgAccounts(igActiveJob), 2000);
+                                  } catch (err) {
+                                    showToast('Erreur: ' + err.message, 'error');
+                                  }
+                                }}
+                                className="text-xs px-2 py-1 rounded bg-blue-100 text-blue-700 hover:bg-blue-200"
+                                title="Scraper le site web"
+                              >
+                                🌐
+                              </button>
+                            )}
+                            {account.imported_as_lead === 1 && (
+                              <span className="text-[10px] text-emerald-600">Lead ✓</span>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+
+              {/* Pagination simple */}
+              {igAccountsTotal > 200 && (
+                <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
+                  <span className="text-xs text-slate-500">{igAccountsTotal} compte(s) au total</span>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Message vide */}
+          {igActiveJob && igAccounts.length === 0 && !igJobs.find(j => j.id === igActiveJob && ['processing', 'fetching_profile', 'fetching_following'].includes(j.status)) && (
+            <div className="text-center py-12 text-slate-500">
+              <p className="text-lg font-medium">Aucun compte trouvé</p>
+              <p className="text-sm mt-1">Modifiez les filtres ou lancez un nouveau scraping.</p>
+            </div>
+          )}
+
+          {!igActiveJob && igJobs.length === 0 && (
+            <div className="text-center py-12 text-slate-500">
+              <p className="text-lg font-medium">Aucun job de scraping Instagram</p>
+              <p className="text-sm mt-1">Entrez l'URL d'un compte Instagram et lancez le scraping pour commencer.</p>
+            </div>
+          )}
+        </>
+      )}
+
+      {/* Modale config Instagram */}
+      {showIgConfig && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-xl w-full max-w-lg max-h-[90vh] flex flex-col">
+            <div className="p-5 border-b border-slate-200 flex items-center justify-between flex-shrink-0">
+              <h3 className="text-lg font-bold text-slate-900">Configuration Instagram</h3>
+              <button onClick={() => setShowIgConfig(false)} className="text-slate-400 hover:text-slate-600 text-xl">×</button>
+            </div>
+            <div className="p-5 overflow-y-auto flex-1 space-y-4">
+              <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                <p className="text-xs text-blue-800 font-medium mb-1">Comment obtenir les credentials ?</p>
+                <ol className="text-xs text-blue-700 space-y-1 list-decimal list-inside">
+                  <li>Connectez-vous sur instagram.com dans votre navigateur</li>
+                  <li>Ouvrez les DevTools (F12) → onglet Application → Cookies</li>
+                  <li>Copiez la valeur du cookie <code className="bg-blue-100 px-1 rounded">sessionid</code></li>
+                  <li>Copiez la valeur du cookie <code className="bg-blue-100 px-1 rounded">csrftoken</code></li>
+                </ol>
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">Session ID</label>
+                <input
+                  type="text"
+                  value={igSessionId}
+                  onChange={e => setIgSessionId(e.target.value)}
+                  placeholder="Coller le sessionid ici..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-sm font-medium text-slate-700 mb-1">CSRF Token</label>
+                <input
+                  type="text"
+                  value={igCsrfToken}
+                  onChange={e => setIgCsrfToken(e.target.value)}
+                  placeholder="Coller le csrftoken ici..."
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm font-mono focus:outline-none focus:ring-2 focus:ring-purple-500"
+                />
+              </div>
+
+              {/* Bouton test */}
+              <button
+                onClick={handleIgTestCredentials}
+                disabled={igTesting || !igSessionId || !igCsrfToken}
+                className="w-full px-4 py-2 bg-slate-100 text-slate-700 rounded-lg text-sm font-medium hover:bg-slate-200 disabled:opacity-50"
+              >
+                {igTesting ? 'Test en cours...' : 'Tester la connexion'}
+              </button>
+
+              {igTestResult && (
+                <div className={`p-3 rounded-lg text-sm ${igTestResult.valid ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
+                  {igTestResult.valid
+                    ? `Connecté en tant que @${igTestResult.username} (${igTestResult.full_name})`
+                    : `Erreur : ${igTestResult.error}`}
+                </div>
+              )}
+            </div>
+            <div className="p-5 border-t border-slate-200 flex gap-3 flex-shrink-0">
+              <button
+                onClick={() => setShowIgConfig(false)}
+                className="flex-1 px-4 py-2 rounded-lg border border-slate-300 text-slate-700 text-sm font-medium hover:bg-slate-50"
+              >
+                Annuler
+              </button>
+              <button
+                onClick={handleIgSaveConfig}
+                disabled={!igSessionId || !igCsrfToken}
+                className="flex-1 px-4 py-2 rounded-lg bg-purple-600 text-white text-sm font-medium hover:bg-purple-700 disabled:opacity-50"
+              >
+                Enregistrer
               </button>
             </div>
           </div>

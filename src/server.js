@@ -150,6 +150,7 @@ app.use('/api/blocklist',     requireAccessAuto('config'), require('./routes/blo
 app.use('/api/qualification', requireAccessAuto('leads'), require('./routes/qualification')(db));
 app.use('/api/veille',        requireAccessAuto('veille'), require('./routes/veille')(db));
 app.use('/api/maps',          requireAccessAuto('leads'), require('./routes/maps')(db));
+app.use('/api/instagram',     requireAccessAuto('leads'), require('./routes/instagramProspection')(db));
 app.use('/api/account-management', requireAccessAuto('portail'), require('./routes/accountManagement')(db));
 app.use('/api/partner-center', requireAccessAuto('portail'), require('./routes/partnerCenter')(db));
 app.use('/api/tracking',  require('./routes/tracking')(db));

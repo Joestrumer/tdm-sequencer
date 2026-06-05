@@ -56,6 +56,14 @@ const SERVICE_DEFAULTS = {
     costPerRequest: 0,
     retries: 3,
   },
+  instagram: {
+    label: 'Instagram',
+    rateLimit: 1,
+    ratePeriod: 2500,        // 2.5s entre requêtes
+    monthlyQuota: 5000,
+    costPerRequest: 0,
+    retries: 3,
+  },
 };
 
 // ─── État interne — timestamps dernières requêtes par service ────────────────
