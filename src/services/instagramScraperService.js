@@ -612,6 +612,40 @@ async function processJob(db, jobId) {
         continue;
       }
 
+      // Réutiliser les données d'un job précédent si ce compte a déjà été scrapé
+      const previousAccount = db.prepare(`
+        SELECT * FROM instagram_scraped_accounts
+        WHERE instagram_username = ? AND job_id != ? AND scraping_status = 'done'
+        ORDER BY created_at DESC LIMIT 1
+      `).get(user.username, jobId);
+
+      if (previousAccount) {
+        db.prepare(`
+          UPDATE instagram_scraped_accounts
+          SET full_name = ?, bio = ?, website = ?, external_url = ?,
+              business_email = ?, category = ?, is_business = ?, is_private = ?,
+              follower_count = ?, following_count = ?,
+              business_type = ?, bio_keywords = ?,
+              best_email = ?, email_source = ?, email_confidence = ?,
+              scraped_emails = ?, social_links = ?, linkedin_contacts = ?,
+              existing_lead_email = ?, scraping_status = 'done'
+          WHERE job_id = ? AND instagram_username = ?
+        `).run(
+          previousAccount.full_name, previousAccount.bio, previousAccount.website, previousAccount.external_url,
+          previousAccount.business_email, previousAccount.category, previousAccount.is_business, previousAccount.is_private,
+          previousAccount.follower_count, previousAccount.following_count,
+          previousAccount.business_type, previousAccount.bio_keywords,
+          previousAccount.best_email, previousAccount.email_source, previousAccount.email_confidence,
+          previousAccount.scraped_emails, previousAccount.social_links, previousAccount.linkedin_contacts,
+          previousAccount.existing_lead_email,
+          jobId, user.username
+        );
+        if (previousAccount.best_email) emailsFound++;
+        processed++;
+        db.prepare("UPDATE instagram_scrape_jobs SET processed = ?, emails_found = ?, updated_at = datetime('now') WHERE id = ?").run(processed, emailsFound, jobId);
+        continue;
+      }
+
       try {
         // Récupérer le profil détaillé
         await jitteredDelay();
