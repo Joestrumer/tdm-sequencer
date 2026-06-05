@@ -4395,6 +4395,8 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     try {
       const res = await api.get('/instagram/config');
       setIgConfigured(res.configured || false);
+      if (res.session_id) setIgSessionId(res.session_id);
+      if (res.csrf_token) setIgCsrfToken(res.csrf_token);
     } catch { /* ignore */ }
   };
 

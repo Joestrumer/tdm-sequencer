@@ -39,14 +39,16 @@ module.exports = (db) => {
     }
   });
 
-  // GET /api/instagram/config — Vérifier si configuré
+  // GET /api/instagram/config — Vérifier si configuré + retourner les valeurs
   router.get('/config', (req, res) => {
     try {
       const configured = igService.hasCredentials(db);
-      const sessionId = db.prepare("SELECT valeur FROM config WHERE cle = 'ig_session_id'").get()?.valeur;
+      const sessionId = db.prepare("SELECT valeur FROM config WHERE cle = 'ig_session_id'").get()?.valeur || '';
+      const csrfToken = db.prepare("SELECT valeur FROM config WHERE cle = 'ig_csrf_token'").get()?.valeur || '';
       res.json({
         configured,
-        session_id_preview: sessionId ? `${sessionId.slice(0, 6)}...${sessionId.slice(-4)}` : null,
+        session_id: sessionId,
+        csrf_token: csrfToken,
       });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
