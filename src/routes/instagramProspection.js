@@ -78,15 +78,14 @@ module.exports = (db) => {
         setTimeout(() => controller1.abort(), 10000);
         const mobileUrl = 'https://i.instagram.com/api/v1/users/instagram/usernameinfo/';
 
-        // Construire le Bearer token
+        // Auth via Cookie (pas Bearer — le Bearer nécessite un vrai login mobile)
         const dsUserId = credentials.sessionId.split('%3A')[0] || credentials.sessionId.split(':')[0];
-        const payload = JSON.stringify({ ds_user_id: dsUserId, sessionid: credentials.sessionId });
-        const bearer = `Bearer IGT:2:${Buffer.from(payload).toString('base64')}`;
 
         const mobileRes = await fetch(mobileUrl, {
           headers: {
             'User-Agent': 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)',
-            'Authorization': bearer,
+            'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}`,
+            'X-CSRFToken': credentials.csrfToken,
             'X-IG-App-ID': '936619743392459',
             'X-IG-Connection-Type': 'WIFI',
             'X-IG-Capabilities': '3brTv10=',
@@ -169,7 +168,7 @@ module.exports = (db) => {
     }
   });
 
-  // POST /api/instagram/debug — Diagnostic raw IG API
+  // POST /api/instagram/debug — Diagnostic raw IG API (teste les 2 APIs)
   router.post('/debug', async (req, res) => {
     try {
       const { session_id, csrf_token } = req.body || {};
@@ -181,39 +180,56 @@ module.exports = (db) => {
         return res.json({ error: 'Credentials manquantes' });
       }
 
-      const url = 'https://www.instagram.com/api/v1/users/web_profile_info/?username=instagram';
-      const headers = {
-        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
-        'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
-        'X-CSRFToken': credentials.csrfToken,
-        'X-IG-App-ID': '124024574287414',
-        'X-IG-WWW-Claim': '0',
-        'X-Instagram-AJAX': '1',
-        'X-Requested-With': 'XMLHttpRequest',
-        'Origin': 'https://www.instagram.com',
-        'Referer': 'https://www.instagram.com/',
-        'Accept': '*/*',
-        'Accept-Language': 'en-US,en;q=0.9',
-      };
+      const dsUserId = credentials.sessionId.split('%3A')[0] || credentials.sessionId.split(':')[0];
+      const results = {};
 
-      const controller = new AbortController();
-      setTimeout(() => controller.abort(), 15000);
+      // Test mobile API (i.instagram.com)
+      try {
+        const ctrl1 = new AbortController();
+        setTimeout(() => ctrl1.abort(), 10000);
+        const mobileRes = await fetch('https://i.instagram.com/api/v1/users/instagram/usernameinfo/', {
+          headers: {
+            'User-Agent': 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)',
+            'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}`,
+            'X-CSRFToken': credentials.csrfToken,
+            'X-IG-App-ID': '936619743392459',
+            'X-IG-Connection-Type': 'WIFI',
+            'X-IG-Capabilities': '3brTv10=',
+            'Host': 'i.instagram.com',
+            'Accept': '*/*',
+          },
+          signal: ctrl1.signal,
+        });
+        let mBody = '';
+        try { mBody = await mobileRes.text(); } catch { /* ignore */ }
+        results.mobile = { status: mobileRes.status, body: mBody.slice(0, 500) };
+      } catch (e) { results.mobile = { error: e.message }; }
 
-      const rawRes = await fetch(url, { headers, signal: controller.signal });
-      const responseHeaders = Object.fromEntries(rawRes.headers.entries());
-      let body = '';
-      try { body = await rawRes.text(); } catch (e) { body = `read error: ${e.message}`; }
+      // Test web API (www.instagram.com)
+      try {
+        const ctrl2 = new AbortController();
+        setTimeout(() => ctrl2.abort(), 10000);
+        const webRes = await fetch('https://www.instagram.com/api/v1/users/web_profile_info/?username=instagram', {
+          headers: {
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+            'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
+            'X-CSRFToken': credentials.csrfToken,
+            'X-Instagram-AJAX': '1',
+            'X-Requested-With': 'XMLHttpRequest',
+            'Origin': 'https://www.instagram.com',
+            'Referer': 'https://www.instagram.com/',
+            'Host': 'www.instagram.com',
+            'Accept': '*/*',
+          },
+          signal: ctrl2.signal,
+        });
+        let wBody = '';
+        try { wBody = await webRes.text(); } catch { /* ignore */ }
+        results.web = { status: webRes.status, body: wBody.slice(0, 500) };
+      } catch (e) { results.web = { error: e.message }; }
 
-      logger.info(`🔍 IG Debug: status=${rawRes.status}, headers=${JSON.stringify(responseHeaders)}, body=${body.slice(0, 500)}`);
-
-      res.json({
-        status: rawRes.status,
-        statusText: rawRes.statusText,
-        response_headers: responseHeaders,
-        body_preview: body.slice(0, 1000),
-        request_url: url,
-        session_id_preview: `${credentials.sessionId.slice(0, 10)}...`,
-      });
+      logger.info('🔍 IG Debug:', JSON.stringify(results));
+      return res.json(results);
     } catch (err) {
       res.json({ error: err.message });
     }

@@ -128,16 +128,16 @@ function hasCredentials(db) {
 // ─── IG API Fetch ───────────────────────────────────────────────────────────
 
 /**
- * Construit les headers pour l'API privée mobile (Instagrapi-style)
- * Utilise i.instagram.com — pool de serveurs différent de www.instagram.com
+ * Construit les headers pour l'API privée mobile via i.instagram.com
+ * Auth via Cookie (pas Bearer token — le Bearer nécessite un vrai login mobile)
  */
 function privateHeaders(credentials) {
-  const bearer = buildBearerToken(credentials.sessionId);
   const dsUserId = extractUserId(credentials.sessionId);
 
   return {
     'User-Agent': IG_MOBILE_UA,
-    'Authorization': bearer,
+    'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}`,
+    'X-CSRFToken': credentials.csrfToken,
     'X-IG-App-ID': '936619743392459',
     'X-IG-Device-ID': DEVICE.uuid,
     'X-IG-Family-Device-ID': DEVICE.phoneId,
