@@ -14,13 +14,18 @@ const { extractEmails } = require('./hotelScraperService');
 
 // ─── Configuration IG API ───────────────────────────────────────────────────
 
-const IG_BASE = 'https://www.instagram.com';
-const IG_APP_ID = '124024574287414'; // Web app ID (même qu'Instaloader)
-const IG_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
-const IG_FOLLOWEES_QUERY_HASH = '58712303d941c6855d4e888c5f0cd22f'; // GraphQL query hash pour following
+// Approche Instagrapi : API privée mobile (i.instagram.com) — plus fiable, autre pool de serveurs
+const IG_PRIVATE_BASE = 'https://i.instagram.com/api/v1';
+// Approche Instaloader : API web GraphQL (www.instagram.com) — fallback
+const IG_WEB_BASE = 'https://www.instagram.com';
+const IG_FOLLOWEES_QUERY_HASH = '58712303d941c6855d4e888c5f0cd22f';
 
-const DEFAULT_DELAY_MS = 4000; // Délai entre requêtes IG (conservateur pour éviter 429)
-const JITTER_MAX_MS = 2000;    // Jitter aléatoire ajouté au délai
+// User-Agents
+const IG_MOBILE_UA = 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)';
+const IG_WEB_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
+
+const DEFAULT_DELAY_MS = 4000;
+const JITTER_MAX_MS = 2000;
 
 // ─── Classification business par bio ────────────────────────────────────────
 
@@ -58,6 +63,46 @@ function extractUsername(url) {
   return match ? match[1] : url.replace(/^@/, '');
 }
 
+/**
+ * Extrait le ds_user_id depuis un sessionid (format: userId%3Atoken%3A...)
+ */
+function extractUserId(sessionId) {
+  if (!sessionId) return null;
+  // Le sessionid est soit URL-encoded (userId%3A...) soit décodé (userId:...)
+  const decoded = decodeURIComponent(sessionId);
+  const parts = decoded.split(':');
+  return parts[0] || null;
+}
+
+/**
+ * Construit le header Authorization Bearer (approche Instagrapi)
+ */
+function buildBearerToken(sessionId) {
+  const dsUserId = extractUserId(sessionId);
+  if (!dsUserId) return null;
+  const payload = JSON.stringify({ ds_user_id: dsUserId, sessionid: sessionId });
+  const b64 = Buffer.from(payload).toString('base64');
+  return `Bearer IGT:2:${b64}`;
+}
+
+/**
+ * Génère un UUID v4 simple
+ */
+function randomUUID() {
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, c => {
+    const r = Math.random() * 16 | 0;
+    return (c === 'x' ? r : (r & 0x3 | 0x8)).toString(16);
+  });
+}
+
+// Device IDs persistés pour la session (générés une fois)
+const DEVICE = {
+  uuid: randomUUID(),
+  phoneId: randomUUID(),
+  androidDeviceId: 'android-' + Math.random().toString(36).substring(2, 18),
+  advertisingId: randomUUID(),
+};
+
 // ─── Credentials ────────────────────────────────────────────────────────────
 
 /**
@@ -83,10 +128,75 @@ function hasCredentials(db) {
 // ─── IG API Fetch ───────────────────────────────────────────────────────────
 
 /**
- * Fetch l'API privée Instagram avec headers requis, retry et backoff
+ * Construit les headers pour l'API privée mobile (Instagrapi-style)
+ * Utilise i.instagram.com — pool de serveurs différent de www.instagram.com
  */
-async function igFetch(endpoint, credentials, retries = 3) {
-  const url = endpoint.startsWith('http') ? endpoint : `${IG_BASE}${endpoint}`;
+function privateHeaders(credentials) {
+  const bearer = buildBearerToken(credentials.sessionId);
+  const dsUserId = extractUserId(credentials.sessionId);
+
+  return {
+    'User-Agent': IG_MOBILE_UA,
+    'Authorization': bearer,
+    'X-IG-App-ID': '936619743392459',
+    'X-IG-Device-ID': DEVICE.uuid,
+    'X-IG-Family-Device-ID': DEVICE.phoneId,
+    'X-IG-Android-ID': DEVICE.androidDeviceId,
+    'X-IG-Connection-Type': 'WIFI',
+    'X-IG-Capabilities': '3brTv10=',
+    'X-IG-App-Locale': 'en_US',
+    'X-IG-Device-Locale': 'en_US',
+    'X-IG-WWW-Claim': '0',
+    'X-Pigeon-Rawclienttime': String(Date.now() / 1000),
+    'X-Pigeon-Session-Id': `UFS-${randomUUID()}-1`,
+    'X-FB-HTTP-Engine': 'Tigon/MNS/TCP',
+    'X-FB-Client-IP': 'True',
+    'X-FB-Server-Cluster': 'True',
+    'IG-INTENDED-USER-ID': dsUserId || '0',
+    'Accept-Language': 'en-US',
+    'Accept-Encoding': 'gzip, deflate',
+    'Host': 'i.instagram.com',
+    'Connection': 'keep-alive',
+    'Accept': '*/*',
+  };
+}
+
+/**
+ * Construit les headers pour l'API web (Instaloader-style)
+ * Headers minimaux pour GraphQL, headers complets pour API REST
+ */
+function webHeaders(credentials, mode = 'api') {
+  if (mode === 'graphql') {
+    // Instaloader utilise des headers MINIMAUX pour les requêtes GraphQL
+    return {
+      'User-Agent': IG_WEB_UA,
+      'Accept': '*/*',
+      'Accept-Encoding': 'gzip, deflate',
+      'Accept-Language': 'en-US,en;q=0.8',
+      'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}`,
+    };
+  }
+  // Headers complets pour les endpoints API REST (web_profile_info etc.)
+  return {
+    'User-Agent': IG_WEB_UA,
+    'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
+    'X-CSRFToken': credentials.csrfToken,
+    'X-Instagram-AJAX': '1',
+    'X-Requested-With': 'XMLHttpRequest',
+    'Origin': 'https://www.instagram.com',
+    'Referer': 'https://www.instagram.com/',
+    'Host': 'www.instagram.com',
+    'Accept': '*/*',
+    'Accept-Encoding': 'gzip, deflate',
+    'Accept-Language': 'en-US,en;q=0.8',
+    'Connection': 'keep-alive',
+  };
+}
+
+/**
+ * Fetch générique avec retry et rate limit handling
+ */
+async function igFetch(url, headers, retries = 3) {
   let rateLimitHits = 0;
   const maxRateLimitRetries = 5;
 
@@ -95,23 +205,7 @@ async function igFetch(endpoint, credentials, retries = 3) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
 
-      const res = await fetch(url, {
-        headers: {
-          'User-Agent': IG_USER_AGENT,
-          'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
-          'X-CSRFToken': credentials.csrfToken,
-          'X-IG-App-ID': IG_APP_ID,
-          'X-IG-WWW-Claim': '0',
-          'X-Instagram-AJAX': '1',
-          'X-Requested-With': 'XMLHttpRequest',
-          'Origin': 'https://www.instagram.com',
-          'Referer': 'https://www.instagram.com/',
-          'Accept': '*/*',
-          'Accept-Language': 'en-US,en;q=0.9',
-        },
-        signal: controller.signal,
-      });
-
+      const res = await fetch(url, { headers, signal: controller.signal });
       clearTimeout(timeout);
 
       if (res.status === 429) {
@@ -119,12 +213,11 @@ async function igFetch(endpoint, credentials, retries = 3) {
         if (rateLimitHits > maxRateLimitRetries) {
           throw new Error('IG API: trop de rate limits (429). Réessayez dans quelques minutes.');
         }
-        // Respecter Retry-After si présent, sinon attente progressive
         const retryAfter = res.headers.get('retry-after');
         const delay = retryAfter ? parseInt(retryAfter) * 1000 : 30000 * rateLimitHits;
-        logger.warn(`⚠️ IG API 429 rate limited (${rateLimitHits}/${maxRateLimitRetries}), pause ${delay / 1000}s, Retry-After: ${retryAfter || 'absent'}`);
+        logger.warn(`⚠️ IG API 429 (${rateLimitHits}/${maxRateLimitRetries}), pause ${delay / 1000}s — ${url.split('?')[0]}`);
         await sleep(delay);
-        attempt--; // Ne pas compter un 429 comme une tentative échouée
+        attempt--;
         continue;
       }
 
@@ -135,37 +228,63 @@ async function igFetch(endpoint, credentials, retries = 3) {
       if (!res.ok) {
         let body = '';
         try { body = await res.text(); } catch { /* ignore */ }
-        logger.warn(`⚠️ IG API ${res.status} ${res.statusText} - ${url} - ${body.slice(0, 200)}`);
+        logger.warn(`⚠️ IG API ${res.status} — ${url.split('?')[0]} — ${body.slice(0, 200)}`);
         throw new Error(`IG API ${res.status}: ${res.statusText}`);
       }
 
       return await res.json();
     } catch (err) {
-      if (err.message.includes('rate limit') || err.message.includes('429')) {
-        throw err; // Ne pas retry les erreurs de rate limit déjà gérées
-      }
+      if (err.message.includes('rate limit') || err.message.includes('429')) throw err;
+      if (err.message.includes('expirée')) throw err;
       if (err.name === 'AbortError') {
-        logger.warn(`⚠️ IG API timeout (tentative ${attempt + 1}/${retries})`);
+        logger.warn(`⚠️ IG timeout (tentative ${attempt + 1}/${retries})`);
       } else if (attempt < retries - 1) {
         const delay = 2000 * Math.pow(2, attempt) + Math.random() * 2000;
-        logger.warn(`⚠️ IG API erreur (tentative ${attempt + 1}/${retries}): ${err.message}, retry dans ${Math.round(delay)}ms`);
+        logger.warn(`⚠️ IG erreur (tentative ${attempt + 1}/${retries}): ${err.message}`);
         await sleep(delay);
       } else {
         throw err;
       }
     }
   }
-
   throw new Error('IG API: toutes les tentatives échouées');
 }
 
 // ─── Fetchers IG ────────────────────────────────────────────────────────────
 
 /**
- * Récupère le profil d'un utilisateur Instagram via l'API web
+ * Récupère le profil via l'API privée mobile (i.instagram.com)
+ * Fallback sur l'API web si la private échoue
  */
 async function fetchUserProfile(username, credentials) {
-  const data = await igFetch(`/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, credentials);
+  // Approche 1 : API privée mobile (Instagrapi-style)
+  try {
+    const url = `${IG_PRIVATE_BASE}/users/${encodeURIComponent(username)}/usernameinfo/`;
+    const data = await igFetch(url, privateHeaders(credentials));
+    const user = data?.user;
+    if (user) {
+      logger.info(`📱 IG profil @${username} via API privée OK`);
+      return {
+        user_id: user.pk?.toString() || user.id?.toString(),
+        username: user.username,
+        full_name: user.full_name,
+        bio: user.biography,
+        external_url: user.external_url,
+        business_email: user.public_email || user.business_email,
+        category: user.category || user.category_name,
+        is_business: user.is_business ? 1 : 0,
+        is_private: user.is_private ? 1 : 0,
+        follower_count: user.follower_count,
+        following_count: user.following_count,
+      };
+    }
+  } catch (err) {
+    logger.warn(`⚠️ IG API privée @${username} échoué: ${err.message}, tentative API web...`);
+  }
+
+  // Approche 2 : API web (Instaloader-style)
+  const url = `${IG_WEB_BASE}/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
+  const data = await igFetch(url, webHeaders(credentials, 'api'));
   const user = data?.data?.user;
   if (!user) throw new Error(`Profil Instagram @${username} non trouvé`);
 
@@ -185,34 +304,81 @@ async function fetchUserProfile(username, credentials) {
 }
 
 /**
- * Récupère la liste paginée des "following" d'un utilisateur via GraphQL
- * Utilise le même query_hash qu'Instaloader : 58712303d941c6855d4e888c5f0cd22f
+ * Récupère la liste paginée des "following"
+ * Approche 1 : API privée mobile (200 par page, plus rapide)
+ * Approche 2 : GraphQL web (50 par page, fallback)
  */
 async function fetchFollowingList(userId, credentials, maxAccounts = 500) {
+  // Tenter d'abord l'API privée mobile
+  try {
+    return await fetchFollowingPrivate(userId, credentials, maxAccounts);
+  } catch (err) {
+    logger.warn(`⚠️ IG following API privée échoué: ${err.message}, tentative GraphQL...`);
+    return await fetchFollowingGraphQL(userId, credentials, maxAccounts);
+  }
+}
+
+/**
+ * Following via API privée mobile (Instagrapi-style)
+ */
+async function fetchFollowingPrivate(userId, credentials, maxAccounts) {
+  const following = [];
+  let maxId = '';
+
+  while (following.length < maxAccounts) {
+    let url = `${IG_PRIVATE_BASE}/friendships/${userId}/following/?count=200&search_surface=follow_list_page`;
+    if (maxId) url += `&max_id=${maxId}`;
+
+    const data = await igFetch(url, privateHeaders(credentials));
+
+    if (data.users && data.users.length > 0) {
+      for (const user of data.users) {
+        if (following.length >= maxAccounts) break;
+        following.push({
+          username: user.username,
+          user_id: user.pk?.toString() || user.id?.toString(),
+          full_name: user.full_name,
+          is_private: user.is_private ? 1 : 0,
+        });
+      }
+    }
+
+    if (!data.next_max_id) break;
+    maxId = data.next_max_id;
+
+    if (following.length < maxAccounts) {
+      await jitteredDelay();
+    }
+  }
+
+  logger.info(`📱 IG following via API privée: ${following.length} comptes`);
+  return following;
+}
+
+/**
+ * Following via GraphQL web (Instaloader-style, fallback)
+ */
+async function fetchFollowingGraphQL(userId, credentials, maxAccounts) {
   const following = [];
   let cursor = null;
   let hasMore = true;
 
   while (hasMore && following.length < maxAccounts) {
-    const variables = {
-      id: String(userId),
-      first: 50,
-    };
+    const variables = { id: String(userId), first: 50 };
     if (cursor) variables.after = cursor;
 
-    const endpoint = `/graphql/query/?query_hash=${IG_FOLLOWEES_QUERY_HASH}&variables=${encodeURIComponent(JSON.stringify(variables))}`;
-    const data = await igFetch(endpoint, credentials);
+    const url = `${IG_WEB_BASE}/graphql/query/?query_hash=${IG_FOLLOWEES_QUERY_HASH}&variables=${encodeURIComponent(JSON.stringify(variables))}`;
+    const data = await igFetch(url, webHeaders(credentials, 'graphql'));
 
     const edges = data?.data?.user?.edge_follow?.edges;
     if (edges && edges.length > 0) {
       for (const edge of edges) {
         if (following.length >= maxAccounts) break;
-        const node = edge.node;
         following.push({
-          username: node.username,
-          user_id: node.id?.toString(),
-          full_name: node.full_name,
-          is_private: node.is_private ? 1 : 0,
+          username: edge.node.username,
+          user_id: edge.node.id?.toString(),
+          full_name: edge.node.full_name,
+          is_private: edge.node.is_private ? 1 : 0,
         });
       }
     }
@@ -226,6 +392,7 @@ async function fetchFollowingList(userId, credentials, maxAccounts = 500) {
     }
   }
 
+  logger.info(`🌐 IG following via GraphQL: ${following.length} comptes`);
   return following;
 }
 
