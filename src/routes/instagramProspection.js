@@ -66,20 +66,49 @@ module.exports = (db) => {
         return res.json({ valid: false, error: 'Credentials non configurées' });
       }
 
-      // Tester en récupérant un profil public connu (instagram)
-      // Plus fiable que /accounts/current_user/ qui peut retourner 400
-      const profile = await igService.fetchUserProfile('instagram', credentials);
+      // Test avec une seule requête (pas de retry) pour ne pas aggraver un éventuel rate limit
+      const testUrl = 'https://www.instagram.com/api/v1/users/web_profile_info/?username=instagram';
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 10000);
 
-      if (profile?.user_id) {
-        res.json({
-          valid: true,
-          message: `Session valide (test: @instagram, id=${profile.user_id})`,
-        });
+      const rawRes = await fetch(testUrl, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+          'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
+          'X-CSRFToken': credentials.csrfToken,
+          'X-IG-App-ID': '124024574287414',
+          'X-IG-WWW-Claim': '0',
+          'X-Instagram-AJAX': '1',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Origin': 'https://www.instagram.com',
+          'Referer': 'https://www.instagram.com/',
+          'Accept': '*/*',
+          'Accept-Language': 'en-US,en;q=0.9',
+        },
+        signal: controller.signal,
+      });
+
+      if (rawRes.status === 429) {
+        return res.json({ valid: false, error: 'Rate limit Instagram (429). L\'IP du serveur est temporairement bloquée. Réessayez dans 1-2 heures.' });
+      }
+
+      if (rawRes.status === 401 || rawRes.status === 403) {
+        return res.json({ valid: false, error: 'Session expirée ou invalide. Vérifiez que les cookies sont à jour.' });
+      }
+
+      if (!rawRes.ok) {
+        return res.json({ valid: false, error: `Instagram a répondu ${rawRes.status}. Vérifiez vos credentials.` });
+      }
+
+      const data = await rawRes.json();
+      const user = data?.data?.user;
+      if (user?.id) {
+        res.json({ valid: true, message: `Session valide (test: @instagram, id=${user.id})` });
       } else {
         res.json({ valid: false, error: 'Réponse inattendue de l\'API Instagram' });
       }
     } catch (err) {
-      res.json({ valid: false, error: err.message });
+      res.json({ valid: false, error: err.name === 'AbortError' ? 'Timeout — Instagram ne répond pas' : err.message });
     }
   });
 
