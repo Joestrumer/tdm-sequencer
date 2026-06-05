@@ -66,14 +66,14 @@ module.exports = (db) => {
         return res.json({ valid: false, error: 'Credentials non configurées' });
       }
 
-      // Tester en récupérant le profil de l'utilisateur connecté
-      const data = await igService.igFetch('/accounts/current_user/?edit=true', credentials);
+      // Tester en récupérant un profil public connu (instagram)
+      // Plus fiable que /accounts/current_user/ qui peut retourner 400
+      const profile = await igService.fetchUserProfile('instagram', credentials);
 
-      if (data?.user) {
+      if (profile?.user_id) {
         res.json({
           valid: true,
-          username: data.user.username,
-          full_name: data.user.full_name,
+          message: `Session valide (test: @instagram, id=${profile.user_id})`,
         });
       } else {
         res.json({ valid: false, error: 'Réponse inattendue de l\'API Instagram' });

@@ -15,8 +15,9 @@ const { extractEmails } = require('./hotelScraperService');
 // ─── Configuration IG API ───────────────────────────────────────────────────
 
 const IG_API_BASE = 'https://i.instagram.com/api/v1';
+const IG_WEB_BASE = 'https://www.instagram.com/api/v1';
 const IG_APP_ID = '936619743392459';
-const IG_USER_AGENT = 'Instagram 275.0.0.27.98 Android (33/13; 420dpi; 1080x2400; samsung; SM-G991B; o1s; exynos2100; en_US; 458229258)';
+const IG_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
 const DEFAULT_DELAY_MS = 2500; // Délai entre requêtes IG
 const JITTER_MAX_MS = 1000;    // Jitter aléatoire ajouté au délai
@@ -118,6 +119,9 @@ async function igFetch(endpoint, credentials, retries = 3) {
       }
 
       if (!res.ok) {
+        let body = '';
+        try { body = await res.text(); } catch { /* ignore */ }
+        logger.warn(`⚠️ IG API ${res.status} ${res.statusText} - ${url} - ${body.slice(0, 200)}`);
         throw new Error(`IG API ${res.status}: ${res.statusText}`);
       }
 
@@ -141,10 +145,10 @@ async function igFetch(endpoint, credentials, retries = 3) {
 // ─── Fetchers IG ────────────────────────────────────────────────────────────
 
 /**
- * Récupère le profil d'un utilisateur Instagram
+ * Récupère le profil d'un utilisateur Instagram via l'API web
  */
 async function fetchUserProfile(username, credentials) {
-  const data = await igFetch(`/users/web_profile_info/?username=${encodeURIComponent(username)}`, credentials);
+  const data = await igFetch(`${IG_WEB_BASE}/users/web_profile_info/?username=${encodeURIComponent(username)}`, credentials);
   const user = data?.data?.user;
   if (!user) throw new Error(`Profil Instagram @${username} non trouvé`);
 

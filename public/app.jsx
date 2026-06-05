@@ -7364,7 +7364,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
               {igTestResult && (
                 <div className={`p-3 rounded-lg text-sm ${igTestResult.valid ? 'bg-emerald-50 text-emerald-700 border border-emerald-200' : 'bg-red-50 text-red-700 border border-red-200'}`}>
                   {igTestResult.valid
-                    ? `Connecté en tant que @${igTestResult.username} (${igTestResult.full_name})`
+                    ? (igTestResult.message || `Connecté (session valide)`)
                     : `Erreur : ${igTestResult.error}`}
                 </div>
               )}
