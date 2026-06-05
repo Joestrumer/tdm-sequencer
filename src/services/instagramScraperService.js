@@ -19,8 +19,8 @@ const IG_WEB_BASE = 'https://www.instagram.com/api/v1';
 const IG_APP_ID = '936619743392459';
 const IG_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
 
-const DEFAULT_DELAY_MS = 2500; // Délai entre requêtes IG
-const JITTER_MAX_MS = 1000;    // Jitter aléatoire ajouté au délai
+const DEFAULT_DELAY_MS = 4000; // Délai entre requêtes IG (conservateur pour éviter 429)
+const JITTER_MAX_MS = 2000;    // Jitter aléatoire ajouté au délai
 
 // ─── Classification business par bio ────────────────────────────────────────
 
@@ -87,6 +87,8 @@ function hasCredentials(db) {
  */
 async function igFetch(endpoint, credentials, retries = 3) {
   const url = endpoint.startsWith('http') ? endpoint : `${IG_API_BASE}${endpoint}`;
+  let rateLimitHits = 0;
+  const maxRateLimitRetries = 5;
 
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
@@ -108,9 +110,15 @@ async function igFetch(endpoint, credentials, retries = 3) {
       clearTimeout(timeout);
 
       if (res.status === 429) {
-        const delay = Math.min(5000 * Math.pow(2, attempt), 30000);
-        logger.warn(`⚠️ IG API 429 rate limited, pause ${delay}ms`);
+        rateLimitHits++;
+        if (rateLimitHits > maxRateLimitRetries) {
+          throw new Error('IG API: trop de rate limits (429). Réessayez dans quelques minutes.');
+        }
+        // Attente longue et progressive : 30s, 60s, 90s, 120s, 150s
+        const delay = 30000 * rateLimitHits;
+        logger.warn(`⚠️ IG API 429 rate limited (${rateLimitHits}/${maxRateLimitRetries}), pause ${delay / 1000}s`);
         await sleep(delay);
+        attempt--; // Ne pas compter un 429 comme une tentative échouée
         continue;
       }
 
@@ -127,10 +135,13 @@ async function igFetch(endpoint, credentials, retries = 3) {
 
       return await res.json();
     } catch (err) {
+      if (err.message.includes('rate limit') || err.message.includes('429')) {
+        throw err; // Ne pas retry les erreurs de rate limit déjà gérées
+      }
       if (err.name === 'AbortError') {
         logger.warn(`⚠️ IG API timeout (tentative ${attempt + 1}/${retries})`);
       } else if (attempt < retries - 1) {
-        const delay = 1000 * Math.pow(2, attempt) + Math.random() * 1000;
+        const delay = 2000 * Math.pow(2, attempt) + Math.random() * 2000;
         logger.warn(`⚠️ IG API erreur (tentative ${attempt + 1}/${retries}): ${err.message}, retry dans ${Math.round(delay)}ms`);
         await sleep(delay);
       } else {
