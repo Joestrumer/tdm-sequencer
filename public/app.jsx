@@ -12614,6 +12614,7 @@ const FacturesSamples = ({ showToast }) => {
   const [shippingId, setShippingId] = useState('300');
   const [businessType, setBusinessType] = useState('Hotel 4*');
   const [deliveryComment, setDeliveryComment] = useState('Joindre lettre accompagnement FR');
+  const [sampleTaskDays, setSampleTaskDays] = useState(7);
   const [clientSearch, setClientSearch] = useState('');
   const [clientResults, setClientResults] = useState([]);
   const [searchingClient, setSearchingClient] = useState(false);
@@ -12685,6 +12686,7 @@ const FacturesSamples = ({ showToast }) => {
         logGSheets: false,
         isSample: true,
         businessType,
+        sampleTaskDays,
       });
       if (res.erreur) throw new Error(res.erreur);
 
@@ -12928,6 +12930,7 @@ const FacturesSamples = ({ showToast }) => {
         logGSheets: false,
         isSample: true,
         businessType,
+        sampleTaskDays,
       });
       if (res.erreur) throw new Error(res.erreur);
       setResult(res);
@@ -13320,6 +13323,12 @@ const FacturesSamples = ({ showToast }) => {
               <option value="Hospitality Suppliers">Hospitality Suppliers</option>
             </select>
           </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Task retour (jours ouvrés)</label>
+            <input type="number" min="1" max="90" value={sampleTaskDays}
+              onChange={e => setSampleTaskDays(Math.max(1, parseInt(e.target.value) || 7))}
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+          </div>
           <div className="md:col-span-2">
             <label className="text-xs font-medium text-slate-500 mb-1 block">Commentaire de livraison</label>
             <textarea value={deliveryComment} onChange={e => setDeliveryComment(e.target.value)}
@@ -13360,7 +13369,7 @@ const FacturesSamples = ({ showToast }) => {
           <div className="bg-emerald-50 border border-emerald-200 rounded-xl p-4 text-center space-y-2">
             <p className="text-sm font-medium text-emerald-700">Proforma N° {result.number || result.id} créée !</p>
             {result.hubspot_deal_id
-              ? <p className="text-xs text-emerald-600">HubSpot : Deal + Company + Task "retour echantillons" J+7</p>
+              ? <p className="text-xs text-emerald-600">HubSpot : Deal + Company + Task "retour echantillons" J+{sampleTaskDays}</p>
               : <p className="text-xs text-amber-600">HubSpot : non loggé (aucune company trouvée/créée)</p>
             }
             <div className="flex gap-2 justify-center flex-wrap">

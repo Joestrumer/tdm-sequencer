@@ -604,7 +604,7 @@ async function getClosedWonDeals() {
 }
 
 // ─── Créer un Deal depuis une facture VosFactures ───────────────────────────
-async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, clientAddress, clientCity, clientCountry, clientZip, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate, isSample, businessType }) {
+async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, clientAddress, clientCity, clientCountry, clientZip, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate, isSample, businessType, sampleTaskDays }) {
   if (!getApiKey()) return null;
   try {
     // 1. Chercher le mapping centralisé (par vf_client_id ou vf_name)
@@ -888,11 +888,12 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
       }).catch(e => logger.error('HubSpot update envoi_echantillons échoué', { error: e.message, companyId }));
     }
 
-    // 9. Créer task "retour echantillons" à J+7 (skip weekends)
+    // 9. Créer task "retour echantillons" à J+N (skip weekends)
+    const taskDays = parseInt(sampleTaskDays) || 7;
     if (isSample && companyId) {
       let taskDate = new Date();
       let businessDays = 0;
-      while (businessDays < 7) {
+      while (businessDays < taskDays) {
         taskDate.setDate(taskDate.getDate() + 1);
         const dow = taskDate.getDay();
         if (dow !== 0 && dow !== 6) businessDays++;
@@ -922,7 +923,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
           }
         }),
       }).catch(e => logger.error('HubSpot création task retour echantillons échouée', { error: e.message, companyId }));
-      logger.info('📋 HubSpot task "retour echantillons" créée', { companyId, taskDate: taskDate.toISOString().split('T')[0] });
+      logger.info(`📋 HubSpot task "retour echantillons" créée (J+${taskDays})`, { companyId, taskDate: taskDate.toISOString().split('T')[0] });
     }
 
     logHubspot(db, 'deal', 'create_from_invoice', null, dealId, { clientName, orderNumber, invoiceNumber, montantHT, montantTTC, commission, companyName });
