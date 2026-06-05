@@ -4497,7 +4497,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     setIgTesting(true);
     setIgTestResult(null);
     try {
-      const res = await api.post('/instagram/test-credentials');
+      const res = await api.post('/instagram/test-credentials', { session_id: igSessionId, csrf_token: igCsrfToken });
       setIgTestResult(res);
     } catch (err) {
       setIgTestResult({ valid: false, error: err.message });

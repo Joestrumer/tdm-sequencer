@@ -56,7 +56,12 @@ module.exports = (db) => {
   // POST /api/instagram/test-credentials — Tester validité session
   router.post('/test-credentials', async (req, res) => {
     try {
-      const credentials = igService.getCredentials(db);
+      // Utiliser les credentials du body si fournies, sinon celles en DB
+      const { session_id, csrf_token } = req.body || {};
+      const credentials = (session_id && csrf_token)
+        ? { sessionId: session_id.trim(), csrfToken: csrf_token.trim() }
+        : igService.getCredentials(db);
+
       if (!credentials.sessionId || !credentials.csrfToken) {
         return res.json({ valid: false, error: 'Credentials non configurées' });
       }
