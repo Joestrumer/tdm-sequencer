@@ -4584,6 +4584,13 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     }
   }, [igFilters]);
 
+  // Auto-sélectionner le premier job après chargement si aucun n'est actif
+  useEffect(() => {
+    if (activeTab === 'social' && igJobs.length > 0 && !igActiveJob) {
+      handleIgSelectJob(igJobs[0].id);
+    }
+  }, [igJobs, activeTab]);
+
   const chargerHotels = async () => {
     setLoading(true);
     try {
