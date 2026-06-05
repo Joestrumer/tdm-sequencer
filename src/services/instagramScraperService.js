@@ -158,6 +158,10 @@ function privateHeaders(credentials) {
     'Host': 'i.instagram.com',
     'Connection': 'keep-alive',
     'Accept': '*/*',
+    // Sec-Fetch-* headers — requis par la couche sécurité IG (sinon 400 "SecFetch Policy violation")
+    'Sec-Fetch-Site': 'same-origin',
+    'Sec-Fetch-Mode': 'cors',
+    'Sec-Fetch-Dest': 'empty',
   };
 }
 

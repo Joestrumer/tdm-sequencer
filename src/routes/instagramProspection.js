@@ -94,6 +94,9 @@ module.exports = (db) => {
             'Accept': '*/*',
             'Accept-Language': 'en-US',
             'Connection': 'keep-alive',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Dest': 'empty',
           },
           signal: controller1.signal,
         });
@@ -197,6 +200,9 @@ module.exports = (db) => {
             'X-IG-Capabilities': '3brTv10=',
             'Host': 'i.instagram.com',
             'Accept': '*/*',
+            'Sec-Fetch-Site': 'same-origin',
+            'Sec-Fetch-Mode': 'cors',
+            'Sec-Fetch-Dest': 'empty',
           },
           signal: ctrl1.signal,
         });
