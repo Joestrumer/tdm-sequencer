@@ -98,7 +98,7 @@ async function igFetch(endpoint, credentials, retries = 3) {
       const res = await fetch(url, {
         headers: {
           'User-Agent': IG_USER_AGENT,
-          'Cookie': `sessionid=${credentials.sessionId}; mid=; ig_pr=1; ig_vw=1920; ig_cb=1; csrftoken=${credentials.csrfToken}; ds_user_id=; s_network=`,
+          'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
           'X-CSRFToken': credentials.csrfToken,
           'X-IG-App-ID': IG_APP_ID,
           'X-IG-WWW-Claim': '0',
@@ -119,9 +119,10 @@ async function igFetch(endpoint, credentials, retries = 3) {
         if (rateLimitHits > maxRateLimitRetries) {
           throw new Error('IG API: trop de rate limits (429). Réessayez dans quelques minutes.');
         }
-        // Attente longue et progressive : 30s, 60s, 90s, 120s, 150s
-        const delay = 30000 * rateLimitHits;
-        logger.warn(`⚠️ IG API 429 rate limited (${rateLimitHits}/${maxRateLimitRetries}), pause ${delay / 1000}s`);
+        // Respecter Retry-After si présent, sinon attente progressive
+        const retryAfter = res.headers.get('retry-after');
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 30000 * rateLimitHits;
+        logger.warn(`⚠️ IG API 429 rate limited (${rateLimitHits}/${maxRateLimitRetries}), pause ${delay / 1000}s, Retry-After: ${retryAfter || 'absent'}`);
         await sleep(delay);
         attempt--; // Ne pas compter un 429 comme une tentative échouée
         continue;

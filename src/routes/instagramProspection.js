@@ -83,6 +83,56 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/instagram/debug — Diagnostic raw IG API
+  router.post('/debug', async (req, res) => {
+    try {
+      const { session_id, csrf_token } = req.body || {};
+      const credentials = (session_id && csrf_token)
+        ? { sessionId: session_id.trim(), csrfToken: csrf_token.trim() }
+        : igService.getCredentials(db);
+
+      if (!credentials.sessionId || !credentials.csrfToken) {
+        return res.json({ error: 'Credentials manquantes' });
+      }
+
+      const url = 'https://www.instagram.com/api/v1/users/web_profile_info/?username=instagram';
+      const headers = {
+        'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+        'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
+        'X-CSRFToken': credentials.csrfToken,
+        'X-IG-App-ID': '124024574287414',
+        'X-IG-WWW-Claim': '0',
+        'X-Instagram-AJAX': '1',
+        'X-Requested-With': 'XMLHttpRequest',
+        'Origin': 'https://www.instagram.com',
+        'Referer': 'https://www.instagram.com/',
+        'Accept': '*/*',
+        'Accept-Language': 'en-US,en;q=0.9',
+      };
+
+      const controller = new AbortController();
+      setTimeout(() => controller.abort(), 15000);
+
+      const rawRes = await fetch(url, { headers, signal: controller.signal });
+      const responseHeaders = Object.fromEntries(rawRes.headers.entries());
+      let body = '';
+      try { body = await rawRes.text(); } catch (e) { body = `read error: ${e.message}`; }
+
+      logger.info(`🔍 IG Debug: status=${rawRes.status}, headers=${JSON.stringify(responseHeaders)}, body=${body.slice(0, 500)}`);
+
+      res.json({
+        status: rawRes.status,
+        statusText: rawRes.statusText,
+        response_headers: responseHeaders,
+        body_preview: body.slice(0, 1000),
+        request_url: url,
+        session_id_preview: `${credentials.sessionId.slice(0, 10)}...`,
+      });
+    } catch (err) {
+      res.json({ error: err.message });
+    }
+  });
+
   // ─── Jobs ─────────────────────────────────────────────────────────────────
 
   // POST /api/instagram/scrape — Lancer un job de scraping
