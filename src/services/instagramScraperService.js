@@ -14,10 +14,10 @@ const { extractEmails } = require('./hotelScraperService');
 
 // ─── Configuration IG API ───────────────────────────────────────────────────
 
-const IG_API_BASE = 'https://i.instagram.com/api/v1';
-const IG_WEB_BASE = 'https://www.instagram.com/api/v1';
-const IG_APP_ID = '936619743392459';
-const IG_USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36';
+const IG_BASE = 'https://www.instagram.com';
+const IG_APP_ID = '124024574287414'; // Web app ID (même qu'Instaloader)
+const IG_USER_AGENT = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
+const IG_FOLLOWEES_QUERY_HASH = '58712303d941c6855d4e888c5f0cd22f'; // GraphQL query hash pour following
 
 const DEFAULT_DELAY_MS = 4000; // Délai entre requêtes IG (conservateur pour éviter 429)
 const JITTER_MAX_MS = 2000;    // Jitter aléatoire ajouté au délai
@@ -86,7 +86,7 @@ function hasCredentials(db) {
  * Fetch l'API privée Instagram avec headers requis, retry et backoff
  */
 async function igFetch(endpoint, credentials, retries = 3) {
-  const url = endpoint.startsWith('http') ? endpoint : `${IG_API_BASE}${endpoint}`;
+  const url = endpoint.startsWith('http') ? endpoint : `${IG_BASE}${endpoint}`;
   let rateLimitHits = 0;
   const maxRateLimitRetries = 5;
 
@@ -98,9 +98,14 @@ async function igFetch(endpoint, credentials, retries = 3) {
       const res = await fetch(url, {
         headers: {
           'User-Agent': IG_USER_AGENT,
-          'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}`,
+          'Cookie': `sessionid=${credentials.sessionId}; mid=; ig_pr=1; ig_vw=1920; ig_cb=1; csrftoken=${credentials.csrfToken}; ds_user_id=; s_network=`,
           'X-CSRFToken': credentials.csrfToken,
           'X-IG-App-ID': IG_APP_ID,
+          'X-IG-WWW-Claim': '0',
+          'X-Instagram-AJAX': '1',
+          'X-Requested-With': 'XMLHttpRequest',
+          'Origin': 'https://www.instagram.com',
+          'Referer': 'https://www.instagram.com/',
           'Accept': '*/*',
           'Accept-Language': 'en-US,en;q=0.9',
         },
@@ -159,7 +164,7 @@ async function igFetch(endpoint, credentials, retries = 3) {
  * Récupère le profil d'un utilisateur Instagram via l'API web
  */
 async function fetchUserProfile(username, credentials) {
-  const data = await igFetch(`${IG_WEB_BASE}/users/web_profile_info/?username=${encodeURIComponent(username)}`, credentials);
+  const data = await igFetch(`/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`, credentials);
   const user = data?.data?.user;
   if (!user) throw new Error(`Profil Instagram @${username} non trouvé`);
 
@@ -179,7 +184,8 @@ async function fetchUserProfile(username, credentials) {
 }
 
 /**
- * Récupère la liste paginée des "following" d'un utilisateur
+ * Récupère la liste paginée des "following" d'un utilisateur via GraphQL
+ * Utilise le même query_hash qu'Instaloader : 58712303d941c6855d4e888c5f0cd22f
  */
 async function fetchFollowingList(userId, credentials, maxAccounts = 500) {
   const following = [];
@@ -187,25 +193,32 @@ async function fetchFollowingList(userId, credentials, maxAccounts = 500) {
   let hasMore = true;
 
   while (hasMore && following.length < maxAccounts) {
-    let endpoint = `/friendships/${userId}/following/?count=50`;
-    if (cursor) endpoint += `&max_id=${cursor}`;
+    const variables = {
+      id: String(userId),
+      first: 50,
+    };
+    if (cursor) variables.after = cursor;
 
+    const endpoint = `/graphql/query/?query_hash=${IG_FOLLOWEES_QUERY_HASH}&variables=${encodeURIComponent(JSON.stringify(variables))}`;
     const data = await igFetch(endpoint, credentials);
 
-    if (data.users && data.users.length > 0) {
-      for (const user of data.users) {
+    const edges = data?.data?.user?.edge_follow?.edges;
+    if (edges && edges.length > 0) {
+      for (const edge of edges) {
         if (following.length >= maxAccounts) break;
+        const node = edge.node;
         following.push({
-          username: user.username,
-          user_id: user.pk?.toString() || user.id?.toString(),
-          full_name: user.full_name,
-          is_private: user.is_private ? 1 : 0,
+          username: node.username,
+          user_id: node.id?.toString(),
+          full_name: node.full_name,
+          is_private: node.is_private ? 1 : 0,
         });
       }
     }
 
-    hasMore = data.next_max_id != null;
-    cursor = data.next_max_id;
+    const pageInfo = data?.data?.user?.edge_follow?.page_info;
+    hasMore = pageInfo?.has_next_page || false;
+    cursor = pageInfo?.end_cursor;
 
     if (hasMore && following.length < maxAccounts) {
       await jitteredDelay();
