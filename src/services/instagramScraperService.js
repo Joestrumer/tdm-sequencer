@@ -32,6 +32,7 @@ const JITTER_MAX_MS = 2000;
 const BUSINESS_KEYWORDS = {
   hotel: ['hotel', 'hôtel', 'resort', 'lodge', 'boutique hotel', 'palace', 'auberge', 'gîte', 'chambre d\'hôte', 'maison d\'hôte', 'relais', 'château hotel'],
   restaurant: ['restaurant', 'bistrot', 'brasserie', 'gastronomie', 'chef', 'traiteur', 'cuisine', 'table'],
+  sport: ['gym', 'fitness', 'crossfit', 'musculation', 'salle de sport', 'coaching sportif', 'personal training', 'club de sport'],
   spa: ['spa', 'bien-être', 'wellness', 'massage', 'soin', 'détente', 'hammam', 'sauna'],
   hospitality: ['hospitality', 'hôtellerie', 'tourisme', 'travel', 'voyage', 'conciergerie', 'hébergement'],
   retail: ['boutique', 'concept store', 'shop', 'e-shop', 'mode', 'fashion'],
@@ -50,6 +51,14 @@ const IG_CATEGORY_MAP = {
   'restaurant': 'restaurant', 'fast food restaurant': 'restaurant',
   'café': 'restaurant', 'coffee shop': 'restaurant', 'bakery': 'restaurant',
   'food & beverage': 'restaurant', 'caterer': 'restaurant',
+  // Sport / Fitness (avant spa pour éviter que "gym" ou "fitness" match spa)
+  'gym/physical fitness center': 'sport', 'gym': 'sport', 'fitness': 'sport',
+  'sports': 'sport', 'sport': 'sport', 'sports & recreation': 'sport',
+  'athletic & sport': 'sport', 'fitness model': 'sport',
+  'personal trainer': 'sport', 'coach sportif': 'sport',
+  'yoga studio': 'sport', 'martial arts school': 'sport',
+  'sports club': 'sport', 'recreation center': 'sport',
+  'swimming pool': 'sport', 'tennis court': 'sport', 'golf course': 'sport',
   // Spa
   'spa': 'spa', 'beauty salon': 'spa', 'beauty, cosmetic & personal care': 'spa',
   'massage service': 'spa', 'health/beauty': 'spa',

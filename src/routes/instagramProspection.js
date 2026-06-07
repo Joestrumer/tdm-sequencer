@@ -13,6 +13,30 @@ const igService = require('../services/instagramScraperService');
 
 module.exports = (db) => {
 
+  // ─── Backfill pays + re-classification pour comptes existants ─────────────
+  try {
+    const toBackfill = db.prepare(`
+      SELECT id, external_url, bio, category, business_type
+      FROM instagram_scraped_accounts
+      WHERE country IS NULL AND (external_url IS NOT NULL OR bio IS NOT NULL)
+    `).all();
+    if (toBackfill.length > 0) {
+      const updateStmt = db.prepare('UPDATE instagram_scraped_accounts SET country = ?, business_type = COALESCE(?, business_type) WHERE id = ?');
+      let updated = 0;
+      for (const a of toBackfill) {
+        const country = igService.detectCountry(a.external_url, a.bio);
+        const newType = igService.classifyBusiness(a.bio, a.category);
+        if (country || (newType && newType !== a.business_type)) {
+          updateStmt.run(country, newType, a.id);
+          updated++;
+        }
+      }
+      if (updated > 0) logger.info(`🌍 Backfill Instagram: ${updated} compte(s) mis à jour (pays + type)`);
+    }
+  } catch (err) {
+    logger.warn('⚠️ Erreur backfill pays Instagram:', err.message);
+  }
+
   // ─── Config & Credentials ──────────────────────────────────────────────────
 
   // POST /api/instagram/config — Stocker les credentials Instagram

@@ -4368,6 +4368,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [igTestResult, setIgTestResult] = useState(null);
   const [igTesting, setIgTesting] = useState(false);
   const [igLaunching, setIgLaunching] = useState(false);
+  const [igContactsOpen, setIgContactsOpen] = useState(null); // account id dont on affiche les contacts
   const igPollingRef = useRef(null);
 
   // Memo pour parser sourceInfo.colonnes (évite parsing répété à chaque rendu)
@@ -7085,6 +7086,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 <option value="">Tous types</option>
                 <option value="hotel">Hotel</option>
                 <option value="restaurant">Restaurant</option>
+                <option value="sport">Sport</option>
                 <option value="spa">Spa</option>
                 <option value="hospitality">Hospitality</option>
                 <option value="retail">Retail</option>
@@ -7224,6 +7226,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                                 account.business_type === 'hotel' ? 'bg-blue-100 text-blue-700' :
                                 account.business_type === 'restaurant' ? 'bg-orange-100 text-orange-700' :
                                 account.business_type === 'spa' ? 'bg-teal-100 text-teal-700' :
+                                account.business_type === 'sport' ? 'bg-violet-100 text-violet-700' :
                                 'bg-slate-100 text-slate-700'
                               }`}>
                                 {account.business_type}
@@ -7284,12 +7287,42 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                           </span>
                           {account.linkedin_contacts && account.linkedin_contacts !== '[]' && (() => {
                             try {
-                              const cnt = JSON.parse(account.linkedin_contacts).length;
-                              return cnt > 0 ? (
-                                <span className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700">
-                                  {cnt} contact{cnt > 1 ? 's' : ''}
-                                </span>
-                              ) : null;
+                              const contacts = JSON.parse(account.linkedin_contacts);
+                              if (contacts.length === 0) return null;
+                              return (
+                                <div className="relative inline-block">
+                                  <button
+                                    onClick={() => setIgContactsOpen(igContactsOpen === account.id ? null : account.id)}
+                                    className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer"
+                                  >
+                                    {contacts.length} contact{contacts.length > 1 ? 's' : ''}
+                                  </button>
+                                  {igContactsOpen === account.id && (
+                                    <div className="absolute z-50 top-full left-0 mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-xl p-3">
+                                      <div className="flex items-center justify-between mb-2">
+                                        <span className="text-xs font-semibold text-slate-700">Contacts LinkedIn</span>
+                                        <button onClick={() => setIgContactsOpen(null)} className="text-slate-400 hover:text-slate-600 text-sm">×</button>
+                                      </div>
+                                      <div className="space-y-2 max-h-48 overflow-y-auto">
+                                        {contacts.map((c, i) => (
+                                          <div key={i} className="flex flex-col gap-0.5 p-2 bg-slate-50 rounded">
+                                            <div className="flex items-center justify-between">
+                                              <span className="text-xs font-medium text-slate-800">{c.nom_complet}</span>
+                                              {c.pertinence === 'haute' && <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700">haute</span>}
+                                            </div>
+                                            {c.fonction && <span className="text-[10px] text-slate-500">{c.fonction}</span>}
+                                            {c.linkedin_url && (
+                                              <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 hover:text-blue-800 truncate">
+                                                {c.linkedin_url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)}
+                                              </a>
+                                            )}
+                                          </div>
+                                        ))}
+                                      </div>
+                                    </div>
+                                  )}
+                                </div>
+                              );
                             } catch { return null; }
                           })()}
                         </td>
