@@ -427,8 +427,9 @@ async function fetchUserProfile(username, credentials) {
         is_private: user.is_private ? 1 : 0,
         follower_count: user.follower_count,
         following_count: user.following_count,
-        city_name: user.city_name || user.address_street?.split(',')?.pop()?.trim() || null,
+        city_name: user.city_name || null,
         phone_country_code: user.public_phone_country_code ? `+${user.public_phone_country_code}` : null,
+        address_street: user.address_street || null,
       };
     }
   } catch (err) {
@@ -455,6 +456,7 @@ async function fetchUserProfile(username, credentials) {
     following_count: user.edge_follow?.count || user.following_count,
     city_name: user.city_name || user.business_address_json?.city_name || null,
     phone_country_code: user.public_phone_country_code ? `+${user.public_phone_country_code}` : null,
+    address_street: user.address_street || user.business_address_json?.street_address || null,
   };
 }
 
@@ -588,15 +590,75 @@ function classifyBusiness(bio, category) {
   return Object.entries(matches).sort((a, b) => b[1] - a[1])[0][0];
 }
 
+// Mapping pays (noms) → pays normalisé pour parsing d'adresses
+const ADDRESS_COUNTRY_NAMES = {
+  'france': 'France', 'spain': 'Espagne', 'espagne': 'Espagne', 'españa': 'Espagne',
+  'italy': 'Italie', 'italie': 'Italie', 'italia': 'Italie',
+  'united kingdom': 'Royaume-Uni', 'uk': 'Royaume-Uni', 'england': 'Royaume-Uni',
+  'portugal': 'Portugal', 'germany': 'Allemagne', 'allemagne': 'Allemagne', 'deutschland': 'Allemagne',
+  'switzerland': 'Suisse', 'suisse': 'Suisse', 'schweiz': 'Suisse',
+  'belgium': 'Belgique', 'belgique': 'Belgique', 'nederland': 'Pays-Bas', 'netherlands': 'Pays-Bas',
+  'greece': 'Grèce', 'grèce': 'Grèce', 'croatia': 'Croatie', 'croatie': 'Croatie',
+  'morocco': 'Maroc', 'maroc': 'Maroc', 'tunisia': 'Tunisie', 'tunisie': 'Tunisie',
+  'senegal': 'Sénégal', 'sénégal': 'Sénégal',
+  'turkey': 'Turquie', 'turquie': 'Turquie', 'türkiye': 'Turquie',
+  'united states': 'États-Unis', 'usa': 'États-Unis', 'us': 'États-Unis',
+  'canada': 'Canada', 'australia': 'Australie', 'japan': 'Japon', 'japon': 'Japon',
+  'indonesia': 'Indonésie', 'indonésie': 'Indonésie',
+  'thailand': 'Thaïlande', 'thaïlande': 'Thaïlande',
+  'united arab emirates': 'Émirats arabes unis', 'uae': 'Émirats arabes unis',
+  'singapore': 'Singapour', 'singapour': 'Singapour',
+  'mexico': 'Mexique', 'mexique': 'Mexique', 'brazil': 'Brésil', 'brésil': 'Brésil',
+  'argentina': 'Argentine', 'argentine': 'Argentine',
+  'monaco': 'Monaco', 'luxembourg': 'Luxembourg', 'ireland': 'Irlande', 'irlande': 'Irlande',
+  'poland': 'Pologne', 'pologne': 'Pologne', 'sweden': 'Suède', 'suède': 'Suède',
+  'norway': 'Norvège', 'norvège': 'Norvège', 'denmark': 'Danemark', 'danemark': 'Danemark',
+  'finland': 'Finlande', 'finlande': 'Finlande',
+  'austria': 'Autriche', 'autriche': 'Autriche', 'österreich': 'Autriche',
+  'czech republic': 'Tchéquie', 'czechia': 'Tchéquie',
+  'romania': 'Roumanie', 'roumanie': 'Roumanie', 'bulgaria': 'Bulgarie', 'bulgarie': 'Bulgarie',
+  'maldives': 'Maldives', 'hong kong': 'Hong Kong',
+};
+
+// Codes postaux → pays (premiers chiffres/format)
+const POSTAL_CODE_COUNTRY = [
+  { regex: /\b\d{5}\b/, prefixes: { '75': 'France', '13': 'France', '69': 'France', '33': 'France', '06': 'France', '34': 'France', '31': 'France', '67': 'France', '44': 'France', '59': 'France', '78': 'France', '92': 'France', '93': 'France', '94': 'France', '77': 'France', '91': 'France', '95': 'France', '83': 'France', '64': 'France', '74': 'France', '73': 'France', '14': 'France', '35': 'France', '56': 'France', '29': 'France', '76': 'France', '68': 'France', '57': 'France', '54': 'France', '51': 'France', '21': 'France', '63': 'France', '42': 'France', '38': 'France', '01': 'France', '26': 'France', '30': 'France', '11': 'France', '66': 'France', '65': 'France', '40': 'France', '24': 'France', '17': 'France', '16': 'France', '86': 'France', '87': 'France', '37': 'France', '45': 'France', '41': 'France', '18': 'France', '36': 'France', '10': 'France', '52': 'France', '55': 'France', '88': 'France', '90': 'France', '25': 'France', '39': 'France', '71': 'France', '58': 'France', '89': 'France', '03': 'France', '15': 'France', '43': 'France', '07': 'France', '84': 'France', '04': 'France', '05': 'France', '48': 'France', '12': 'France', '46': 'France', '82': 'France', '81': 'France', '32': 'France', '47': 'France', '19': 'France', '23': 'France', '79': 'France', '85': 'France', '49': 'France', '53': 'France', '72': 'France', '61': 'France', '27': 'France', '28': 'France', '60': 'France', '02': 'France', '80': 'France', '62': 'France', '50': 'France', '22': 'France', '97': 'France' } },
+];
+
 /**
  * Détecte le pays depuis plusieurs sources (par priorité décroissante) :
- * 1. city_name (champ business IG)
- * 2. phone_country_code (champ business IG)
- * 3. TLD du site web
- * 4. Patterns dans la bio
+ * 1. address_street (parsing direct du texte d'adresse)
+ * 2. city_name (champ business IG)
+ * 3. phone_country_code (champ business IG)
+ * 4. TLD du site web
+ * 5. Patterns dans la bio
  */
-function detectCountry(externalUrl, bio, cityName, phoneCountryCode) {
-  // 1. Priorité : city_name depuis le profil business IG
+function detectCountry(externalUrl, bio, cityName, phoneCountryCode, addressStreet) {
+  // 1. Priorité : address_street — parsing direct (contient souvent le pays en clair)
+  if (addressStreet) {
+    const addrLower = addressStreet.toLowerCase().trim();
+    // Chercher un nom de pays dans l'adresse
+    for (const [name, country] of Object.entries(ADDRESS_COUNTRY_NAMES)) {
+      // Match comme mot entier dans l'adresse (séparé par virgules, espaces, début/fin)
+      const regex = new RegExp(`(?:^|[,\\s])${name.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[,\\s]|\\d|$)`, 'i');
+      if (regex.test(addrLower)) return country;
+    }
+    // Chercher une ville connue dans l'adresse
+    for (const [city, country] of Object.entries(CITY_COUNTRY_MAP)) {
+      const regex = new RegExp(`(?:^|[,\\s])${city.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}(?:[,\\s]|\\d|$)`, 'i');
+      if (regex.test(addrLower)) return country;
+    }
+    // Tenter via code postal français (5 chiffres, préfixe département)
+    const postalMatch = addrLower.match(/\b(\d{5})\b/);
+    if (postalMatch) {
+      const prefix = postalMatch[1].slice(0, 2);
+      if (POSTAL_CODE_COUNTRY[0].prefixes[prefix]) {
+        return POSTAL_CODE_COUNTRY[0].prefixes[prefix];
+      }
+    }
+  }
+
+  // 2. city_name depuis le profil business IG
   if (cityName) {
     const normalized = cityName.toLowerCase().trim();
     if (CITY_COUNTRY_MAP[normalized]) return CITY_COUNTRY_MAP[normalized];
@@ -606,7 +668,7 @@ function detectCountry(externalUrl, bio, cityName, phoneCountryCode) {
     }
   }
 
-  // 2. Phone country code
+  // 3. Phone country code
   if (phoneCountryCode) {
     const code = phoneCountryCode.startsWith('+') ? phoneCountryCode : `+${phoneCountryCode}`;
     // Trier par longueur décroissante pour matcher +351 avant +3
@@ -615,7 +677,7 @@ function detectCountry(externalUrl, bio, cityName, phoneCountryCode) {
     }
   }
 
-  // 3. TLD du site web
+  // 4. TLD du site web
   if (externalUrl) {
     try {
       const hostname = new URL(externalUrl.startsWith('http') ? externalUrl : 'https://' + externalUrl).hostname.toLowerCase();
@@ -626,7 +688,7 @@ function detectCountry(externalUrl, bio, cityName, phoneCountryCode) {
     } catch { /* URL invalide */ }
   }
 
-  // 4. Fallback : patterns dans la bio
+  // 5. Fallback : patterns dans la bio
   if (bio) {
     for (const { pattern, country } of BIO_COUNTRY_PATTERNS) {
       if (pattern.test(bio)) return country;
@@ -848,7 +910,7 @@ async function processJob(db, jobId) {
           previousAccount.business_type, previousAccount.bio_keywords,
           previousAccount.best_email, previousAccount.email_source, previousAccount.email_confidence,
           previousAccount.scraped_emails, previousAccount.social_links, previousAccount.linkedin_contacts,
-          previousAccount.existing_lead_email, previousAccount.country || detectCountry(previousAccount.external_url, previousAccount.bio, previousAccount.city_name, previousAccount.phone_country_code),
+          previousAccount.existing_lead_email, previousAccount.country || detectCountry(previousAccount.external_url, previousAccount.bio, previousAccount.city_name, previousAccount.phone_country_code, previousAccount.address_street),
           jobId, user.username
         );
         if (previousAccount.best_email) emailsFound++;
@@ -878,7 +940,7 @@ async function processJob(db, jobId) {
         // Classification business + détection pays
         const businessType = classifyBusiness(accountProfile.bio, accountProfile.category);
         const bioKeywords = extractBioKeywords(accountProfile.bio, accountProfile.category);
-        const country = detectCountry(accountProfile.external_url, accountProfile.bio, accountProfile.city_name, accountProfile.phone_country_code);
+        const country = detectCountry(accountProfile.external_url, accountProfile.bio, accountProfile.city_name, accountProfile.phone_country_code, accountProfile.address_street);
 
         // Filtrage par mots-clés si configuré
         if (filterKeywords.length > 0 && !businessType) {
@@ -891,7 +953,7 @@ async function processJob(db, jobId) {
               UPDATE instagram_scraped_accounts
               SET bio = ?, external_url = ?, business_email = ?, category = ?,
                   is_business = ?, is_private = ?, follower_count = ?, following_count = ?,
-                  business_type = ?, bio_keywords = ?, country = ?, city_name = ?, phone_country_code = ?,
+                  business_type = ?, bio_keywords = ?, country = ?, city_name = ?, phone_country_code = ?, address_street = ?,
                   scraping_status = 'skipped', scraping_error = 'Ne correspond pas aux filtres'
               WHERE job_id = ? AND instagram_username = ?
             `).run(
@@ -899,7 +961,7 @@ async function processJob(db, jobId) {
               accountProfile.category, accountProfile.is_business, accountProfile.is_private,
               accountProfile.follower_count, accountProfile.following_count,
               businessType, JSON.stringify(bioKeywords), country,
-              accountProfile.city_name || null, accountProfile.phone_country_code || null,
+              accountProfile.city_name || null, accountProfile.phone_country_code || null, accountProfile.address_street || null,
               jobId, user.username
             );
             processed++;
@@ -919,7 +981,7 @@ async function processJob(db, jobId) {
               follower_count = ?, following_count = ?,
               business_type = ?, bio_keywords = ?,
               best_email = ?, email_source = ?, email_confidence = ?,
-              country = ?, city_name = ?, phone_country_code = ?, scraping_status = 'done'
+              country = ?, city_name = ?, phone_country_code = ?, address_street = ?, scraping_status = 'done'
           WHERE job_id = ? AND instagram_username = ?
         `).run(
           accountProfile.full_name, accountProfile.bio, accountProfile.external_url, accountProfile.external_url,
@@ -927,7 +989,7 @@ async function processJob(db, jobId) {
           accountProfile.follower_count, accountProfile.following_count,
           businessType, JSON.stringify(bioKeywords),
           bestEmailResult?.email || null, bestEmailResult?.source || null, bestEmailResult?.confidence || null,
-          country, accountProfile.city_name || null, accountProfile.phone_country_code || null,
+          country, accountProfile.city_name || null, accountProfile.phone_country_code || null, accountProfile.address_street || null,
           jobId, user.username
         );
 

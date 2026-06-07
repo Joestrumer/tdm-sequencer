@@ -17,15 +17,15 @@ module.exports = (db) => {
   // ─── Backfill pays + re-classification pour comptes existants ─────────────
   try {
     const toBackfill = db.prepare(`
-      SELECT id, external_url, bio, category, business_type, city_name, phone_country_code
+      SELECT id, external_url, bio, category, business_type, city_name, phone_country_code, address_street
       FROM instagram_scraped_accounts
-      WHERE country IS NULL AND (external_url IS NOT NULL OR bio IS NOT NULL OR city_name IS NOT NULL OR phone_country_code IS NOT NULL)
+      WHERE country IS NULL AND (external_url IS NOT NULL OR bio IS NOT NULL OR city_name IS NOT NULL OR phone_country_code IS NOT NULL OR address_street IS NOT NULL)
     `).all();
     if (toBackfill.length > 0) {
       const updateStmt = db.prepare('UPDATE instagram_scraped_accounts SET country = ?, business_type = COALESCE(?, business_type) WHERE id = ?');
       let updated = 0;
       for (const a of toBackfill) {
-        const country = igService.detectCountry(a.external_url, a.bio, a.city_name, a.phone_country_code);
+        const country = igService.detectCountry(a.external_url, a.bio, a.city_name, a.phone_country_code, a.address_street);
         const newType = igService.classifyBusiness(a.bio, a.category);
         if (country || (newType && newType !== a.business_type)) {
           updateStmt.run(country, newType, a.id);
@@ -604,10 +604,12 @@ module.exports = (db) => {
 
     try {
       const accounts = db.prepare(`
-        SELECT * FROM instagram_scraped_accounts
-        WHERE id IN (${account_ids.map(() => '?').join(',')})
-          AND best_email IS NOT NULL
-          AND imported_as_lead = 0
+        SELECT a.*, j.instagram_username as source_account
+        FROM instagram_scraped_accounts a
+        LEFT JOIN instagram_scrape_jobs j ON a.job_id = j.id
+        WHERE a.id IN (${account_ids.map(() => '?').join(',')})
+          AND a.best_email IS NOT NULL
+          AND a.imported_as_lead = 0
       `).all(...account_ids);
 
       if (accounts.length === 0) {
@@ -654,8 +656,9 @@ module.exports = (db) => {
               'Nouveau'
             );
 
-            // Ajouter le tag de prospection
-            addOrUpdateTag(db, leadId, 'Prospection', 'Scrap Instagram');
+            // Ajouter le tag de prospection avec le compte source
+            const tagValue = account.source_account ? `Scrap Instagram @${account.source_account}` : 'Scrap Instagram';
+            addOrUpdateTag(db, leadId, 'Prospection', tagValue);
 
             markAccount.run(leadId, account.id);
             created++;

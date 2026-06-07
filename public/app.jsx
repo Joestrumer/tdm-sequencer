@@ -7373,8 +7373,22 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                                         setIgContactsOpen(null);
                                       } else {
                                         const rect = e.currentTarget.getBoundingClientRect();
+                                        const popupWidth = 320;
+                                        const popupHeight = 280;
+                                        let top = rect.bottom + 4;
+                                        let left = rect.left;
+                                        // Empêcher le popup de sortir à droite
+                                        if (left + popupWidth > window.innerWidth - 16) {
+                                          left = window.innerWidth - popupWidth - 16;
+                                        }
+                                        // Empêcher le popup de sortir en bas — l'afficher au-dessus si nécessaire
+                                        if (top + popupHeight > window.innerHeight - 16) {
+                                          top = rect.top - popupHeight - 4;
+                                        }
+                                        // Garder visible à gauche
+                                        if (left < 16) left = 16;
                                         setIgContactsOpen(account.id);
-                                        setIgContactsPos({ top: rect.bottom + 4, left: rect.left });
+                                        setIgContactsPos({ top, left });
                                       }
                                     }}
                                     className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer"
