@@ -4365,6 +4365,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [selectedIgAccounts, setSelectedIgAccounts] = useState(new Set());
   const [igConfigured, setIgConfigured] = useState(false);
   const [showIgConfig, setShowIgConfig] = useState(false);
+  const [showIgGuide, setShowIgGuide] = useState(false);
   const [igSessionId, setIgSessionId] = useState('');
   const [igCsrfToken, setIgCsrfToken] = useState('');
   const [igTestResult, setIgTestResult] = useState(null);
@@ -6974,6 +6975,95 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 ⚙️
               </button>
             </div>
+          </div>
+
+          {/* Guide stratégie */}
+          <div className="mb-6">
+            <button
+              onClick={() => setShowIgGuide(!showIgGuide)}
+              className="flex items-center gap-2 text-sm text-purple-600 hover:text-purple-800 font-medium"
+            >
+              <span>{showIgGuide ? '▼' : '▶'}</span>
+              <span>Comment trouver des comptes hub a scraper ?</span>
+            </button>
+            {showIgGuide && (
+              <div className="mt-3 bg-purple-50 border border-purple-200 rounded-xl p-5 text-sm text-slate-700 space-y-4">
+                <div>
+                  <p className="font-semibold text-purple-800 mb-2">Principe</p>
+                  <p>Le systeme scrape la liste <strong>"following"</strong> d'un compte Instagram. La strategie est de trouver des <strong>comptes "hub"</strong> qui suivent beaucoup de salles de sport, hotels, ou autres cibles.</p>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-purple-800 mb-2">Criteres d'un bon compte hub</p>
+                  <ul className="list-disc list-inside space-y-1 ml-2">
+                    <li><strong>Profil business/pro</strong> (pas un particulier)</li>
+                    <li><strong>300-1000+ abonnements</strong> (following) — c'est ca qui sera scrape</li>
+                    <li><strong>Dans le secteur</strong> cible (fournisseur, logiciel, media, federation)</li>
+                    <li>Pas un influenceur (ils suivent n'importe qui)</li>
+                  </ul>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-purple-800 mb-2">Exemples de hubs — Salles de sport</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Equipementiers</span>
+                      <p className="text-slate-500 mt-0.5">@technogym, @lifefitness, @matrixfitnessofficial</p>
+                    </div>
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Logiciels de gestion</span>
+                      <p className="text-slate-500 mt-0.5">@resamania, @deciplus_officiel</p>
+                    </div>
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Federations/medias</span>
+                      <p className="text-slate-500 mt-0.5">@europeactive_official, @frenchfitness</p>
+                    </div>
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Fournisseurs sols/amenagement</span>
+                      <p className="text-slate-500 mt-0.5">@gerflorsport, @pavigym</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-purple-800 mb-2">Exemples de hubs — Hotels</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Fournisseurs hoteliers</span>
+                      <p className="text-slate-500 mt-0.5">@groupe_gmc, @laco_beaute, amenities/linge</p>
+                    </div>
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Guides/labels</span>
+                      <p className="text-slate-500 mt-0.5">@relaischateaux, @smallluxuryhotels, @designhotels</p>
+                    </div>
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Tech hoteliere</span>
+                      <p className="text-slate-500 mt-0.5">@amenitiz_official, @mabordy</p>
+                    </div>
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Offices de tourisme</span>
+                      <p className="text-slate-500 mt-0.5">@parisjetaime, @atabordeaux</p>
+                    </div>
+                  </div>
+                </div>
+
+                <div>
+                  <p className="font-semibold text-purple-800 mb-2">Comment trouver ces comptes</p>
+                  <ol className="list-decimal list-inside space-y-1.5 ml-2">
+                    <li><strong>Partir d'une salle/hotel connu</strong> — regardez ses followers, reperer les comptes pro qui suivent 300+ comptes</li>
+                    <li><strong>Google</strong> — <code className="bg-white px-1 rounded text-purple-700">site:instagram.com "equipement fitness"</code> ou <code className="bg-white px-1 rounded text-purple-700">site:instagram.com "hotel supplier"</code></li>
+                    <li><strong>Recherche Instagram</strong> — tapez "equipement musculation" ou "hotellerie luxe" dans l'onglet Comptes</li>
+                    <li><strong>Suggestions IG</strong> — visitez un compte hub connu, Instagram suggere des comptes similaires</li>
+                    <li><strong>Depuis vos resultats</strong> — un compte deja scrape avec de bons resultats ? Regardez qui le suit pour trouver d'autres hubs</li>
+                  </ol>
+                </div>
+
+                <div className="bg-white rounded p-3 border border-purple-100">
+                  <p className="font-semibold text-purple-700 mb-1">Apres le scraping</p>
+                  <p className="text-xs text-slate-600">Utilisez les filtres <strong>Type</strong> (hotel, sport, spa...) et <strong>Pays</strong> pour isoler les leads pertinents. Le systeme classifie automatiquement les comptes par type de business.</p>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Sélecteur de job */}
