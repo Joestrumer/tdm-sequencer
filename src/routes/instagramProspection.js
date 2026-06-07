@@ -400,7 +400,7 @@ module.exports = (db) => {
   // GET /api/instagram/jobs/:id/accounts — Liste paginée + filtres
   router.get('/jobs/:id/accounts', (req, res) => {
     try {
-      const { search, business_type, has_email, has_website, status, limit = 100, offset = 0 } = req.query;
+      const { search, business_type, has_email, has_website, status, country, limit = 100, offset = 0 } = req.query;
 
       let where = 'WHERE job_id = ?';
       const params = [req.params.id];
@@ -429,6 +429,11 @@ module.exports = (db) => {
       if (status) {
         where += ' AND scraping_status = ?';
         params.push(status);
+      }
+
+      if (country) {
+        where += ' AND country = ?';
+        params.push(country);
       }
 
       const total = db.prepare(`SELECT COUNT(*) as count FROM instagram_scraped_accounts ${where}`).get(...params).count;
@@ -635,7 +640,7 @@ module.exports = (db) => {
   // GET /api/instagram/jobs/:id/export — Export CSV
   router.get('/jobs/:id/export', (req, res) => {
     try {
-      const { business_type, has_email } = req.query;
+      const { business_type, has_email, country } = req.query;
 
       let where = 'WHERE job_id = ?';
       const params = [req.params.id];
@@ -647,12 +652,16 @@ module.exports = (db) => {
       if (has_email === 'true') {
         where += ' AND best_email IS NOT NULL';
       }
+      if (country) {
+        where += ' AND country = ?';
+        params.push(country);
+      }
 
       const accounts = db.prepare(`
         SELECT instagram_username, full_name, bio, category, business_type,
                external_url, best_email, email_source, email_confidence,
                business_email, is_business, follower_count, following_count,
-               scraping_status, existing_lead_email
+               scraping_status, existing_lead_email, country
         FROM instagram_scraped_accounts
         ${where}
         ORDER BY full_name ASC
@@ -660,7 +669,7 @@ module.exports = (db) => {
 
       // Générer CSV
       const headers = [
-        'Username', 'Nom complet', 'Bio', 'Catégorie', 'Type business',
+        'Username', 'Nom complet', 'Bio', 'Catégorie', 'Type business', 'Pays',
         'Site web', 'Email', 'Source email', 'Confiance', 'Email business IG',
         'Compte business', 'Followers', 'Following', 'Statut', 'Doublon lead'
       ];
@@ -671,6 +680,7 @@ module.exports = (db) => {
         (a.bio || '').replace(/[\n\r,]/g, ' ').slice(0, 200),
         a.category || '',
         a.business_type || '',
+        a.country || '',
         a.external_url || '',
         a.best_email || '',
         a.email_source || '',

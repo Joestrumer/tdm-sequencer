@@ -1110,6 +1110,8 @@ const migrations = [
   // Notifications retour + échec envoyées
   'ALTER TABLE shipments ADD COLUMN returned_notified_at TEXT',
   'ALTER TABLE shipments ADD COLUMN failed_notified_at TEXT',
+  // Instagram — Pays détecté
+  'ALTER TABLE instagram_scraped_accounts ADD COLUMN country TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

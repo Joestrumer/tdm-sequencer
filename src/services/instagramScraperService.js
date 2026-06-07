@@ -39,6 +39,75 @@ const BUSINESS_KEYWORDS = {
   event: ['événement', 'event', 'mariage', 'wedding', 'réception', 'séminaire', 'traiteur'],
 };
 
+// ─── Mapping catégories Instagram → type interne ────────────────────────────
+
+const IG_CATEGORY_MAP = {
+  // Hotel
+  'hotel': 'hotel', 'hotel & lodging': 'hotel', 'resort': 'hotel',
+  'bed and breakfast': 'hotel', 'lodge': 'hotel', 'hostel': 'hotel',
+  'vacation home rental': 'hotel', 'inn': 'hotel',
+  // Restaurant
+  'restaurant': 'restaurant', 'fast food restaurant': 'restaurant',
+  'café': 'restaurant', 'coffee shop': 'restaurant', 'bakery': 'restaurant',
+  'food & beverage': 'restaurant', 'caterer': 'restaurant',
+  // Spa
+  'spa': 'spa', 'beauty salon': 'spa', 'beauty, cosmetic & personal care': 'spa',
+  'massage service': 'spa', 'health/beauty': 'spa',
+  // Bar
+  'bar': 'bar', 'lounge': 'bar', 'wine bar': 'bar', 'pub': 'bar',
+  'nightclub': 'bar', 'wine/spirits': 'bar',
+  // Event
+  'event planner': 'event', 'wedding planning service': 'event',
+  'party entertainment service': 'event',
+  // Hospitality
+  'travel agency': 'hospitality', 'tour guide': 'hospitality',
+  'travel company': 'hospitality', 'tourist information center': 'hospitality',
+  // Retail
+  'shopping & retail': 'retail', 'clothing store': 'retail',
+  'boutique store': 'retail', 'jewelry/watches': 'retail',
+};
+
+// ─── Détection pays ─────────────────────────────────────────────────────────
+
+const TLD_COUNTRY_MAP = {
+  '.co.uk': 'Royaume-Uni',
+  '.fr': 'France', '.es': 'Espagne', '.it': 'Italie', '.de': 'Allemagne',
+  '.pt': 'Portugal', '.uk': 'Royaume-Uni',
+  '.be': 'Belgique', '.ch': 'Suisse', '.nl': 'Pays-Bas', '.at': 'Autriche',
+  '.gr': 'Grèce', '.hr': 'Croatie', '.ma': 'Maroc', '.tn': 'Tunisie',
+  '.sn': 'Sénégal', '.re': 'La Réunion', '.mu': 'Maurice', '.mg': 'Madagascar',
+  '.mc': 'Monaco', '.lu': 'Luxembourg', '.ie': 'Irlande', '.pl': 'Pologne',
+  '.cz': 'Tchéquie', '.se': 'Suède', '.no': 'Norvège', '.dk': 'Danemark',
+  '.fi': 'Finlande', '.ro': 'Roumanie', '.bg': 'Bulgarie', '.tr': 'Turquie',
+  '.jp': 'Japon', '.cn': 'Chine', '.br': 'Brésil', '.mx': 'Mexique',
+  '.ar': 'Argentine', '.us': 'États-Unis', '.ca': 'Canada', '.au': 'Australie',
+};
+
+const BIO_COUNTRY_PATTERNS = [
+  { pattern: /\bfrance\b/i, country: 'France' },
+  { pattern: /\bespagne\b|\bspain\b|\bespaña\b/i, country: 'Espagne' },
+  { pattern: /\bitalie\b|\bitaly\b|\bitalia\b/i, country: 'Italie' },
+  { pattern: /\bmaroc\b|\bmorocco\b/i, country: 'Maroc' },
+  { pattern: /\bportugal\b/i, country: 'Portugal' },
+  { pattern: /\bsuisse\b|\bswitzerland\b/i, country: 'Suisse' },
+  { pattern: /\bbelgique\b|\bbelgium\b/i, country: 'Belgique' },
+  { pattern: /\bgrèce\b|\bgreece\b/i, country: 'Grèce' },
+  { pattern: /\bparis\b/i, country: 'France' },
+  { pattern: /\bmarseille\b|\blyon\b|\bbordeaux\b|\bnice\b|\btoulouse\b|\bstrasbourg\b|\bnantes\b|\bmontpellier\b|\blille\b/i, country: 'France' },
+  { pattern: /\bbarcelona?\b|\bmadrid\b|\bsevilla?\b|\bmalaga\b|\bibiza\b|\bmajorca\b|\bmallorca\b/i, country: 'Espagne' },
+  { pattern: /\broma?\b|\bmilano?\b|\bfirenze\b|\bvenezia?\b|\bnaples?\b|\bnapoli\b/i, country: 'Italie' },
+  { pattern: /\blondon\b|\bmanchester\b|\bedinburgh\b/i, country: 'Royaume-Uni' },
+  { pattern: /\bmarrakech\b|\bcasablanca\b|\bfès\b|\btanger\b|\bessaouira\b|\bagadir\b/i, country: 'Maroc' },
+  { pattern: /\blisbonne?\b|\blisbon\b|\bporto\b|\bfaro\b|\balgarve\b/i, country: 'Portugal' },
+  { pattern: /\bgenève\b|\bgeneva\b|\bzürich\b|\bzurich\b|\blausanne\b/i, country: 'Suisse' },
+  { pattern: /\bbruxelles\b|\bbrussels\b/i, country: 'Belgique' },
+  { pattern: /\bathens?\b|\bathènes?\b|\bsantorini\b|\bmykonos\b|\bcrète\b|\bcrete\b/i, country: 'Grèce' },
+  { pattern: /\bdubrovnik\b|\bsplit\b|\bzagreb\b/i, country: 'Croatie' },
+  { pattern: /\bbali\b/i, country: 'Indonésie' },
+  { pattern: /\bmaldives\b/i, country: 'Maldives' },
+  { pattern: /\bdubai\b|\babu dhabi\b/i, country: 'Émirats arabes unis' },
+];
+
 // ─── État interne des jobs actifs ───────────────────────────────────────────
 
 const activeJobs = new Map(); // jobId → { paused: boolean, cancelled: boolean }
@@ -404,8 +473,20 @@ async function fetchFollowingGraphQL(userId, credentials, maxAccounts) {
 
 /**
  * Classifie le type business d'un compte depuis sa bio et catégorie IG
+ * Priorité : catégorie IG directe → fallback mots-clés bio
  */
 function classifyBusiness(bio, category) {
+  // 1. Priorité : catégorie IG directe (plus fiable)
+  if (category) {
+    const normalized = category.toLowerCase().trim();
+    for (const [igCat, type] of Object.entries(IG_CATEGORY_MAP)) {
+      if (normalized.includes(igCat) || igCat.includes(normalized)) {
+        return type;
+      }
+    }
+  }
+
+  // 2. Fallback : analyse mots-clés bio
   const text = `${bio || ''} ${category || ''}`.toLowerCase();
   const matches = {};
 
@@ -423,6 +504,31 @@ function classifyBusiness(bio, category) {
 
   // Retourner le type avec le plus de matches
   return Object.entries(matches).sort((a, b) => b[1] - a[1])[0][0];
+}
+
+/**
+ * Détecte le pays depuis le TLD du site web ou des patterns dans la bio
+ */
+function detectCountry(externalUrl, bio) {
+  // 1. Priorité : TLD du site web
+  if (externalUrl) {
+    try {
+      const hostname = new URL(externalUrl.startsWith('http') ? externalUrl : 'https://' + externalUrl).hostname.toLowerCase();
+      // Vérifier TLD composés d'abord (.co.uk) puis simples
+      for (const [tld, country] of Object.entries(TLD_COUNTRY_MAP).sort((a, b) => b[0].length - a[0].length)) {
+        if (hostname.endsWith(tld)) return country;
+      }
+    } catch { /* URL invalide */ }
+  }
+
+  // 2. Fallback : patterns dans la bio
+  if (bio) {
+    for (const { pattern, country } of BIO_COUNTRY_PATTERNS) {
+      if (pattern.test(bio)) return country;
+    }
+  }
+
+  return null;
 }
 
 /**
@@ -628,7 +734,7 @@ async function processJob(db, jobId) {
               business_type = ?, bio_keywords = ?,
               best_email = ?, email_source = ?, email_confidence = ?,
               scraped_emails = ?, social_links = ?, linkedin_contacts = ?,
-              existing_lead_email = ?, scraping_status = 'done'
+              existing_lead_email = ?, country = ?, scraping_status = 'done'
           WHERE job_id = ? AND instagram_username = ?
         `).run(
           previousAccount.full_name, previousAccount.bio, previousAccount.website, previousAccount.external_url,
@@ -637,7 +743,7 @@ async function processJob(db, jobId) {
           previousAccount.business_type, previousAccount.bio_keywords,
           previousAccount.best_email, previousAccount.email_source, previousAccount.email_confidence,
           previousAccount.scraped_emails, previousAccount.social_links, previousAccount.linkedin_contacts,
-          previousAccount.existing_lead_email,
+          previousAccount.existing_lead_email, previousAccount.country || detectCountry(previousAccount.external_url, previousAccount.bio),
           jobId, user.username
         );
         if (previousAccount.best_email) emailsFound++;
@@ -664,9 +770,10 @@ async function processJob(db, jobId) {
           continue;
         }
 
-        // Classification business
+        // Classification business + détection pays
         const businessType = classifyBusiness(accountProfile.bio, accountProfile.category);
         const bioKeywords = extractBioKeywords(accountProfile.bio, accountProfile.category);
+        const country = detectCountry(accountProfile.external_url, accountProfile.bio);
 
         // Filtrage par mots-clés si configuré
         if (filterKeywords.length > 0 && !businessType) {
@@ -679,14 +786,14 @@ async function processJob(db, jobId) {
               UPDATE instagram_scraped_accounts
               SET bio = ?, external_url = ?, business_email = ?, category = ?,
                   is_business = ?, is_private = ?, follower_count = ?, following_count = ?,
-                  business_type = ?, bio_keywords = ?,
+                  business_type = ?, bio_keywords = ?, country = ?,
                   scraping_status = 'skipped', scraping_error = 'Ne correspond pas aux filtres'
               WHERE job_id = ? AND instagram_username = ?
             `).run(
               accountProfile.bio, accountProfile.external_url, accountProfile.business_email,
               accountProfile.category, accountProfile.is_business, accountProfile.is_private,
               accountProfile.follower_count, accountProfile.following_count,
-              businessType, JSON.stringify(bioKeywords),
+              businessType, JSON.stringify(bioKeywords), country,
               jobId, user.username
             );
             processed++;
@@ -706,7 +813,7 @@ async function processJob(db, jobId) {
               follower_count = ?, following_count = ?,
               business_type = ?, bio_keywords = ?,
               best_email = ?, email_source = ?, email_confidence = ?,
-              scraping_status = 'done'
+              country = ?, scraping_status = 'done'
           WHERE job_id = ? AND instagram_username = ?
         `).run(
           accountProfile.full_name, accountProfile.bio, accountProfile.external_url, accountProfile.external_url,
@@ -714,7 +821,7 @@ async function processJob(db, jobId) {
           accountProfile.follower_count, accountProfile.following_count,
           businessType, JSON.stringify(bioKeywords),
           bestEmailResult?.email || null, bestEmailResult?.source || null, bestEmailResult?.confidence || null,
-          jobId, user.username
+          country, jobId, user.username
         );
 
         if (bestEmailResult?.email) emailsFound++;
@@ -889,6 +996,7 @@ module.exports = {
   fetchUserProfile,
   fetchFollowingList,
   classifyBusiness,
+  detectCountry,
   extractBioKeywords,
   scrapeAccountWebsite,
   scrapeWebsitesBatch,
