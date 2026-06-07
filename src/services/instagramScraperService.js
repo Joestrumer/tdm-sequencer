@@ -117,7 +117,76 @@ const BIO_COUNTRY_PATTERNS = [
   { pattern: /\bdubai\b|\babu dhabi\b/i, country: 'Émirats arabes unis' },
 ];
 
-// ─── État interne des jobs actifs ───────────────────────────────────────────
+// ─── Mapping city_name (IG business) → pays ─────────────────────────────────
+
+const CITY_COUNTRY_MAP = {
+  // France
+  'paris': 'France', 'marseille': 'France', 'lyon': 'France', 'bordeaux': 'France',
+  'nice': 'France', 'toulouse': 'France', 'strasbourg': 'France', 'nantes': 'France',
+  'montpellier': 'France', 'lille': 'France', 'rennes': 'France', 'grenoble': 'France',
+  'cannes': 'France', 'saint-tropez': 'France', 'biarritz': 'France', 'aix-en-provence': 'France',
+  'avignon': 'France', 'annecy': 'France', 'chamonix': 'France', 'deauville': 'France',
+  'courchevel': 'France', 'megève': 'France', 'saint-malo': 'France', 'antibes': 'France',
+  // Espagne
+  'barcelona': 'Espagne', 'madrid': 'Espagne', 'sevilla': 'Espagne', 'malaga': 'Espagne',
+  'ibiza': 'Espagne', 'mallorca': 'Espagne', 'valencia': 'Espagne', 'marbella': 'Espagne',
+  'granada': 'Espagne', 'bilbao': 'Espagne', 'san sebastián': 'Espagne',
+  // Italie
+  'roma': 'Italie', 'rome': 'Italie', 'milano': 'Italie', 'milan': 'Italie',
+  'firenze': 'Italie', 'florence': 'Italie', 'venezia': 'Italie', 'venice': 'Italie',
+  'napoli': 'Italie', 'naples': 'Italie', 'torino': 'Italie', 'turin': 'Italie',
+  'amalfi': 'Italie', 'positano': 'Italie', 'capri': 'Italie', 'como': 'Italie',
+  // Royaume-Uni
+  'london': 'Royaume-Uni', 'manchester': 'Royaume-Uni', 'edinburgh': 'Royaume-Uni',
+  'birmingham': 'Royaume-Uni', 'liverpool': 'Royaume-Uni', 'bath': 'Royaume-Uni',
+  // Portugal
+  'lisbon': 'Portugal', 'lisboa': 'Portugal', 'porto': 'Portugal', 'faro': 'Portugal',
+  'algarve': 'Portugal', 'cascais': 'Portugal', 'sintra': 'Portugal',
+  // Allemagne
+  'berlin': 'Allemagne', 'munich': 'Allemagne', 'münchen': 'Allemagne',
+  'hamburg': 'Allemagne', 'frankfurt': 'Allemagne', 'düsseldorf': 'Allemagne',
+  // Suisse
+  'genève': 'Suisse', 'geneva': 'Suisse', 'zürich': 'Suisse', 'zurich': 'Suisse',
+  'lausanne': 'Suisse', 'bern': 'Suisse', 'lucerne': 'Suisse', 'montreux': 'Suisse',
+  'gstaad': 'Suisse', 'zermatt': 'Suisse', 'st. moritz': 'Suisse',
+  // Belgique
+  'bruxelles': 'Belgique', 'brussels': 'Belgique', 'bruges': 'Belgique', 'gand': 'Belgique', 'ghent': 'Belgique',
+  // Pays-Bas
+  'amsterdam': 'Pays-Bas', 'rotterdam': 'Pays-Bas', 'la haye': 'Pays-Bas', 'the hague': 'Pays-Bas',
+  // Grèce
+  'athens': 'Grèce', 'athènes': 'Grèce', 'santorini': 'Grèce', 'mykonos': 'Grèce', 'crete': 'Grèce',
+  // Maroc
+  'marrakech': 'Maroc', 'casablanca': 'Maroc', 'fès': 'Maroc', 'tanger': 'Maroc',
+  'essaouira': 'Maroc', 'agadir': 'Maroc', 'rabat': 'Maroc',
+  // Croatie
+  'dubrovnik': 'Croatie', 'split': 'Croatie', 'zagreb': 'Croatie',
+  // Turquie
+  'istanbul': 'Turquie', 'bodrum': 'Turquie', 'antalya': 'Turquie',
+  // Émirats
+  'dubai': 'Émirats arabes unis', 'abu dhabi': 'Émirats arabes unis',
+  // Autres
+  'new york': 'États-Unis', 'los angeles': 'États-Unis', 'miami': 'États-Unis',
+  'tokyo': 'Japon', 'bali': 'Indonésie', 'bangkok': 'Thaïlande', 'singapour': 'Singapour',
+  'singapore': 'Singapour', 'hong kong': 'Hong Kong', 'sydney': 'Australie',
+  'melbourne': 'Australie', 'montréal': 'Canada', 'toronto': 'Canada',
+};
+
+// ─── Mapping phone country code → pays ─────────────────────────────────────
+
+const PHONE_COUNTRY_CODE_MAP = {
+  '+33': 'France', '+34': 'Espagne', '+39': 'Italie', '+44': 'Royaume-Uni',
+  '+351': 'Portugal', '+49': 'Allemagne', '+41': 'Suisse', '+32': 'Belgique',
+  '+31': 'Pays-Bas', '+30': 'Grèce', '+385': 'Croatie', '+212': 'Maroc',
+  '+216': 'Tunisie', '+221': 'Sénégal', '+377': 'Monaco', '+352': 'Luxembourg',
+  '+353': 'Irlande', '+48': 'Pologne', '+420': 'Tchéquie', '+46': 'Suède',
+  '+47': 'Norvège', '+45': 'Danemark', '+358': 'Finlande', '+40': 'Roumanie',
+  '+359': 'Bulgarie', '+90': 'Turquie', '+81': 'Japon', '+86': 'Chine',
+  '+55': 'Brésil', '+52': 'Mexique', '+54': 'Argentine', '+1': 'États-Unis',
+  '+61': 'Australie', '+971': 'Émirats arabes unis', '+66': 'Thaïlande',
+  '+62': 'Indonésie', '+65': 'Singapour',
+};
+
+// ─── État interne des jobs actifs ───────────────────────────────────────��───
 
 const activeJobs = new Map(); // jobId → { paused: boolean, cancelled: boolean }
 
@@ -358,6 +427,8 @@ async function fetchUserProfile(username, credentials) {
         is_private: user.is_private ? 1 : 0,
         follower_count: user.follower_count,
         following_count: user.following_count,
+        city_name: user.city_name || user.address_street?.split(',')?.pop()?.trim() || null,
+        phone_country_code: user.public_phone_country_code ? `+${user.public_phone_country_code}` : null,
       };
     }
   } catch (err) {
@@ -382,6 +453,8 @@ async function fetchUserProfile(username, credentials) {
     is_private: user.is_private ? 1 : 0,
     follower_count: user.edge_followed_by?.count || user.follower_count,
     following_count: user.edge_follow?.count || user.following_count,
+    city_name: user.city_name || user.business_address_json?.city_name || null,
+    phone_country_code: user.public_phone_country_code ? `+${user.public_phone_country_code}` : null,
   };
 }
 
@@ -516,10 +589,33 @@ function classifyBusiness(bio, category) {
 }
 
 /**
- * Détecte le pays depuis le TLD du site web ou des patterns dans la bio
+ * Détecte le pays depuis plusieurs sources (par priorité décroissante) :
+ * 1. city_name (champ business IG)
+ * 2. phone_country_code (champ business IG)
+ * 3. TLD du site web
+ * 4. Patterns dans la bio
  */
-function detectCountry(externalUrl, bio) {
-  // 1. Priorité : TLD du site web
+function detectCountry(externalUrl, bio, cityName, phoneCountryCode) {
+  // 1. Priorité : city_name depuis le profil business IG
+  if (cityName) {
+    const normalized = cityName.toLowerCase().trim();
+    if (CITY_COUNTRY_MAP[normalized]) return CITY_COUNTRY_MAP[normalized];
+    // Essayer une correspondance partielle (ex: "Paris, France" → chercher "paris")
+    for (const [city, country] of Object.entries(CITY_COUNTRY_MAP)) {
+      if (normalized.includes(city)) return country;
+    }
+  }
+
+  // 2. Phone country code
+  if (phoneCountryCode) {
+    const code = phoneCountryCode.startsWith('+') ? phoneCountryCode : `+${phoneCountryCode}`;
+    // Trier par longueur décroissante pour matcher +351 avant +3
+    for (const [prefix, country] of Object.entries(PHONE_COUNTRY_CODE_MAP).sort((a, b) => b[0].length - a[0].length)) {
+      if (code.startsWith(prefix)) return country;
+    }
+  }
+
+  // 3. TLD du site web
   if (externalUrl) {
     try {
       const hostname = new URL(externalUrl.startsWith('http') ? externalUrl : 'https://' + externalUrl).hostname.toLowerCase();
@@ -530,7 +626,7 @@ function detectCountry(externalUrl, bio) {
     } catch { /* URL invalide */ }
   }
 
-  // 2. Fallback : patterns dans la bio
+  // 4. Fallback : patterns dans la bio
   if (bio) {
     for (const { pattern, country } of BIO_COUNTRY_PATTERNS) {
       if (pattern.test(bio)) return country;
@@ -752,7 +848,7 @@ async function processJob(db, jobId) {
           previousAccount.business_type, previousAccount.bio_keywords,
           previousAccount.best_email, previousAccount.email_source, previousAccount.email_confidence,
           previousAccount.scraped_emails, previousAccount.social_links, previousAccount.linkedin_contacts,
-          previousAccount.existing_lead_email, previousAccount.country || detectCountry(previousAccount.external_url, previousAccount.bio),
+          previousAccount.existing_lead_email, previousAccount.country || detectCountry(previousAccount.external_url, previousAccount.bio, previousAccount.city_name, previousAccount.phone_country_code),
           jobId, user.username
         );
         if (previousAccount.best_email) emailsFound++;
@@ -782,7 +878,7 @@ async function processJob(db, jobId) {
         // Classification business + détection pays
         const businessType = classifyBusiness(accountProfile.bio, accountProfile.category);
         const bioKeywords = extractBioKeywords(accountProfile.bio, accountProfile.category);
-        const country = detectCountry(accountProfile.external_url, accountProfile.bio);
+        const country = detectCountry(accountProfile.external_url, accountProfile.bio, accountProfile.city_name, accountProfile.phone_country_code);
 
         // Filtrage par mots-clés si configuré
         if (filterKeywords.length > 0 && !businessType) {
@@ -795,7 +891,7 @@ async function processJob(db, jobId) {
               UPDATE instagram_scraped_accounts
               SET bio = ?, external_url = ?, business_email = ?, category = ?,
                   is_business = ?, is_private = ?, follower_count = ?, following_count = ?,
-                  business_type = ?, bio_keywords = ?, country = ?,
+                  business_type = ?, bio_keywords = ?, country = ?, city_name = ?, phone_country_code = ?,
                   scraping_status = 'skipped', scraping_error = 'Ne correspond pas aux filtres'
               WHERE job_id = ? AND instagram_username = ?
             `).run(
@@ -803,6 +899,7 @@ async function processJob(db, jobId) {
               accountProfile.category, accountProfile.is_business, accountProfile.is_private,
               accountProfile.follower_count, accountProfile.following_count,
               businessType, JSON.stringify(bioKeywords), country,
+              accountProfile.city_name || null, accountProfile.phone_country_code || null,
               jobId, user.username
             );
             processed++;
@@ -822,7 +919,7 @@ async function processJob(db, jobId) {
               follower_count = ?, following_count = ?,
               business_type = ?, bio_keywords = ?,
               best_email = ?, email_source = ?, email_confidence = ?,
-              country = ?, scraping_status = 'done'
+              country = ?, city_name = ?, phone_country_code = ?, scraping_status = 'done'
           WHERE job_id = ? AND instagram_username = ?
         `).run(
           accountProfile.full_name, accountProfile.bio, accountProfile.external_url, accountProfile.external_url,
@@ -830,7 +927,8 @@ async function processJob(db, jobId) {
           accountProfile.follower_count, accountProfile.following_count,
           businessType, JSON.stringify(bioKeywords),
           bestEmailResult?.email || null, bestEmailResult?.source || null, bestEmailResult?.confidence || null,
-          country, jobId, user.username
+          country, accountProfile.city_name || null, accountProfile.phone_country_code || null,
+          jobId, user.username
         );
 
         if (bestEmailResult?.email) emailsFound++;

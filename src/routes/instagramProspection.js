@@ -10,21 +10,22 @@ const router = express.Router();
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
 const igService = require('../services/instagramScraperService');
+const { addOrUpdateTag } = require('../utils/leadTags');
 
 module.exports = (db) => {
 
   // ─── Backfill pays + re-classification pour comptes existants ─────────────
   try {
     const toBackfill = db.prepare(`
-      SELECT id, external_url, bio, category, business_type
+      SELECT id, external_url, bio, category, business_type, city_name, phone_country_code
       FROM instagram_scraped_accounts
-      WHERE country IS NULL AND (external_url IS NOT NULL OR bio IS NOT NULL)
+      WHERE country IS NULL AND (external_url IS NOT NULL OR bio IS NOT NULL OR city_name IS NOT NULL OR phone_country_code IS NOT NULL)
     `).all();
     if (toBackfill.length > 0) {
       const updateStmt = db.prepare('UPDATE instagram_scraped_accounts SET country = ?, business_type = COALESCE(?, business_type) WHERE id = ?');
       let updated = 0;
       for (const a of toBackfill) {
-        const country = igService.detectCountry(a.external_url, a.bio);
+        const country = igService.detectCountry(a.external_url, a.bio, a.city_name, a.phone_country_code);
         const newType = igService.classifyBusiness(a.bio, a.category);
         if (country || (newType && newType !== a.business_type)) {
           updateStmt.run(country, newType, a.id);
@@ -424,7 +425,7 @@ module.exports = (db) => {
   // GET /api/instagram/jobs/:id/accounts — Liste paginée + filtres
   router.get('/jobs/:id/accounts', (req, res) => {
     try {
-      const { search, business_type, has_email, has_website, status, country, limit = 100, offset = 0 } = req.query;
+      const { search, business_type, has_email, has_website, status, country, has_contacts, sort_column, sort_direction, limit = 100, offset = 0 } = req.query;
 
       let where = 'WHERE job_id = ?';
       const params = [req.params.id];
@@ -460,15 +461,30 @@ module.exports = (db) => {
         params.push(country);
       }
 
+      if (has_contacts === 'true') {
+        where += " AND linkedin_contacts IS NOT NULL AND linkedin_contacts != '[]'";
+      } else if (has_contacts === 'false') {
+        where += " AND (linkedin_contacts IS NULL OR linkedin_contacts = '[]')";
+      }
+
       const total = db.prepare(`SELECT COUNT(*) as count FROM instagram_scraped_accounts ${where}`).get(...params).count;
+
+      // Tri dynamique avec whitelist de colonnes autorisées
+      const SORTABLE_COLUMNS = ['full_name', 'instagram_username', 'business_type', 'country', 'best_email', 'follower_count', 'following_count', 'scraping_status', 'created_at', 'city_name'];
+      let orderClause = `ORDER BY
+          CASE WHEN best_email IS NOT NULL THEN 0 ELSE 1 END,
+          CASE WHEN business_type IS NOT NULL THEN 0 ELSE 1 END,
+          full_name ASC`;
+
+      if (sort_column && SORTABLE_COLUMNS.includes(sort_column)) {
+        const dir = sort_direction === 'desc' ? 'DESC' : 'ASC';
+        orderClause = `ORDER BY ${sort_column} ${dir} NULLS LAST`;
+      }
 
       const accounts = db.prepare(`
         SELECT * FROM instagram_scraped_accounts
         ${where}
-        ORDER BY
-          CASE WHEN best_email IS NOT NULL THEN 0 ELSE 1 END,
-          CASE WHEN business_type IS NOT NULL THEN 0 ELSE 1 END,
-          full_name ASC
+        ${orderClause}
         LIMIT ? OFFSET ?
       `).all(...params, parseInt(limit), parseInt(offset));
 
@@ -637,6 +653,9 @@ module.exports = (db) => {
               'Scrap Instagram',
               'Nouveau'
             );
+
+            // Ajouter le tag de prospection
+            addOrUpdateTag(db, leadId, 'Prospection', 'Scrap Instagram');
 
             markAccount.run(leadId, account.id);
             created++;

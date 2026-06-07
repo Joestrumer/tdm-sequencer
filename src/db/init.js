@@ -1112,6 +1112,9 @@ const migrations = [
   'ALTER TABLE shipments ADD COLUMN failed_notified_at TEXT',
   // Instagram — Pays détecté
   'ALTER TABLE instagram_scraped_accounts ADD COLUMN country TEXT',
+  // Instagram — Champs business pour détection pays améliorée
+  'ALTER TABLE instagram_scraped_accounts ADD COLUMN city_name TEXT',
+  'ALTER TABLE instagram_scraped_accounts ADD COLUMN phone_country_code TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

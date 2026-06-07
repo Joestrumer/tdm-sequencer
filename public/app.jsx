@@ -4359,7 +4359,9 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [igStats, setIgStats] = useState(null);
   const [igUrl, setIgUrl] = useState('');
   const [igOptions, setIgOptions] = useState({ max_accounts: 500, skip_private: true, filter_keywords: [] });
-  const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '', country: '' });
+  const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '', country: '', status: '', has_contacts: '' });
+  const [igSort, setIgSort] = useState({ column: '', direction: 'asc' });
+  const [igColWidths, setIgColWidths] = useState({});
   const [selectedIgAccounts, setSelectedIgAccounts] = useState(new Set());
   const [igConfigured, setIgConfigured] = useState(false);
   const [showIgConfig, setShowIgConfig] = useState(false);
@@ -4369,6 +4371,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [igTesting, setIgTesting] = useState(false);
   const [igLaunching, setIgLaunching] = useState(false);
   const [igContactsOpen, setIgContactsOpen] = useState(null); // account id dont on affiche les contacts
+  const [igContactsPos, setIgContactsPos] = useState({ top: 0, left: 0 });
   const igPollingRef = useRef(null);
 
   // Memo pour parser sourceInfo.colonnes (évite parsing répété à chaque rendu)
@@ -4411,7 +4414,12 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const chargerIgAccounts = async (jobId) => {
     if (!jobId) return;
     try {
-      const params = new URLSearchParams({ ...igFilters, limit: 200, offset: 0 });
+      const queryObj = { ...igFilters, limit: 200, offset: 0 };
+      if (igSort.column) {
+        queryObj.sort_column = igSort.column;
+        queryObj.sort_direction = igSort.direction;
+      }
+      const params = new URLSearchParams(queryObj);
       Object.keys(params).forEach(key => params.get(key) === '' && params.delete(key));
       const res = await api.get(`/instagram/jobs/${jobId}/accounts?${params}`);
       setIgAccounts(res.accounts || []);
@@ -4586,7 +4594,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     if (activeTab === 'social' && igActiveJob) {
       chargerIgAccounts(igActiveJob);
     }
-  }, [igFilters]);
+  }, [igFilters, igSort]);
 
   // Auto-sélectionner le premier job après chargement si aucun n'est actif
   useEffect(() => {
@@ -7112,6 +7120,26 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                   <option key={c} value={c}>{c}</option>
                 ))}
               </select>
+              <select
+                value={igFilters.status}
+                onChange={e => setIgFilters(f => ({ ...f, status: e.target.value }))}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">Tous statuts</option>
+                <option value="done">Done</option>
+                <option value="error">Error</option>
+                <option value="skipped">Skipped</option>
+                <option value="scraping_website">Scraping...</option>
+              </select>
+              <select
+                value={igFilters.has_contacts}
+                onChange={e => setIgFilters(f => ({ ...f, has_contacts: e.target.value }))}
+                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+              >
+                <option value="">Contacts</option>
+                <option value="true">Avec contacts</option>
+                <option value="false">Sans contacts</option>
+              </select>
 
               {selectedIgAccounts.size > 0 && (
                 <div className="flex items-center gap-2 ml-auto">
@@ -7144,10 +7172,10 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           {igActiveJob && igAccounts.length > 0 && (
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full">
+                <table className="w-full" style={Object.keys(igColWidths).length > 0 ? { tableLayout: 'fixed' } : undefined}>
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
-                      <th className="w-8 px-4 py-3">
+                      <th className="w-8 px-4 py-3" style={{ width: igColWidths['_check'] || 40 }}>
                         <input
                           type="checkbox"
                           checked={igAccounts.length > 0 && igAccounts.every(a => selectedIgAccounts.has(a.id))}
@@ -7171,14 +7199,62 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                           className="w-4 h-4"
                         />
                       </th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Compte</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Bio</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Type</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Pays</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Site web</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Email</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Statut</th>
-                      <th className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase">Actions</th>
+                      {[
+                        { key: 'instagram_username', label: 'Compte' },
+                        { key: 'bio', label: 'Bio', sortable: false },
+                        { key: 'business_type', label: 'Type' },
+                        { key: 'country', label: 'Pays' },
+                        { key: 'external_url', label: 'Site web', sortable: false },
+                        { key: 'best_email', label: 'Email' },
+                        { key: 'scraping_status', label: 'Statut' },
+                        { key: '_actions', label: 'Actions', sortable: false },
+                      ].map(col => (
+                        <th
+                          key={col.key}
+                          className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase select-none relative"
+                          style={{ width: igColWidths[col.key] || 'auto' }}
+                        >
+                          <div
+                            className={`flex items-center gap-1 ${col.sortable !== false ? 'cursor-pointer hover:text-slate-900' : ''}`}
+                            onClick={() => {
+                              if (col.sortable === false) return;
+                              setIgSort(prev => {
+                                if (prev.column === col.key) {
+                                  if (prev.direction === 'asc') return { column: col.key, direction: 'desc' };
+                                  return { column: '', direction: 'asc' };
+                                }
+                                return { column: col.key, direction: 'asc' };
+                              });
+                            }}
+                          >
+                            <span>{col.label}</span>
+                            {col.sortable !== false && igSort.column === col.key && (
+                              <span className="text-purple-600">{igSort.direction === 'asc' ? '▲' : '▼'}</span>
+                            )}
+                          </div>
+                          {col.key !== '_actions' && (
+                            <div
+                              className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-purple-300 active:bg-purple-500"
+                              onMouseDown={e => {
+                                e.preventDefault();
+                                const startX = e.clientX;
+                                const th = e.target.parentElement;
+                                const startWidth = th.offsetWidth;
+                                const onMove = ev => {
+                                  const newWidth = Math.max(50, startWidth + ev.clientX - startX);
+                                  setIgColWidths(prev => ({ ...prev, [col.key]: newWidth }));
+                                };
+                                const onUp = () => {
+                                  document.removeEventListener('mousemove', onMove);
+                                  document.removeEventListener('mouseup', onUp);
+                                };
+                                document.addEventListener('mousemove', onMove);
+                                document.addEventListener('mouseup', onUp);
+                              }}
+                            />
+                          )}
+                        </th>
+                      ))}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
@@ -7290,38 +7366,22 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                               const contacts = JSON.parse(account.linkedin_contacts);
                               if (contacts.length === 0) return null;
                               return (
-                                <div className="relative inline-block">
+                                <span className="inline-block">
                                   <button
-                                    onClick={() => setIgContactsOpen(igContactsOpen === account.id ? null : account.id)}
+                                    onClick={(e) => {
+                                      if (igContactsOpen === account.id) {
+                                        setIgContactsOpen(null);
+                                      } else {
+                                        const rect = e.currentTarget.getBoundingClientRect();
+                                        setIgContactsOpen(account.id);
+                                        setIgContactsPos({ top: rect.bottom + 4, left: rect.left });
+                                      }
+                                    }}
                                     className="ml-1 px-1.5 py-0.5 rounded text-[10px] font-medium bg-amber-100 text-amber-700 hover:bg-amber-200 cursor-pointer"
                                   >
                                     {contacts.length} contact{contacts.length > 1 ? 's' : ''}
                                   </button>
-                                  {igContactsOpen === account.id && (
-                                    <div className="absolute z-50 top-full left-0 mt-1 w-72 bg-white border border-slate-200 rounded-lg shadow-xl p-3">
-                                      <div className="flex items-center justify-between mb-2">
-                                        <span className="text-xs font-semibold text-slate-700">Contacts LinkedIn</span>
-                                        <button onClick={() => setIgContactsOpen(null)} className="text-slate-400 hover:text-slate-600 text-sm">×</button>
-                                      </div>
-                                      <div className="space-y-2 max-h-48 overflow-y-auto">
-                                        {contacts.map((c, i) => (
-                                          <div key={i} className="flex flex-col gap-0.5 p-2 bg-slate-50 rounded">
-                                            <div className="flex items-center justify-between">
-                                              <span className="text-xs font-medium text-slate-800">{c.nom_complet}</span>
-                                              {c.pertinence === 'haute' && <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700">haute</span>}
-                                            </div>
-                                            {c.fonction && <span className="text-[10px] text-slate-500">{c.fonction}</span>}
-                                            {c.linkedin_url && (
-                                              <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 hover:text-blue-800 truncate">
-                                                {c.linkedin_url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 40)}
-                                              </a>
-                                            )}
-                                          </div>
-                                        ))}
-                                      </div>
-                                    </div>
-                                  )}
-                                </div>
+                                </span>
                               );
                             } catch { return null; }
                           })()}
@@ -7364,6 +7424,52 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
               )}
             </div>
           )}
+
+          {/* Popup contacts LinkedIn (fixed, hors du flux table) */}
+          {igContactsOpen && (() => {
+            const account = igAccounts.find(a => a.id === igContactsOpen);
+            if (!account?.linkedin_contacts) return null;
+            try {
+              const contacts = JSON.parse(account.linkedin_contacts);
+              if (contacts.length === 0) return null;
+              return (
+                <>
+                  <div className="fixed inset-0 z-[9998]" onClick={() => setIgContactsOpen(null)} />
+                  <div
+                    className="fixed z-[9999] w-80 bg-white border border-slate-200 rounded-lg shadow-2xl p-3"
+                    style={{ top: igContactsPos.top, left: igContactsPos.left }}
+                  >
+                    <div className="flex items-center justify-between mb-2">
+                      <span className="text-xs font-semibold text-slate-700">Contacts LinkedIn</span>
+                      <button onClick={() => setIgContactsOpen(null)} className="text-slate-400 hover:text-slate-600 text-sm">×</button>
+                    </div>
+                    <div className="space-y-2 max-h-56 overflow-y-auto">
+                      {contacts.map((c, i) => (
+                        <div key={i} className="flex flex-col gap-0.5 p-2 bg-slate-50 rounded hover:bg-slate-100 cursor-pointer transition-colors">
+                          <div className="flex items-center justify-between">
+                            {c.linkedin_url ? (
+                              <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-xs font-medium text-blue-700 hover:text-blue-900 hover:underline">
+                                {c.nom_complet}
+                              </a>
+                            ) : (
+                              <span className="text-xs font-medium text-slate-800">{c.nom_complet}</span>
+                            )}
+                            {c.pertinence === 'haute' && <span className="text-[9px] px-1 py-0.5 rounded bg-emerald-100 text-emerald-700">haute</span>}
+                          </div>
+                          {c.fonction && <span className="text-[10px] text-slate-500">{c.fonction}</span>}
+                          {c.linkedin_url && (
+                            <a href={c.linkedin_url} target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-600 hover:text-blue-800 truncate">
+                              {c.linkedin_url.replace(/^https?:\/\/(www\.)?/, '').slice(0, 45)}
+                            </a>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                </>
+              );
+            } catch { return null; }
+          })()}
 
           {/* Message vide */}
           {igActiveJob && igAccounts.length === 0 && !igJobs.find(j => j.id === igActiveJob && ['processing', 'fetching_profile', 'fetching_following'].includes(j.status)) && (
