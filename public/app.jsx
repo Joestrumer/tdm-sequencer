@@ -7172,7 +7172,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           {igActiveJob && igAccounts.length > 0 && (
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="overflow-x-auto">
-                <table className="w-full" style={Object.keys(igColWidths).length > 0 ? { tableLayout: 'fixed' } : undefined}>
+                <table className="w-full" style={{ tableLayout: 'fixed' }}>
                   <thead className="bg-slate-50 border-b border-slate-200">
                     <tr>
                       <th className="w-8 px-4 py-3" style={{ width: igColWidths['_check'] || 40 }}>
@@ -7200,19 +7200,19 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                         />
                       </th>
                       {[
-                        { key: 'instagram_username', label: 'Compte' },
-                        { key: 'bio', label: 'Bio', sortable: false },
-                        { key: 'business_type', label: 'Type' },
-                        { key: 'country', label: 'Pays' },
-                        { key: 'external_url', label: 'Site web', sortable: false },
-                        { key: 'best_email', label: 'Email' },
-                        { key: 'scraping_status', label: 'Statut' },
-                        { key: '_actions', label: 'Actions', sortable: false },
+                        { key: 'instagram_username', label: 'Compte', defaultWidth: 160 },
+                        { key: 'bio', label: 'Bio', sortable: false, defaultWidth: 200 },
+                        { key: 'business_type', label: 'Type', defaultWidth: 100 },
+                        { key: 'country', label: 'Pays', defaultWidth: 100 },
+                        { key: 'external_url', label: 'Site web', sortable: false, defaultWidth: 150 },
+                        { key: 'best_email', label: 'Email', defaultWidth: 180 },
+                        { key: 'scraping_status', label: 'Statut', defaultWidth: 120 },
+                        { key: '_actions', label: 'Actions', sortable: false, defaultWidth: 70 },
                       ].map(col => (
                         <th
                           key={col.key}
-                          className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase select-none relative"
-                          style={{ width: igColWidths[col.key] || 'auto' }}
+                          className="px-4 py-3 text-left text-xs font-semibold text-slate-600 uppercase select-none relative overflow-hidden"
+                          style={{ width: igColWidths[col.key] || col.defaultWidth }}
                         >
                           <div
                             className={`flex items-center gap-1 ${col.sortable !== false ? 'cursor-pointer hover:text-slate-900' : ''}`}
@@ -7234,24 +7234,33 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                           </div>
                           {col.key !== '_actions' && (
                             <div
-                              className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-purple-300 active:bg-purple-500"
+                              className="absolute right-0 top-0 h-full w-2 cursor-col-resize group z-10"
+                              style={{ marginRight: '-4px' }}
                               onMouseDown={e => {
                                 e.preventDefault();
+                                e.stopPropagation();
                                 const startX = e.clientX;
-                                const th = e.target.parentElement;
+                                const th = e.currentTarget.closest('th');
                                 const startWidth = th.offsetWidth;
+                                document.body.style.cursor = 'col-resize';
+                                document.body.style.userSelect = 'none';
                                 const onMove = ev => {
-                                  const newWidth = Math.max(50, startWidth + ev.clientX - startX);
+                                  ev.preventDefault();
+                                  const newWidth = Math.max(60, startWidth + ev.clientX - startX);
                                   setIgColWidths(prev => ({ ...prev, [col.key]: newWidth }));
                                 };
                                 const onUp = () => {
+                                  document.body.style.cursor = '';
+                                  document.body.style.userSelect = '';
                                   document.removeEventListener('mousemove', onMove);
                                   document.removeEventListener('mouseup', onUp);
                                 };
                                 document.addEventListener('mousemove', onMove);
                                 document.addEventListener('mouseup', onUp);
                               }}
-                            />
+                            >
+                              <div className="w-0.5 h-full ml-auto bg-transparent hover:bg-purple-400 active:bg-purple-600 transition-colors" />
+                            </div>
                           )}
                         </th>
                       ))}
