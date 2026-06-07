@@ -164,6 +164,26 @@ const CITY_COUNTRY_MAP = {
   'istanbul': 'Turquie', 'bodrum': 'Turquie', 'antalya': 'Turquie',
   // Émirats
   'dubai': 'Émirats arabes unis', 'abu dhabi': 'Émirats arabes unis',
+  // Danemark
+  'copenhagen': 'Danemark', 'copenhague': 'Danemark', 'københavn': 'Danemark', 'aarhus': 'Danemark',
+  // Suède
+  'stockholm': 'Suède', 'gothenburg': 'Suède', 'malmö': 'Suède', 'göteborg': 'Suède',
+  // Norvège
+  'oslo': 'Norvège', 'bergen': 'Norvège', 'tromsø': 'Norvège',
+  // Finlande
+  'helsinki': 'Finlande', 'tampere': 'Finlande', 'turku': 'Finlande', 'espoo': 'Finlande',
+  // Autriche
+  'vienna': 'Autriche', 'wien': 'Autriche', 'salzburg': 'Autriche', 'innsbruck': 'Autriche',
+  // Pologne
+  'warsaw': 'Pologne', 'varsovie': 'Pologne', 'krakow': 'Pologne', 'cracovie': 'Pologne', 'gdansk': 'Pologne',
+  // Tchéquie
+  'prague': 'Tchéquie', 'praha': 'Tchéquie', 'brno': 'Tchéquie',
+  // Hongrie
+  'budapest': 'Hongrie',
+  // Irlande
+  'dublin': 'Irlande', 'cork': 'Irlande',
+  // Roumanie
+  'bucharest': 'Roumanie', 'bucarest': 'Roumanie',
   // Autres
   'new york': 'États-Unis', 'los angeles': 'États-Unis', 'miami': 'États-Unis',
   'tokyo': 'Japon', 'bali': 'Indonésie', 'bangkok': 'Thaïlande', 'singapour': 'Singapour',
@@ -186,7 +206,80 @@ const PHONE_COUNTRY_CODE_MAP = {
   '+62': 'Indonésie', '+65': 'Singapour',
 };
 
-// ─── État interne des jobs actifs ───────────────────────────────────────��───
+// ─── Détection link-in-bio (pas de vrais sites web) ─────────────────────────
+
+const LINKINBIO_DOMAINS = [
+  'linkin.bio', 'linktr.ee', 'linktree.com', 'bio.link', 'lnk.bio',
+  'tap.bio', 'campsite.bio', 'beacons.ai', 'stan.store', 'hoo.be',
+  'solo.to', 'bio.site', 'milkshake.app', 'carrd.co', 'withkoji.com',
+  'snipfeed.co', 'linkpop.com', 'flowpage.com', 'direct.me', 'allmylinks.com',
+  'contactinbio.com', 'shorby.com', 'shor.by', 'msha.ke',
+];
+
+/**
+ * Vérifie si une URL est un service link-in-bio (pas un vrai site web)
+ */
+function isLinkInBio(url) {
+  if (!url) return false;
+  try {
+    const hostname = new URL(url.startsWith('http') ? url : 'https://' + url).hostname.toLowerCase();
+    return LINKINBIO_DOMAINS.some(d => hostname === d || hostname.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Tente de résoudre un lien link-in-bio pour trouver le vrai site web.
+ * Scrape la page et extrait le premier lien externe qui n'est pas un réseau social.
+ */
+async function resolveRealWebsite(linkInBioUrl) {
+  try {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 8000);
+    const res = await fetch(linkInBioUrl.startsWith('http') ? linkInBioUrl : 'https://' + linkInBioUrl, {
+      headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36' },
+      signal: controller.signal,
+      redirect: 'follow',
+    });
+    clearTimeout(timeout);
+    if (!res.ok) return null;
+    const html = await res.text();
+
+    // Extraire tous les liens href
+    const hrefRegex = /href=["'](https?:\/\/[^"']+)["']/gi;
+    const links = [];
+    let match;
+    while ((match = hrefRegex.exec(html)) !== null) {
+      links.push(match[1]);
+    }
+
+    // Domaines à ignorer (réseaux sociaux + link-in-bio eux-mêmes)
+    const ignoreDomains = [
+      'instagram.com', 'facebook.com', 'fb.com', 'twitter.com', 'x.com',
+      'tiktok.com', 'youtube.com', 'linkedin.com', 'pinterest.com',
+      'wa.me', 'whatsapp.com', 'telegram.org', 't.me',
+      'open.spotify.com', 'music.apple.com', 'soundcloud.com',
+      'apps.apple.com', 'play.google.com',
+      ...LINKINBIO_DOMAINS,
+    ];
+
+    for (const link of links) {
+      try {
+        const hostname = new URL(link).hostname.toLowerCase();
+        const isIgnored = ignoreDomains.some(d => hostname === d || hostname === 'www.' + d || hostname.endsWith('.' + d));
+        if (!isIgnored && hostname.includes('.')) {
+          return link;
+        }
+      } catch { /* URL invalide */ }
+    }
+    return null;
+  } catch {
+    return null;
+  }
+}
+
+// ─── État interne des jobs actifs ────────────────────────────────────────────
 
 const activeJobs = new Map(); // jobId → { paused: boolean, cancelled: boolean }
 
@@ -613,11 +706,16 @@ const ADDRESS_COUNTRY_NAMES = {
   'monaco': 'Monaco', 'luxembourg': 'Luxembourg', 'ireland': 'Irlande', 'irlande': 'Irlande',
   'poland': 'Pologne', 'pologne': 'Pologne', 'sweden': 'Suède', 'suède': 'Suède',
   'norway': 'Norvège', 'norvège': 'Norvège', 'denmark': 'Danemark', 'danemark': 'Danemark',
-  'finland': 'Finlande', 'finlande': 'Finlande',
+  'finland': 'Finlande', 'finlande': 'Finlande', 'suomi': 'Finlande',
   'austria': 'Autriche', 'autriche': 'Autriche', 'österreich': 'Autriche',
   'czech republic': 'Tchéquie', 'czechia': 'Tchéquie',
   'romania': 'Roumanie', 'roumanie': 'Roumanie', 'bulgaria': 'Bulgarie', 'bulgarie': 'Bulgarie',
+  'hungary': 'Hongrie', 'hongrie': 'Hongrie', 'magyarország': 'Hongrie',
   'maldives': 'Maldives', 'hong kong': 'Hong Kong',
+  'china': 'Chine', 'chine': 'Chine', 'india': 'Inde', 'inde': 'Inde',
+  'south africa': 'Afrique du Sud', 'afrique du sud': 'Afrique du Sud',
+  'colombia': 'Colombie', 'colombie': 'Colombie', 'peru': 'Pérou', 'pérou': 'Pérou',
+  'chile': 'Chili', 'chili': 'Chili',
 };
 
 // Codes postaux → pays (premiers chiffres/format)
@@ -937,6 +1035,17 @@ async function processJob(db, jobId) {
           continue;
         }
 
+        // Résoudre les link-in-bio pour trouver le vrai site web
+        if (isLinkInBio(accountProfile.external_url)) {
+          try {
+            const realUrl = await resolveRealWebsite(accountProfile.external_url);
+            if (realUrl) {
+              logger.info(`🔗 @${user.username}: résolu ${accountProfile.external_url} → ${realUrl}`);
+              accountProfile.external_url = realUrl;
+            }
+          } catch { /* on garde le linkinbio si la résolution échoue */ }
+        }
+
         // Classification business + détection pays
         const businessType = classifyBusiness(accountProfile.bio, accountProfile.category);
         const bioKeywords = extractBioKeywords(accountProfile.bio, accountProfile.category);
@@ -1056,7 +1165,7 @@ async function scrapeWebsitesBatch(db, accountIds) {
     const account = db.prepare('SELECT * FROM instagram_scraped_accounts WHERE id = ?').get(accountId);
     if (!account) continue;
 
-    const website = account.external_url || account.website;
+    let website = account.external_url || account.website;
     if (!website) {
       results.errors++;
       continue;
@@ -1064,6 +1173,17 @@ async function scrapeWebsitesBatch(db, accountIds) {
 
     try {
       db.prepare("UPDATE instagram_scraped_accounts SET scraping_status = 'scraping_website' WHERE id = ?").run(accountId);
+
+      // Résoudre les link-in-bio
+      if (isLinkInBio(website)) {
+        const realUrl = await resolveRealWebsite(website);
+        if (realUrl) {
+          logger.info(`🔗 Résolu ${website} → ${realUrl}`);
+          website = realUrl;
+          db.prepare('UPDATE instagram_scraped_accounts SET external_url = ? WHERE id = ?').run(realUrl, accountId);
+          account.external_url = realUrl;
+        }
+      }
 
       const { emails, socials } = await scrapeAccountWebsite(account);
 
@@ -1176,5 +1296,7 @@ module.exports = {
   resumeJob,
   cancelJob,
   isJobActive,
+  isLinkInBio,
+  resolveRealWebsite,
   BUSINESS_KEYWORDS,
 };
