@@ -39,6 +39,40 @@ function getTransporter() {
   return _transporter;
 }
 
+// ─── Circuit breaker SMTP ───────────────────────────────────────────────────
+// Après SMTP_CB_THRESHOLD échecs consécutifs, on désactive le SMTP pendant
+// SMTP_CB_COOLDOWN_MS et on passe directement à l'API REST.
+const SMTP_CB_THRESHOLD = 3;
+const SMTP_CB_COOLDOWN_MS = 30 * 60 * 1000; // 30 minutes
+let _smtpFailCount = 0;
+let _smtpOpenUntil = 0; // timestamp jusqu'auquel le circuit est ouvert (SMTP désactivé)
+
+function smtpCircuitOpen() {
+  if (_smtpOpenUntil && Date.now() < _smtpOpenUntil) return true;
+  if (_smtpOpenUntil && Date.now() >= _smtpOpenUntil) {
+    // Cooldown terminé, on retente
+    _smtpOpenUntil = 0;
+    _smtpFailCount = 0;
+    _transporter = null; // Recréer le transporter
+    logger.info('🔌 Circuit breaker SMTP : cooldown terminé, nouvelle tentative SMTP');
+  }
+  return false;
+}
+
+function smtpSuccess() {
+  _smtpFailCount = 0;
+  _smtpOpenUntil = 0;
+}
+
+function smtpFailure() {
+  _smtpFailCount++;
+  if (_smtpFailCount >= SMTP_CB_THRESHOLD) {
+    _smtpOpenUntil = Date.now() + SMTP_CB_COOLDOWN_MS;
+    _transporter = null;
+    logger.warn(`🔌 Circuit breaker SMTP ouvert : ${_smtpFailCount} échecs consécutifs, SMTP désactivé pour 30 min → API REST uniquement`);
+  }
+}
+
 async function brevoSendEmail(payload, db) {
   // Vérifier la blocklist si db disponible
   if (db && payload.to && payload.to.length) {
@@ -47,8 +81,8 @@ async function brevoSendEmail(payload, db) {
     }
   }
 
-  // SMTP si BREVO_SMTP_KEY défini ET nodemailer disponible
-  if (process.env.BREVO_SMTP_KEY) {
+  // SMTP si BREVO_SMTP_KEY défini ET nodemailer disponible ET circuit breaker fermé
+  if (process.env.BREVO_SMTP_KEY && !smtpCircuitOpen()) {
     try {
       const transporter = getTransporter();
       const mailOptions = {
@@ -69,9 +103,11 @@ async function brevoSendEmail(payload, db) {
         });
       }
       const info = await transporter.sendMail(mailOptions);
+      smtpSuccess();
       logger.info('Email envoyé via SMTP Brevo', { messageId: info.messageId });
       return { messageId: info.messageId };
     } catch(smtpErr) {
+      smtpFailure();
       logger.warn('SMTP echoue, fallback API REST', { erreur: smtpErr.message });
     }
   }
