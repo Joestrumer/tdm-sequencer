@@ -38,28 +38,24 @@ module.exports = (db) => {
     logger.warn('⚠️ Erreur backfill pays Instagram:', err.message);
   }
 
-  // ─── Backfill spa : reclassifier les comptes spa dont la catégorie IG est trop large ──
+  // ─── Backfill spa : reclassifier TOUS les comptes spa avec la logique corrigée ──
   try {
-    const SPA_REAL_KEYWORDS = ['spa', 'bien-être', 'wellness', 'massage', 'détente', 'hammam', 'sauna'];
     const spaToReclassify = db.prepare(`
       SELECT id, bio, category
       FROM instagram_scraped_accounts
       WHERE business_type = 'spa'
-        AND (LOWER(category) IN ('health/beauty', 'beauty, cosmetic & personal care'))
     `).all();
     if (spaToReclassify.length > 0) {
       const updateSpaStmt = db.prepare('UPDATE instagram_scraped_accounts SET business_type = ? WHERE id = ?');
       let spaFixed = 0;
       for (const a of spaToReclassify) {
-        const bioLower = (a.bio || '').toLowerCase();
-        const hasSpaKeyword = SPA_REAL_KEYWORDS.some(kw => bioLower.includes(kw));
-        if (!hasSpaKeyword) {
-          const newType = igService.classifyBusiness(a.bio, null); // re-classify without category
+        const newType = igService.classifyBusiness(a.bio, a.category);
+        if (newType !== 'spa') {
           updateSpaStmt.run(newType, a.id);
           spaFixed++;
         }
       }
-      if (spaFixed > 0) logger.info(`🧖 Backfill spa: ${spaFixed} compte(s) reclassifié(s) (catégorie IG trop large)`);
+      if (spaFixed > 0) logger.info(`🧖 Backfill spa: ${spaFixed} compte(s) reclassifié(s) (mots-clés word-boundary + keywords réduits)`);
     }
   } catch (err) {
     logger.warn('⚠️ Erreur backfill spa Instagram:', err.message);

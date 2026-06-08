@@ -33,7 +33,7 @@ const BUSINESS_KEYWORDS = {
   hotel: ['hotel', 'hôtel', 'resort', 'lodge', 'boutique hotel', 'palace', 'auberge', 'gîte', 'chambre d\'hôte', 'maison d\'hôte', 'relais', 'château hotel'],
   restaurant: ['restaurant', 'bistrot', 'brasserie', 'gastronomie', 'chef', 'traiteur', 'cuisine', 'table'],
   sport: ['gym', 'fitness', 'crossfit', 'musculation', 'salle de sport', 'coaching sportif', 'personal training', 'club de sport'],
-  spa: ['spa', 'bien-être', 'wellness', 'massage', 'détente', 'hammam', 'sauna'],
+  spa: ['spa', 'massage', 'hammam', 'sauna'],
   hospitality: ['hospitality', 'hôtellerie', 'tourisme', 'travel', 'voyage', 'conciergerie', 'hébergement'],
   retail: ['boutique', 'concept store', 'shop', 'e-shop', 'mode', 'fashion'],
   bar: ['bar', 'cocktail', 'wine bar', 'rooftop', 'lounge'],
@@ -60,8 +60,7 @@ const IG_CATEGORY_MAP = {
   'sports club': 'sport', 'recreation center': 'sport',
   'swimming pool': 'sport', 'tennis court': 'sport', 'golf course': 'sport',
   // Spa
-  'spa': 'spa', 'beauty salon': 'spa',
-  'massage service': 'spa',
+  'spa': 'spa', 'massage service': 'spa', 'health spa': 'spa',
   // Bar
   'bar': 'bar', 'lounge': 'bar', 'wine bar': 'bar', 'pub': 'bar',
   'nightclub': 'bar', 'wine/spirits': 'bar',
@@ -658,6 +657,17 @@ async function fetchFollowingGraphQL(userId, credentials, maxAccounts) {
 // ─── Classification ─────────────────────────────────────────────────────────
 
 /**
+ * Vérifie si un mot-clé est présent comme mot entier dans le texte
+ * Utilise \b word boundaries pour éviter les faux positifs
+ * (ex: "spa" ne doit pas matcher "space" ou "spaces")
+ * Accepte le pluriel en 's' (ex: "spas", "hotels")
+ */
+function keywordMatch(text, keyword) {
+  const escaped = keyword.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`\\b${escaped}s?\\b`, 'i').test(text);
+}
+
+/**
  * Classifie le type business d'un compte depuis sa bio et catégorie IG
  * Priorité : catégorie IG directe → fallback mots-clés bio
  */
@@ -672,14 +682,14 @@ function classifyBusiness(bio, category) {
     }
   }
 
-  // 2. Fallback : analyse mots-clés bio
+  // 2. Fallback : analyse mots-clés bio (avec word boundaries)
   const text = `${bio || ''} ${category || ''}`.toLowerCase();
   const matches = {};
 
   for (const [type, keywords] of Object.entries(BUSINESS_KEYWORDS)) {
     let score = 0;
     for (const keyword of keywords) {
-      if (text.includes(keyword.toLowerCase())) {
+      if (keywordMatch(text, keyword)) {
         score++;
       }
     }
@@ -814,7 +824,7 @@ function extractBioKeywords(bio, category) {
 
   for (const [type, keywords] of Object.entries(BUSINESS_KEYWORDS)) {
     for (const keyword of keywords) {
-      if (text.includes(keyword.toLowerCase())) {
+      if (keywordMatch(text, keyword)) {
         found.push(keyword);
       }
     }
