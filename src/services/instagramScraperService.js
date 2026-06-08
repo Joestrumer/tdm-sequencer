@@ -896,6 +896,8 @@ function checkDuplicates(db, account) {
 
 /**
  * Traite un job Instagram complet en arrière-plan
+ * Supporte la reprise : si des comptes existent déjà, skip le fetch following
+ * et reprend le traitement des comptes non encore traités.
  */
 async function processJob(db, jobId) {
   const jobState = { paused: false, cancelled: false };
@@ -916,52 +918,98 @@ async function processJob(db, jobId) {
     let filterKeywords = [];
     try { filterKeywords = JSON.parse(job.filter_keywords || '[]'); } catch { /* ignore */ }
 
-    // Étape 1 : Récupérer le profil source
-    db.prepare("UPDATE instagram_scrape_jobs SET status = 'fetching_profile', updated_at = datetime('now') WHERE id = ?").run(jobId);
+    // Vérifier si des comptes existent déjà (reprise d'un job interrompu)
+    const existingAccounts = db.prepare(
+      'SELECT COUNT(*) as count FROM instagram_scraped_accounts WHERE job_id = ?'
+    ).get(jobId);
 
-    const profile = await fetchUserProfile(job.instagram_username, credentials);
+    let following;
 
-    db.prepare(`
-      UPDATE instagram_scrape_jobs
-      SET instagram_user_id = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(profile.user_id, jobId);
+    if (existingAccounts.count > 0) {
+      // ── Mode reprise : des comptes existent déjà, on skip le fetch following ──
+      logger.info(`📱 IG Job ${jobId}: reprise — ${existingAccounts.count} comptes existants, skip fetch following`);
 
-    await jitteredDelay();
+      // Charger les comptes à traiter depuis la DB
+      following = db.prepare(`
+        SELECT instagram_username as username, instagram_user_id as user_id,
+               full_name, is_private, scraping_status
+        FROM instagram_scraped_accounts
+        WHERE job_id = ?
+        ORDER BY id ASC
+      `).all(jobId);
 
-    // Étape 2 : Récupérer la liste following
-    db.prepare("UPDATE instagram_scrape_jobs SET status = 'fetching_following', updated_at = datetime('now') WHERE id = ?").run(jobId);
+      // Mettre à jour le total si nécessaire
+      if (!job.total_following) {
+        db.prepare('UPDATE instagram_scrape_jobs SET total_following = ? WHERE id = ?').run(following.length, jobId);
+      }
+    } else {
+      // ── Mode normal : premier lancement ──
 
-    const maxAccounts = options.max_accounts || 500;
-    const following = await fetchFollowingList(profile.user_id, credentials, maxAccounts);
+      // Étape 1 : Récupérer le profil source
+      db.prepare("UPDATE instagram_scrape_jobs SET status = 'fetching_profile', updated_at = datetime('now') WHERE id = ?").run(jobId);
 
-    db.prepare(`
-      UPDATE instagram_scrape_jobs
-      SET total_following = ?, updated_at = datetime('now')
-      WHERE id = ?
-    `).run(following.length, jobId);
+      const profile = await fetchUserProfile(job.instagram_username, credentials);
 
-    logger.info(`📱 IG Job ${jobId}: ${following.length} following récupérés pour @${job.instagram_username}`);
+      db.prepare(`
+        UPDATE instagram_scrape_jobs
+        SET instagram_user_id = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(profile.user_id, jobId);
 
-    // Étape 3 : Insérer les comptes et récupérer les profils détaillés
-    db.prepare("UPDATE instagram_scrape_jobs SET status = 'processing', updated_at = datetime('now') WHERE id = ?").run(jobId);
+      await jitteredDelay();
 
-    const insertAccount = db.prepare(`
-      INSERT OR IGNORE INTO instagram_scraped_accounts
-        (job_id, instagram_username, instagram_user_id, full_name, is_private, scraping_status)
-      VALUES (?, ?, ?, ?, ?, 'pending')
-    `);
+      // Étape 2 : Récupérer la liste following
+      db.prepare("UPDATE instagram_scrape_jobs SET status = 'fetching_following', updated_at = datetime('now') WHERE id = ?").run(jobId);
 
-    for (const user of following) {
-      insertAccount.run(jobId, user.username, user.user_id, user.full_name, user.is_private);
+      const maxAccounts = options.max_accounts || 500;
+      following = await fetchFollowingList(profile.user_id, credentials, maxAccounts);
+
+      db.prepare(`
+        UPDATE instagram_scrape_jobs
+        SET total_following = ?, updated_at = datetime('now')
+        WHERE id = ?
+      `).run(following.length, jobId);
+
+      logger.info(`📱 IG Job ${jobId}: ${following.length} following récupérés pour @${job.instagram_username}`);
+
+      // Insérer les comptes
+      const insertAccount = db.prepare(`
+        INSERT OR IGNORE INTO instagram_scraped_accounts
+          (job_id, instagram_username, instagram_user_id, full_name, is_private, scraping_status)
+        VALUES (?, ?, ?, ?, ?, 'pending')
+      `);
+
+      for (const user of following) {
+        insertAccount.run(jobId, user.username, user.user_id, user.full_name, user.is_private);
+      }
     }
 
-    // Traiter chaque compte
-    let processed = 0;
-    let emailsFound = 0;
+    // Étape 3 : Traiter chaque compte
+    db.prepare("UPDATE instagram_scrape_jobs SET status = 'processing', updated_at = datetime('now') WHERE id = ?").run(jobId);
+
+    // Compter les déjà traités pour la reprise
+    const alreadyDone = db.prepare(
+      "SELECT COUNT(*) as count FROM instagram_scraped_accounts WHERE job_id = ? AND scraping_status IN ('done', 'skipped', 'error')"
+    ).get(jobId);
+    let processed = alreadyDone.count;
+    const alreadyEmails = db.prepare(
+      "SELECT COUNT(*) as count FROM instagram_scraped_accounts WHERE job_id = ? AND best_email IS NOT NULL"
+    ).get(jobId);
+    let emailsFound = alreadyEmails.count;
+
     const skipPrivate = options.skip_private !== false; // Par défaut : skip les privés
 
+    if (processed > 0) {
+      logger.info(`📱 IG Job ${jobId}: reprise à ${processed}/${following.length} (${emailsFound} emails)`);
+      db.prepare("UPDATE instagram_scrape_jobs SET processed = ?, emails_found = ?, updated_at = datetime('now') WHERE id = ?")
+        .run(processed, emailsFound, jobId);
+    }
+
     for (const user of following) {
+      // En mode reprise, sauter les comptes déjà traités
+      if (user.scraping_status && user.scraping_status !== 'pending') {
+        continue;
+      }
       // Vérifier pause/cancel
       const currentState = activeJobs.get(jobId);
       if (currentState?.cancelled) {

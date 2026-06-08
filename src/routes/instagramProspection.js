@@ -399,11 +399,11 @@ module.exports = (db) => {
     } else {
       // Si le job n'est plus actif en mémoire, relancer
       const job = db.prepare('SELECT * FROM instagram_scrape_jobs WHERE id = ?').get(req.params.id);
-      if (job && (job.status === 'paused' || job.status === 'error')) {
+      if (job && ['paused', 'error', 'processing', 'fetching_profile', 'fetching_following'].includes(job.status)) {
         igService.processJob(db, req.params.id);
-        res.json({ success: true, message: 'Job relancé' });
+        res.json({ success: true, message: 'Job relancé (reprise)' });
       } else {
-        res.status(400).json({ erreur: 'Job non trouvé ou non pausable' });
+        res.status(400).json({ erreur: 'Job non trouvé ou non relançable' });
       }
     }
   });

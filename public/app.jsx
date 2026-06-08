@@ -7083,12 +7083,13 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                   <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                     job.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
                     job.status === 'error' ? 'bg-red-100 text-red-700' :
-                    job.status === 'paused' ? 'bg-amber-100 text-amber-700' :
+                    (job.status === 'paused' || (!job.is_active && ['processing', 'fetching_profile', 'fetching_following'].includes(job.status))) ? 'bg-amber-100 text-amber-700' :
                     'bg-blue-100 text-blue-700'
                   }`}>
                     {job.status === 'completed' ? 'terminé' :
                      job.status === 'error' ? 'erreur' :
                      job.status === 'paused' ? 'pause' :
+                     !job.is_active && ['processing', 'fetching_profile', 'fetching_following'].includes(job.status) ? 'interrompu' :
                      `${job.processed || 0}/${job.total_following || '?'}`}
                   </span>
                   <button
@@ -7112,21 +7113,32 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-6">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-purple-800">
-                    {job.status === 'fetching_profile' ? 'Récupération du profil...' :
+                    {!job.is_active && ['processing', 'fetching_profile', 'fetching_following'].includes(job.status)
+                     ? `Interrompu (${job.processed || 0} / ${job.total_following || '?'} traités) — cliquez Relancer`
+                     : job.status === 'fetching_profile' ? 'Récupération du profil...' :
                      job.status === 'fetching_following' ? 'Récupération des following...' :
-                     job.status === 'paused' ? 'En pause' :
+                     job.status === 'paused' ? `En pause${job.error_message ? ': ' + job.error_message : ''}` :
                      job.status === 'error' ? `Erreur: ${job.error_message}` :
                      `Traitement en cours... ${job.processed || 0} / ${job.total_following || '?'}`}
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-purple-600">{pct}%</span>
-                    {(job.status === 'processing' || job.status === 'paused') && (
-                      <button
-                        onClick={() => handleIgPauseResume(job.id, job.status)}
-                        className="text-xs px-2 py-1 rounded bg-purple-200 text-purple-800 hover:bg-purple-300"
-                      >
-                        {job.status === 'paused' ? 'Reprendre' : 'Pause'}
-                      </button>
+                    {(job.status === 'processing' || job.status === 'paused' || job.status === 'fetching_following' || job.status === 'fetching_profile' || job.status === 'error') && (
+                      job.is_active ? (
+                        <button
+                          onClick={() => handleIgPauseResume(job.id, job.status)}
+                          className="text-xs px-2 py-1 rounded bg-purple-200 text-purple-800 hover:bg-purple-300"
+                        >
+                          {job.status === 'paused' ? 'Reprendre' : 'Pause'}
+                        </button>
+                      ) : (
+                        <button
+                          onClick={() => handleIgPauseResume(job.id, 'paused')}
+                          className="text-xs px-2 py-1 rounded bg-amber-200 text-amber-800 hover:bg-amber-300"
+                        >
+                          Relancer
+                        </button>
+                      )
                     )}
                   </div>
                 </div>
