@@ -15,6 +15,7 @@ const { addOrUpdateTag } = require('../utils/leadTags');
 const { checkImapReplies } = require('../services/imapReplyService');
 
 let db; // Injecté par initialiser()
+let isProcessing = false; // Mutex pour éviter les exécutions concurrentes
 
 // ─── Helper : vérifier si une action HubSpot est activée ─────────────────────
 function isHsEnabled(seqOptions, configKey, database) {
@@ -308,39 +309,63 @@ async function traiterInscriptionDirect(inscription) {
 
 // ─── Boucle principale du scheduler ──────────────────────────────────────────
 async function lancerVerification() {
-  if (!estDansLaFenetreEnvoi(db)) {
-    logger.debug("⏰ Hors fenêtre d'envoi");
+  // Mutex : empêcher les exécutions concurrentes (startup + cron overlap)
+  if (isProcessing) {
+    logger.info('⏳ Scheduler déjà en cours, exécution ignorée');
     return;
   }
+  isProcessing = true;
 
-  const nowParis = formatSQLite(maintenant_paris());
-  logger.info(`🔄 Vérification des séquences... (heure Paris: ${nowParis})`);
-
-  // Utiliser datetime() pour normaliser les formats (T vs espace) des anciennes données
-  const inscriptions = db.prepare(`
-    SELECT i.* FROM inscriptions i
-    JOIN sequences s ON s.id = i.sequence_id
-    WHERE i.statut = 'actif'
-      AND i.prochain_envoi IS NOT NULL
-      AND datetime(i.prochain_envoi) <= datetime(?)
-    ORDER BY COALESCE(s.priorite, 3) ASC, i.prochain_envoi ASC
-    LIMIT 20
-  `).all(nowParis);
-
-  if (!inscriptions.length) { logger.debug('Aucun email à envoyer'); return; }
-  logger.info(`📬 ${inscriptions.length} email(s) à traiter`);
-
-  // Lire le délai une seule fois avant la boucle
-  const delaiConfig = db.prepare("SELECT valeur FROM config WHERE cle = 'delai_entre_emails'").get();
-  const delaiBase = (delaiConfig ? parseFloat(delaiConfig.valeur) : 2) * 1000;
-
-  for (const inscription of inscriptions) {
-    try {
-      await traiterInscription(inscription);
-      await new Promise(r => setTimeout(r, delaiBase + Math.random() * 500));
-    } catch (err) {
-      if (err.message === 'QUOTA_ATTEINT') break;
+  try {
+    if (!estDansLaFenetreEnvoi(db)) {
+      logger.debug("⏰ Hors fenêtre d'envoi");
+      return;
     }
+
+    const nowParis = formatSQLite(maintenant_paris());
+    logger.info(`🔄 Vérification des séquences... (heure Paris: ${nowParis})`);
+
+    // Utiliser datetime() pour normaliser les formats (T vs espace) des anciennes données
+    const inscriptions = db.prepare(`
+      SELECT i.* FROM inscriptions i
+      JOIN sequences s ON s.id = i.sequence_id
+      WHERE i.statut = 'actif'
+        AND i.prochain_envoi IS NOT NULL
+        AND datetime(i.prochain_envoi) <= datetime(?)
+      ORDER BY COALESCE(s.priorite, 3) ASC, i.prochain_envoi ASC
+      LIMIT 20
+    `).all(nowParis);
+
+    if (!inscriptions.length) { logger.debug('Aucun email à envoyer'); return; }
+    logger.info(`📬 ${inscriptions.length} email(s) à traiter`);
+
+    // Marquer les inscriptions comme "en traitement" en décalant prochain_envoi
+    // Cela empêche une autre exécution (si le mutex échoue) de les reprendre
+    const markStmt = db.prepare(`UPDATE inscriptions SET prochain_envoi = datetime(prochain_envoi, '+1 hour') WHERE id = ?`);
+    const restoreStmt = db.prepare(`UPDATE inscriptions SET prochain_envoi = datetime(prochain_envoi, '-1 hour') WHERE id = ?`);
+    for (const ins of inscriptions) markStmt.run(ins.id);
+
+    // Lire le délai une seule fois avant la boucle
+    const delaiConfig = db.prepare("SELECT valeur FROM config WHERE cle = 'delai_entre_emails'").get();
+    const delaiBase = (delaiConfig ? parseFloat(delaiConfig.valeur) : 2) * 1000;
+
+    for (const inscription of inscriptions) {
+      try {
+        await traiterInscription(inscription);
+        await new Promise(r => setTimeout(r, delaiBase + Math.random() * 500));
+      } catch (err) {
+        if (err.message === 'QUOTA_ATTEINT') {
+          // Restaurer prochain_envoi pour les inscriptions non traitées
+          const idx = inscriptions.indexOf(inscription);
+          for (let i = idx + 1; i < inscriptions.length; i++) {
+            restoreStmt.run(inscriptions[i].id);
+          }
+          break;
+        }
+      }
+    }
+  } finally {
+    isProcessing = false;
   }
 }
 
