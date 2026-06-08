@@ -33,7 +33,7 @@ const BUSINESS_KEYWORDS = {
   hotel: ['hotel', 'hôtel', 'resort', 'lodge', 'boutique hotel', 'palace', 'auberge', 'gîte', 'chambre d\'hôte', 'maison d\'hôte', 'relais', 'château hotel'],
   restaurant: ['restaurant', 'bistrot', 'brasserie', 'gastronomie', 'chef', 'traiteur', 'cuisine', 'table'],
   sport: ['gym', 'fitness', 'crossfit', 'musculation', 'salle de sport', 'coaching sportif', 'personal training', 'club de sport'],
-  spa: ['spa', 'bien-être', 'wellness', 'massage', 'soin', 'détente', 'hammam', 'sauna'],
+  spa: ['spa', 'bien-être', 'wellness', 'massage', 'détente', 'hammam', 'sauna'],
   hospitality: ['hospitality', 'hôtellerie', 'tourisme', 'travel', 'voyage', 'conciergerie', 'hébergement'],
   retail: ['boutique', 'concept store', 'shop', 'e-shop', 'mode', 'fashion'],
   bar: ['bar', 'cocktail', 'wine bar', 'rooftop', 'lounge'],
@@ -60,8 +60,8 @@ const IG_CATEGORY_MAP = {
   'sports club': 'sport', 'recreation center': 'sport',
   'swimming pool': 'sport', 'tennis court': 'sport', 'golf course': 'sport',
   // Spa
-  'spa': 'spa', 'beauty salon': 'spa', 'beauty, cosmetic & personal care': 'spa',
-  'massage service': 'spa', 'health/beauty': 'spa',
+  'spa': 'spa', 'beauty salon': 'spa',
+  'massage service': 'spa',
   // Bar
   'bar': 'bar', 'lounge': 'bar', 'wine bar': 'bar', 'pub': 'bar',
   'nightclub': 'bar', 'wine/spirits': 'bar',

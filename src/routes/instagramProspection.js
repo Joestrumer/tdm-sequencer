@@ -38,6 +38,33 @@ module.exports = (db) => {
     logger.warn('⚠️ Erreur backfill pays Instagram:', err.message);
   }
 
+  // ─── Backfill spa : reclassifier les comptes spa dont la catégorie IG est trop large ──
+  try {
+    const SPA_REAL_KEYWORDS = ['spa', 'bien-être', 'wellness', 'massage', 'détente', 'hammam', 'sauna'];
+    const spaToReclassify = db.prepare(`
+      SELECT id, bio, category
+      FROM instagram_scraped_accounts
+      WHERE business_type = 'spa'
+        AND (LOWER(category) IN ('health/beauty', 'beauty, cosmetic & personal care'))
+    `).all();
+    if (spaToReclassify.length > 0) {
+      const updateSpaStmt = db.prepare('UPDATE instagram_scraped_accounts SET business_type = ? WHERE id = ?');
+      let spaFixed = 0;
+      for (const a of spaToReclassify) {
+        const bioLower = (a.bio || '').toLowerCase();
+        const hasSpaKeyword = SPA_REAL_KEYWORDS.some(kw => bioLower.includes(kw));
+        if (!hasSpaKeyword) {
+          const newType = igService.classifyBusiness(a.bio, null); // re-classify without category
+          updateSpaStmt.run(newType, a.id);
+          spaFixed++;
+        }
+      }
+      if (spaFixed > 0) logger.info(`🧖 Backfill spa: ${spaFixed} compte(s) reclassifié(s) (catégorie IG trop large)`);
+    }
+  } catch (err) {
+    logger.warn('⚠️ Erreur backfill spa Instagram:', err.message);
+  }
+
   // ─── Config & Credentials ──────────────────────────────────────────────────
 
   // POST /api/instagram/config — Stocker les credentials Instagram
@@ -595,6 +622,34 @@ module.exports = (db) => {
     res.json({ success: true, message: `Recherche lancée pour ${account_ids.length} compte(s)`, queued: account_ids.length });
   });
 
+  // ─── Mappings pour conversion lead ─────────────────────────────────────────
+
+  const BUSINESS_TYPE_SEGMENT_MAP = {
+    'hotel': 'Hotel', 'sport': 'Sport', 'spa': 'Spa',
+    'restaurant': 'Restaurant', 'bar': 'Bar',
+    'hospitality': 'Hospitality', 'retail': 'Retail', 'event': 'Event',
+  };
+
+  const COUNTRY_LANGUAGE_MAP = {
+    'France': 'fr', 'Belgique': 'fr', 'Suisse': 'fr', 'Monaco': 'fr',
+    'Maroc': 'fr', 'Tunisie': 'fr', 'Sénégal': 'fr', 'Luxembourg': 'fr',
+    'La Réunion': 'fr', 'Maurice': 'fr', 'Madagascar': 'fr',
+    'Royaume-Uni': 'en', 'Irlande': 'en', 'États-Unis': 'en', 'Canada': 'en',
+    'Australie': 'en', 'Singapour': 'en', 'Émirats arabes unis': 'en',
+    'Hong Kong': 'en', 'Inde': 'en',
+    'Espagne': 'es', 'Mexique': 'es', 'Argentine': 'es', 'Colombie': 'es',
+    'Pérou': 'es', 'Chili': 'es',
+    'Italie': 'it',
+    'Allemagne': 'de', 'Autriche': 'de',
+    'Portugal': 'pt', 'Brésil': 'pt',
+    'Pays-Bas': 'nl',
+    'Danemark': 'da', 'Suède': 'sv', 'Norvège': 'no', 'Finlande': 'fi',
+    'Pologne': 'pl', 'Tchéquie': 'cs', 'Hongrie': 'hu',
+    'Roumanie': 'ro', 'Bulgarie': 'bg', 'Croatie': 'hr',
+    'Grèce': 'el', 'Turquie': 'tr', 'Japon': 'ja', 'Chine': 'zh',
+    'Thaïlande': 'th', 'Indonésie': 'id',
+  };
+
   // POST /api/instagram/accounts/create-leads — Convertir en leads
   router.post('/accounts/create-leads', (req, res) => {
     const { account_ids } = req.body;
@@ -642,6 +697,17 @@ module.exports = (db) => {
 
             const leadId = uuidv4();
 
+            // Source améliorée : "Scrap Instagram @compte_source"
+            const leadSource = account.source_account
+              ? `Scrap Instagram @${account.source_account}`
+              : 'Scrap Instagram';
+
+            // Segment : mapping business_type → segment lisible
+            const leadSegment = BUSINESS_TYPE_SEGMENT_MAP[account.business_type] || 'Autre';
+
+            // Langue : mapping country → code langue
+            const leadLangue = COUNTRY_LANGUAGE_MAP[account.country] || 'en';
+
             createLead.run(
               leadId,
               '', // prenom — pas toujours dispo depuis IG
@@ -649,16 +715,15 @@ module.exports = (db) => {
               account.best_email,
               account.full_name || account.instagram_username, // hotel
               '', // ville — pas toujours dispo
-              '3*', // segment par défaut
+              leadSegment,
               account.category || null,
-              'fr',
-              'Scrap Instagram',
+              leadLangue,
+              leadSource,
               'Nouveau'
             );
 
             // Ajouter le tag de prospection avec le compte source
-            const tagValue = account.source_account ? `Scrap Instagram @${account.source_account}` : 'Scrap Instagram';
-            addOrUpdateTag(db, leadId, 'Prospection', tagValue);
+            addOrUpdateTag(db, leadId, 'Prospection', leadSource);
 
             markAccount.run(leadId, account.id);
             created++;
@@ -750,6 +815,202 @@ module.exports = (db) => {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send('\ufeff' + csv); // BOM pour Excel
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Endpoints unifiés (cross-jobs) ─────────────────────────────────────────
+
+  /**
+   * Helper : ajoute un filtre multi-valeurs (comma-separated) à la clause WHERE
+   */
+  function addMultiFilter(where, params, value, column) {
+    if (!value) return where;
+    const values = value.split(',').map(v => v.trim()).filter(Boolean);
+    if (values.length === 0) return where;
+    const placeholders = values.map(() => '?').join(',');
+    where += ` AND ${column} IN (${placeholders})`;
+    params.push(...values);
+    return where;
+  }
+
+  // GET /api/instagram/accounts/all — Tous les comptes cross-jobs avec filtres
+  router.get('/accounts/all', (req, res) => {
+    try {
+      const { search, business_type, has_email, country, status, has_contacts, source, sort_column, sort_direction, limit = 200, offset = 0 } = req.query;
+
+      let where = 'WHERE 1=1';
+      const params = [];
+
+      if (search) {
+        where += ' AND (a.instagram_username LIKE ? OR a.full_name LIKE ? OR a.bio LIKE ?)';
+        const s = `%${search}%`;
+        params.push(s, s, s);
+      }
+
+      where = addMultiFilter(where, params, business_type, 'a.business_type');
+      where = addMultiFilter(where, params, country, 'a.country');
+      where = addMultiFilter(where, params, status, 'a.scraping_status');
+      where = addMultiFilter(where, params, source, 'j.instagram_username');
+
+      if (has_email === 'true') {
+        where += ' AND a.best_email IS NOT NULL';
+      } else if (has_email === 'false') {
+        where += ' AND a.best_email IS NULL';
+      }
+
+      if (has_contacts === 'true') {
+        where += " AND a.linkedin_contacts IS NOT NULL AND a.linkedin_contacts != '[]'";
+      } else if (has_contacts === 'false') {
+        where += " AND (a.linkedin_contacts IS NULL OR a.linkedin_contacts = '[]')";
+      }
+
+      const total = db.prepare(`
+        SELECT COUNT(*) as count
+        FROM instagram_scraped_accounts a
+        LEFT JOIN instagram_scrape_jobs j ON a.job_id = j.id
+        ${where}
+      `).get(...params).count;
+
+      // Tri dynamique
+      const SORTABLE_COLUMNS = ['full_name', 'instagram_username', 'business_type', 'country', 'best_email', 'follower_count', 'following_count', 'scraping_status', 'created_at', 'city_name', 'source_account'];
+      let orderClause = `ORDER BY
+          CASE WHEN a.best_email IS NOT NULL THEN 0 ELSE 1 END,
+          CASE WHEN a.business_type IS NOT NULL THEN 0 ELSE 1 END,
+          a.full_name ASC`;
+
+      if (sort_column && SORTABLE_COLUMNS.includes(sort_column)) {
+        const dir = sort_direction === 'desc' ? 'DESC' : 'ASC';
+        const col = sort_column === 'source_account' ? 'j.instagram_username' : `a.${sort_column}`;
+        orderClause = `ORDER BY ${col} ${dir} NULLS LAST`;
+      }
+
+      const accounts = db.prepare(`
+        SELECT a.*, j.instagram_username AS source_account
+        FROM instagram_scraped_accounts a
+        LEFT JOIN instagram_scrape_jobs j ON a.job_id = j.id
+        ${where}
+        ${orderClause}
+        LIMIT ? OFFSET ?
+      `).all(...params, parseInt(limit), parseInt(offset));
+
+      res.json({ accounts, total });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // GET /api/instagram/filter-options — Options disponibles pour multi-selects
+  router.get('/filter-options', (req, res) => {
+    try {
+      const sources = db.prepare(`
+        SELECT DISTINCT j.instagram_username
+        FROM instagram_scrape_jobs j
+        INNER JOIN instagram_scraped_accounts a ON a.job_id = j.id
+        WHERE j.instagram_username IS NOT NULL
+        ORDER BY j.instagram_username ASC
+      `).all().map(r => r.instagram_username);
+
+      const countries = db.prepare(`
+        SELECT DISTINCT country
+        FROM instagram_scraped_accounts
+        WHERE country IS NOT NULL AND country != ''
+        ORDER BY country ASC
+      `).all().map(r => r.country);
+
+      const types = db.prepare(`
+        SELECT DISTINCT business_type
+        FROM instagram_scraped_accounts
+        WHERE business_type IS NOT NULL AND business_type != ''
+        ORDER BY business_type ASC
+      `).all().map(r => r.business_type);
+
+      res.json({ sources, countries, types });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // GET /api/instagram/accounts/all/export — Export CSV cross-jobs
+  router.get('/accounts/all/export', (req, res) => {
+    try {
+      const { search, business_type, has_email, country, status, has_contacts, source } = req.query;
+
+      let where = 'WHERE 1=1';
+      const params = [];
+
+      if (search) {
+        where += ' AND (a.instagram_username LIKE ? OR a.full_name LIKE ? OR a.bio LIKE ?)';
+        const s = `%${search}%`;
+        params.push(s, s, s);
+      }
+
+      where = addMultiFilter(where, params, business_type, 'a.business_type');
+      where = addMultiFilter(where, params, country, 'a.country');
+      where = addMultiFilter(where, params, status, 'a.scraping_status');
+      where = addMultiFilter(where, params, source, 'j.instagram_username');
+
+      if (has_email === 'true') {
+        where += ' AND a.best_email IS NOT NULL';
+      } else if (has_email === 'false') {
+        where += ' AND a.best_email IS NULL';
+      }
+
+      if (has_contacts === 'true') {
+        where += " AND a.linkedin_contacts IS NOT NULL AND a.linkedin_contacts != '[]'";
+      } else if (has_contacts === 'false') {
+        where += " AND (a.linkedin_contacts IS NULL OR a.linkedin_contacts = '[]')";
+      }
+
+      const accounts = db.prepare(`
+        SELECT a.instagram_username, a.full_name, a.bio, a.category, a.business_type,
+               a.external_url, a.best_email, a.email_source, a.email_confidence,
+               a.business_email, a.is_business, a.follower_count, a.following_count,
+               a.scraping_status, a.existing_lead_email, a.country,
+               j.instagram_username AS source_account
+        FROM instagram_scraped_accounts a
+        LEFT JOIN instagram_scrape_jobs j ON a.job_id = j.id
+        ${where}
+        ORDER BY a.full_name ASC
+      `).all(...params);
+
+      const headers = [
+        'Username', 'Nom complet', 'Bio', 'Catégorie', 'Type business', 'Pays', 'Source',
+        'Site web', 'Email', 'Source email', 'Confiance', 'Email business IG',
+        'Compte business', 'Followers', 'Following', 'Statut', 'Doublon lead'
+      ];
+
+      const rows = accounts.map(a => [
+        `@${a.instagram_username}`,
+        a.full_name || '',
+        (a.bio || '').replace(/[\n\r,]/g, ' ').slice(0, 200),
+        a.category || '',
+        a.business_type || '',
+        a.country || '',
+        a.source_account ? `@${a.source_account}` : '',
+        a.external_url || '',
+        a.best_email || '',
+        a.email_source || '',
+        a.email_confidence || '',
+        a.business_email || '',
+        a.is_business ? 'Oui' : 'Non',
+        a.follower_count || '',
+        a.following_count || '',
+        a.scraping_status || '',
+        a.existing_lead_email || '',
+      ]);
+
+      const csv = [
+        headers.join(','),
+        ...rows.map(r => r.map(v => `"${String(v).replace(/"/g, '""')}"`).join(','))
+      ].join('\n');
+
+      const filename = `instagram_all_${new Date().toISOString().slice(0, 10)}.csv`;
+
+      res.setHeader('Content-Type', 'text/csv; charset=utf-8');
+      res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+      res.send('\ufeff' + csv);
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }

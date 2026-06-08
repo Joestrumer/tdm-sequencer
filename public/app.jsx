@@ -4277,6 +4277,80 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
   );
 };
 
+// ─── Composant MultiSelect inline ─────────────────────────────────────────
+const MultiSelect = ({ label, options, selected, onChange, className = '' }) => {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+
+  // selected est une string comma-separated, options est un array de strings
+  const selectedArr = selected ? selected.split(',').filter(Boolean) : [];
+  const count = selectedArr.length;
+
+  const toggle = (val) => {
+    let next;
+    if (selectedArr.includes(val)) {
+      next = selectedArr.filter(v => v !== val);
+    } else {
+      next = [...selectedArr, val];
+    }
+    onChange(next.join(','));
+  };
+
+  const clear = (e) => {
+    e.stopPropagation();
+    onChange('');
+  };
+
+  return (
+    <div className={`relative ${className}`} ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen(!open)}
+        className={`px-3 py-2 border rounded-lg text-sm flex items-center gap-1.5 transition-colors ${
+          count > 0
+            ? 'border-purple-400 bg-purple-50 text-purple-700'
+            : 'border-slate-300 bg-white text-slate-700 hover:border-purple-300'
+        }`}
+      >
+        <span>{label}</span>
+        {count > 0 && (
+          <span className="px-1.5 py-0.5 rounded-full text-[10px] font-bold bg-purple-600 text-white min-w-[18px] text-center">{count}</span>
+        )}
+        <span className="text-[10px] ml-0.5">{open ? '▲' : '▼'}</span>
+      </button>
+      {open && (
+        <>
+          <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
+          <div className="absolute top-full left-0 mt-1 w-56 bg-white border border-slate-200 rounded-lg shadow-xl z-50 py-1 max-h-64 overflow-y-auto">
+            {count > 0 && (
+              <button
+                onClick={clear}
+                className="w-full text-left px-3 py-1.5 text-xs text-purple-600 hover:bg-purple-50 font-medium border-b border-slate-100"
+              >
+                Effacer la sélection
+              </button>
+            )}
+            {options.map(opt => (
+              <label key={opt} className="flex items-center gap-2 px-3 py-1.5 hover:bg-slate-50 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={selectedArr.includes(opt)}
+                  onChange={() => toggle(opt)}
+                  className="w-3.5 h-3.5 text-purple-600"
+                />
+                <span className="text-xs text-slate-700 truncate">{opt}</span>
+              </label>
+            ))}
+            {options.length === 0 && (
+              <p className="px-3 py-2 text-xs text-slate-400 italic">Aucune option</p>
+            )}
+          </div>
+        </>
+      )}
+    </div>
+  );
+};
+
 const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [activeTab, setActiveTab] = useState('hotels'); // 'hotels', 'contacts', 'emails-generiques' ou 'social'
@@ -4359,8 +4433,9 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [igStats, setIgStats] = useState(null);
   const [igUrl, setIgUrl] = useState('');
   const [igOptions, setIgOptions] = useState({ max_accounts: 500, skip_private: true, filter_keywords: [] });
-  const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '', country: '', status: '', has_contacts: '' });
+  const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '', country: '', status: '', has_contacts: '', source: '' });
   const [igSort, setIgSort] = useState({ column: '', direction: 'asc' });
+  const [igFilterOptions, setIgFilterOptions] = useState({ sources: [], countries: [], types: [] });
   const [igColWidths, setIgColWidths] = useState({});
   const [selectedIgAccounts, setSelectedIgAccounts] = useState(new Set());
   const [igConfigured, setIgConfigured] = useState(false);
@@ -4412,8 +4487,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     } catch { /* ignore */ }
   };
 
-  const chargerIgAccounts = async (jobId) => {
-    if (!jobId) return;
+  const chargerIgAllAccounts = async () => {
     try {
       const queryObj = { ...igFilters, limit: 200, offset: 0 };
       if (igSort.column) {
@@ -4421,13 +4495,23 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
         queryObj.sort_direction = igSort.direction;
       }
       const params = new URLSearchParams(queryObj);
-      Object.keys(params).forEach(key => params.get(key) === '' && params.delete(key));
-      const res = await api.get(`/instagram/jobs/${jobId}/accounts?${params}`);
+      // Supprimer les paramètres vides
+      for (const key of [...params.keys()]) {
+        if (params.get(key) === '') params.delete(key);
+      }
+      const res = await api.get(`/instagram/accounts/all?${params}`);
       setIgAccounts(res.accounts || []);
       setIgAccountsTotal(res.total || 0);
     } catch (err) {
       showToast('Erreur chargement comptes IG: ' + err.message, 'error');
     }
+  };
+
+  const chargerIgFilterOptions = async () => {
+    try {
+      const res = await api.get('/instagram/filter-options');
+      setIgFilterOptions(res || { sources: [], countries: [], types: [] });
+    } catch { /* ignore */ }
   };
 
   const pollIgJobStatus = async (jobId) => {
@@ -4441,7 +4525,8 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           clearInterval(igPollingRef.current);
           igPollingRef.current = null;
         }
-        chargerIgAccounts(jobId);
+        chargerIgAllAccounts();
+        chargerIgFilterOptions();
         chargerIgJobs();
       }
     } catch { /* ignore */ }
@@ -4483,13 +4568,11 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const handleIgSelectJob = (jobId) => {
     setIgActiveJob(jobId);
     setSelectedIgAccounts(new Set());
-    chargerIgAccounts(jobId);
     const job = igJobs.find(j => j.id === jobId);
     if (job && (job.status === 'processing' || job.status === 'fetching_profile' || job.status === 'fetching_following')) {
       startIgPolling(jobId);
     } else {
       if (igPollingRef.current) clearInterval(igPollingRef.current);
-      // Charger les stats
       pollIgJobStatus(jobId);
     }
   };
@@ -4524,7 +4607,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
       await api.post('/instagram/accounts/scrape-websites-batch', { account_ids: ids });
       showToast(`Scraping sites web lancé pour ${ids.length} compte(s)`, 'success');
       setSelectedIgAccounts(new Set());
-      setTimeout(() => chargerIgAccounts(igActiveJob), 3000);
+      setTimeout(() => chargerIgAllAccounts(), 3000);
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
     }
@@ -4537,9 +4620,8 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
       await api.post('/instagram/accounts/find-contacts-batch', { account_ids: ids });
       showToast(`Recherche contacts lancée pour ${ids.length} compte(s)`, 'success');
       setSelectedIgAccounts(new Set());
-      // Auto-refresh après quelques secondes pour voir les résultats
-      setTimeout(() => chargerIgAccounts(igActiveJob), 5000);
-      setTimeout(() => chargerIgAccounts(igActiveJob), 15000);
+      setTimeout(() => chargerIgAllAccounts(), 5000);
+      setTimeout(() => chargerIgAllAccounts(), 15000);
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
     }
@@ -4552,7 +4634,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
       const res = await api.post('/instagram/accounts/create-leads', { account_ids: ids });
       showToast(`${res.created} lead(s) créé(s)`, 'success');
       setSelectedIgAccounts(new Set());
-      chargerIgAccounts(igActiveJob);
+      chargerIgAllAccounts();
       onRefreshLeads?.();
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
@@ -4566,10 +4648,11 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
       showToast('Job supprimé', 'success');
       if (igActiveJob === jobId) {
         setIgActiveJob(null);
-        setIgAccounts([]);
         setIgStats(null);
       }
       chargerIgJobs();
+      chargerIgAllAccounts();
+      chargerIgFilterOptions();
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
     }
@@ -4592,17 +4675,22 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   };
 
   useEffect(() => {
-    if (activeTab === 'social' && igActiveJob) {
-      chargerIgAccounts(igActiveJob);
+    if (activeTab === 'social') {
+      chargerIgAllAccounts();
     }
   }, [igFilters, igSort]);
 
-  // Auto-sélectionner le premier job après chargement si aucun n'est actif
+  // Charger les comptes et filter-options quand on arrive sur l'onglet social
   useEffect(() => {
-    if (activeTab === 'social' && igJobs.length > 0 && !igActiveJob) {
-      handleIgSelectJob(igJobs[0].id);
+    if (activeTab === 'social') {
+      chargerIgAllAccounts();
+      chargerIgFilterOptions();
+      // Auto-sélectionner le premier job pour le monitoring
+      if (igJobs.length > 0 && !igActiveJob) {
+        handleIgSelectJob(igJobs[0].id);
+      }
     }
-  }, [igJobs, activeTab]);
+  }, [activeTab, igJobs.length]);
 
   const chargerHotels = async () => {
     setLoading(true);
@@ -7179,99 +7267,83 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           )}
 
           {/* Filtres + actions en lot */}
-          {igActiveJob && (
-            <div className="flex flex-wrap items-center gap-3 mb-4">
-              <input
-                type="text"
-                placeholder="Rechercher..."
-                value={igFilters.search}
-                onChange={e => setIgFilters(f => ({ ...f, search: e.target.value }))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-purple-500"
-              />
-              <select
-                value={igFilters.business_type}
-                onChange={e => setIgFilters(f => ({ ...f, business_type: e.target.value }))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="">Tous types</option>
-                <option value="hotel">Hotel</option>
-                <option value="restaurant">Restaurant</option>
-                <option value="sport">Sport</option>
-                <option value="spa">Spa</option>
-                <option value="hospitality">Hospitality</option>
-                <option value="retail">Retail</option>
-                <option value="bar">Bar</option>
-                <option value="event">Event</option>
-              </select>
-              <select
-                value={igFilters.has_email}
-                onChange={e => setIgFilters(f => ({ ...f, has_email: e.target.value }))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="">Avec/sans email</option>
-                <option value="true">Avec email</option>
-                <option value="false">Sans email</option>
-              </select>
-              <select
-                value={igFilters.country}
-                onChange={e => setIgFilters(f => ({ ...f, country: e.target.value }))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="">Tous les pays</option>
-                {[...new Set(igAccounts.map(a => a.country).filter(Boolean))].sort().map(c => (
-                  <option key={c} value={c}>{c}</option>
-                ))}
-              </select>
-              <select
-                value={igFilters.status}
-                onChange={e => setIgFilters(f => ({ ...f, status: e.target.value }))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="">Tous statuts</option>
-                <option value="done">Done</option>
-                <option value="error">Error</option>
-                <option value="skipped">Skipped</option>
-                <option value="scraping_website">Scraping...</option>
-              </select>
-              <select
-                value={igFilters.has_contacts}
-                onChange={e => setIgFilters(f => ({ ...f, has_contacts: e.target.value }))}
-                className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
-              >
-                <option value="">Contacts</option>
-                <option value="true">Avec contacts</option>
-                <option value="false">Sans contacts</option>
-              </select>
+          <div className="flex flex-wrap items-center gap-3 mb-4">
+            <input
+              type="text"
+              placeholder="Rechercher..."
+              value={igFilters.search}
+              onChange={e => setIgFilters(f => ({ ...f, search: e.target.value }))}
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm w-48 focus:outline-none focus:ring-2 focus:ring-purple-500"
+            />
+            <MultiSelect
+              label="Type"
+              options={['hotel', 'restaurant', 'sport', 'spa', 'hospitality', 'retail', 'bar', 'event']}
+              selected={igFilters.business_type}
+              onChange={v => setIgFilters(f => ({ ...f, business_type: v }))}
+            />
+            <MultiSelect
+              label="Pays"
+              options={igFilterOptions.countries}
+              selected={igFilters.country}
+              onChange={v => setIgFilters(f => ({ ...f, country: v }))}
+            />
+            <MultiSelect
+              label="Source"
+              options={igFilterOptions.sources}
+              selected={igFilters.source}
+              onChange={v => setIgFilters(f => ({ ...f, source: v }))}
+            />
+            <MultiSelect
+              label="Statut"
+              options={['done', 'error', 'skipped', 'pending', 'scraping_website']}
+              selected={igFilters.status}
+              onChange={v => setIgFilters(f => ({ ...f, status: v }))}
+            />
+            <select
+              value={igFilters.has_email}
+              onChange={e => setIgFilters(f => ({ ...f, has_email: e.target.value }))}
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="">Avec/sans email</option>
+              <option value="true">Avec email</option>
+              <option value="false">Sans email</option>
+            </select>
+            <select
+              value={igFilters.has_contacts}
+              onChange={e => setIgFilters(f => ({ ...f, has_contacts: e.target.value }))}
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="">Contacts</option>
+              <option value="true">Avec contacts</option>
+              <option value="false">Sans contacts</option>
+            </select>
 
-              {selectedIgAccounts.size > 0 && (
-                <div className="flex items-center gap-2 ml-auto">
-                  <span className="text-xs text-slate-500">{selectedIgAccounts.size} sélectionné(s)</span>
-                  <button onClick={handleIgScrapeWebsites} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">
-                    Scraper sites web
-                  </button>
-                  <button onClick={handleIgFindContacts} className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700">
-                    Chercher contacts
-                  </button>
-                  <button onClick={handleIgCreateLeads} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700">
-                    Convertir en leads
-                  </button>
-                </div>
-              )}
+            {selectedIgAccounts.size > 0 && (
+              <div className="flex items-center gap-2 ml-auto">
+                <span className="text-xs text-slate-500">{selectedIgAccounts.size} sélectionné(s)</span>
+                <button onClick={handleIgScrapeWebsites} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">
+                  Scraper sites web
+                </button>
+                <button onClick={handleIgFindContacts} className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700">
+                  Chercher contacts
+                </button>
+                <button onClick={handleIgCreateLeads} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700">
+                  Convertir en leads
+                </button>
+              </div>
+            )}
 
-              {igActiveJob && (
-                <a
-                  href={`/api/instagram/jobs/${igActiveJob}/export?${new URLSearchParams(igFilters)}`}
-                  className="ml-auto px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200 flex items-center gap-1"
-                  download
-                >
-                  Exporter CSV
-                </a>
-              )}
-            </div>
-          )}
+            <a
+              href={`/api/instagram/accounts/all/export?${new URLSearchParams(Object.fromEntries(Object.entries(igFilters).filter(([,v]) => v)))}`}
+              className="ml-auto px-3 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200 flex items-center gap-1"
+              download
+            >
+              Exporter CSV
+            </a>
+          </div>
 
           {/* Tableau résultats */}
-          {igActiveJob && igAccounts.length > 0 && (
+          {igAccounts.length > 0 && (
             <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
               <div className="overflow-x-auto">
                 <table className="w-full" style={{ tableLayout: 'fixed' }}>
@@ -7303,6 +7375,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                       </th>
                       {[
                         { key: 'instagram_username', label: 'Compte', defaultWidth: 160 },
+                        { key: 'source_account', label: 'Source', defaultWidth: 130 },
                         { key: 'bio', label: 'Bio', sortable: false, defaultWidth: 200 },
                         { key: 'business_type', label: 'Type', defaultWidth: 100 },
                         { key: 'country', label: 'Pays', defaultWidth: 100 },
@@ -7400,6 +7473,13 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                               <span className="text-[10px] px-1.5 py-0.5 mt-0.5 rounded bg-amber-100 text-amber-700 w-fit">Doublon</span>
                             )}
                           </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {account.source_account ? (
+                            <span className="text-xs text-purple-600">@{account.source_account}</span>
+                          ) : (
+                            <span className="text-xs text-slate-400">-</span>
+                          )}
                         </td>
                         <td className="px-4 py-3">
                           <p className="text-xs text-slate-600 max-w-xs truncate" title={account.bio}>
@@ -7519,7 +7599,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                                   try {
                                     await api.post(`/instagram/accounts/${account.id}/scrape-website`);
                                     showToast('Scraping lancé', 'success');
-                                    setTimeout(() => chargerIgAccounts(igActiveJob), 2000);
+                                    setTimeout(() => chargerIgAllAccounts(), 2000);
                                   } catch (err) {
                                     showToast('Erreur: ' + err.message, 'error');
                                   }
@@ -7597,14 +7677,14 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           })()}
 
           {/* Message vide */}
-          {igActiveJob && igAccounts.length === 0 && !igJobs.find(j => j.id === igActiveJob && ['processing', 'fetching_profile', 'fetching_following'].includes(j.status)) && (
+          {igAccounts.length === 0 && igJobs.length > 0 && !igJobs.some(j => ['processing', 'fetching_profile', 'fetching_following'].includes(j.status)) && (
             <div className="text-center py-12 text-slate-500">
               <p className="text-lg font-medium">Aucun compte trouvé</p>
               <p className="text-sm mt-1">Modifiez les filtres ou lancez un nouveau scraping.</p>
             </div>
           )}
 
-          {!igActiveJob && igJobs.length === 0 && (
+          {igJobs.length === 0 && (
             <div className="text-center py-12 text-slate-500">
               <p className="text-lg font-medium">Aucun job de scraping Instagram</p>
               <p className="text-sm mt-1">Entrez l'URL d'un compte Instagram et lancez le scraping pour commencer.</p>
