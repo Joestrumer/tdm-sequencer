@@ -24,8 +24,8 @@ const IG_FOLLOWEES_QUERY_HASH = '58712303d941c6855d4e888c5f0cd22f';
 const IG_MOBILE_UA = 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)';
 const IG_WEB_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
 
-const DEFAULT_DELAY_MS = 4000;
-const JITTER_MAX_MS = 2000;
+const DEFAULT_DELAY_MS = 8000;
+const JITTER_MAX_MS = 5000;
 
 // ─── Classification business par bio ────────────────────────────────────────
 
@@ -455,10 +455,10 @@ async function igFetch(url, headers, retries = 3) {
       if (res.status === 429) {
         rateLimitHits++;
         if (rateLimitHits > maxRateLimitRetries) {
-          throw new Error('IG API: trop de rate limits (429). Réessayez dans quelques minutes.');
+          throw new Error('IG_RATE_LIMITED: trop de rate limits (429). Session probablement bloquée temporairement.');
         }
         const retryAfter = res.headers.get('retry-after');
-        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 30000 * rateLimitHits;
+        const delay = retryAfter ? parseInt(retryAfter) * 1000 : 60000 * rateLimitHits;
         logger.warn(`⚠️ IG API 429 (${rateLimitHits}/${maxRateLimitRetries}), pause ${delay / 1000}s — ${url.split('?')[0]}`);
         await sleep(delay);
         attempt--;
@@ -472,12 +472,21 @@ async function igFetch(url, headers, retries = 3) {
       if (!res.ok) {
         let body = '';
         try { body = await res.text(); } catch { /* ignore */ }
+
+        // Détecter feedback_required / is_spam → session brûlée, ne pas réessayer
+        if (body.includes('feedback_required') || body.includes('"is_spam":true')) {
+          logger.warn(`🚫 IG session flaggée spam — ${url.split('?')[0]}`);
+          throw new Error('IG_SPAM_DETECTED: Instagram a détecté un comportement automatisé. Pause nécessaire (15-30 min).');
+        }
+
         logger.warn(`⚠️ IG API ${res.status} — ${url.split('?')[0]} — ${body.slice(0, 200)}`);
         throw new Error(`IG API ${res.status}: ${res.statusText}`);
       }
 
       return await res.json();
     } catch (err) {
+      if (err.message.includes('IG_SPAM_DETECTED')) throw err;
+      if (err.message.includes('IG_RATE_LIMITED')) throw err;
       if (err.message.includes('rate limit') || err.message.includes('429')) throw err;
       if (err.message.includes('expirée')) throw err;
       if (err.name === 'AbortError') {
@@ -1024,15 +1033,51 @@ async function processJob(db, jobId) {
         try {
           accountProfile = await fetchUserProfile(user.username, credentials);
         } catch (err) {
-          // Profil inaccessible — on skip
-          db.prepare(`
-            UPDATE instagram_scraped_accounts
-            SET scraping_status = 'error', scraping_error = ?
-            WHERE job_id = ? AND instagram_username = ?
-          `).run(err.message, jobId, user.username);
-          processed++;
-          db.prepare("UPDATE instagram_scrape_jobs SET processed = ?, updated_at = datetime('now') WHERE id = ?").run(processed, jobId);
-          continue;
+          // Spam détecté ou rate limit épuisé → auto-pause le job
+          if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED')) {
+            logger.warn(`🚫 IG Job ${jobId}: auto-pause — ${err.message}`);
+            const pauseMsg = err.message.includes('SPAM')
+              ? 'Session flaggée spam par Instagram. Attendez 15-30 min puis reprenez.'
+              : 'Trop de rate limits. Attendez quelques minutes puis reprenez.';
+            db.prepare(`
+              UPDATE instagram_scrape_jobs
+              SET status = 'paused', error_message = ?, updated_at = datetime('now')
+              WHERE id = ?
+            `).run(pauseMsg, jobId);
+            const state = activeJobs.get(jobId);
+            if (state) state.paused = true;
+            // Attendre que l'utilisateur reprenne manuellement
+            while (activeJobs.get(jobId)?.paused) {
+              await sleep(5000);
+              if (activeJobs.get(jobId)?.cancelled) return;
+            }
+            // Reset l'erreur au retour
+            db.prepare("UPDATE instagram_scrape_jobs SET status = 'processing', error_message = NULL, updated_at = datetime('now') WHERE id = ?").run(jobId);
+            // Re-tenter ce compte après la pause
+            await sleep(10000); // Cooldown supplémentaire de 10s après reprise
+            try {
+              accountProfile = await fetchUserProfile(user.username, credentials);
+            } catch (err2) {
+              db.prepare(`
+                UPDATE instagram_scraped_accounts
+                SET scraping_status = 'error', scraping_error = ?
+                WHERE job_id = ? AND instagram_username = ?
+              `).run(err2.message, jobId, user.username);
+              processed++;
+              db.prepare("UPDATE instagram_scrape_jobs SET processed = ?, updated_at = datetime('now') WHERE id = ?").run(processed, jobId);
+              continue;
+            }
+          } else {
+            // Profil inaccessible — on skip
+            db.prepare(`
+              UPDATE instagram_scraped_accounts
+              SET scraping_status = 'error', scraping_error = ?
+              WHERE job_id = ? AND instagram_username = ?
+            `).run(err.message, jobId, user.username);
+            processed++;
+            db.prepare("UPDATE instagram_scrape_jobs SET processed = ?, updated_at = datetime('now') WHERE id = ?").run(processed, jobId);
+            continue;
+          }
         }
 
         // Résoudre les link-in-bio pour trouver le vrai site web
