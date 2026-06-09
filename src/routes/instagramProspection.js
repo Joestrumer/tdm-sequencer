@@ -862,12 +862,16 @@ module.exports = (db) => {
         where += " AND (a.linkedin_contacts IS NULL OR a.linkedin_contacts = '[]')";
       }
 
-      const total = db.prepare(`
-        SELECT COUNT(*) as count
+      const statsRow = db.prepare(`
+        SELECT COUNT(*) as total,
+          SUM(CASE WHEN a.best_email IS NOT NULL AND a.best_email != '' THEN 1 ELSE 0 END) as with_email,
+          SUM(CASE WHEN a.business_type = 'hotel' AND a.best_email IS NOT NULL AND a.best_email != '' THEN 1 ELSE 0 END) as hotels_with_email,
+          SUM(CASE WHEN a.business_type = 'sport' AND a.best_email IS NOT NULL AND a.best_email != '' THEN 1 ELSE 0 END) as sport_with_email
         FROM instagram_scraped_accounts a
         LEFT JOIN instagram_scrape_jobs j ON a.job_id = j.id
         ${where}
-      `).get(...params).count;
+      `).get(...params);
+      const total = statsRow.total;
 
       // Tri dynamique
       const SORTABLE_COLUMNS = ['full_name', 'instagram_username', 'business_type', 'country', 'best_email', 'follower_count', 'following_count', 'scraping_status', 'created_at', 'city_name', 'source_account'];
@@ -891,7 +895,7 @@ module.exports = (db) => {
         LIMIT ? OFFSET ?
       `).all(...params, parseInt(limit), parseInt(offset));
 
-      res.json({ accounts, total });
+      res.json({ accounts, total, stats: { total: statsRow.total, with_email: statsRow.with_email, hotels_with_email: statsRow.hotels_with_email, sport_with_email: statsRow.sport_with_email } });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }

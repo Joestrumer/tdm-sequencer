@@ -4502,6 +4502,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
       const res = await api.get(`/instagram/accounts/all?${params}`);
       setIgAccounts(res.accounts || []);
       setIgAccountsTotal(res.total || 0);
+      if (res.stats) setIgStats(res.stats);
     } catch (err) {
       showToast('Erreur chargement comptes IG: ' + err.message, 'error');
     }
@@ -7154,15 +7155,35 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
             )}
           </div>
 
-          {/* Sélecteur de job */}
+          {/* Sélecteur de sources (toggle multi-select) */}
           {igJobs.length > 0 && (
             <div className="flex gap-2 mb-4 overflow-x-auto pb-2">
-              {igJobs.map(job => (
+              {igJobs.map(job => {
+                const selectedSources = igFilters.source ? igFilters.source.split(',').filter(Boolean) : [];
+                const isSelected = selectedSources.includes(job.instagram_username);
+                return (
                 <button
                   key={job.id}
-                  onClick={() => handleIgSelectJob(job.id)}
+                  onClick={() => {
+                    const current = igFilters.source ? igFilters.source.split(',').filter(Boolean) : [];
+                    let updated;
+                    if (current.includes(job.instagram_username)) {
+                      updated = current.filter(s => s !== job.instagram_username);
+                    } else {
+                      updated = [...current, job.instagram_username];
+                    }
+                    setIgFilters(f => ({ ...f, source: updated.join(',') }));
+                    // Garder igActiveJob pour le polling/barre de progression
+                    setIgActiveJob(job.id);
+                    const j = igJobs.find(jj => jj.id === job.id);
+                    if (j && (j.status === 'processing' || j.status === 'fetching_profile' || j.status === 'fetching_following')) {
+                      startIgPolling(job.id);
+                    } else {
+                      if (igPollingRef.current) clearInterval(igPollingRef.current);
+                    }
+                  }}
                   className={`px-3 py-1.5 rounded-full text-xs font-medium transition-colors whitespace-nowrap flex items-center gap-1.5 ${
-                    igActiveJob === job.id
+                    isSelected
                       ? 'bg-purple-600 text-white'
                       : 'bg-white border border-slate-200 text-slate-700 hover:border-purple-300'
                   }`}
@@ -7182,13 +7203,14 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                   </span>
                   <button
                     onClick={e => { e.stopPropagation(); handleIgDeleteJob(job.id); }}
-                    className={`ml-1 hover:text-red-300 ${igActiveJob === job.id ? 'text-purple-200' : 'text-slate-300'}`}
+                    className={`ml-1 hover:text-red-300 ${isSelected ? 'text-purple-200' : 'text-slate-300'}`}
                     title="Supprimer"
                   >
                     ×
                   </button>
                 </button>
-              ))}
+                );
+              })}
             </div>
           )}
 
@@ -7245,7 +7267,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           })()}
 
           {/* Stats */}
-          {igStats && igActiveJob && (
+          {igStats && (
             <div className="grid grid-cols-4 gap-3 mb-6">
               <div className="bg-white rounded-xl border border-slate-200 p-4">
                 <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total comptes</p>
@@ -7256,12 +7278,12 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 <p className="text-2xl font-bold text-emerald-700">{igStats.with_email || 0}</p>
               </div>
               <div className="bg-white rounded-xl border border-blue-200 p-4">
-                <p className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Hotels détectés</p>
-                <p className="text-2xl font-bold text-blue-700">{igStats.hotels || 0}</p>
+                <p className="text-xs font-medium text-blue-600 uppercase tracking-wide mb-1">Hotels avec email</p>
+                <p className="text-2xl font-bold text-blue-700">{igStats.hotels_with_email || 0}</p>
               </div>
               <div className="bg-white rounded-xl border border-purple-200 p-4">
-                <p className="text-xs font-medium text-purple-600 uppercase tracking-wide mb-1">Avec site web</p>
-                <p className="text-2xl font-bold text-purple-700">{igStats.with_website || 0}</p>
+                <p className="text-xs font-medium text-purple-600 uppercase tracking-wide mb-1">Sport club emails</p>
+                <p className="text-2xl font-bold text-purple-700">{igStats.sport_with_email || 0}</p>
               </div>
             </div>
           )}
