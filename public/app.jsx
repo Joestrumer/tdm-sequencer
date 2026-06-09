@@ -7147,6 +7147,29 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 </div>
 
                 <div>
+                  <p className="font-semibold text-purple-800 mb-2">Exemples de hubs — Conciergeries Airbnb</p>
+                  <div className="grid grid-cols-2 gap-2 text-xs">
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">PMS internationaux</span>
+                      <p className="text-slate-500 mt-0.5">@guabordsty, @hostaway_official, @lodgify, @beds24_official, @smoobu</p>
+                    </div>
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">PMS francais</span>
+                      <p className="text-slate-500 mt-0.5">@superhote.co, @janaconcierge, @leazly, @hostiaa_pms</p>
+                    </div>
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Communautes/reseaux</span>
+                      <p className="text-slate-500 mt-0.5">@lbmg_conciergerie, @unionimmobilier, groupes FB "Conciergeries Airbnb France"</p>
+                    </div>
+                    <div className="bg-white rounded p-2 border border-purple-100">
+                      <span className="font-medium text-purple-700">Fournisseurs/services</span>
+                      <p className="text-slate-500 mt-0.5">@pricelabs, @beyond_pricing, @turnoverbnb, @breezeway_io</p>
+                    </div>
+                  </div>
+                  <p className="text-xs text-slate-500 mt-2">Les conciergeries suivent leurs outils PMS (Guesty, Hostaway, Lodgify...), les outils de pricing dynamique (PriceLabs, Beyond), et les services menage/check-in. Scraper les following de ces comptes donne des listes de conciergeries.</p>
+                </div>
+
+                <div>
                   <p className="font-semibold text-purple-800 mb-2">Comment trouver ces comptes</p>
                   <ol className="list-decimal list-inside space-y-1.5 ml-2">
                     <li><strong>Partir d'une salle/hotel connu</strong> — regardez ses followers, reperer les comptes pro qui suivent 300+ comptes</li>
