@@ -7350,20 +7350,57 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
               <option value="false">Sans contacts</option>
             </select>
 
-            {selectedIgAccounts.size > 0 && (
-              <div className="flex items-center gap-2 ml-auto">
-                <span className="text-xs text-slate-500">{selectedIgAccounts.size} sélectionné(s)</span>
-                <button onClick={handleIgScrapeWebsites} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">
-                  Scraper sites web
-                </button>
-                <button onClick={handleIgFindContacts} className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700">
-                  Chercher contacts
-                </button>
-                <button onClick={handleIgCreateLeads} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700">
-                  Convertir en leads
-                </button>
-              </div>
-            )}
+            <div className="flex items-center gap-2 ml-auto">
+              <button
+                onClick={() => {
+                  const next = new Set(selectedIgAccounts);
+                  const unselected = igAccounts.filter(a => !next.has(a.id));
+                  unselected.slice(0, 10).forEach(a => next.add(a.id));
+                  setSelectedIgAccounts(next);
+                }}
+                className="px-2 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200"
+              >
+                +10
+              </button>
+              <button
+                onClick={async () => {
+                  try {
+                    const queryObj = { ...igFilters };
+                    const params = new URLSearchParams(queryObj);
+                    for (const key of [...params.keys()]) {
+                      if (params.get(key) === '') params.delete(key);
+                    }
+                    const res = await api.get(`/instagram/accounts/all/ids?${params}`);
+                    setSelectedIgAccounts(new Set(res.ids || []));
+                  } catch (err) {
+                    showToast('Erreur sélection: ' + err.message, 'error');
+                  }
+                }}
+                className="px-2 py-1.5 bg-purple-100 text-purple-700 rounded-lg text-xs font-medium hover:bg-purple-200"
+              >
+                Tout sélectionner ({igAccountsTotal})
+              </button>
+              {selectedIgAccounts.size > 0 && (
+                <>
+                  <span className="text-xs text-slate-500">{selectedIgAccounts.size} sélectionné(s)</span>
+                  <button
+                    onClick={() => setSelectedIgAccounts(new Set())}
+                    className="px-2 py-1.5 text-slate-500 rounded-lg text-xs hover:bg-slate-100"
+                  >
+                    Désélectionner
+                  </button>
+                  <button onClick={handleIgScrapeWebsites} className="px-3 py-1.5 bg-blue-600 text-white rounded-lg text-xs font-medium hover:bg-blue-700">
+                    Scraper sites web
+                  </button>
+                  <button onClick={handleIgFindContacts} className="px-3 py-1.5 bg-amber-600 text-white rounded-lg text-xs font-medium hover:bg-amber-700">
+                    Chercher contacts
+                  </button>
+                  <button onClick={handleIgCreateLeads} className="px-3 py-1.5 bg-emerald-600 text-white rounded-lg text-xs font-medium hover:bg-emerald-700">
+                    Convertir en leads
+                  </button>
+                </>
+              )}
+            </div>
 
             <a
               href={`/api/instagram/accounts/all/export?${new URLSearchParams(Object.fromEntries(Object.entries(igFilters).filter(([,v]) => v)))}`}
@@ -7669,17 +7706,6 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                     <option value="50">50 / page</option>
                     <option value="100">100 / page</option>
                   </select>
-                  <button
-                    onClick={() => {
-                      const next = new Set(selectedIgAccounts);
-                      const unselected = igAccounts.filter(a => !next.has(a.id));
-                      unselected.slice(0, 10).forEach(a => next.add(a.id));
-                      setSelectedIgAccounts(next);
-                    }}
-                    className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-medium hover:bg-slate-200"
-                  >
-                    +10 sélection
-                  </button>
                 </div>
                 <div className="flex gap-2">
                   <button

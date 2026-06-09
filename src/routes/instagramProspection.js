@@ -901,6 +901,50 @@ module.exports = (db) => {
     }
   });
 
+  // GET /api/instagram/accounts/all/ids — Tous les IDs correspondant aux filtres (sans pagination)
+  router.get('/accounts/all/ids', (req, res) => {
+    try {
+      const { search, business_type, has_email, country, status, has_contacts, source } = req.query;
+
+      let where = 'WHERE 1=1';
+      const params = [];
+
+      if (search) {
+        where += ' AND (a.instagram_username LIKE ? OR a.full_name LIKE ? OR a.bio LIKE ?)';
+        const s = `%${search}%`;
+        params.push(s, s, s);
+      }
+
+      where = addMultiFilter(where, params, business_type, 'a.business_type');
+      where = addMultiFilter(where, params, country, 'a.country');
+      where = addMultiFilter(where, params, status, 'a.scraping_status');
+      where = addMultiFilter(where, params, source, 'j.instagram_username');
+
+      if (has_email === 'true') {
+        where += ' AND a.best_email IS NOT NULL';
+      } else if (has_email === 'false') {
+        where += ' AND a.best_email IS NULL';
+      }
+
+      if (has_contacts === 'true') {
+        where += " AND a.linkedin_contacts IS NOT NULL AND a.linkedin_contacts != '[]'";
+      } else if (has_contacts === 'false') {
+        where += " AND (a.linkedin_contacts IS NULL OR a.linkedin_contacts = '[]')";
+      }
+
+      const ids = db.prepare(`
+        SELECT a.id
+        FROM instagram_scraped_accounts a
+        LEFT JOIN instagram_scrape_jobs j ON a.job_id = j.id
+        ${where}
+      `).all(...params).map(r => r.id);
+
+      res.json({ ids });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   // GET /api/instagram/filter-options — Options disponibles pour multi-selects
   router.get('/filter-options', (req, res) => {
     try {
