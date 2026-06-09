@@ -4436,6 +4436,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '', country: '', status: '', has_contacts: '', source: '' });
   const [igSort, setIgSort] = useState({ column: '', direction: 'asc' });
   const [igFilterOptions, setIgFilterOptions] = useState({ sources: [], countries: [], types: [] });
+  const [igPagination, setIgPagination] = useState({ limit: 50, offset: 0 });
   const [igColWidths, setIgColWidths] = useState({});
   const [selectedIgAccounts, setSelectedIgAccounts] = useState(new Set());
   const [igConfigured, setIgConfigured] = useState(false);
@@ -4487,9 +4488,10 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     } catch { /* ignore */ }
   };
 
-  const chargerIgAllAccounts = async () => {
+  const chargerIgAllAccounts = async (paginationOverride) => {
     try {
-      const queryObj = { ...igFilters, limit: 200, offset: 0 };
+      const pag = paginationOverride || igPagination;
+      const queryObj = { ...igFilters, limit: pag.limit, offset: pag.offset };
       if (igSort.column) {
         queryObj.sort_column = igSort.column;
         queryObj.sort_direction = igSort.direction;
@@ -4677,9 +4679,17 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
 
   useEffect(() => {
     if (activeTab === 'social') {
-      chargerIgAllAccounts();
+      // Reset offset quand les filtres ou le tri changent
+      setIgPagination(p => p.offset === 0 ? p : { ...p, offset: 0 });
+      chargerIgAllAccounts({ limit: igPagination.limit, offset: 0 });
     }
   }, [igFilters, igSort]);
+
+  useEffect(() => {
+    if (activeTab === 'social') {
+      chargerIgAllAccounts();
+    }
+  }, [igPagination]);
 
   // Charger les comptes et filter-options quand on arrive sur l'onglet social
   useEffect(() => {
@@ -7643,12 +7653,51 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 </table>
               </div>
 
-              {/* Pagination simple */}
-              {igAccountsTotal > 200 && (
-                <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
-                  <span className="text-xs text-slate-500">{igAccountsTotal} compte(s) au total</span>
+              {/* Pagination */}
+              <div className="px-4 py-3 border-t border-slate-200 flex items-center justify-between">
+                <div className="flex items-center gap-3">
+                  <span className="text-xs text-slate-500">
+                    {igAccountsTotal > 0 ? `${igPagination.offset + 1} - ${Math.min(igPagination.offset + igPagination.limit, igAccountsTotal)} sur ${igAccountsTotal}` : '0 compte'}
+                  </span>
+                  <select
+                    value={igPagination.limit}
+                    onChange={e => { setIgPagination({ limit: parseInt(e.target.value), offset: 0 }); setSelectedIgAccounts(new Set()); }}
+                    className="px-2 py-1 border border-slate-300 rounded text-xs bg-white"
+                  >
+                    <option value="10">10 / page</option>
+                    <option value="25">25 / page</option>
+                    <option value="50">50 / page</option>
+                    <option value="100">100 / page</option>
+                  </select>
+                  <button
+                    onClick={() => {
+                      const next = new Set(selectedIgAccounts);
+                      const unselected = igAccounts.filter(a => !next.has(a.id));
+                      unselected.slice(0, 10).forEach(a => next.add(a.id));
+                      setSelectedIgAccounts(next);
+                    }}
+                    className="px-2 py-1 bg-slate-100 text-slate-700 rounded text-xs font-medium hover:bg-slate-200"
+                  >
+                    +10 sélection
+                  </button>
                 </div>
-              )}
+                <div className="flex gap-2">
+                  <button
+                    onClick={() => setIgPagination(p => ({ ...p, offset: Math.max(0, p.offset - p.limit) }))}
+                    disabled={igPagination.offset === 0}
+                    className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    ← Précédent
+                  </button>
+                  <button
+                    onClick={() => setIgPagination(p => ({ ...p, offset: p.offset + p.limit }))}
+                    disabled={igPagination.offset + igPagination.limit >= igAccountsTotal}
+                    className="px-3 py-1.5 rounded-lg border border-slate-300 text-xs font-medium text-slate-700 hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    Suivant →
+                  </button>
+                </div>
+              </div>
             </div>
           )}
 
