@@ -310,10 +310,11 @@ module.exports = (db) => {
 
     try {
       const jobId = uuidv4();
+      const scrapeMode = options.scrape_mode === 'followers' ? 'followers' : 'following';
 
       db.prepare(`
-        INSERT INTO instagram_scrape_jobs (id, instagram_url, instagram_username, filter_keywords, options)
-        VALUES (?, ?, ?, ?, ?)
+        INSERT INTO instagram_scrape_jobs (id, instagram_url, instagram_username, filter_keywords, options, scrape_mode)
+        VALUES (?, ?, ?, ?, ?, ?)
       `).run(
         jobId,
         url,
@@ -322,7 +323,8 @@ module.exports = (db) => {
         JSON.stringify({
           max_accounts: options.max_accounts || 500,
           skip_private: options.skip_private !== false,
-        })
+        }),
+        scrapeMode
       );
 
       // Lancer le job en arrière-plan
@@ -347,7 +349,7 @@ module.exports = (db) => {
       const jobs = db.prepare(`
         SELECT id, instagram_url, instagram_username, status,
                total_following, processed, emails_found, contacts_found,
-               error_message, filter_keywords, options,
+               error_message, filter_keywords, options, scrape_mode,
                created_at, updated_at, completed_at
         FROM instagram_scrape_jobs
         ORDER BY created_at DESC

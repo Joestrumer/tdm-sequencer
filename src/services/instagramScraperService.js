@@ -19,6 +19,7 @@ const IG_PRIVATE_BASE = 'https://i.instagram.com/api/v1';
 // Approche Instaloader : API web GraphQL (www.instagram.com) — fallback
 const IG_WEB_BASE = 'https://www.instagram.com';
 const IG_FOLLOWEES_QUERY_HASH = '58712303d941c6855d4e888c5f0cd22f';
+const IG_FOLLOWERS_QUERY_HASH = 'c76146de99bb02f6415203be841dd25a';
 
 // User-Agents
 const IG_MOBILE_UA = 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)';
@@ -654,6 +655,97 @@ async function fetchFollowingGraphQL(userId, credentials, maxAccounts) {
   return following;
 }
 
+/**
+ * Récupère la liste paginée des "followers"
+ * Même pattern que fetchFollowingList mais endpoint /followers/
+ */
+async function fetchFollowersList(userId, credentials, maxAccounts = 500) {
+  try {
+    return await fetchFollowersPrivate(userId, credentials, maxAccounts);
+  } catch (err) {
+    logger.warn(`⚠️ IG followers API privée échoué: ${err.message}, tentative GraphQL...`);
+    return await fetchFollowersGraphQL(userId, credentials, maxAccounts);
+  }
+}
+
+/**
+ * Followers via API privée mobile
+ */
+async function fetchFollowersPrivate(userId, credentials, maxAccounts) {
+  const followers = [];
+  let maxId = '';
+
+  while (followers.length < maxAccounts) {
+    let url = `${IG_PRIVATE_BASE}/friendships/${userId}/followers/?count=200&search_surface=follow_list_page`;
+    if (maxId) url += `&max_id=${maxId}`;
+
+    const data = await igFetch(url, privateHeaders(credentials));
+
+    if (data.users && data.users.length > 0) {
+      for (const user of data.users) {
+        if (followers.length >= maxAccounts) break;
+        followers.push({
+          username: user.username,
+          user_id: user.pk?.toString() || user.id?.toString(),
+          full_name: user.full_name,
+          is_private: user.is_private ? 1 : 0,
+        });
+      }
+    }
+
+    if (!data.next_max_id) break;
+    maxId = data.next_max_id;
+
+    if (followers.length < maxAccounts) {
+      await jitteredDelay();
+    }
+  }
+
+  logger.info(`📱 IG followers via API privée: ${followers.length} comptes`);
+  return followers;
+}
+
+/**
+ * Followers via GraphQL web (fallback)
+ */
+async function fetchFollowersGraphQL(userId, credentials, maxAccounts) {
+  const followers = [];
+  let cursor = null;
+  let hasMore = true;
+
+  while (hasMore && followers.length < maxAccounts) {
+    const variables = { id: String(userId), first: 50 };
+    if (cursor) variables.after = cursor;
+
+    const url = `${IG_WEB_BASE}/graphql/query/?query_hash=${IG_FOLLOWERS_QUERY_HASH}&variables=${encodeURIComponent(JSON.stringify(variables))}`;
+    const data = await igFetch(url, webHeaders(credentials, 'graphql'));
+
+    const edges = data?.data?.user?.edge_followed_by?.edges;
+    if (edges && edges.length > 0) {
+      for (const edge of edges) {
+        if (followers.length >= maxAccounts) break;
+        followers.push({
+          username: edge.node.username,
+          user_id: edge.node.id?.toString(),
+          full_name: edge.node.full_name,
+          is_private: edge.node.is_private ? 1 : 0,
+        });
+      }
+    }
+
+    const pageInfo = data?.data?.user?.edge_followed_by?.page_info;
+    hasMore = pageInfo?.has_next_page || false;
+    cursor = pageInfo?.end_cursor;
+
+    if (hasMore && followers.length < maxAccounts) {
+      await jitteredDelay();
+    }
+  }
+
+  logger.info(`🌐 IG followers via GraphQL: ${followers.length} comptes`);
+  return followers;
+}
+
 // ─── Classification ─────────────────────────────────────────────────────────
 
 /**
@@ -968,11 +1060,14 @@ async function processJob(db, jobId) {
 
       await jitteredDelay();
 
-      // Étape 2 : Récupérer la liste following
-      db.prepare("UPDATE instagram_scrape_jobs SET status = 'fetching_following', updated_at = datetime('now') WHERE id = ?").run(jobId);
+      // Étape 2 : Récupérer la liste following ou followers
+      const scrapeMode = job.scrape_mode || 'following';
+      db.prepare(`UPDATE instagram_scrape_jobs SET status = 'fetching_${scrapeMode === 'followers' ? 'followers' : 'following'}', updated_at = datetime('now') WHERE id = ?`).run(jobId);
 
       const maxAccounts = options.max_accounts || 500;
-      following = await fetchFollowingList(profile.user_id, credentials, maxAccounts);
+      following = scrapeMode === 'followers'
+        ? await fetchFollowersList(profile.user_id, credentials, maxAccounts)
+        : await fetchFollowingList(profile.user_id, credentials, maxAccounts);
 
       db.prepare(`
         UPDATE instagram_scrape_jobs
@@ -980,7 +1075,7 @@ async function processJob(db, jobId) {
         WHERE id = ?
       `).run(following.length, jobId);
 
-      logger.info(`📱 IG Job ${jobId}: ${following.length} following récupérés pour @${job.instagram_username}`);
+      logger.info(`📱 IG Job ${jobId}: ${following.length} ${scrapeMode} récupérés pour @${job.instagram_username}`);
 
       // Insérer les comptes
       const insertAccount = db.prepare(`

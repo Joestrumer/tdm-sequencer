@@ -4432,7 +4432,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [igAccountsTotal, setIgAccountsTotal] = useState(0);
   const [igStats, setIgStats] = useState(null);
   const [igUrl, setIgUrl] = useState('');
-  const [igOptions, setIgOptions] = useState({ max_accounts: 500, skip_private: true, filter_keywords: [] });
+  const [igOptions, setIgOptions] = useState({ max_accounts: 500, skip_private: true, filter_keywords: [], scrape_mode: 'following' });
   const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '', country: '', status: '', has_contacts: '', source: '' });
   const [igSort, setIgSort] = useState({ column: '', direction: 'asc' });
   const [igFilterOptions, setIgFilterOptions] = useState({ sources: [], countries: [], types: [] });
@@ -7039,6 +7039,17 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                   onKeyDown={e => e.key === 'Enter' && handleIgLaunch()}
                 />
               </div>
+              <div className="w-36">
+                <label className="block text-xs font-medium text-slate-600 mb-1">Mode</label>
+                <select
+                  value={igOptions.scrape_mode}
+                  onChange={e => setIgOptions(o => ({ ...o, scrape_mode: e.target.value }))}
+                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                >
+                  <option value="following">Suivis (following)</option>
+                  <option value="followers">Abonnés (followers)</option>
+                </select>
+              </div>
               <div className="w-32">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Max comptes</label>
                 <input
@@ -7221,11 +7232,11 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                       : 'bg-white border border-slate-200 text-slate-700 hover:border-purple-300'
                   }`}
                 >
-                  @{job.instagram_username}
+                  {job.scrape_mode === 'followers' ? '👥' : '➡️'} @{job.instagram_username}
                   <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                     job.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
                     job.status === 'error' ? 'bg-red-100 text-red-700' :
-                    (job.status === 'paused' || (!job.is_active && ['processing', 'fetching_profile', 'fetching_following'].includes(job.status))) ? 'bg-amber-100 text-amber-700' :
+                    (job.status === 'paused' || (!job.is_active && ['processing', 'fetching_profile', 'fetching_following', 'fetching_followers'].includes(job.status))) ? 'bg-amber-100 text-amber-700' :
                     'bg-blue-100 text-blue-700'
                   }`}>
                     {job.status === 'completed' ? 'terminé' :
