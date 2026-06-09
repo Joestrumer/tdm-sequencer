@@ -1017,6 +1017,13 @@ async function processJob(db, jobId) {
     let options = {};
     try { options = JSON.parse(job.options || '{}'); } catch { /* ignore */ }
 
+    // Dispatch vers le mode recherche par catégorie
+    const scrapeMode = job.scrape_mode || 'following';
+    if (scrapeMode === 'category_search') {
+      activeJobs.delete(jobId); // processCategorySearchJob gère son propre activeJobs
+      return await processCategorySearchJob(db, jobId);
+    }
+
     let filterKeywords = [];
     try { filterKeywords = JSON.parse(job.filter_keywords || '[]'); } catch { /* ignore */ }
 
@@ -1440,6 +1447,373 @@ async function scrapeWebsitesBatch(db, accountIds) {
   return results;
 }
 
+// ─── Recherche par catégorie business ────────────────────────────────────────
+
+const SEARCH_CITIES = {
+  'France': [
+    'Paris', 'Lyon', 'Marseille', 'Toulouse', 'Bordeaux', 'Nice', 'Nantes', 'Lille',
+    'Strasbourg', 'Montpellier', 'Rennes', 'Grenoble', 'Toulon', 'Dijon', 'Angers',
+    'Aix-en-Provence', 'Brest', 'Tours', 'Rouen', 'Caen', 'Nancy', 'Reims', 'Cannes',
+    'Biarritz', 'Annecy', 'Chamonix', 'La Rochelle', 'Saint-Malo', 'Ajaccio', 'Colmar',
+    'Perpignan', 'Metz', 'Clermont-Ferrand', 'Limoges', 'Amiens', 'Pau', 'Bayonne',
+    'Chambéry', 'Saint-Étienne', 'Le Mans', 'Avignon', 'Valence', 'Poitiers', 'Besançon',
+    'Orléans', 'La Baule', 'Deauville', 'Megève', 'Courchevel', 'Saint-Tropez',
+  ],
+  'Italie': [
+    'Milano', 'Roma', 'Firenze', 'Torino', 'Napoli', 'Bologna', 'Venezia', 'Verona',
+    'Como', 'Amalfi', 'Positano', 'Capri', 'Palermo', 'Catania', 'Genova', 'Bari',
+    'Perugia', 'Siena', 'Lucca', 'Rimini', 'Bergamo', 'Parma', 'Modena', 'Trieste',
+    'Sorrento',
+  ],
+  'Espagne': [
+    'Madrid', 'Barcelona', 'Valencia', 'Sevilla', 'Malaga', 'Bilbao', 'Ibiza',
+    'Marbella', 'Granada', 'San Sebastián', 'Palma de Mallorca', 'Alicante',
+    'Zaragoza', 'Córdoba', 'Cádiz', 'Tenerife', 'Las Palmas', 'Salamanca',
+    'Toledo', 'Santander',
+  ],
+  'Royaume-Uni': [
+    'London', 'Manchester', 'Edinburgh', 'Bristol', 'Bath', 'Brighton', 'Liverpool',
+    'Birmingham', 'Leeds', 'Glasgow', 'Oxford', 'Cambridge', 'York', 'Nottingham',
+    'Cardiff', 'Belfast', 'Aberdeen',
+  ],
+  'Allemagne': [
+    'Berlin', 'München', 'Hamburg', 'Frankfurt', 'Köln', 'Düsseldorf', 'Stuttgart',
+    'Dresden', 'Leipzig', 'Hannover', 'Nürnberg', 'Bremen', 'Heidelberg',
+    'Freiburg', 'Baden-Baden',
+  ],
+};
+
+const CATEGORY_SEARCH_TERMS = {
+  'Club de sport': ['Club de sport', 'Salle de sport', 'Fitness', 'Gym'],
+  'Hotel': ['Hotel', 'Boutique hotel'],
+  'Service de conciergerie': ['Conciergerie', 'Property management', 'Gestion locative'],
+  'Restaurant': ['Restaurant', 'Restaurant gastronomique'],
+  'Spa': ['Spa', 'Centre de bien-être'],
+  'Bar': ['Bar', 'Cocktail bar'],
+};
+
+/**
+ * Recherche d'utilisateurs Instagram via l'API search
+ * Utilise /api/v1/users/search/ avec pagination
+ */
+async function searchUsers(query, credentials, maxResults = 150) {
+  const results = [];
+  const seenIds = new Set();
+  const maxPages = 3;
+
+  for (let page = 0; page < maxPages && results.length < maxResults; page++) {
+    const params = new URLSearchParams({
+      q: query,
+      count: '50',
+      search_surface: 'user_search_page',
+    });
+    if (page > 0) {
+      params.set('page', String(page));
+      params.set('rank_token', `0.${Date.now()}`);
+    }
+
+    const url = `${IG_PRIVATE_BASE}/users/search/?${params.toString()}`;
+
+    try {
+      const data = await igFetch(url, privateHeaders(credentials));
+      const users = data?.users || [];
+
+      if (users.length === 0) break;
+
+      for (const user of users) {
+        const userId = user.pk?.toString() || user.id?.toString();
+        if (seenIds.has(userId)) continue;
+        seenIds.add(userId);
+
+        results.push({
+          username: user.username,
+          user_id: userId,
+          full_name: user.full_name || '',
+          is_private: user.is_private ? 1 : 0,
+          is_business: user.is_business ? 1 : 0,
+          category: user.category || user.category_name || null,
+          bio: user.biography || '',
+          follower_count: user.follower_count || 0,
+        });
+
+        if (results.length >= maxResults) break;
+      }
+
+      if (!data.has_more && page > 0) break;
+    } catch (err) {
+      logger.warn(`⚠️ IG search "${query}" page ${page} échoué: ${err.message}`);
+      if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED')) throw err;
+      break;
+    }
+
+    if (page < maxPages - 1 && results.length < maxResults) {
+      await jitteredDelay();
+    }
+  }
+
+  logger.info(`🔍 IG search "${query}": ${results.length} résultats`);
+  return results;
+}
+
+/**
+ * Traite un job de recherche par catégorie business
+ * Itère ville par ville dans le pays choisi, avec dédup cross-jobs
+ */
+async function processCategorySearchJob(db, jobId) {
+  const jobState = { paused: false, cancelled: false };
+  activeJobs.set(jobId, jobState);
+
+  try {
+    const job = db.prepare('SELECT * FROM instagram_scrape_jobs WHERE id = ?').get(jobId);
+    if (!job) throw new Error(`Job ${jobId} non trouvé`);
+
+    const credentials = getCredentials(db);
+    if (!credentials.sessionId || !credentials.csrfToken) {
+      throw new Error('Credentials Instagram non configurées');
+    }
+
+    let options = {};
+    try { options = JSON.parse(job.options || '{}'); } catch { /* ignore */ }
+
+    const category = job.search_category;
+    const country = job.search_country;
+    const maxAccounts = options.max_accounts || 500;
+
+    const cities = SEARCH_CITIES[country];
+    if (!cities || cities.length === 0) {
+      throw new Error(`Pays "${country}" non supporté pour la recherche par catégorie`);
+    }
+
+    const searchTerms = CATEGORY_SEARCH_TERMS[category];
+    if (!searchTerms || searchTerms.length === 0) {
+      throw new Error(`Catégorie "${category}" non supportée`);
+    }
+
+    // Charger la progression existante (reprise)
+    let progress = { cities_completed: [], current_city: null, new_accounts_found: 0, duplicates_skipped: 0 };
+    try { progress = JSON.parse(job.search_progress || '{}'); } catch { /* ignore */ }
+    if (!progress.cities_completed) progress.cities_completed = [];
+    if (!progress.new_accounts_found) progress.new_accounts_found = 0;
+    if (!progress.duplicates_skipped) progress.duplicates_skipped = 0;
+
+    // Construire le set global de dédup (tous les usernames déjà scrappés)
+    const existingUsernames = new Set(
+      db.prepare('SELECT DISTINCT instagram_username FROM instagram_scraped_accounts').all()
+        .map(r => r.instagram_username)
+    );
+
+    // Passer en status searching
+    db.prepare("UPDATE instagram_scrape_jobs SET status = 'searching', updated_at = datetime('now') WHERE id = ?").run(jobId);
+
+    let newAccountsFound = progress.new_accounts_found;
+    let duplicatesSkipped = progress.duplicates_skipped;
+
+    for (const city of cities) {
+      // Skip villes déjà complétées
+      if (progress.cities_completed.includes(city)) continue;
+
+      // Check pause/cancel
+      const currentState = activeJobs.get(jobId);
+      if (currentState?.cancelled) {
+        db.prepare("UPDATE instagram_scrape_jobs SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?").run(jobId);
+        logger.info(`🔍 IG Category Job ${jobId}: annulé`);
+        return;
+      }
+      while (currentState?.paused) {
+        await sleep(2000);
+        const refreshedState = activeJobs.get(jobId);
+        if (!refreshedState?.paused) break;
+        if (refreshedState?.cancelled) {
+          db.prepare("UPDATE instagram_scrape_jobs SET status = 'cancelled', updated_at = datetime('now') WHERE id = ?").run(jobId);
+          return;
+        }
+      }
+
+      // Mettre à jour la progression
+      progress.current_city = city;
+      db.prepare("UPDATE instagram_scrape_jobs SET search_progress = ?, updated_at = datetime('now') WHERE id = ?")
+        .run(JSON.stringify(progress), jobId);
+
+      for (const term of searchTerms) {
+        if (newAccountsFound >= maxAccounts) break;
+
+        const query = `${term} ${city}`;
+        let searchResults;
+
+        try {
+          searchResults = await searchUsers(query, credentials);
+        } catch (err) {
+          // Auto-pause sur spam/rate-limit
+          if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED')) {
+            logger.warn(`🚫 IG Category Job ${jobId}: auto-pause — ${err.message}`);
+            const pauseMsg = err.message.includes('SPAM')
+              ? 'Session flaggée spam par Instagram. Attendez 15-30 min puis reprenez.'
+              : 'Trop de rate limits. Attendez quelques minutes puis reprenez.';
+            db.prepare("UPDATE instagram_scrape_jobs SET status = 'paused', error_message = ?, search_progress = ?, updated_at = datetime('now') WHERE id = ?")
+              .run(pauseMsg, JSON.stringify(progress), jobId);
+            const state = activeJobs.get(jobId);
+            if (state) state.paused = true;
+            while (activeJobs.get(jobId)?.paused) {
+              await sleep(5000);
+              if (activeJobs.get(jobId)?.cancelled) return;
+            }
+            db.prepare("UPDATE instagram_scrape_jobs SET status = 'searching', error_message = NULL, updated_at = datetime('now') WHERE id = ?").run(jobId);
+            await sleep(10000);
+            // Re-tenter cette recherche
+            try {
+              searchResults = await searchUsers(query, credentials);
+            } catch (err2) {
+              logger.warn(`⚠️ IG search "${query}" re-essai échoué: ${err2.message}`);
+              continue;
+            }
+          } else {
+            logger.warn(`⚠️ IG search "${query}" échoué: ${err.message}`);
+            continue;
+          }
+        }
+
+        for (const user of searchResults) {
+          if (newAccountsFound >= maxAccounts) break;
+
+          // Dédup : skip si déjà connu
+          if (existingUsernames.has(user.username)) {
+            duplicatesSkipped++;
+            continue;
+          }
+
+          // Marquer comme connu pour éviter les doublons intra-job
+          existingUsernames.add(user.username);
+
+          try {
+            // Récupérer le profil complet
+            await jitteredDelay(4000);
+            let accountProfile;
+            try {
+              accountProfile = await fetchUserProfile(user.username, credentials);
+            } catch (err) {
+              if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED')) {
+                logger.warn(`🚫 IG Category Job ${jobId}: auto-pause (profil) — ${err.message}`);
+                const pauseMsg = err.message.includes('SPAM')
+                  ? 'Session flaggée spam par Instagram. Attendez 15-30 min puis reprenez.'
+                  : 'Trop de rate limits. Attendez quelques minutes puis reprenez.';
+                db.prepare("UPDATE instagram_scrape_jobs SET status = 'paused', error_message = ?, search_progress = ?, updated_at = datetime('now') WHERE id = ?")
+                  .run(pauseMsg, JSON.stringify(progress), jobId);
+                const state = activeJobs.get(jobId);
+                if (state) state.paused = true;
+                while (activeJobs.get(jobId)?.paused) {
+                  await sleep(5000);
+                  if (activeJobs.get(jobId)?.cancelled) return;
+                }
+                db.prepare("UPDATE instagram_scrape_jobs SET status = 'searching', error_message = NULL, updated_at = datetime('now') WHERE id = ?").run(jobId);
+                await sleep(10000);
+                try {
+                  accountProfile = await fetchUserProfile(user.username, credentials);
+                } catch (err2) {
+                  logger.warn(`⚠️ Profil @${user.username} re-essai échoué: ${err2.message}`);
+                  continue;
+                }
+              } else {
+                logger.warn(`⚠️ Profil @${user.username} inaccessible: ${err.message}`);
+                continue;
+              }
+            }
+
+            // Résoudre les link-in-bio
+            if (isLinkInBio(accountProfile.external_url)) {
+              try {
+                const realUrl = await resolveRealWebsite(accountProfile.external_url);
+                if (realUrl) accountProfile.external_url = realUrl;
+              } catch { /* on garde le linkinbio */ }
+            }
+
+            // Classification + détection pays
+            const businessType = classifyBusiness(accountProfile.bio, accountProfile.category);
+            const bioKeywords = extractBioKeywords(accountProfile.bio, accountProfile.category);
+            const detectedCountry = detectCountry(accountProfile.external_url, accountProfile.bio, accountProfile.city_name, accountProfile.phone_country_code, accountProfile.address_street);
+
+            // Email
+            const bestEmailResult = pickBestEmail(accountProfile.business_email, []);
+
+            // Insérer dans la DB
+            db.prepare(`
+              INSERT OR IGNORE INTO instagram_scraped_accounts
+                (job_id, instagram_username, instagram_user_id, full_name, bio, website, external_url,
+                 business_email, category, is_business, is_private, follower_count, following_count,
+                 business_type, bio_keywords, best_email, email_source, email_confidence,
+                 country, city_name, phone_country_code, address_street, scraping_status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'done')
+            `).run(
+              jobId, accountProfile.username, accountProfile.user_id,
+              accountProfile.full_name, accountProfile.bio,
+              accountProfile.external_url, accountProfile.external_url,
+              accountProfile.business_email, accountProfile.category,
+              accountProfile.is_business, accountProfile.is_private,
+              accountProfile.follower_count, accountProfile.following_count,
+              businessType, JSON.stringify(bioKeywords),
+              bestEmailResult?.email || null, bestEmailResult?.source || null, bestEmailResult?.confidence || null,
+              detectedCountry, accountProfile.city_name || null,
+              accountProfile.phone_country_code || null, accountProfile.address_street || null
+            );
+
+            // Vérifier doublons lead
+            if (bestEmailResult?.email) {
+              const dup = checkDuplicates(db, { best_email: bestEmailResult.email, external_url: accountProfile.external_url });
+              if (dup.duplicate) {
+                db.prepare("UPDATE instagram_scraped_accounts SET existing_lead_email = ? WHERE job_id = ? AND instagram_username = ?")
+                  .run(dup.existing_email || 'duplicate', jobId, accountProfile.username);
+              }
+            }
+
+            newAccountsFound++;
+            progress.new_accounts_found = newAccountsFound;
+            progress.duplicates_skipped = duplicatesSkipped;
+
+            // Mettre à jour les compteurs du job
+            db.prepare("UPDATE instagram_scrape_jobs SET processed = ?, emails_found = (SELECT COUNT(*) FROM instagram_scraped_accounts WHERE job_id = ? AND best_email IS NOT NULL), total_following = ?, search_progress = ?, updated_at = datetime('now') WHERE id = ?")
+              .run(newAccountsFound, jobId, maxAccounts, JSON.stringify(progress), jobId);
+
+          } catch (err) {
+            logger.warn(`⚠️ Erreur traitement @${user.username} (category search): ${err.message}`);
+          }
+        }
+
+        if (newAccountsFound >= maxAccounts) break;
+
+        // Délai entre les recherches
+        await jitteredDelay(3000);
+      }
+
+      // Marquer la ville comme complétée
+      progress.cities_completed.push(city);
+      progress.current_city = null;
+      progress.new_accounts_found = newAccountsFound;
+      progress.duplicates_skipped = duplicatesSkipped;
+      db.prepare("UPDATE instagram_scrape_jobs SET search_progress = ?, updated_at = datetime('now') WHERE id = ?")
+        .run(JSON.stringify(progress), jobId);
+
+      if (newAccountsFound >= maxAccounts) break;
+    }
+
+    // Job terminé
+    const emailsFound = db.prepare("SELECT COUNT(*) as count FROM instagram_scraped_accounts WHERE job_id = ? AND best_email IS NOT NULL").get(jobId).count;
+    db.prepare(`
+      UPDATE instagram_scrape_jobs
+      SET status = 'completed', processed = ?, emails_found = ?, total_following = ?,
+          search_progress = ?, updated_at = datetime('now'), completed_at = datetime('now')
+      WHERE id = ?
+    `).run(newAccountsFound, emailsFound, maxAccounts, JSON.stringify(progress), jobId);
+
+    logger.info(`✅ IG Category Job ${jobId} terminé: ${newAccountsFound} comptes trouvés, ${duplicatesSkipped} doublons ignorés`);
+
+  } catch (err) {
+    logger.error(`❌ IG Category Job ${jobId} erreur:`, err.message);
+    db.prepare("UPDATE instagram_scrape_jobs SET status = 'error', error_message = ?, updated_at = datetime('now') WHERE id = ?")
+      .run(err.message, jobId);
+  } finally {
+    activeJobs.delete(jobId);
+  }
+}
+
 // ─── Pause / Resume / Cancel ────────────────────────────────────────────────
 
 function pauseJob(jobId) {
@@ -1497,4 +1871,8 @@ module.exports = {
   isLinkInBio,
   resolveRealWebsite,
   BUSINESS_KEYWORDS,
+  searchUsers,
+  processCategorySearchJob,
+  SEARCH_CITIES,
+  CATEGORY_SEARCH_TERMS,
 };

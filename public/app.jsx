@@ -4433,6 +4433,9 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [igStats, setIgStats] = useState(null);
   const [igUrl, setIgUrl] = useState('');
   const [igOptions, setIgOptions] = useState({ max_accounts: 500, skip_private: true, filter_keywords: [], scrape_mode: 'following' });
+  const [igSearchOptions, setIgSearchOptions] = useState({ categories: [], countries: [] });
+  const [igSearchCategory, setIgSearchCategory] = useState('');
+  const [igSearchCountry, setIgSearchCountry] = useState('');
   const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '', country: '', status: '', has_contacts: '', source: '' });
   const [igSort, setIgSort] = useState({ column: '', direction: 'asc' });
   const [igFilterOptions, setIgFilterOptions] = useState({ sources: [], countries: [], types: [] });
@@ -4488,6 +4491,13 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     } catch { /* ignore */ }
   };
 
+  const chargerIgSearchOptions = async () => {
+    try {
+      const res = await api.get('/instagram/search-options');
+      setIgSearchOptions(res || { categories: [], countries: [] });
+    } catch { /* ignore */ }
+  };
+
   const chargerIgAllAccounts = async (paginationOverride) => {
     try {
       const pag = paginationOverride || igPagination;
@@ -4523,6 +4533,10 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
       setIgStats(res.stats || null);
       // Mettre à jour le job dans la liste
       setIgJobs(prev => prev.map(j => j.id === jobId ? { ...j, ...res } : j));
+      // Rafraîchir les comptes pendant la recherche par catégorie (insertion progressive)
+      if (res.scrape_mode === 'category_search' && res.status === 'searching') {
+        chargerIgAllAccounts();
+      }
       if (res.status === 'completed' || res.status === 'error' || res.status === 'cancelled') {
         if (igPollingRef.current) {
           clearInterval(igPollingRef.current);
@@ -4548,19 +4562,36 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   }, []);
 
   const handleIgLaunch = async () => {
-    if (!igUrl.trim()) return;
     setIgLaunching(true);
     try {
-      const res = await api.post('/instagram/scrape', {
-        url: igUrl.trim(),
-        options: igOptions,
-      });
-      if (res.success) {
-        showToast(`Scraping lancé pour @${res.username}`, 'success');
-        setIgUrl('');
-        setIgActiveJob(res.job_id);
-        startIgPolling(res.job_id);
-        chargerIgJobs();
+      if (igOptions.scrape_mode === 'category_search') {
+        if (!igSearchCategory || !igSearchCountry) {
+          showToast('Sélectionnez une catégorie et un pays', 'error');
+          setIgLaunching(false);
+          return;
+        }
+        const res = await api.post('/instagram/scrape', {
+          options: { ...igOptions, search_category: igSearchCategory, search_country: igSearchCountry },
+        });
+        if (res.success) {
+          showToast(res.message || 'Recherche lancée', 'success');
+          setIgActiveJob(res.job_id);
+          startIgPolling(res.job_id);
+          chargerIgJobs();
+        }
+      } else {
+        if (!igUrl.trim()) { setIgLaunching(false); return; }
+        const res = await api.post('/instagram/scrape', {
+          url: igUrl.trim(),
+          options: igOptions,
+        });
+        if (res.success) {
+          showToast(`Scraping lancé pour @${res.username}`, 'success');
+          setIgUrl('');
+          setIgActiveJob(res.job_id);
+          startIgPolling(res.job_id);
+          chargerIgJobs();
+        }
       }
     } catch (err) {
       showToast('Erreur lancement: ' + err.message, 'error');
@@ -4572,7 +4603,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     setIgActiveJob(jobId);
     setSelectedIgAccounts(new Set());
     const job = igJobs.find(j => j.id === jobId);
-    if (job && (job.status === 'processing' || job.status === 'fetching_profile' || job.status === 'fetching_following')) {
+    if (job && (job.status === 'processing' || job.status === 'fetching_profile' || job.status === 'fetching_following' || job.status === 'searching')) {
       startIgPolling(jobId);
     } else {
       if (igPollingRef.current) clearInterval(igPollingRef.current);
@@ -5375,7 +5406,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           )}
         </button>
         <button
-          onClick={() => { setActiveTab('social'); chargerIgConfig(); chargerIgJobs(); }}
+          onClick={() => { setActiveTab('social'); chargerIgConfig(); chargerIgJobs(); chargerIgSearchOptions(); }}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === 'social'
               ? 'text-blue-600 border-b-2 border-blue-600'
@@ -7027,19 +7058,8 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
 
           {/* Input URL + options + bouton lancer */}
           <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-            <div className="flex gap-3 items-end">
-              <div className="flex-1">
-                <label className="block text-xs font-medium text-slate-600 mb-1">URL du compte Instagram</label>
-                <input
-                  type="text"
-                  value={igUrl}
-                  onChange={e => setIgUrl(e.target.value)}
-                  placeholder="https://www.instagram.com/aleop.io/"
-                  className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
-                  onKeyDown={e => e.key === 'Enter' && handleIgLaunch()}
-                />
-              </div>
-              <div className="w-36">
+            <div className="flex gap-3 items-end flex-wrap">
+              <div className="w-44">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Mode</label>
                 <select
                   value={igOptions.scrape_mode}
@@ -7048,8 +7068,47 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 >
                   <option value="following">Suivis (following)</option>
                   <option value="followers">Abonnés (followers)</option>
+                  <option value="category_search">Recherche catégorie</option>
                 </select>
               </div>
+              {igOptions.scrape_mode !== 'category_search' ? (
+                <div className="flex-1">
+                  <label className="block text-xs font-medium text-slate-600 mb-1">URL du compte Instagram</label>
+                  <input
+                    type="text"
+                    value={igUrl}
+                    onChange={e => setIgUrl(e.target.value)}
+                    placeholder="https://www.instagram.com/aleop.io/"
+                    className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-purple-500 focus:border-transparent"
+                    onKeyDown={e => e.key === 'Enter' && handleIgLaunch()}
+                  />
+                </div>
+              ) : (
+                <>
+                  <div className="w-48">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Catégorie</label>
+                    <select
+                      value={igSearchCategory}
+                      onChange={e => setIgSearchCategory(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="">-- Choisir --</option>
+                      {igSearchOptions.categories.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                  <div className="w-40">
+                    <label className="block text-xs font-medium text-slate-600 mb-1">Pays</label>
+                    <select
+                      value={igSearchCountry}
+                      onChange={e => setIgSearchCountry(e.target.value)}
+                      className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+                    >
+                      <option value="">-- Choisir --</option>
+                      {igSearchOptions.countries.map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                  </div>
+                </>
+              )}
               <div className="w-32">
                 <label className="block text-xs font-medium text-slate-600 mb-1">Max comptes</label>
                 <input
@@ -7061,21 +7120,23 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                   max={5000}
                 />
               </div>
-              <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer pb-2">
-                <input
-                  type="checkbox"
-                  checked={igOptions.skip_private}
-                  onChange={e => setIgOptions(o => ({ ...o, skip_private: e.target.checked }))}
-                  className="w-4 h-4"
-                />
-                Skip privés
-              </label>
+              {igOptions.scrape_mode !== 'category_search' && (
+                <label className="flex items-center gap-2 text-sm text-slate-600 cursor-pointer pb-2">
+                  <input
+                    type="checkbox"
+                    checked={igOptions.skip_private}
+                    onChange={e => setIgOptions(o => ({ ...o, skip_private: e.target.checked }))}
+                    className="w-4 h-4"
+                  />
+                  Skip privés
+                </label>
+              )}
               <button
                 onClick={handleIgLaunch}
-                disabled={igLaunching || !igUrl.trim() || !igConfigured}
+                disabled={igLaunching || !igConfigured || (igOptions.scrape_mode === 'category_search' ? (!igSearchCategory || !igSearchCountry) : !igUrl.trim())}
                 className="px-5 py-2 bg-purple-600 text-white rounded-lg text-sm font-medium hover:bg-purple-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
               >
-                {igLaunching ? 'Lancement...' : 'Lancer le scraping'}
+                {igLaunching ? 'Lancement...' : igOptions.scrape_mode === 'category_search' ? 'Lancer la recherche' : 'Lancer le scraping'}
               </button>
               <button
                 onClick={() => setShowIgConfig(true)}
@@ -7220,7 +7281,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                     // Garder igActiveJob pour le polling/barre de progression
                     setIgActiveJob(job.id);
                     const j = igJobs.find(jj => jj.id === job.id);
-                    if (j && (j.status === 'processing' || j.status === 'fetching_profile' || j.status === 'fetching_following')) {
+                    if (j && (j.status === 'processing' || j.status === 'fetching_profile' || j.status === 'fetching_following' || j.status === 'searching')) {
                       startIgPolling(job.id);
                     } else {
                       if (igPollingRef.current) clearInterval(igPollingRef.current);
@@ -7232,17 +7293,17 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                       : 'bg-white border border-slate-200 text-slate-700 hover:border-purple-300'
                   }`}
                 >
-                  {job.scrape_mode === 'followers' ? '👥' : '➡️'} @{job.instagram_username}
+                  {job.scrape_mode === 'category_search' ? '🔍' : job.scrape_mode === 'followers' ? '👥' : '➡️'} {job.scrape_mode === 'category_search' ? job.instagram_username : `@${job.instagram_username}`}
                   <span className={`px-1.5 py-0.5 rounded text-[10px] ${
                     job.status === 'completed' ? 'bg-emerald-100 text-emerald-700' :
                     job.status === 'error' ? 'bg-red-100 text-red-700' :
-                    (job.status === 'paused' || (!job.is_active && ['processing', 'fetching_profile', 'fetching_following', 'fetching_followers'].includes(job.status))) ? 'bg-amber-100 text-amber-700' :
+                    (job.status === 'paused' || (!job.is_active && ['processing', 'fetching_profile', 'fetching_following', 'fetching_followers', 'searching'].includes(job.status))) ? 'bg-amber-100 text-amber-700' :
                     'bg-blue-100 text-blue-700'
                   }`}>
                     {job.status === 'completed' ? 'terminé' :
                      job.status === 'error' ? 'erreur' :
                      job.status === 'paused' ? 'pause' :
-                     !job.is_active && ['processing', 'fetching_profile', 'fetching_following'].includes(job.status) ? 'interrompu' :
+                     !job.is_active && ['processing', 'fetching_profile', 'fetching_following', 'searching'].includes(job.status) ? 'interrompu' :
                      `${job.processed || 0}/${job.total_following || '?'}`}
                   </span>
                   <button
@@ -7263,21 +7324,28 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
             const job = igJobs.find(j => j.id === igActiveJob);
             if (!job || job.status === 'completed') return null;
             const pct = job.total_following > 0 ? Math.round((job.processed / job.total_following) * 100) : 0;
+            const isCategorySearch = job.scrape_mode === 'category_search';
+            let searchProgress = null;
+            if (isCategorySearch && job.search_progress) {
+              try { searchProgress = typeof job.search_progress === 'string' ? JSON.parse(job.search_progress) : job.search_progress; } catch { /* ignore */ }
+            }
             return (
               <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 mb-6">
                 <div className="flex items-center justify-between mb-2">
                   <span className="text-sm font-medium text-purple-800">
-                    {!job.is_active && ['processing', 'fetching_profile', 'fetching_following'].includes(job.status)
+                    {!job.is_active && ['processing', 'fetching_profile', 'fetching_following', 'searching'].includes(job.status)
                      ? `Interrompu (${job.processed || 0} / ${job.total_following || '?'} traités) — cliquez Relancer`
                      : job.status === 'fetching_profile' ? 'Récupération du profil...' :
                      job.status === 'fetching_following' ? 'Récupération des following...' :
                      job.status === 'paused' ? `En pause${job.error_message ? ': ' + job.error_message : ''}` :
                      job.status === 'error' ? `Erreur: ${job.error_message}` :
-                     `Traitement en cours... ${job.processed || 0} / ${job.total_following || '?'}`}
+                     isCategorySearch && searchProgress
+                       ? `Recherche... ${searchProgress.new_accounts_found || 0}/${job.total_following || '?'} comptes${searchProgress.current_city ? ` | Ville: ${searchProgress.current_city}` : ''}${searchProgress.cities_completed?.length ? ` | ${searchProgress.cities_completed.length} villes traitées` : ''}${searchProgress.duplicates_skipped ? ` | ${searchProgress.duplicates_skipped} doublons ignorés` : ''}`
+                       : `Traitement en cours... ${job.processed || 0} / ${job.total_following || '?'}`}
                   </span>
                   <div className="flex items-center gap-2">
                     <span className="text-xs text-purple-600">{pct}%</span>
-                    {(job.status === 'processing' || job.status === 'paused' || job.status === 'fetching_following' || job.status === 'fetching_profile' || job.status === 'error') && (
+                    {(job.status === 'processing' || job.status === 'paused' || job.status === 'fetching_following' || job.status === 'fetching_profile' || job.status === 'error' || job.status === 'searching') && (
                       job.is_active ? (
                         <button
                           onClick={() => handleIgPauseResume(job.id, job.status)}
@@ -7305,6 +7373,9 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                 <div className="flex gap-4 mt-2 text-xs text-purple-600">
                   <span>{job.emails_found || 0} email(s) trouvé(s)</span>
                   <span>{job.processed || 0} traité(s)</span>
+                  {isCategorySearch && searchProgress?.duplicates_skipped > 0 && (
+                    <span>{searchProgress.duplicates_skipped} doublon(s) ignoré(s)</span>
+                  )}
                 </div>
               </div>
             );

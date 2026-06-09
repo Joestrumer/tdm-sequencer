@@ -295,20 +295,61 @@ module.exports = (db) => {
   router.post('/scrape', async (req, res) => {
     const { url, options = {} } = req.body;
 
-    if (!url) {
-      return res.status(400).json({ erreur: 'URL Instagram requise' });
-    }
-
-    const username = igService.extractUsername(url);
-    if (!username) {
-      return res.status(400).json({ erreur: 'URL Instagram invalide' });
-    }
-
     if (!igService.hasCredentials(db)) {
       return res.status(400).json({ erreur: 'Credentials Instagram non configurées' });
     }
 
     try {
+      // Mode recherche par catégorie
+      if (options.scrape_mode === 'category_search') {
+        const searchCategory = options.search_category;
+        const searchCountry = options.search_country;
+
+        if (!searchCategory || !searchCountry) {
+          return res.status(400).json({ erreur: 'Catégorie et pays requis pour la recherche par catégorie' });
+        }
+        if (!igService.SEARCH_CITIES[searchCountry]) {
+          return res.status(400).json({ erreur: `Pays "${searchCountry}" non supporté` });
+        }
+        if (!igService.CATEGORY_SEARCH_TERMS[searchCategory]) {
+          return res.status(400).json({ erreur: `Catégorie "${searchCategory}" non supportée` });
+        }
+
+        const jobId = uuidv4();
+
+        db.prepare(`
+          INSERT INTO instagram_scrape_jobs (id, instagram_url, instagram_username, filter_keywords, options, scrape_mode, search_category, search_country)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        `).run(
+          jobId,
+          `category_search://${searchCategory}/${searchCountry}`,
+          `${searchCategory} / ${searchCountry}`,
+          '[]',
+          JSON.stringify({ max_accounts: options.max_accounts || 500 }),
+          'category_search',
+          searchCategory,
+          searchCountry
+        );
+
+        igService.processJob(db, jobId);
+
+        return res.json({
+          success: true,
+          job_id: jobId,
+          message: `Recherche lancée : ${searchCategory} / ${searchCountry}`,
+        });
+      }
+
+      // Mode following/followers classique
+      if (!url) {
+        return res.status(400).json({ erreur: 'URL Instagram requise' });
+      }
+
+      const username = igService.extractUsername(url);
+      if (!username) {
+        return res.status(400).json({ erreur: 'URL Instagram invalide' });
+      }
+
       const jobId = uuidv4();
       const scrapeMode = options.scrape_mode === 'followers' ? 'followers' : 'following';
 
@@ -327,7 +368,6 @@ module.exports = (db) => {
         scrapeMode
       );
 
-      // Lancer le job en arrière-plan
       igService.processJob(db, jobId);
 
       res.json({
@@ -350,6 +390,7 @@ module.exports = (db) => {
         SELECT id, instagram_url, instagram_username, status,
                total_following, processed, emails_found, contacts_found,
                error_message, filter_keywords, options, scrape_mode,
+               search_category, search_country, search_progress,
                created_at, updated_at, completed_at
         FROM instagram_scrape_jobs
         ORDER BY created_at DESC
@@ -374,7 +415,8 @@ module.exports = (db) => {
       const job = db.prepare(`
         SELECT id, instagram_username, status,
                total_following, processed, emails_found, contacts_found,
-               error_message, updated_at, completed_at
+               error_message, search_progress, scrape_mode,
+               updated_at, completed_at
         FROM instagram_scrape_jobs WHERE id = ?
       `).get(req.params.id);
 
@@ -424,7 +466,7 @@ module.exports = (db) => {
     } else {
       // Si le job n'est plus actif en mémoire, relancer
       const job = db.prepare('SELECT * FROM instagram_scrape_jobs WHERE id = ?').get(req.params.id);
-      if (job && ['paused', 'error', 'processing', 'fetching_profile', 'fetching_following'].includes(job.status)) {
+      if (job && ['paused', 'error', 'processing', 'fetching_profile', 'fetching_following', 'searching'].includes(job.status)) {
         igService.processJob(db, req.params.id);
         res.json({ success: true, message: 'Job relancé (reprise)' });
       } else {
@@ -1057,6 +1099,17 @@ module.exports = (db) => {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
       res.send('\ufeff' + csv);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // GET /api/instagram/search-options — Options pour la recherche par catégorie
+  router.get('/search-options', (req, res) => {
+    try {
+      const categories = Object.keys(igService.CATEGORY_SEARCH_TERMS);
+      const countries = Object.keys(igService.SEARCH_CITIES);
+      res.json({ categories, countries });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }

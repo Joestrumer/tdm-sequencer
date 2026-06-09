@@ -1118,6 +1118,10 @@ const migrations = [
   'ALTER TABLE instagram_scraped_accounts ADD COLUMN address_street TEXT',
   // Instagram — Mode scraping (following ou followers)
   "ALTER TABLE instagram_scrape_jobs ADD COLUMN scrape_mode TEXT DEFAULT 'following'",
+  // Instagram — Recherche par catégorie business
+  'ALTER TABLE instagram_scrape_jobs ADD COLUMN search_category TEXT',
+  'ALTER TABLE instagram_scrape_jobs ADD COLUMN search_country TEXT',
+  "ALTER TABLE instagram_scrape_jobs ADD COLUMN search_progress TEXT DEFAULT '{}'",
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
