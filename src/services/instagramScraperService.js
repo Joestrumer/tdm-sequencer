@@ -31,11 +31,12 @@ const JITTER_MAX_MS = 5000;
 // ─── Classification business par bio ────────────────────────────────────────
 
 const BUSINESS_KEYWORDS = {
+  conciergerie: ['conciergerie', 'concierge', 'gestion locative', 'location courte durée', 'location courte duree', 'property management', 'airbnb management', 'gestion airbnb', 'airbnb & booking', 'rental management', 'gestion locative courte', 'conciergerie airbnb', 'conciergerie de luxe', 'concierge de luxe', 'conciergerie privée', 'conciergerie événementielle'],
   hotel: ['hotel', 'hôtel', 'resort', 'lodge', 'boutique hotel', 'palace', 'auberge', 'gîte', 'chambre d\'hôte', 'maison d\'hôte', 'relais', 'château hotel'],
   restaurant: ['restaurant', 'bistrot', 'brasserie', 'gastronomie', 'chef', 'traiteur', 'cuisine', 'table'],
   sport: ['gym', 'fitness', 'crossfit', 'musculation', 'salle de sport', 'coaching sportif', 'personal training', 'club de sport'],
   spa: ['spa', 'massage', 'hammam', 'sauna'],
-  hospitality: ['hospitality', 'hôtellerie', 'tourisme', 'travel', 'voyage', 'conciergerie', 'hébergement'],
+  hospitality: ['hospitality', 'hôtellerie', 'tourisme', 'travel', 'voyage', 'hébergement'],
   retail: ['boutique', 'concept store', 'shop', 'e-shop', 'mode', 'fashion'],
   bar: ['bar', 'cocktail', 'wine bar', 'rooftop', 'lounge'],
   event: ['événement', 'event', 'mariage', 'wedding', 'réception', 'séminaire', 'traiteur'],
@@ -44,6 +45,11 @@ const BUSINESS_KEYWORDS = {
 // ─── Mapping catégories Instagram → type interne ────────────────────────────
 
 const IG_CATEGORY_MAP = {
+  // Conciergerie / Property Management
+  'janitorial service': 'conciergerie', 'property management company': 'conciergerie',
+  'property management': 'conciergerie', 'real estate service': 'conciergerie',
+  'real estate agent': 'conciergerie', 'home service': 'conciergerie',
+  'cleaning service': 'conciergerie',
   // Hotel
   'hotel': 'hotel', 'hotel & lodging': 'hotel', 'resort': 'hotel',
   'bed and breakfast': 'hotel', 'lodge': 'hotel', 'hostel': 'hotel',
@@ -75,6 +81,18 @@ const IG_CATEGORY_MAP = {
   'shopping & retail': 'retail', 'clothing store': 'retail',
   'boutique store': 'retail', 'jewelry/watches': 'retail',
 };
+
+// Catégories IG génériques qui ne renseignent pas sur le type de business
+// → ignorer et fallback sur l'analyse bio/username
+const IG_GENERIC_CATEGORIES = new Set([
+  'pro', 'professional', 'product/service', 'local business',
+  'brand', 'creator', 'reel creator', 'digital creator',
+  'content creator', 'video creator', 'entrepreneur',
+  'personal blog', 'community', 'interest',
+  'monument', 'landmark', 'public figure',
+  'nonprofit organization', 'government organization',
+  'media/news company', 'just for fun',
+]);
 
 // ─── Détection pays ─────────────────────────────────────────────────────────
 
@@ -760,22 +778,31 @@ function keywordMatch(text, keyword) {
 }
 
 /**
- * Classifie le type business d'un compte depuis sa bio et catégorie IG
- * Priorité : catégorie IG directe → fallback mots-clés bio
+ * Classifie le type business d'un compte depuis sa bio, catégorie IG et username
+ * Priorité : catégorie IG spécifique → mots-clés bio+username (avec scoring)
+ * Les catégories IG génériques (PRO, Product/service, etc.) sont ignorées.
+ * @param {string} bio - Biographie du compte
+ * @param {string} category - Catégorie IG du compte
+ * @param {string} [username] - Username Instagram (optionnel, pour analyse)
  */
-function classifyBusiness(bio, category) {
-  // 1. Priorité : catégorie IG directe (plus fiable)
+function classifyBusiness(bio, category, username) {
+  // 1. Priorité : catégorie IG directe (si spécifique, pas générique)
   if (category) {
     const normalized = category.toLowerCase().trim();
-    for (const [igCat, type] of Object.entries(IG_CATEGORY_MAP)) {
-      if (normalized.includes(igCat) || igCat.includes(normalized)) {
-        return type;
+    // Ignorer les catégories génériques
+    if (!IG_GENERIC_CATEGORIES.has(normalized)) {
+      for (const [igCat, type] of Object.entries(IG_CATEGORY_MAP)) {
+        if (normalized.includes(igCat) || igCat.includes(normalized)) {
+          return type;
+        }
       }
     }
   }
 
-  // 2. Fallback : analyse mots-clés bio (avec word boundaries)
-  const text = `${bio || ''} ${category || ''}`.toLowerCase();
+  // 2. Fallback : analyse mots-clés bio + username (avec word boundaries)
+  // Inclure le username (underscores → espaces) pour détecter "conciergerie", "hotel", etc.
+  const usernameNormalized = (username || '').replace(/[._]/g, ' ');
+  const text = `${usernameNormalized} ${bio || ''} ${category || ''}`.toLowerCase();
   const matches = {};
 
   for (const [type, keywords] of Object.entries(BUSINESS_KEYWORDS)) {
@@ -789,6 +816,12 @@ function classifyBusiness(bio, category) {
   }
 
   if (Object.keys(matches).length === 0) return null;
+
+  // Si plusieurs types matchent, conciergerie l'emporte si présent
+  // (car les bios de conciergeries mentionnent souvent hotel/restaurant/voyage comme services)
+  if (matches.conciergerie && Object.keys(matches).length > 1) {
+    return 'conciergerie';
+  }
 
   // Retourner le type avec le plus de matches
   return Object.entries(matches).sort((a, b) => b[1] - a[1])[0][0];
@@ -910,8 +943,9 @@ function detectCountry(externalUrl, bio, cityName, phoneCountryCode, addressStre
 /**
  * Extrait les mots-clés matchés dans la bio
  */
-function extractBioKeywords(bio, category) {
-  const text = `${bio || ''} ${category || ''}`.toLowerCase();
+function extractBioKeywords(bio, category, username) {
+  const usernameNormalized = (username || '').replace(/[._]/g, ' ');
+  const text = `${usernameNormalized} ${bio || ''} ${category || ''}`.toLowerCase();
   const found = [];
 
   for (const [type, keywords] of Object.entries(BUSINESS_KEYWORDS)) {
@@ -1252,8 +1286,8 @@ async function processJob(db, jobId) {
         }
 
         // Classification business + détection pays
-        const businessType = classifyBusiness(accountProfile.bio, accountProfile.category);
-        const bioKeywords = extractBioKeywords(accountProfile.bio, accountProfile.category);
+        const businessType = classifyBusiness(accountProfile.bio, accountProfile.category, user.username);
+        const bioKeywords = extractBioKeywords(accountProfile.bio, accountProfile.category, user.username);
         const country = detectCountry(accountProfile.external_url, accountProfile.bio, accountProfile.city_name, accountProfile.phone_country_code, accountProfile.address_street);
 
         // Filtrage par mots-clés si configuré
@@ -1727,12 +1761,21 @@ async function processCategorySearchJob(db, jobId) {
             }
 
             // Classification + détection pays
-            const businessType = classifyBusiness(accountProfile.bio, accountProfile.category);
-            const bioKeywords = extractBioKeywords(accountProfile.bio, accountProfile.category);
+            const businessType = classifyBusiness(accountProfile.bio, accountProfile.category, accountProfile.username);
+            const bioKeywords = extractBioKeywords(accountProfile.bio, accountProfile.category, accountProfile.username);
             const detectedCountry = detectCountry(accountProfile.external_url, accountProfile.bio, accountProfile.city_name, accountProfile.phone_country_code, accountProfile.address_street);
 
-            // Email
-            const bestEmailResult = pickBestEmail(accountProfile.business_email, []);
+            // Email : IG business email + scraping site web si pas d'email IG
+            let scrapedEmails = [];
+            if (!accountProfile.business_email && accountProfile.external_url && !isLinkInBio(accountProfile.external_url)) {
+              try {
+                const websiteResult = await findEmailsFromWebsite(accountProfile.external_url);
+                scrapedEmails = websiteResult.emails || [];
+              } catch (err) {
+                logger.warn(`⚠️ Erreur scraping site ${accountProfile.external_url}: ${err.message}`);
+              }
+            }
+            const bestEmailResult = pickBestEmail(accountProfile.business_email, scrapedEmails);
 
             // Insérer dans la DB
             db.prepare(`
@@ -1740,8 +1783,8 @@ async function processCategorySearchJob(db, jobId) {
                 (job_id, instagram_username, instagram_user_id, full_name, bio, website, external_url,
                  business_email, category, is_business, is_private, follower_count, following_count,
                  business_type, bio_keywords, best_email, email_source, email_confidence,
-                 country, city_name, phone_country_code, address_street, scraping_status)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'done')
+                 scraped_emails, country, city_name, phone_country_code, address_street, scraping_status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'done')
             `).run(
               jobId, accountProfile.username, accountProfile.user_id,
               accountProfile.full_name, accountProfile.bio,
@@ -1751,6 +1794,7 @@ async function processCategorySearchJob(db, jobId) {
               accountProfile.follower_count, accountProfile.following_count,
               businessType, JSON.stringify(bioKeywords),
               bestEmailResult?.email || null, bestEmailResult?.source || null, bestEmailResult?.confidence || null,
+              scrapedEmails.length > 0 ? JSON.stringify(scrapedEmails) : null,
               detectedCountry, accountProfile.city_name || null,
               accountProfile.phone_country_code || null, accountProfile.address_street || null
             );

@@ -17,7 +17,7 @@ module.exports = (db) => {
   // ─── Backfill pays + re-classification pour comptes existants ─────────────
   try {
     const toBackfill = db.prepare(`
-      SELECT id, external_url, bio, category, business_type, city_name, phone_country_code, address_street
+      SELECT id, instagram_username, external_url, bio, category, business_type, city_name, phone_country_code, address_street
       FROM instagram_scraped_accounts
       WHERE country IS NULL AND (external_url IS NOT NULL OR bio IS NOT NULL OR city_name IS NOT NULL OR phone_country_code IS NOT NULL OR address_street IS NOT NULL)
     `).all();
@@ -26,7 +26,7 @@ module.exports = (db) => {
       let updated = 0;
       for (const a of toBackfill) {
         const country = igService.detectCountry(a.external_url, a.bio, a.city_name, a.phone_country_code, a.address_street);
-        const newType = igService.classifyBusiness(a.bio, a.category);
+        const newType = igService.classifyBusiness(a.bio, a.category, a.instagram_username);
         if (country || (newType && newType !== a.business_type)) {
           updateStmt.run(country, newType, a.id);
           updated++;
@@ -38,27 +38,27 @@ module.exports = (db) => {
     logger.warn('⚠️ Erreur backfill pays Instagram:', err.message);
   }
 
-  // ─── Backfill spa : reclassifier TOUS les comptes spa avec la logique corrigée ──
+  // ─── Backfill reclassification : re-classifier tous les comptes avec la nouvelle logique ──
   try {
-    const spaToReclassify = db.prepare(`
-      SELECT id, bio, category
+    const toReclassify = db.prepare(`
+      SELECT id, instagram_username, bio, category, business_type
       FROM instagram_scraped_accounts
-      WHERE business_type = 'spa'
+      WHERE bio IS NOT NULL OR category IS NOT NULL
     `).all();
-    if (spaToReclassify.length > 0) {
-      const updateSpaStmt = db.prepare('UPDATE instagram_scraped_accounts SET business_type = ? WHERE id = ?');
-      let spaFixed = 0;
-      for (const a of spaToReclassify) {
-        const newType = igService.classifyBusiness(a.bio, a.category);
-        if (newType !== 'spa') {
-          updateSpaStmt.run(newType, a.id);
-          spaFixed++;
+    if (toReclassify.length > 0) {
+      const updateTypeStmt = db.prepare('UPDATE instagram_scraped_accounts SET business_type = ? WHERE id = ?');
+      let reclassified = 0;
+      for (const a of toReclassify) {
+        const newType = igService.classifyBusiness(a.bio, a.category, a.instagram_username);
+        if (newType && newType !== a.business_type) {
+          updateTypeStmt.run(newType, a.id);
+          reclassified++;
         }
       }
-      if (spaFixed > 0) logger.info(`🧖 Backfill spa: ${spaFixed} compte(s) reclassifié(s) (mots-clés word-boundary + keywords réduits)`);
+      if (reclassified > 0) logger.info(`🔄 Backfill reclassification: ${reclassified} compte(s) re-classifié(s) (conciergerie + username + catégories génériques)`);
     }
   } catch (err) {
-    logger.warn('⚠️ Erreur backfill spa Instagram:', err.message);
+    logger.warn('⚠️ Erreur backfill reclassification:', err.message);
   }
 
   // ─── Config & Credentials ──────────────────────────────────────────────────
@@ -667,7 +667,8 @@ module.exports = (db) => {
   const BUSINESS_TYPE_SEGMENT_MAP = {
     'hotel': 'Hotel', 'sport': 'Sport', 'spa': 'Spa',
     'restaurant': 'Restaurant', 'bar': 'Bar',
-    'hospitality': 'Hospitality', 'retail': 'Retail', 'event': 'Event',
+    'conciergerie': 'Conciergerie', 'hospitality': 'Hospitality',
+    'retail': 'Retail', 'event': 'Event',
   };
 
   const COUNTRY_LANGUAGE_MAP = {
