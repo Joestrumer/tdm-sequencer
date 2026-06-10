@@ -12,13 +12,25 @@ function extractEmails(text) {
   const emailRegex = /[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}/g;
   const emails = text.match(emailRegex) || [];
 
-  // Filtrer les emails de tracking, analytics, etc.
+  // Filtrer les emails de tracking, analytics, placeholders, etc.
   const blacklist = [
     'noreply', 'no-reply', 'mailer-daemon', 'postmaster',
     'analytics', 'tracking', 'pixel', 'spam', 'abuse',
     'example.com', 'test.com', 'domain.com',
-    '@sentry.', '@google-analytics.', '@facebook.', '@doubleclick.'
+    '@sentry.', '@sentry-', '@google-analytics.', '@facebook.', '@doubleclick.',
   ];
+
+  // Domaines à bloquer entièrement (tracking, placeholders, templates CMS)
+  const blockedDomains = new Set([
+    'wixpress.com', 'sentry.io', 'sentry.wixpress.com', 'sentry-next.wixpress.com',
+    'mysite.com', 'domaine.com', 'email.com', 'exemple.com',
+    'yoursite.com', 'yourdomain.com', 'votresite.com', 'votrenom.com',
+    'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'throwaway.email',
+    'sharklasers.com', 'grr.la', 'guerrillamailblock.com',
+    'hotmail.test', 'gmail.test', 'outlook.test',
+    'wix.com', 'squarespace.com', 'weebly.com',
+    'placeholder.com', 'sample.com', 'fake.com',
+  ]);
 
   // Extensions de fichiers images/médias (faux positifs courants dans les attributs HTML src/href)
   const imageExtensions = /\.(jpg|jpeg|png|gif|svg|webp|bmp|ico|tiff|avif|mp4|mp3|pdf|zip|css|js|woff|woff2|ttf|eot)$/i;
@@ -29,15 +41,29 @@ function extractEmails(text) {
   return emails.filter(email => {
     const lower = email.toLowerCase();
 
-    // Blacklist classique
+    // Blacklist classique (sous-chaînes)
     if (blacklist.some(term => lower.includes(term))) return false;
+
+    const domain = lower.split('@')[1] || '';
+    const localPart = lower.split('@')[0];
+
+    // Bloquer les domaines connus (tracking, placeholders)
+    if (blockedDomains.has(domain)) return false;
+    // Bloquer aussi les sous-domaines (ex: xxx.wixpress.com)
+    const parentDomain = domain.split('.').slice(-2).join('.');
+    if (blockedDomains.has(parentDomain) && parentDomain !== domain) return false;
+
+    // Rejeter les local parts qui sont des hash hexadécimaux (ex: 605a7baede844d278b89dc95ae0a9123)
+    if (/^[0-9a-f]{16,}$/i.test(localPart)) return false;
+
+    // Rejeter les placeholders courants dans les templates
+    if (['info@mysite', 'user@example', 'utilisateur@domaine', 'exemple@email', 'email@example', 'your@email', 'name@domain', 'nom@domaine', 'contact@example'].some(p => lower.startsWith(p))) return false;
 
     // Rejeter si ça ressemble à un nom de fichier image/média
     if (imageExtensions.test(lower)) return false;
 
     // Rejeter si le domaine a une extension de fichier image dans le chemin
     // Ex: photo@2x.png, cb@2x.25df64da.png
-    const domain = lower.split('@')[1] || '';
     if (/^\dx\b/i.test(domain)) return false; // @2x.xxx patterns (retina images)
     if (imageExtensions.test(domain)) return false;
 
@@ -49,13 +75,12 @@ function extractEmails(text) {
     if (!validTlds.test(lower)) return false;
 
     // Rejeter les local parts trop courts (1 char) ou trop longs (>64)
-    const localPart = lower.split('@')[0];
     if (localPart.length < 2 || localPart.length > 64) return false;
 
     // Rejeter les domaines trop courts ou sans point
     if (domain.length < 4 || !domain.includes('.')) return false;
 
-    // Rejeter les local parts avec que des caractères aléatoires (ratio majuscules/minuscules incohérent, trop de consonnes consécutives)
+    // Rejeter les local parts avec que des caractères aléatoires (trop de consonnes consécutives)
     const originalLocal = email.split('@')[0];
     const consonants = originalLocal.replace(/[^bcdfghjklmnpqrstvwxzBCDFGHJKLMNPQRSTVWXZ]/g, '');
     if (consonants.length > 8 && consonants.length / originalLocal.length > 0.85) return false;
