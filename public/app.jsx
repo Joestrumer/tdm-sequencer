@@ -23210,6 +23210,7 @@ const VueVeille = ({ showToast }) => {
   // Settings state
   const [veilleSettings, setVeilleSettings] = useState(null);
   const [apiCredits, setApiCredits] = useState(null);
+  const [braveDetail, setBraveDetail] = useState(null);
   const [excludedHotels, setExcludedHotels] = useState([]);
   const [newExcluded, setNewExcluded] = useState('');
   const [testingApi, setTestingApi] = useState('');
@@ -23292,13 +23293,15 @@ const VueVeille = ({ showToast }) => {
   const loadCalibration = async () => { try { setCalibrationData(await api.get('/veille/scoring/calibration')); } catch (e) { console.warn('Calibration:', e.message); } };
   const loadSettings = async () => {
     try {
-      const [s, c, h] = await Promise.all([
+      const [s, c, h, bd] = await Promise.all([
         api.get('/veille/settings'),
         api.get('/veille/api-credits'),
         api.get('/veille/excluded-hotels'),
+        api.get('/veille/api-credits/brave-detail?days=30').catch(() => null),
       ]);
       setVeilleSettings(s);
       setApiCredits(c);
+      setBraveDetail(bd);
       setExcludedHotels(h.hotels || []);
     } catch (e) { console.warn('Settings:', e.message); }
   };
@@ -24602,6 +24605,40 @@ const VueVeille = ({ showToast }) => {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+
+            {/* Détail Brave par source */}
+            {braveDetail && braveDetail.by_source?.length > 0 && (
+              <div className="mt-5 pt-4 border-t border-slate-100">
+                <h4 className="text-xs font-semibold text-slate-700 mb-3">Brave Search — Détail par source (30 jours)</h4>
+                <div className="grid grid-cols-2 gap-3 mb-3">
+                  <div className="bg-blue-50 rounded-lg p-2.5">
+                    <p className="text-[10px] text-blue-500 font-medium">Aujourd'hui</p>
+                    <p className="text-lg font-bold text-blue-700">{braveDetail.today}</p>
+                  </div>
+                  <div className="bg-slate-50 rounded-lg p-2.5">
+                    <p className="text-[10px] text-slate-500 font-medium">Total 30j</p>
+                    <p className="text-lg font-bold text-slate-700">{braveDetail.total}</p>
+                  </div>
+                </div>
+                <div className="space-y-1.5">
+                  {braveDetail.by_source.map(s => {
+                    const pct = braveDetail.total > 0 ? Math.round((s.total / braveDetail.total) * 100) : 0;
+                    const label = SOURCE_LABELS[s.source] || s.source;
+                    const color = SOURCE_COLORS[s.source] || 'bg-slate-400';
+                    return (
+                      <div key={s.source} className="flex items-center gap-2 text-xs">
+                        <span className={`w-2 h-2 rounded-full flex-shrink-0 ${color}`} />
+                        <span className="text-slate-600 w-36 truncate">{label}</span>
+                        <div className="flex-1 bg-slate-100 rounded-full h-1.5 overflow-hidden">
+                          <div className={`h-full rounded-full ${color}`} style={{ width: `${pct}%` }} />
+                        </div>
+                        <span className="text-slate-500 font-mono w-10 text-right">{s.total}</span>
+                      </div>
+                    );
+                  })}
+                </div>
               </div>
             )}
           </div>
