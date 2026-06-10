@@ -14,6 +14,7 @@
 const { randomUUID } = require('crypto');
 const logger = require('../../config/logger');
 const { logAttempt } = require('./pappersService');
+const { trackBraveCall } = require('../../utils/apiClient');
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -28,7 +29,7 @@ function getBraveKey(db) {
 
 // ─── Brave Search ───────────────────────────────────────────────────────────
 
-async function searchBrave(apiKey, query) {
+async function searchBrave(apiKey, query, db = null) {
   const params = new URLSearchParams({
     q: query,
     count: '15',
@@ -55,6 +56,7 @@ async function searchBrave(apiKey, query) {
       throw new Error(`Brave API ${res.status}: ${body.substring(0, 200)}`);
     }
 
+    trackBraveCall(db, 'linkedin_contacts');
     const data = await res.json();
     return data.web?.results || [];
   } catch (err) {
@@ -265,7 +267,7 @@ async function findLinkedInContacts(db, hotelName, city, opportunityId) {
 
   for (const query of queries) {
     try {
-      const results = await searchBrave(apiKey, query);
+      const results = await searchBrave(apiKey, query, db);
 
       for (const r of results) {
         if (seenUrls.has(r.url)) continue;

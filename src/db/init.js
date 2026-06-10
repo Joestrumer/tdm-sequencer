@@ -995,6 +995,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_ig_accounts_business_type ON instagram_scraped_accounts(business_type);
 `);
 
+// ─── Table de suivi détaillé des appels Brave API (par jour et par source) ──
+db.exec(`
+  CREATE TABLE IF NOT EXISTS api_brave_daily (
+    date     TEXT NOT NULL,
+    source   TEXT NOT NULL,
+    requests INTEGER DEFAULT 0,
+    PRIMARY KEY (date, source)
+  )
+`);
+
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
 const migrations = [
   'ALTER TABLE etapes    ADD COLUMN corps_html   TEXT',

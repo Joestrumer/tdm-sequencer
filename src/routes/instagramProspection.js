@@ -603,7 +603,7 @@ module.exports = (db) => {
         db.prepare("SELECT valeur FROM config WHERE cle = 'brave_search_api_key'").get()?.valeur || null;
 
       const searchName = account.full_name || account.instagram_username;
-      const contacts = await linkedinService.rechercherContactsHotel(searchName, braveApiKey);
+      const contacts = await linkedinService.rechercherContactsHotel(searchName, braveApiKey, null, null, db);
 
       db.prepare(`
         UPDATE instagram_scraped_accounts
@@ -668,7 +668,7 @@ module.exports = (db) => {
           if (!account) continue;
 
           const searchName = account.full_name || account.instagram_username;
-          const contacts = await linkedinService.rechercherContactsHotel(searchName, braveApiKey);
+          const contacts = await linkedinService.rechercherContactsHotel(searchName, braveApiKey, null, null, db);
 
           db.prepare('UPDATE instagram_scraped_accounts SET linkedin_contacts = ? WHERE id = ?')
             .run(JSON.stringify(contacts), id);

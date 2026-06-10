@@ -19,6 +19,7 @@
 
 const logger = require('../../config/logger');
 const { insertSignal, getConfigValue } = require('./signalUtils');
+const { trackBraveCall } = require('../../utils/apiClient');
 
 // ─── BOAMP via Brave ─────────────────────────────────────────────────────────
 
@@ -38,7 +39,7 @@ const BODACC_QUERIES = [
 
 // ─── Brave Search helper ─────────────────────────────────────────────────────
 
-async function searchBrave(apiKey, query, freshness = 'pw') {
+async function searchBrave(apiKey, query, freshness = 'pw', db = null) {
   const params = new URLSearchParams({
     q: query,
     count: '15',
@@ -66,6 +67,7 @@ async function searchBrave(apiKey, query, freshness = 'pw') {
       throw new Error(`Brave API ${res.status}: ${body.substring(0, 200)}`);
     }
 
+    trackBraveCall(db, 'signal_boamp');
     const data = await res.json();
     return data.web?.results || [];
   } catch (err) {
@@ -133,7 +135,7 @@ async function runBoamp(db, apiKey) {
 
   for (const query of BOAMP_QUERIES) {
     try {
-      const results = await searchBrave(apiKey, query, 'pw'); // Past week
+      const results = await searchBrave(apiKey, query, 'pw', db); // Past week
 
       for (const r of results) {
         if (seenUrls.has(r.url)) continue;
@@ -186,7 +188,7 @@ async function runBodacc(db, apiKey) {
 
   for (const query of BODACC_QUERIES) {
     try {
-      const results = await searchBrave(apiKey, query, 'pm'); // Past month
+      const results = await searchBrave(apiKey, query, 'pm', db); // Past month
 
       for (const r of results) {
         if (seenUrls.has(r.url)) continue;

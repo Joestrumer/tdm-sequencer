@@ -1057,7 +1057,7 @@ module.exports = (db) => {
         null;
 
       // Rechercher les contacts sur LinkedIn et Pappers (avec commune pour meilleurs résultats)
-      const contacts = await linkedinService.rechercherContactsHotel(hotel.nom_commercial, braveApiKey, hotel.commune, pappersApiKey);
+      const contacts = await linkedinService.rechercherContactsHotel(hotel.nom_commercial, braveApiKey, hotel.commune, pappersApiKey, db);
 
       if (contacts.length === 0) {
         return res.json({ message: 'Aucun contact trouvé', contacts: [] });

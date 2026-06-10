@@ -252,11 +252,97 @@ function getApiHistory(db, months = 6) {
   return history;
 }
 
+// ─── Suivi détaillé Brave par source ─────────────────────────────────────────
+
+/**
+ * Enregistre un appel Brave API avec sa source d'origine.
+ * @param {Object} db - Instance SQLite
+ * @param {string} source - Identifiant de la source (veille, linkedin_contacts, email_patterns, signal_boamp, signal_linkedin)
+ */
+function trackBraveCall(db, source) {
+  if (!db || !source) return;
+  const today = new Date().toISOString().slice(0, 10);
+  try {
+    db.prepare(`
+      INSERT INTO api_brave_daily (date, source, requests)
+      VALUES (?, ?, 1)
+      ON CONFLICT(date, source) DO UPDATE SET requests = requests + 1
+    `).run(today, source);
+  } catch (_) { /* table peut ne pas exister sur anciennes bases */ }
+
+  // Incrémenter aussi le compteur mensuel global existant
+  incrementUsage(db, 'brave', 0);
+}
+
+/**
+ * Récupère le détail d'utilisation Brave par source pour les N derniers jours.
+ */
+function getBraveUsageDetail(db, days = 30) {
+  try {
+    const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+
+    // Par source (total sur la période)
+    const bySource = db.prepare(`
+      SELECT source, SUM(requests) as total
+      FROM api_brave_daily
+      WHERE date >= ?
+      GROUP BY source
+      ORDER BY total DESC
+    `).all(since);
+
+    // Par jour (total toutes sources)
+    const byDay = db.prepare(`
+      SELECT date, SUM(requests) as total
+      FROM api_brave_daily
+      WHERE date >= ?
+      GROUP BY date
+      ORDER BY date ASC
+    `).all(since);
+
+    // Par jour et source (pour le graphe détaillé)
+    const byDaySource = db.prepare(`
+      SELECT date, source, requests
+      FROM api_brave_daily
+      WHERE date >= ?
+      ORDER BY date ASC, source
+    `).all(since);
+
+    // Total
+    const totalRow = db.prepare(`
+      SELECT COALESCE(SUM(requests), 0) as total
+      FROM api_brave_daily
+      WHERE date >= ?
+    `).get(since);
+
+    // Aujourd'hui
+    const today = new Date().toISOString().slice(0, 10);
+    const todayRow = db.prepare(`
+      SELECT COALESCE(SUM(requests), 0) as total
+      FROM api_brave_daily
+      WHERE date = ?
+    `).get(today);
+
+    return {
+      period_days: days,
+      since,
+      total: totalRow.total,
+      today: todayRow.total,
+      by_source: bySource,
+      by_day: byDay,
+      by_day_source: byDaySource,
+    };
+  } catch (_) {
+    return { period_days: days, total: 0, today: 0, by_source: [], by_day: [], by_day_source: [] };
+  }
+}
+
 module.exports = {
   apiCall,
   getApiStats,
   getApiHistory,
   getMonthlyUsage,
   getQuota,
+  trackBraveCall,
+  getBraveUsageDetail,
   SERVICE_DEFAULTS,
 };

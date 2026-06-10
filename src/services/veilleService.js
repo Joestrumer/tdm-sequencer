@@ -14,6 +14,7 @@
 
 const cheerio = require('cheerio');
 const logger = require('../config/logger');
+const { trackBraveCall } = require('../utils/apiClient');
 
 const USER_AGENT = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
 
@@ -200,7 +201,7 @@ function getFreshness(source) {
  * Exécuter une requête Brave Search et parser les résultats.
  * @returns {Array} articles trouvés
  */
-async function executeBraveQuery(apiKey, query, freshness, seenUrls) {
+async function executeBraveQuery(apiKey, query, freshness, seenUrls, db = null) {
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 15000);
   const articles = [];
@@ -228,6 +229,7 @@ async function executeBraveQuery(apiKey, query, freshness, seenUrls) {
       throw new Error(`Brave API ${res.status}: ${body.substring(0, 200)}`);
     }
 
+    trackBraveCall(db, 'veille');
     const data = await res.json();
     const results = data.web?.results || [];
 
@@ -286,7 +288,7 @@ async function scraperSourceBrave(source, db) {
     const limitedQueries = queries.slice(0, 5);
 
     for (const query of limitedQueries) {
-      const results = await executeBraveQuery(apiKey, query, freshness, seenUrls);
+      const results = await executeBraveQuery(apiKey, query, freshness, seenUrls, db);
       allArticles.push(...results);
       await new Promise(r => setTimeout(r, 1200));
     }
@@ -305,7 +307,7 @@ async function scraperSourceBrave(source, db) {
     if (queries.length === 0) queries.push(`site:${domain} hôtel rénovation`);
 
     for (const query of queries) {
-      const results = await executeBraveQuery(apiKey, query, freshness, seenUrls);
+      const results = await executeBraveQuery(apiKey, query, freshness, seenUrls, db);
       allArticles.push(...results);
       await new Promise(r => setTimeout(r, 1200));
     }

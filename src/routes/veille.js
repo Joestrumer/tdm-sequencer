@@ -18,7 +18,7 @@ const { getZeroBounceCredits, getZeroBounceKey } = require('../services/contacts
 const { getApiKey: getPappersKey } = require('../services/contacts/pappersService');
 const { computeCalibration, saveCalibrationReport, getLastCalibrationReport } = require('../jobs/scoringCalibration');
 const { checkAlerts, getRecentAlerts } = require('../services/veilleAlerts');
-const { getApiStats, getApiHistory } = require('../utils/apiClient');
+const { getApiStats, getApiHistory, getBraveUsageDetail } = require('../utils/apiClient');
 
 module.exports = (db) => {
   const router = Router();
@@ -1603,6 +1603,64 @@ module.exports = (db) => {
       db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('veille_excluded_hotels', ?)")
         .run(JSON.stringify(hotels));
       res.json({ ok: true, count: hotels.length });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Brave API Usage Detail ────────────────────────────────────────────────
+
+  /**
+   * GET /api-credits/brave-detail — Détail d'utilisation Brave par source et par jour
+   */
+  router.get('/api-credits/brave-detail', (req, res) => {
+    try {
+      const days = parseInt(req.query.days) || 30;
+      const detail = getBraveUsageDetail(db, days);
+      res.json(detail);
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // ─── Veille Global Toggle ──────────────────────────────────────────────────
+
+  /**
+   * GET /veille-global — Statut global de la veille (activée/désactivée)
+   */
+  router.get('/veille-global', (req, res) => {
+    try {
+      const row = db.prepare("SELECT valeur FROM config WHERE cle = 'veille_global_enabled'").get();
+      const enabled = row?.valeur !== '0'; // Par défaut activée
+      const sourceCount = db.prepare('SELECT COUNT(*) as n FROM veille_sources WHERE actif = 1').get().n;
+      const totalSources = db.prepare('SELECT COUNT(*) as n FROM veille_sources').get().n;
+      res.json({ enabled, active_sources: sourceCount, total_sources: totalSources });
+    } catch (err) {
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  /**
+   * POST /veille-global/toggle — Activer/désactiver la veille globalement
+   */
+  router.post('/veille-global/toggle', (req, res) => {
+    try {
+      const { enabled } = req.body;
+      const val = enabled ? '1' : '0';
+      db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('veille_global_enabled', ?)").run(val);
+
+      if (!enabled) {
+        // Désactiver toutes les sources et arrêter les crons
+        db.prepare('UPDATE veille_sources SET actif = 0').run();
+        planifierCrons();
+      } else {
+        // Réactiver toutes les sources et replanifier
+        db.prepare('UPDATE veille_sources SET actif = 1').run();
+        planifierCrons();
+      }
+
+      const sourceCount = db.prepare('SELECT COUNT(*) as n FROM veille_sources WHERE actif = 1').get().n;
+      res.json({ ok: true, enabled: !!enabled, active_sources: sourceCount });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
     }

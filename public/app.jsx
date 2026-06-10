@@ -16090,6 +16090,25 @@ const VueSegmentsConfig = () => {
 };
 
 // ─── Config API Externe ───────────────────────────────────────────────────────
+
+const SOURCE_LABELS = {
+  veille: 'Veille web',
+  linkedin_contacts: 'Contacts LinkedIn (veille)',
+  linkedin_scraper: 'Contacts LinkedIn (prospection)',
+  email_patterns: 'Recherche email',
+  signal_boamp: 'Signaux BOAMP/BODACC',
+  signal_linkedin: 'Signaux LinkedIn Jobs',
+};
+
+const SOURCE_COLORS = {
+  veille: 'bg-blue-500',
+  linkedin_contacts: 'bg-violet-500',
+  linkedin_scraper: 'bg-purple-500',
+  email_patterns: 'bg-amber-500',
+  signal_boamp: 'bg-emerald-500',
+  signal_linkedin: 'bg-teal-500',
+};
+
 const VueBraveSearchConfig = () => {
   const [braveKey, setBraveKey] = useState('');
   const [configured, setConfigured] = useState(false);
@@ -16098,11 +16117,30 @@ const VueBraveSearchConfig = () => {
   const [testing, setTesting] = useState(false);
   const [msg, setMsg] = useState('');
   const [testResult, setTestResult] = useState(null);
+  const [usage, setUsage] = useState(null);
+  const [veilleStatus, setVeilleStatus] = useState(null);
+  const [togglingVeille, setTogglingVeille] = useState(false);
+
+  const chargerUsage = async () => {
+    try {
+      const data = await api.get('/veille/api-credits/brave-detail?days=30');
+      setUsage(data);
+    } catch (e) { console.warn('Brave usage:', e.message); }
+  };
+
+  const chargerVeilleStatus = async () => {
+    try {
+      const data = await api.get('/veille/veille-global');
+      setVeilleStatus(data);
+    } catch (e) { console.warn('Veille status:', e.message); }
+  };
 
   useEffect(() => {
     api.get('/config').then(cfg => {
       if (cfg.brave_search_api_key_configured) setConfigured(true);
     }).catch(e => console.warn('Brave config:', e.message));
+    chargerUsage();
+    chargerVeilleStatus();
   }, []);
 
   const sauvegarder = async () => {
@@ -16126,18 +16164,137 @@ const VueBraveSearchConfig = () => {
     setTesting(false);
   };
 
+  const toggleVeille = async () => {
+    if (!veilleStatus) return;
+    setTogglingVeille(true);
+    try {
+      const res = await api.post('/veille/veille-global/toggle', { enabled: !veilleStatus.enabled });
+      setVeilleStatus({ ...veilleStatus, enabled: res.enabled, active_sources: res.active_sources });
+    } catch (e) { console.warn('Toggle veille:', e.message); }
+    setTogglingVeille(false);
+  };
+
+  // Calcul du max par jour pour la barre de progression
+  const maxDay = usage?.by_day?.length > 0 ? Math.max(...usage.by_day.map(d => d.total)) : 0;
+
   return (
-    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-5">
+      {/* Header */}
       <div className="flex items-center justify-between">
         <div>
           <h3 className="text-sm font-semibold text-slate-800">Brave Search API</h3>
-          <p className="text-xs text-slate-400 mt-0.5">Pour la veille web hôtelière (scraping d'articles)</p>
+          <p className="text-xs text-slate-400 mt-0.5">Veille web, recherche contacts, signaux</p>
         </div>
         <div className={`flex items-center gap-1.5 text-xs ${configured ? "text-emerald-600" : "text-slate-400"}`}>
           <span className={`w-2 h-2 rounded-full ${configured ? "bg-emerald-500" : "bg-slate-300"}`} />
           {configured ? "Configurée" : "Non configurée"}
         </div>
       </div>
+
+      {/* Usage Dashboard */}
+      {usage && (
+        <div className="space-y-3">
+          {/* KPIs */}
+          <div className="grid grid-cols-3 gap-3">
+            <div className="bg-slate-50 rounded-xl p-3">
+              <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Aujourd'hui</p>
+              <p className="text-xl font-bold text-slate-800 mt-0.5">{usage.today}</p>
+              <p className="text-[10px] text-slate-400">requêtes</p>
+            </div>
+            <div className="bg-slate-50 rounded-xl p-3">
+              <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">30 derniers jours</p>
+              <p className="text-xl font-bold text-slate-800 mt-0.5">{usage.total}</p>
+              <p className="text-[10px] text-slate-400">requêtes</p>
+            </div>
+            <div className="bg-slate-50 rounded-xl p-3">
+              <p className="text-[10px] font-medium text-slate-400 uppercase tracking-wider">Moy. / jour</p>
+              <p className="text-xl font-bold text-slate-800 mt-0.5">
+                {usage.by_day?.length > 0 ? Math.round(usage.total / Math.max(1, usage.by_day.length)) : 0}
+              </p>
+              <p className="text-[10px] text-slate-400">requêtes</p>
+            </div>
+          </div>
+
+          {/* Par source */}
+          {usage.by_source?.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-600 mb-2">Par source (30 jours)</p>
+              <div className="space-y-1.5">
+                {usage.by_source.map(s => {
+                  const pct = usage.total > 0 ? Math.round((s.total / usage.total) * 100) : 0;
+                  return (
+                    <div key={s.source} className="flex items-center gap-2 text-xs">
+                      <span className={`w-2 h-2 rounded-full flex-shrink-0 ${SOURCE_COLORS[s.source] || 'bg-slate-400'}`} />
+                      <span className="text-slate-600 w-40 truncate">{SOURCE_LABELS[s.source] || s.source}</span>
+                      <div className="flex-1 bg-slate-100 rounded-full h-2 overflow-hidden">
+                        <div className={`h-full rounded-full ${SOURCE_COLORS[s.source] || 'bg-slate-400'}`}
+                          style={{ width: `${pct}%` }} />
+                      </div>
+                      <span className="text-slate-500 font-mono w-12 text-right">{s.total}</span>
+                      <span className="text-slate-400 w-10 text-right">{pct}%</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Graphe par jour (barres simples) */}
+          {usage.by_day?.length > 0 && (
+            <div>
+              <p className="text-xs font-semibold text-slate-600 mb-2">Historique journalier</p>
+              <div className="flex items-end gap-px h-16">
+                {usage.by_day.slice(-30).map((d, i) => {
+                  const h = maxDay > 0 ? Math.max(2, (d.total / maxDay) * 100) : 2;
+                  return (
+                    <div key={i} className="flex-1 group relative">
+                      <div className="bg-blue-400 hover:bg-blue-600 rounded-t transition-colors cursor-default"
+                        style={{ height: `${h}%` }}
+                        title={`${d.date}: ${d.total} requêtes`} />
+                    </div>
+                  );
+                })}
+              </div>
+              <div className="flex justify-between text-[9px] text-slate-400 mt-1">
+                <span>{usage.by_day[0]?.date?.slice(5)}</span>
+                <span>{usage.by_day[usage.by_day.length - 1]?.date?.slice(5)}</span>
+              </div>
+            </div>
+          )}
+
+          {/* Quota mensuel */}
+          <div className="bg-amber-50 border border-amber-100 rounded-lg p-3">
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-amber-700 font-medium">Quota mensuel : 2 000 requêtes</span>
+              <span className="text-amber-600 font-mono">{usage.total} / 2 000</span>
+            </div>
+            <div className="bg-amber-200 rounded-full h-1.5 mt-1.5 overflow-hidden">
+              <div className={`h-full rounded-full transition-all ${usage.total > 1600 ? 'bg-red-500' : usage.total > 1000 ? 'bg-amber-500' : 'bg-emerald-500'}`}
+                style={{ width: `${Math.min(100, (usage.total / 2000) * 100)}%` }} />
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Toggle Veille */}
+      {veilleStatus && (
+        <div className="flex items-center justify-between bg-slate-50 rounded-xl p-3">
+          <div>
+            <p className="text-xs font-semibold text-slate-700">Veille automatique</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">
+              {veilleStatus.enabled
+                ? `${veilleStatus.active_sources} source(s) active(s) sur ${veilleStatus.total_sources}`
+                : `Désactivée — ${veilleStatus.total_sources} source(s) en pause`}
+            </p>
+          </div>
+          <button onClick={toggleVeille} disabled={togglingVeille}
+            className={`relative w-11 h-6 rounded-full transition-colors ${veilleStatus.enabled ? 'bg-emerald-500' : 'bg-slate-300'}`}>
+            <span className={`absolute top-0.5 left-0.5 w-5 h-5 bg-white rounded-full shadow transition-transform ${veilleStatus.enabled ? 'translate-x-5' : 'translate-x-0'}`} />
+          </button>
+        </div>
+      )}
+
+      {/* Config clé API */}
       <div>
         <label className="text-xs font-medium text-slate-500 mb-1 block">Clé API Brave Search</label>
         <div className="flex gap-2">

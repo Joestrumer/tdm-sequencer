@@ -5,6 +5,7 @@
 
 const cheerio = require('cheerio');
 const logger = require('../config/logger');
+const { trackBraveCall } = require('../utils/apiClient');
 
 // ══════════════════════════════════════════════════════════════════════════════
 // SCRAPING BEST PRACTICES (2026)
@@ -356,7 +357,7 @@ async function rechercherContactsGoogleCSE(nomHotel, apiKey, cseId, commune = nu
  * @param {string} commune - Commune pour géoloc
  * @param {boolean} isFullQuery - true si queryOrFonction est une requête complète
  */
-async function rechercherContactsBrave(nomHotel, queryOrFonction = 'Directeur', apiKey, commune = null, isFullQuery = false) {
+async function rechercherContactsBrave(nomHotel, queryOrFonction = 'Directeur', apiKey, commune = null, isFullQuery = false, db = null) {
   let query;
   if (isFullQuery) {
     query = queryOrFonction;
@@ -394,6 +395,7 @@ async function rechercherContactsBrave(nomHotel, queryOrFonction = 'Directeur', 
       return await response.json();
     }, 3, 'Brave API');
 
+    trackBraveCall(db, 'linkedin_scraper');
     const contacts = [];
 
     if (data.web && data.web.results) {
@@ -925,7 +927,7 @@ async function rechercherContactsPappers(nomHotel, commune = null, pappersApiKey
 /**
  * Recherche via societe.com (scraping Brave/Google avec site:societe.com)
  */
-async function rechercherContactsSociete(nomHotel, fonction = 'Dirigeant', braveApiKey = null, commune = null) {
+async function rechercherContactsSociete(nomHotel, fonction = 'Dirigeant', braveApiKey = null, commune = null, db = null) {
   const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
   const communePart = commune ? ` ${commune}` : '';
   const query = `${nomNormalise}${communePart} dirigeant site:societe.com`;
@@ -946,6 +948,7 @@ async function rechercherContactsSociete(nomHotel, fonction = 'Dirigeant', brave
         throw new Error(`Brave API HTTP ${response.status}`);
       }
 
+      trackBraveCall(db, 'linkedin_scraper');
       const data = await response.json();
       const contacts = [];
 
@@ -1027,7 +1030,7 @@ async function rechercherContactsSociete(nomHotel, fonction = 'Dirigeant', brave
 /**
  * Recherche via scraping Pappers.fr (Google/Brave avec site:pappers.fr)
  */
-async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur', braveApiKey = null, commune = null) {
+async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur', braveApiKey = null, commune = null, db = null) {
   const nomNormalise = nomHotel.replace(/'/g, ' ').replace(/\s+/g, ' ').trim();
   const communePart = commune ? ` ${commune}` : '';
   const query = `${nomNormalise}${communePart} ${fonction} site:pappers.fr`;
@@ -1051,6 +1054,7 @@ async function rechercherContactsPappersScraping(nomHotel, fonction = 'Directeur
         throw new Error(`Brave API HTTP ${response.status}`);
       }
 
+      trackBraveCall(db, 'linkedin_scraper');
       const data = await response.json();
       const contacts = [];
 
@@ -1167,7 +1171,7 @@ function construireRequetesBrave(nomHotel, commune = null) {
 /**
  * Recherche complète pour un hôtel : UNE requête optimale au lieu de N requêtes médiocres
  */
-async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null, pappersApiKey = null) {
+async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = null, pappersApiKey = null, db = null) {
   const tousContacts = [];
 
   // 1. D'ABORD chercher dans Pappers API (données officielles françaises)
@@ -1187,7 +1191,7 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
   const useBrave = !!braveApiKey;
   if (useBrave) {
     try {
-      const contactsSociete = await rechercherContactsSociete(nomHotel, 'Dirigeant', braveApiKey, commune);
+      const contactsSociete = await rechercherContactsSociete(nomHotel, 'Dirigeant', braveApiKey, commune, db);
       if (contactsSociete.length > 0) {
         logger.info(`📊 Societe.com: ${contactsSociete.length} contact(s) trouvé(s)`);
         tousContacts.push(...contactsSociete);
@@ -1200,7 +1204,7 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
   // 3. Chercher sur Pappers.fr (scraping) en complément
   if (useBrave) {
     try {
-      const contactsPappersScraping = await rechercherContactsPappersScraping(nomHotel, 'Directeur', braveApiKey, commune);
+      const contactsPappersScraping = await rechercherContactsPappersScraping(nomHotel, 'Directeur', braveApiKey, commune, db);
       if (contactsPappersScraping.length > 0) {
         logger.info(`📊 Pappers scraping: ${contactsPappersScraping.length} contact(s) trouvé(s)`);
         tousContacts.push(...contactsPappersScraping);
@@ -1221,7 +1225,7 @@ async function rechercherContactsHotel(nomHotel, braveApiKey = null, commune = n
       if (nbHaute >= 4) break;
 
       try {
-        const contacts = await rechercherContactsBrave(nomHotel, query, braveApiKey, commune, true);
+        const contacts = await rechercherContactsBrave(nomHotel, query, braveApiKey, commune, true, db);
         tousContacts.push(...contacts);
         logger.info(`✅ Brave: ${contacts.length} contact(s) pour "${query.substring(0, 80)}..."`);
       } catch (err) {

@@ -14,6 +14,7 @@
 
 const logger = require('../../config/logger');
 const { insertSignal, getConfigValue } = require('./signalUtils');
+const { trackBraveCall } = require('../../utils/apiClient');
 
 // ─── Queries de recherche ────────────────────────────────────────────────────
 
@@ -41,7 +42,7 @@ const CITY_PATTERNS = [
 
 // ─── Brave Search ────────────────────────────────────────────────────────────
 
-async function searchBrave(apiKey, query) {
+async function searchBrave(apiKey, query, db = null) {
   const params = new URLSearchParams({
     q: query,
     count: '20',
@@ -69,6 +70,7 @@ async function searchBrave(apiKey, query) {
       throw new Error(`Brave API ${res.status}: ${body.substring(0, 200)}`);
     }
 
+    trackBraveCall(db, 'signal_linkedin');
     const data = await res.json();
     return data.web?.results || [];
   } catch (err) {
@@ -140,7 +142,7 @@ async function runBatch(db, options = {}) {
 
   for (const query of PREOPENING_QUERIES) {
     try {
-      const results = await searchBrave(apiKey, query);
+      const results = await searchBrave(apiKey, query, db);
 
       for (const r of results) {
         if (seenUrls.has(r.url)) continue;

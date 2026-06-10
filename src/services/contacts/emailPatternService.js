@@ -14,6 +14,7 @@
 const { randomUUID } = require('crypto');
 const logger = require('../../config/logger');
 const { logAttempt } = require('./pappersService');
+const { trackBraveCall } = require('../../utils/apiClient');
 
 // ─── Config ─────────────────────────────────────────────────────────────────
 
@@ -163,6 +164,7 @@ async function findEmailDomain(db, { hotelName, city, groupName, googlePlaceId, 
       });
 
       if (res.ok) {
+        trackBraveCall(db, 'email_patterns');
         const data = await res.json();
         const results = data.web?.results || [];
 
