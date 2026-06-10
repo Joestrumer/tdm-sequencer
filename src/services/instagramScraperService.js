@@ -549,6 +549,7 @@ async function fetchUserProfile(username, credentials) {
         following_count: user.following_count,
         city_name: user.city_name || null,
         phone_country_code: user.public_phone_country_code ? `+${user.public_phone_country_code}` : null,
+        phone_number: user.public_phone_number || user.contact_phone_number || null,
         address_street: user.address_street || null,
       };
     }
@@ -576,6 +577,7 @@ async function fetchUserProfile(username, credentials) {
     following_count: user.edge_follow?.count || user.following_count,
     city_name: user.city_name || user.business_address_json?.city_name || null,
     phone_country_code: user.public_phone_country_code ? `+${user.public_phone_country_code}` : null,
+    phone_number: user.business_phone_number || user.public_phone_number || user.contact_phone_number || null,
     address_street: user.address_street || user.business_address_json?.street_address || null,
   };
 }
@@ -1301,7 +1303,7 @@ async function processJob(db, jobId) {
               UPDATE instagram_scraped_accounts
               SET bio = ?, external_url = ?, business_email = ?, category = ?,
                   is_business = ?, is_private = ?, follower_count = ?, following_count = ?,
-                  business_type = ?, bio_keywords = ?, country = ?, city_name = ?, phone_country_code = ?, address_street = ?,
+                  business_type = ?, bio_keywords = ?, country = ?, city_name = ?, phone_country_code = ?, phone_number = ?, address_street = ?,
                   scraping_status = 'skipped', scraping_error = 'Ne correspond pas aux filtres'
               WHERE job_id = ? AND instagram_username = ?
             `).run(
@@ -1309,7 +1311,7 @@ async function processJob(db, jobId) {
               accountProfile.category, accountProfile.is_business, accountProfile.is_private,
               accountProfile.follower_count, accountProfile.following_count,
               businessType, JSON.stringify(bioKeywords), country,
-              accountProfile.city_name || null, accountProfile.phone_country_code || null, accountProfile.address_street || null,
+              accountProfile.city_name || null, accountProfile.phone_country_code || null, accountProfile.phone_number || null, accountProfile.address_street || null,
               jobId, user.username
             );
             processed++;
@@ -1329,7 +1331,7 @@ async function processJob(db, jobId) {
               follower_count = ?, following_count = ?,
               business_type = ?, bio_keywords = ?,
               best_email = ?, email_source = ?, email_confidence = ?,
-              country = ?, city_name = ?, phone_country_code = ?, address_street = ?, scraping_status = 'done'
+              country = ?, city_name = ?, phone_country_code = ?, phone_number = ?, address_street = ?, scraping_status = 'done'
           WHERE job_id = ? AND instagram_username = ?
         `).run(
           accountProfile.full_name, accountProfile.bio, accountProfile.external_url, accountProfile.external_url,
@@ -1337,7 +1339,7 @@ async function processJob(db, jobId) {
           accountProfile.follower_count, accountProfile.following_count,
           businessType, JSON.stringify(bioKeywords),
           bestEmailResult?.email || null, bestEmailResult?.source || null, bestEmailResult?.confidence || null,
-          country, accountProfile.city_name || null, accountProfile.phone_country_code || null, accountProfile.address_street || null,
+          country, accountProfile.city_name || null, accountProfile.phone_country_code || null, accountProfile.phone_number || null, accountProfile.address_street || null,
           jobId, user.username
         );
 
@@ -1771,6 +1773,10 @@ async function processCategorySearchJob(db, jobId) {
               try {
                 const websiteResult = await findEmailsFromWebsite(accountProfile.external_url);
                 scrapedEmails = websiteResult.emails || [];
+                // Récupérer le téléphone du site si pas de téléphone IG
+                if (!accountProfile.phone_number && websiteResult.phones?.length > 0) {
+                  accountProfile.phone_number = websiteResult.phones[0];
+                }
               } catch (err) {
                 logger.warn(`⚠️ Erreur scraping site ${accountProfile.external_url}: ${err.message}`);
               }
@@ -1783,8 +1789,8 @@ async function processCategorySearchJob(db, jobId) {
                 (job_id, instagram_username, instagram_user_id, full_name, bio, website, external_url,
                  business_email, category, is_business, is_private, follower_count, following_count,
                  business_type, bio_keywords, best_email, email_source, email_confidence,
-                 scraped_emails, country, city_name, phone_country_code, address_street, scraping_status)
-              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'done')
+                 scraped_emails, country, city_name, phone_country_code, phone_number, address_street, scraping_status)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'done')
             `).run(
               jobId, accountProfile.username, accountProfile.user_id,
               accountProfile.full_name, accountProfile.bio,
@@ -1796,7 +1802,7 @@ async function processCategorySearchJob(db, jobId) {
               bestEmailResult?.email || null, bestEmailResult?.source || null, bestEmailResult?.confidence || null,
               scrapedEmails.length > 0 ? JSON.stringify(scrapedEmails) : null,
               detectedCountry, accountProfile.city_name || null,
-              accountProfile.phone_country_code || null, accountProfile.address_street || null
+              accountProfile.phone_country_code || null, accountProfile.phone_number || null, accountProfile.address_street || null
             );
 
             // Vérifier doublons lead

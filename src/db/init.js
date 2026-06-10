@@ -1122,6 +1122,10 @@ const migrations = [
   'ALTER TABLE instagram_scrape_jobs ADD COLUMN search_category TEXT',
   'ALTER TABLE instagram_scrape_jobs ADD COLUMN search_country TEXT',
   "ALTER TABLE instagram_scrape_jobs ADD COLUMN search_progress TEXT DEFAULT '{}'",
+  // Instagram — Numéro de téléphone
+  'ALTER TABLE instagram_scraped_accounts ADD COLUMN phone_number TEXT',
+  // Leads — Numéro de téléphone
+  'ALTER TABLE leads ADD COLUMN telephone TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

@@ -89,7 +89,36 @@ function extractSocialLinks(html) {
 }
 
 /**
- * Source 1 — Scraper les pages du site web (emails + liens sociaux)
+ * Extrait les numéros de téléphone d'un texte HTML
+ * Cherche dans les href="tel:" et patterns texte
+ */
+function extractPhoneNumbers(html) {
+  const phones = new Set();
+
+  // 1. href="tel:..." (le plus fiable)
+  const telHrefRegex = /href\s*=\s*["']tel:\s*([^"']+)["']/gi;
+  let match;
+  while ((match = telHrefRegex.exec(html)) !== null) {
+    const phone = match[1].replace(/\s+/g, '').replace(/[^\d+()-]/g, '');
+    if (phone.length >= 8) phones.add(phone);
+  }
+
+  // 2. Patterns texte courants (numéros FR, internationaux)
+  const textPhoneRegex = /(?:(?:\+|00)\d{1,3}[\s.-]?)?\(?\d{1,4}\)?[\s.-]?\d{2,4}[\s.-]?\d{2,4}[\s.-]?\d{2,4}/g;
+  const textMatches = html.replace(/<[^>]+>/g, ' ').match(textPhoneRegex) || [];
+  for (const raw of textMatches) {
+    const cleaned = raw.replace(/[\s.-]/g, '').replace(/^\(0\)/, '0');
+    // Accepter les numéros FR (+33/06/07) et internationaux (+XX...)
+    if (/^(\+33|0[1-9]|00\d{2})\d{8,}$/.test(cleaned) || /^\+\d{10,}$/.test(cleaned)) {
+      phones.add(cleaned);
+    }
+  }
+
+  return [...phones];
+}
+
+/**
+ * Source 1 — Scraper les pages du site web (emails + liens sociaux + téléphones)
  */
 async function findEmailsFromWebsite(websiteUrl) {
   const results = [];
@@ -98,6 +127,7 @@ async function findEmailsFromWebsite(websiteUrl) {
 
   const baseUrl = websiteUrl.startsWith('http') ? websiteUrl : 'https://' + websiteUrl;
   const domain = getDomain(websiteUrl);
+  const phones = [];
 
   for (const path of CONTACT_PATHS) {
     try {
@@ -120,6 +150,12 @@ async function findEmailsFromWebsite(websiteUrl) {
         }
       }
 
+      // Extraire téléphones
+      const pagePhones = extractPhoneNumbers(html);
+      for (const phone of pagePhones) {
+        if (!phones.includes(phone)) phones.push(phone);
+      }
+
       // Extraire liens sociaux
       const pageSocials = extractSocialLinks(html);
       for (const [network, url] of Object.entries(pageSocials)) {
@@ -132,7 +168,7 @@ async function findEmailsFromWebsite(websiteUrl) {
     }
   }
 
-  return { emails: results, socials };
+  return { emails: results, socials, phones };
 }
 
 /**
@@ -313,4 +349,4 @@ async function findEmail(prospect) {
   return result;
 }
 
-module.exports = { findEmail, findEmailsFromWebsite, findEmailsFromGoogle, findSocialProfiles, findEmailFromFacebook };
+module.exports = { findEmail, findEmailsFromWebsite, findEmailsFromGoogle, findSocialProfiles, findEmailFromFacebook, extractPhoneNumbers };

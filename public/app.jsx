@@ -7630,33 +7630,34 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                             className="w-4 h-4"
                           />
                         </td>
-                        <td className="px-4 py-3">
-                          <div className="flex flex-col">
+                        <td className="px-4 py-3 overflow-hidden">
+                          <div className="flex flex-col min-w-0">
                             <a
                               href={`https://www.instagram.com/${account.instagram_username}/`}
                               target="_blank"
                               rel="noopener noreferrer"
-                              className="text-sm font-medium text-purple-600 hover:text-purple-800"
+                              className="text-sm font-medium text-purple-600 hover:text-purple-800 truncate"
+                              title={`@${account.instagram_username}`}
                             >
                               @{account.instagram_username}
                             </a>
                             {account.full_name && (
-                              <span className="text-xs text-slate-500">{account.full_name}</span>
+                              <span className="text-xs text-slate-500 truncate" title={account.full_name}>{account.full_name}</span>
                             )}
                             {account.existing_lead_email && (
                               <span className="text-[10px] px-1.5 py-0.5 mt-0.5 rounded bg-amber-100 text-amber-700 w-fit">Doublon</span>
                             )}
                           </div>
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 overflow-hidden">
                           {account.source_account ? (
-                            <span className="text-xs text-purple-600">@{account.source_account}</span>
+                            <span className="text-xs text-purple-600 truncate block" title={`@${account.source_account}`}>@{account.source_account}</span>
                           ) : (
                             <span className="text-xs text-slate-400">-</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
-                          <p className="text-xs text-slate-600 max-w-xs truncate" title={account.bio}>
+                        <td className="px-4 py-3 overflow-hidden">
+                          <p className="text-xs text-slate-600 truncate" title={account.bio}>
                             {account.bio ? account.bio.slice(0, 100) : '-'}
                           </p>
                         </td>
@@ -7701,11 +7702,11 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
                             <span className="text-xs text-slate-400">-</span>
                           )}
                         </td>
-                        <td className="px-4 py-3">
+                        <td className="px-4 py-3 overflow-hidden">
                           {account.best_email ? (
-                            <div className="flex flex-col">
-                              <span className="text-xs font-medium text-emerald-700">{account.best_email}</span>
-                              <span className="text-[10px] text-slate-400">
+                            <div className="flex flex-col min-w-0">
+                              <span className="text-xs font-medium text-emerald-700 truncate" title={account.best_email}>{account.best_email}</span>
+                              <span className="text-[10px] text-slate-400 truncate">
                                 {account.email_source === 'instagram_business' ? 'IG Business' : account.email_source || ''}
                                 {account.email_confidence && ` (${account.email_confidence})`}
                               </span>

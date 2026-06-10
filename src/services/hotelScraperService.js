@@ -17,12 +17,13 @@ function extractEmails(text) {
     'noreply', 'no-reply', 'mailer-daemon', 'postmaster',
     'analytics', 'tracking', 'pixel', 'spam', 'abuse',
     'example.com', 'test.com', 'domain.com',
-    '@sentry.', '@sentry-', '@google-analytics.', '@facebook.', '@doubleclick.',
+    '@sentry', '@google-analytics.', '@facebook.', '@doubleclick.',
   ];
 
   // Domaines à bloquer entièrement (tracking, placeholders, templates CMS)
+  // Vérifie le domaine exact ET tous les sous-domaines (*.wixpress.com, *.sentry.io, etc.)
   const blockedDomains = new Set([
-    'wixpress.com', 'sentry.io', 'sentry.wixpress.com', 'sentry-next.wixpress.com',
+    'wixpress.com', 'sentry.io',
     'mysite.com', 'domaine.com', 'email.com', 'exemple.com',
     'yoursite.com', 'yourdomain.com', 'votresite.com', 'votrenom.com',
     'mailinator.com', 'guerrillamail.com', 'tempmail.com', 'throwaway.email',
@@ -47,11 +48,12 @@ function extractEmails(text) {
     const domain = lower.split('@')[1] || '';
     const localPart = lower.split('@')[0];
 
-    // Bloquer les domaines connus (tracking, placeholders)
+    // Bloquer les domaines connus (tracking, placeholders) + tous les sous-domaines
     if (blockedDomains.has(domain)) return false;
-    // Bloquer aussi les sous-domaines (ex: xxx.wixpress.com)
-    const parentDomain = domain.split('.').slice(-2).join('.');
-    if (blockedDomains.has(parentDomain) && parentDomain !== domain) return false;
+    const domainParts = domain.split('.');
+    for (let i = 1; i < domainParts.length - 1; i++) {
+      if (blockedDomains.has(domainParts.slice(i).join('.'))) return false;
+    }
 
     // Rejeter les local parts qui sont des hash hexadécimaux (ex: 605a7baede844d278b89dc95ae0a9123)
     if (/^[0-9a-f]{16,}$/i.test(localPart)) return false;

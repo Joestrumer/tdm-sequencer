@@ -61,6 +61,26 @@ module.exports = (db) => {
     logger.warn('⚠️ Erreur backfill reclassification:', err.message);
   }
 
+  // ─── Backfill : nettoyer les mauvais emails (sentry, wixpress, placeholders) ──
+  try {
+    const badEmailPatterns = [
+      '%sentry%', '%wixpress%', '%@mysite.com', '%@domaine.com',
+      '%@email.com', '%@exemple.com', '%@placeholder.com', '%@sample.com',
+    ];
+    const conditions = badEmailPatterns.map(() => 'best_email LIKE ?').join(' OR ');
+    const badAccounts = db.prepare(`
+      SELECT id FROM instagram_scraped_accounts
+      WHERE ${conditions}
+    `).all(...badEmailPatterns);
+    if (badAccounts.length > 0) {
+      const clearBadEmail = db.prepare('UPDATE instagram_scraped_accounts SET best_email = NULL, email_source = NULL, email_confidence = NULL WHERE id = ?');
+      for (const a of badAccounts) clearBadEmail.run(a.id);
+      logger.info(`🧹 Nettoyage emails: ${badAccounts.length} mauvais emails supprimés (sentry, wixpress, placeholders)`);
+    }
+  } catch (err) {
+    logger.warn('⚠️ Erreur nettoyage emails:', err.message);
+  }
+
   // ─── Config & Credentials ──────────────────────────────────────────────────
 
   // POST /api/instagram/config — Stocker les credentials Instagram
@@ -715,8 +735,8 @@ module.exports = (db) => {
       const createLead = db.prepare(`
         INSERT INTO leads (
           id, prenom, nom, email, hotel, ville, segment,
-          poste, langue, source, statut, created_at, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
+          poste, langue, source, statut, telephone, created_at, updated_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, datetime('now'), datetime('now'))
       `);
 
       const markAccount = db.prepare(`
@@ -749,6 +769,14 @@ module.exports = (db) => {
             // Langue : mapping country → code langue
             const leadLangue = COUNTRY_LANGUAGE_MAP[account.country] || 'en';
 
+            // Construire le téléphone complet (country code + numéro)
+            let telephone = null;
+            if (account.phone_number) {
+              telephone = account.phone_country_code
+                ? `${account.phone_country_code}${account.phone_number.replace(/^\+?\d{1,3}/, '').replace(/^0+/, '')}`
+                : account.phone_number;
+            }
+
             createLead.run(
               leadId,
               '', // prenom — pas toujours dispo depuis IG
@@ -760,7 +788,8 @@ module.exports = (db) => {
               account.category || null,
               leadLangue,
               leadSource,
-              'Nouveau'
+              'Nouveau',
+              telephone
             );
 
             // Ajouter le tag de prospection avec le compte source
