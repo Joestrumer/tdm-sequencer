@@ -878,12 +878,56 @@ const POSTAL_CODE_COUNTRY = [
 ];
 
 /**
+ * Détecte si une bio Instagram est rédigée en français via des indicateurs lexicaux.
+ * Retourne 'fr' si la bio est probablement en français, null sinon.
+ * Seuil conservateur : au moins 2 indicateurs pour éviter les faux positifs.
+ */
+function detectBioLanguage(bio) {
+  if (!bio || bio.length < 10) return null;
+  const lower = bio.toLowerCase();
+
+  // Mots français courants dans les bios business IG
+  const frenchIndicators = [
+    /\bbienvenue\b/, /\bréservation[s]?\b/, /\bréservez\b/,
+    /\bnotre\b/, /\bnos\b/, /\bnous\b/, /\bvotre\b/, /\bvous\b/,
+    /\bouvert[e]?\b/, /\bfermé[e]?\b/, /\bhoraires?\b/,
+    /\bdécouvrez\b/, /\bprofitez\b/, /\bcontactez\b/, /\bappelez\b/,
+    /\bservices?\b/, /\bprestations?\b/,
+    /\bdepuis\b/, /\bchez\b/,
+    /\bsur rendez[- ]?vous\b/,
+    /\bdu lundi\b|\bau vendredi\b|\bsamedi\b|\bdimanche\b/,
+    /\béquipe\b/, /\bpassionné[es]?\b/,
+    /\bmaison\b/, /\bboutique\b/,
+    /\blivraison\b/, /\bcommandez\b/,
+    /\bcoaching\b.*\bpersonnal/,
+    /\baccompagnement\b/, /\bbien[- ]?être\b/,
+    /\bsoin[s]?\b/, /\bbeauté\b/, /\bcoiffure\b/,
+    /\btraiteur\b/, /\bévénement[s]?\b/,
+    /\bgérant[e]?\b/, /\bfondateur\b|\bfondatrice\b/,
+  ];
+
+  // Compter les indicateurs matchés
+  let frenchScore = 0;
+  for (const pattern of frenchIndicators) {
+    if (pattern.test(lower)) frenchScore++;
+  }
+
+  // Bonus : caractères accentués typiquement français (é, è, ê, ë, ç, à, ù, ô, î, û)
+  const accentCount = (lower.match(/[éèêëçàùôîûœæ]/g) || []).length;
+  if (accentCount >= 2) frenchScore++;
+  if (accentCount >= 5) frenchScore++;
+
+  return frenchScore >= 2 ? 'fr' : null;
+}
+
+/**
  * Détecte le pays depuis plusieurs sources (par priorité décroissante) :
  * 1. address_street (parsing direct du texte d'adresse)
  * 2. city_name (champ business IG)
  * 3. phone_country_code (champ business IG)
  * 4. TLD du site web
  * 5. Patterns dans la bio
+ * 6. Détection de langue dans la bio (français → France)
  */
 function detectCountry(externalUrl, bio, cityName, phoneCountryCode, addressStreet) {
   // 1. Priorité : address_street — parsing direct (contient souvent le pays en clair)
@@ -945,6 +989,12 @@ function detectCountry(externalUrl, bio, cityName, phoneCountryCode, addressStre
     for (const { pattern, country } of BIO_COUNTRY_PATTERNS) {
       if (pattern.test(bio)) return country;
     }
+  }
+
+  // 6. Fallback : détection de langue dans la bio
+  if (bio) {
+    const lang = detectBioLanguage(bio);
+    if (lang === 'fr') return 'France';
   }
 
   return null;
