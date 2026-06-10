@@ -34,7 +34,7 @@ const BUSINESS_KEYWORDS = {
   conciergerie: ['conciergerie', 'concierge', 'gestion locative', 'location courte durée', 'location courte duree', 'property management', 'airbnb management', 'gestion airbnb', 'airbnb & booking', 'rental management', 'gestion locative courte', 'conciergerie airbnb', 'conciergerie de luxe', 'concierge de luxe', 'conciergerie privée', 'conciergerie événementielle'],
   hotel: ['hotel', 'hôtel', 'resort', 'lodge', 'boutique hotel', 'palace', 'auberge', 'gîte', 'chambre d\'hôte', 'maison d\'hôte', 'relais', 'château hotel'],
   restaurant: ['restaurant', 'bistrot', 'brasserie', 'gastronomie', 'chef', 'traiteur', 'cuisine', 'table'],
-  sport: ['gym', 'fitness', 'crossfit', 'musculation', 'salle de sport', 'coaching sportif', 'personal training', 'club de sport'],
+  sport: ['gym', 'fitness', 'crossfit', 'musculation', 'salle de sport', 'coaching sportif', 'personal training', 'club de sport', 'sports club', 'club privé', 'club sportif', 'studio sport', 'studio fitness', 'bootcamp', 'workout', 'training studio', 'sport club'],
   spa: ['spa', 'massage', 'hammam', 'sauna'],
   hospitality: ['hospitality', 'hôtellerie', 'tourisme', 'travel', 'voyage', 'hébergement'],
   retail: ['boutique', 'concept store', 'shop', 'e-shop', 'mode', 'fashion'],
@@ -66,6 +66,13 @@ const IG_CATEGORY_MAP = {
   'yoga studio': 'sport', 'martial arts school': 'sport',
   'sports club': 'sport', 'recreation center': 'sport',
   'swimming pool': 'sport', 'tennis court': 'sport', 'golf course': 'sport',
+  'private members club': 'sport', 'sports & recreation venue': 'sport',
+  // Sport — catégories IG en français
+  'salle de sport / centre de remise en forme': 'sport', 'salle de sport': 'sport',
+  'club de sport': 'sport', 'club sportif': 'sport',
+  'entraîneur personnel': 'sport', 'studio de yoga': 'sport',
+  'centre de remise en forme': 'sport', 'terrain de golf': 'sport',
+  'santé/beauté': 'sport', 'health/beauty': 'sport',
   // Spa
   'spa': 'spa', 'massage service': 'spa', 'health spa': 'spa',
   // Bar
@@ -80,6 +87,7 @@ const IG_CATEGORY_MAP = {
   // Retail
   'shopping & retail': 'retail', 'clothing store': 'retail',
   'boutique store': 'retail', 'jewelry/watches': 'retail',
+  'sporting goods store': 'retail', "magasin d'articles de sport": 'retail',
 };
 
 // Catégories IG génériques qui ne renseignent pas sur le type de business
@@ -1520,12 +1528,22 @@ const SEARCH_CITIES = {
 };
 
 const CATEGORY_SEARCH_TERMS = {
-  'Club de sport': ['Club de sport', 'Salle de sport', 'Fitness', 'Gym'],
-  'Hotel': ['Hotel', 'Boutique hotel'],
-  'Service de conciergerie': ['Conciergerie', 'Property management', 'Gestion locative'],
-  'Restaurant': ['Restaurant', 'Restaurant gastronomique'],
-  'Spa': ['Spa', 'Centre de bien-être'],
-  'Bar': ['Bar', 'Cocktail bar'],
+  'Club de sport': ['Club de sport', 'Salle de sport', 'Fitness club', 'Gym premium', 'Sports club', 'Club privé sport', 'Fitness studio', 'Crossfit box'],
+  'Hotel': ['Hotel', 'Boutique hotel', 'Hotel de luxe', 'Palace'],
+  'Service de conciergerie': ['Conciergerie', 'Property management', 'Gestion locative', 'Conciergerie Airbnb'],
+  'Restaurant': ['Restaurant', 'Restaurant gastronomique', 'Bistrot', 'Brasserie'],
+  'Spa': ['Spa', 'Centre de bien-être', 'Spa de luxe'],
+  'Bar': ['Bar', 'Cocktail bar', 'Bar à cocktails'],
+};
+
+// Mots-clés d'exclusion par catégorie — comptes à ignorer (magasins, associations, etc.)
+const CATEGORY_EXCLUDE_KEYWORDS = {
+  'Club de sport': ['magasin', 'boutique', 'vente', 'compétition', 'babygym', 'baby gym', 'association sportive', 'ligue', 'fédération', 'comité', 'articles de sport', 'matériel', 'équipement', 'nutrition sportive', 'compléments'],
+  'Hotel': [],
+  'Service de conciergerie': [],
+  'Restaurant': ['livraison', 'uber eats', 'deliveroo'],
+  'Spa': [],
+  'Bar': [],
 };
 
 /**
@@ -1614,6 +1632,7 @@ async function processCategorySearchJob(db, jobId) {
     const category = job.search_category;
     const country = job.search_country;
     const maxAccounts = options.max_accounts || 500;
+    const minFollowers = options.min_followers || 0;
 
     const cities = SEARCH_CITIES[country];
     if (!cities || cities.length === 0) {
@@ -1624,6 +1643,8 @@ async function processCategorySearchJob(db, jobId) {
     if (!searchTerms || searchTerms.length === 0) {
       throw new Error(`Catégorie "${category}" non supportée`);
     }
+
+    const excludeKeywords = (CATEGORY_EXCLUDE_KEYWORDS[category] || []).map(k => k.toLowerCase());
 
     // Charger la progression existante (reprise)
     let progress = { cities_completed: [], current_city: null, new_accounts_found: 0, duplicates_skipped: 0 };
@@ -1720,6 +1741,22 @@ async function processCategorySearchJob(db, jobId) {
           // Marquer comme connu pour éviter les doublons intra-job
           existingUsernames.add(user.username);
 
+          // Pré-filtre sur les données du search (avant le fetch profil coûteux)
+          // 1. Filtre followers minimum
+          if (minFollowers > 0 && user.follower_count > 0 && user.follower_count < minFollowers) {
+            duplicatesSkipped++;
+            continue;
+          }
+
+          // 2. Filtre exclusion par mots-clés (bio du search result)
+          if (excludeKeywords.length > 0) {
+            const searchText = `${user.bio || ''} ${user.full_name || ''} ${user.category || ''}`.toLowerCase();
+            if (excludeKeywords.some(kw => searchText.includes(kw))) {
+              duplicatesSkipped++;
+              continue;
+            }
+          }
+
           try {
             // Récupérer le profil complet
             await jitteredDelay(4000);
@@ -1760,6 +1797,21 @@ async function processCategorySearchJob(db, jobId) {
                 const realUrl = await resolveRealWebsite(accountProfile.external_url);
                 if (realUrl) accountProfile.external_url = realUrl;
               } catch { /* on garde le linkinbio */ }
+            }
+
+            // Post-filtre profil complet : followers + exclusion
+            if (minFollowers > 0 && accountProfile.follower_count > 0 && accountProfile.follower_count < minFollowers) {
+              duplicatesSkipped++;
+              progress.duplicates_skipped = duplicatesSkipped;
+              continue;
+            }
+            if (excludeKeywords.length > 0) {
+              const fullText = `${accountProfile.bio || ''} ${accountProfile.full_name || ''} ${accountProfile.category || ''}`.toLowerCase();
+              if (excludeKeywords.some(kw => fullText.includes(kw))) {
+                duplicatesSkipped++;
+                progress.duplicates_skipped = duplicatesSkipped;
+                continue;
+              }
             }
 
             // Classification + détection pays
@@ -1925,4 +1977,5 @@ module.exports = {
   processCategorySearchJob,
   SEARCH_CITIES,
   CATEGORY_SEARCH_TERMS,
+  CATEGORY_EXCLUDE_KEYWORDS,
 };

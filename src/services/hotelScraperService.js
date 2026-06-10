@@ -31,6 +31,7 @@ function extractEmails(text) {
     'hotmail.test', 'gmail.test', 'outlook.test',
     'wix.com', 'squarespace.com', 'weebly.com',
     'placeholder.com', 'sample.com', 'fake.com',
+    'mail.fr', 'mail.com',
   ]);
 
   // Extensions de fichiers images/médias (faux positifs courants dans les attributs HTML src/href)

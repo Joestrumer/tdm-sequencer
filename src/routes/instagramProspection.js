@@ -66,6 +66,7 @@ module.exports = (db) => {
     const badEmailPatterns = [
       '%sentry%', '%wixpress%', '%@mysite.com', '%@domaine.com',
       '%@email.com', '%@exemple.com', '%@placeholder.com', '%@sample.com',
+      '%@mail.fr', '%@mail.com',
     ];
     const conditions = badEmailPatterns.map(() => 'best_email LIKE ?').join(' OR ');
     const badAccounts = db.prepare(`
@@ -345,7 +346,7 @@ module.exports = (db) => {
           `category_search://${searchCategory}/${searchCountry}`,
           `${searchCategory} / ${searchCountry}`,
           '[]',
-          JSON.stringify({ max_accounts: options.max_accounts || 500 }),
+          JSON.stringify({ max_accounts: options.max_accounts || 500, min_followers: options.min_followers || 0 }),
           'category_search',
           searchCategory,
           searchCountry
