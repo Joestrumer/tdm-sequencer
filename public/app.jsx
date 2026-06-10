@@ -307,7 +307,7 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
     setQueryCompany(company.nom);
     setSelectedContacts([]);
     setBatchResult(null);
-    setForm(f => ({ ...f, hotel: company.nom, ville: company.ville || f.ville }));
+    setForm(f => ({ ...f, hotel: company.nom, ville: company.ville || f.ville, source: 'HubSpot' }));
     // Charger les contacts liés
     try {
       const contacts = await api.get(`/hubspot/contacts-company/${company.id}`);
@@ -350,6 +350,7 @@ const ModalAddLead = ({ onClose, onAdd, campaigns = [], sequences = [] }) => {
           langue: form.langue,
           campaign: form.campaign,
           comment: form.comment,
+          source: 'HubSpot',
         }));
         const result = await api.post('/leads/batch', { leads, company_hubspot_id: selectedCompany?.id || null });
         setBatchResult(result);
