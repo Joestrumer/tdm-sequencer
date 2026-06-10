@@ -1146,5 +1146,46 @@ module.exports = (db) => {
     }
   });
 
+  // POST /api/instagram/accounts/reclassify-all — Re-détecte pays + type sur TOUS les comptes
+  router.post('/accounts/reclassify-all', (req, res) => {
+    try {
+      const all = db.prepare(`
+        SELECT id, instagram_username, external_url, bio, category, business_type, country, city_name, phone_country_code, address_street
+        FROM instagram_scraped_accounts
+      `).all();
+
+      const updateStmt = db.prepare('UPDATE instagram_scraped_accounts SET country = ?, business_type = ? WHERE id = ?');
+      let countryUpdated = 0;
+      let typeUpdated = 0;
+
+      for (const a of all) {
+        const newCountry = igService.detectCountry(a.external_url, a.bio, a.city_name, a.phone_country_code, a.address_street);
+        const newType = igService.classifyBusiness(a.bio, a.category, a.instagram_username);
+
+        const finalCountry = newCountry || null;
+        const finalType = newType || a.business_type || null;
+
+        const countryChanged = finalCountry !== a.country;
+        const typeChanged = finalType !== a.business_type;
+
+        if (countryChanged || typeChanged) {
+          updateStmt.run(finalCountry, finalType, a.id);
+          if (countryChanged) countryUpdated++;
+          if (typeChanged) typeUpdated++;
+        }
+      }
+
+      logger.info(`🔄 Reclassification complète: ${countryUpdated} pays + ${typeUpdated} types mis à jour sur ${all.length} comptes`);
+      res.json({
+        total: all.length,
+        countryUpdated,
+        typeUpdated,
+      });
+    } catch (err) {
+      logger.error('❌ Erreur reclassification:', err.message);
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
   return router;
 };
