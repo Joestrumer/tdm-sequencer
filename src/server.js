@@ -90,6 +90,17 @@ app.get('/api/health', (req, res) => {
   });
 });
 
+// Debug WMS (temporaire, avant auth pour diagnostic)
+const wmsService = require('./services/wmsService');
+app.get('/api/wms-debug/try-ids/:orderRef', async (req, res) => {
+  try {
+    const result = await wmsService.debugTryIds(db, req.params.orderRef);
+    res.json(result);
+  } catch (e) {
+    res.status(500).json({ erreur: e.message });
+  }
+});
+
 // Auth middleware (JWT + fallback AUTH_SECRET)
 const authMiddleware = require('./middleware/auth');
 const { requireAccessAuto, requireAdmin } = require('./middleware/permissions');
