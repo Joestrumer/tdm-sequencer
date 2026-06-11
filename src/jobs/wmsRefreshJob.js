@@ -40,19 +40,29 @@ async function refreshWMS() {
   let updated = 0;
   for (const shipment of shipments) {
     try {
-      const wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
+      let wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
 
       let status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
       let statusCode = clean(wmsInfo.status?.code_etat);
-      const trackingNumber = clean(wmsInfo.tracking?.tracking);
-      const carrierName = clean(wmsInfo.tracking?.transporteur);
+      let trackingNumber = clean(wmsInfo.tracking?.tracking);
+      let carrierName = clean(wmsInfo.tracking?.transporteur);
 
-      // Fallback : dériver statut depuis historique + tracking si getStatus vide
+      // Fallback 1 : si order_ref n'a rien retourné et invoice_number est différent (P-reference)
+      if (!status && !statusCode && shipment.invoice_number
+          && shipment.invoice_number !== shipment.order_ref) {
+        logger.debug(`[WMS Refresh] ${shipment.order_ref} vide, retry avec invoice_number=${shipment.invoice_number}`);
+        wmsInfo = await wmsService.getFullInfo(db, shipment.invoice_number);
+        status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
+        statusCode = clean(wmsInfo.status?.code_etat);
+        trackingNumber = clean(wmsInfo.tracking?.tracking);
+        carrierName = clean(wmsInfo.tracking?.transporteur);
+        if (status || statusCode) {
+          logger.info(`[WMS Refresh] ${shipment.order_ref} trouvé via invoice_number=${shipment.invoice_number} → ${status}`);
+        }
+      }
+
+      // Fallback 2 : dériver statut depuis historique + tracking si getStatus vide
       if (!status && !statusCode) {
-        logger.debug(`[WMS Refresh] getStatus vide pour ${shipment.order_ref}, tentative fallback historique`, {
-          historique: wmsInfo.historique,
-          tracking: wmsInfo.tracking,
-        });
         const derived = wmsService.deriveStatusFromInfo(wmsInfo);
         if (derived) {
           status = derived.status;

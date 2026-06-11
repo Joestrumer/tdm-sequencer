@@ -86,24 +86,6 @@ async function callSoap(method, params, db) {
   const parsed = parseResponse(text);
   logger.debug(`WMS ${method} (${params.delivery_order}): ${text.substring(0, 800)}`);
 
-  // Si réponse vide et id non-zéro, retry avec id=0 (certaines commandes
-  // ne sont pas trouvées avec id=165 mais répondent avec id=0)
-  if (Object.keys(parsed).length === 0 && params.id && params.id !== 0) {
-    const retryBody = buildSoapEnvelope(method, { ...params, id: 0 });
-    const retryRes = await fetch(ENDPOINT, { method: 'POST', headers, body: retryBody });
-    const retryText = await retryRes.text();
-
-    if (retryRes.ok) {
-      const retryParsed = parseResponse(retryText);
-      if (Object.keys(retryParsed).length > 0) {
-        logger.info(`[WMS] ${method} (${params.delivery_order}) → succès avec id=0 (${Object.keys(retryParsed).join(', ')})`);
-        return retryParsed;
-      }
-    }
-
-    logger.debug(`[WMS] ${method} (${params.delivery_order}) → réponse vide avec id=165 et id=0`);
-  }
-
   return parsed;
 }
 
@@ -215,6 +197,70 @@ async function debugCall(db, deliveryOrder, method = 'getStatus') {
   };
 }
 
+// Debug : essayer plusieurs valeurs d'id et namespaces pour trouver la bonne config
+async function debugTryIds(db, deliveryOrder) {
+  const { user, pass } = getCredentials(db);
+  const auth = Buffer.from(`${user}:${pass}`).toString('base64');
+  const method = 'getStatus';
+  const idsToTry = [0, 1, 100, 150, 160, 163, 164, 165, 166, 167, 170, 200, 300];
+  const namespacesToTry = [
+    { label: 'wsdl-url', ns: NAMESPACE },
+    { label: 'urn', ns: 'urn:order_status' },
+  ];
+
+  const results = {};
+
+  for (const { label, ns } of namespacesToTry) {
+    results[label] = {};
+    for (const id of idsToTry) {
+      try {
+        const paramsXml = `<id xsi:type="xsd:int">${id}</id>\n      <delivery_order xsi:type="xsd:string">${deliveryOrder}</delivery_order>`;
+        const body = `<?xml version="1.0" encoding="UTF-8"?>
+<soapenv:Envelope
+  xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
+  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
+  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+  xmlns:tns="${ns}">
+  <soapenv:Body>
+    <tns:${method}>
+      ${paramsXml}
+    </tns:${method}>
+  </soapenv:Body>
+</soapenv:Envelope>`;
+
+        const res = await fetch(ENDPOINT, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'text/xml; charset=utf-8',
+            'SOAPAction': `${ns}#${method}`,
+            'Authorization': `Basic ${auth}`,
+          },
+          body,
+        });
+
+        const text = await res.text();
+        const parsed = parseResponse(text);
+        const hasData = Object.keys(parsed).length > 0;
+
+        results[label][`id_${id}`] = {
+          hasData,
+          parsed: hasData ? parsed : undefined,
+          raw: hasData ? undefined : text.substring(0, 300),
+        };
+
+        // Trouvé ! Log immédiatement
+        if (hasData) {
+          logger.info(`[WMS Debug] ${deliveryOrder} trouvé avec ns=${label}, id=${id}: ${JSON.stringify(parsed)}`);
+        }
+      } catch (e) {
+        results[label][`id_${id}`] = { error: e.message };
+      }
+    }
+  }
+
+  return { delivery_order: deliveryOrder, results };
+}
+
 module.exports = {
   getStatus,
   getTracking,
@@ -222,6 +268,7 @@ module.exports = {
   getHistorique,
   getFullInfo,
   debugCall,
+  debugTryIds,
   deriveStatusFromInfo,
   JUNK_SET,
 };

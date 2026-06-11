@@ -1236,6 +1236,16 @@ module.exports = (db) => {
     }
   });
 
+  // ─── DEBUG WMS : Essayer plusieurs IDs et namespaces ───────────────────────
+  router.get('/wms/try-ids/:orderRef', async (req, res) => {
+    try {
+      const result = await wmsService.debugTryIds(db, req.params.orderRef);
+      res.json(result);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── DEBUG WMS INFO : Tester le 2ème WSDL ───────────────────────────────────
   const wmsInfoService = require('../services/wmsInfoService');
 
