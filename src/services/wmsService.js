@@ -46,8 +46,8 @@ function buildSoapEnvelope(method, params) {
 
 function parseResponse(xml) {
   const result = {};
-  // Extract all elements from the response body (with or without attributes)
-  const matches = xml.matchAll(/<([a-z_]+)(?:\s[^>]*)?>([^<]*)<\/\1>/gi);
+  // Extract all elements — support optional namespace prefix (ns1:field, tns:field, etc.)
+  const matches = xml.matchAll(/<(?:[a-z0-9]+:)?([a-z_][a-z0-9_]*)(?:\s[^>]*)?>([^<]*)<\/(?:[a-z0-9]+:)?\1>/gi);
   for (const m of matches) {
     const key = m[1];
     const val = m[2]?.trim();
@@ -86,10 +86,17 @@ async function callSoap(method, params, db) {
     throw new Error(`WMS HTTP ${res.status}: ${text.substring(0, 200)}`);
   }
 
-  // Log pour debug
-  logger.debug(`WMS ${method} (${params.delivery_order}):`, text.substring(0, 500));
+  const parsed = parseResponse(text);
 
-  return parseResponse(text);
+  // Log pour debug — concat dans le message (Winston n'affiche pas les args séparés)
+  logger.debug(`WMS ${method} (${params.delivery_order}): ${text.substring(0, 800)}`);
+
+  // Si réponse parsée vide, log info avec XML brut pour diagnostic
+  if (Object.keys(parsed).length === 0) {
+    logger.info(`[WMS] ${method} (${params.delivery_order}) → réponse vide après parsing. XML brut: ${text.substring(0, 1500)}`);
+  }
+
+  return parsed;
 }
 
 /**
