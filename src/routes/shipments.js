@@ -16,6 +16,25 @@ const clean = (v) => {
   return JUNK.has(s.toLowerCase()) ? null : s;
 };
 
+// Extraire les champs WMS avec fallback historique
+function extractWmsFields(wmsInfo) {
+  let status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
+  let statusCode = clean(wmsInfo.status?.code_etat);
+  const trackingNumber = clean(wmsInfo.tracking?.tracking);
+  const carrierName = clean(wmsInfo.tracking?.transporteur);
+
+  // Fallback : dériver statut depuis historique + tracking si getStatus vide
+  if (!status && !statusCode) {
+    const derived = wmsService.deriveStatusFromInfo(wmsInfo);
+    if (derived) {
+      status = derived.status;
+      statusCode = derived.statusCode;
+    }
+  }
+
+  return { status, statusCode, trackingNumber, carrierName };
+}
+
 module.exports = (db) => {
   // Nettoyage des "unknown" existants au démarrage
   db.prepare(`UPDATE shipments SET wms_status = NULL, wms_status_code = NULL WHERE LOWER(wms_status) IN ('unknown', 'undefined', '0')`).run();
@@ -122,10 +141,7 @@ module.exports = (db) => {
       (async () => {
         try {
           const wmsInfo = await wmsService.getFullInfo(db, order_ref);
-          const status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
-          const statusCode = clean(wmsInfo.status?.code_etat);
-          const trackingNumber = clean(wmsInfo.tracking?.tracking);
-          const carrierName = clean(wmsInfo.tracking?.transporteur);
+          const { status, statusCode, trackingNumber, carrierName } = extractWmsFields(wmsInfo);
           db.prepare(`
             UPDATE shipments
             SET wms_status = ?, wms_status_code = ?, tracking_number = ?,
@@ -154,11 +170,8 @@ module.exports = (db) => {
       // Récupérer les infos WMS
       const wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
 
-      // Extraire les données pertinentes (filtrer "unknown")
-      const status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
-      const statusCode = clean(wmsInfo.status?.code_etat);
-      const trackingNumber = clean(wmsInfo.tracking?.tracking);
-      const carrierName = clean(wmsInfo.tracking?.transporteur);
+      // Extraire les données pertinentes (avec fallback historique)
+      const { status, statusCode, trackingNumber, carrierName } = extractWmsFields(wmsInfo);
 
       // Mettre à jour la DB
       db.prepare(`
@@ -192,10 +205,7 @@ module.exports = (db) => {
       for (const shipment of shipments) {
         try {
           const wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
-          const status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
-          const statusCode = clean(wmsInfo.status?.code_etat);
-          const trackingNumber = clean(wmsInfo.tracking?.tracking);
-          const carrierName = clean(wmsInfo.tracking?.transporteur);
+          const { status, statusCode, trackingNumber, carrierName } = extractWmsFields(wmsInfo);
 
           db.prepare(`
             UPDATE shipments

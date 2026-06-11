@@ -11,6 +11,9 @@
 const logger = require('../config/logger');
 
 const ENDPOINT = 'https://wms.endurancelogistique.fr/secure/ws_order.php';
+
+// Set partagé de valeurs "junk" renvoyées par le WMS
+const JUNK_SET = new Set(['unknown', 'undefined', 'null', 'n/a', '0', '']);
 const NAMESPACE = 'https://wms.endurancelogistique.fr/secure/ws_order.wsdl';
 
 function getCredentials(db) {
@@ -89,6 +92,51 @@ async function callSoap(method, params, db) {
   return parseResponse(text);
 }
 
+/**
+ * Dérive un statut lisible à partir des infos WMS quand getStatus() ne renvoie rien.
+ * Parcourt les champs historique (dates-jalons) et tracking en priorité décroissante.
+ */
+function deriveStatusFromInfo(wmsInfo) {
+  const h = wmsInfo.historique || {};
+  const t = wmsInfo.tracking || {};
+
+  const allFields = { ...h, ...t };
+  const entries = Object.entries(allFields);
+
+  // Priorité 1 : livraison
+  if (entries.some(([k, v]) => v && /livr/i.test(k))) {
+    return { status: 'Livré', statusCode: '9' };
+  }
+
+  // Priorité 2 : expédition / enlèvement
+  if (entries.some(([k, v]) => v && /exped|enlev|envoi|depart/i.test(k))) {
+    return { status: 'Expédié', statusCode: '7' };
+  }
+
+  // Priorité 3 : tracking number présent dans les données
+  const trackingVal = t.tracking || t.numero_suivi || t.tracking_number;
+  if (trackingVal && !JUNK_SET.has(String(trackingVal).toLowerCase())) {
+    return { status: 'Expédié', statusCode: '7' };
+  }
+
+  // Priorité 4 : validation / impression documents
+  if (entries.some(([k, v]) => v && /valid|impres/i.test(k))) {
+    return { status: 'En préparation', statusCode: '4' };
+  }
+
+  // Priorité 5 : préparation / intégration
+  if (entries.some(([k, v]) => v && /prepar|integr/i.test(k))) {
+    return { status: 'En préparation', statusCode: '3' };
+  }
+
+  // Priorité 6 : création / réception
+  if (entries.some(([k, v]) => v && /creat|recep|import/i.test(k))) {
+    return { status: 'Réceptionné WMS', statusCode: '1' };
+  }
+
+  return null;
+}
+
 // ─── API publique ────────────────────────────────────────────────────────────
 
 async function getStatus(db, deliveryOrder) {
@@ -159,4 +207,6 @@ module.exports = {
   getHistorique,
   getFullInfo,
   debugCall,
+  deriveStatusFromInfo,
+  JUNK_SET,
 };

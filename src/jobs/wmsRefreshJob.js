@@ -42,10 +42,24 @@ async function refreshWMS() {
     try {
       const wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
 
-      const status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
-      const statusCode = clean(wmsInfo.status?.code_etat);
+      let status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
+      let statusCode = clean(wmsInfo.status?.code_etat);
       const trackingNumber = clean(wmsInfo.tracking?.tracking);
       const carrierName = clean(wmsInfo.tracking?.transporteur);
+
+      // Fallback : dériver statut depuis historique + tracking si getStatus vide
+      if (!status && !statusCode) {
+        logger.debug(`[WMS Refresh] getStatus vide pour ${shipment.order_ref}, tentative fallback historique`, {
+          historique: wmsInfo.historique,
+          tracking: wmsInfo.tracking,
+        });
+        const derived = wmsService.deriveStatusFromInfo(wmsInfo);
+        if (derived) {
+          status = derived.status;
+          statusCode = derived.statusCode;
+          logger.info(`[WMS Refresh] Fallback historique ${shipment.order_ref} → ${derived.status} (code ${derived.statusCode})`);
+        }
+      }
 
       db.prepare(`
         UPDATE shipments
