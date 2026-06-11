@@ -56,8 +56,9 @@ function parseResponse(xml) {
       throw new Error(`SOAP Fault: ${val}`);
     }
     if (!['Body', 'Envelope', 'Header'].includes(key)) {
-      // Filtrer les valeurs vides ou "unknown" renvoyées par le WMS
-      if (val && val.toLowerCase() !== 'unknown' && val !== '0' && val !== '') {
+      // Filtrer les valeurs vides, "unknown", et dates placeholder renvoyées par le WMS
+      if (val && val.toLowerCase() !== 'unknown' && val !== '0' && val !== ''
+          && !val.startsWith('0000-00-00')) {
         result[key] = val;
       }
     }
@@ -68,18 +69,14 @@ function parseResponse(xml) {
 async function callSoap(method, params, db) {
   const { user, pass } = getCredentials(db);
   const auth = Buffer.from(`${user}:${pass}`).toString('base64');
+  const headers = {
+    'Content-Type': 'text/xml; charset=utf-8',
+    'SOAPAction': `${NAMESPACE}#${method}`,
+    'Authorization': `Basic ${auth}`,
+  };
+
   const body = buildSoapEnvelope(method, params);
-
-  const res = await fetch(ENDPOINT, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'text/xml; charset=utf-8',
-      'SOAPAction': `${NAMESPACE}#${method}`,
-      'Authorization': `Basic ${auth}`,
-    },
-    body,
-  });
-
+  const res = await fetch(ENDPOINT, { method: 'POST', headers, body });
   const text = await res.text();
 
   if (!res.ok) {
@@ -87,13 +84,24 @@ async function callSoap(method, params, db) {
   }
 
   const parsed = parseResponse(text);
-
-  // Log pour debug — concat dans le message (Winston n'affiche pas les args séparés)
   logger.debug(`WMS ${method} (${params.delivery_order}): ${text.substring(0, 800)}`);
 
-  // Si réponse parsée vide, log info avec XML brut pour diagnostic
-  if (Object.keys(parsed).length === 0) {
-    logger.info(`[WMS] ${method} (${params.delivery_order}) → réponse vide après parsing. XML brut: ${text.substring(0, 1500)}`);
+  // Si réponse vide et id non-zéro, retry avec id=0 (certaines commandes
+  // ne sont pas trouvées avec id=165 mais répondent avec id=0)
+  if (Object.keys(parsed).length === 0 && params.id && params.id !== 0) {
+    const retryBody = buildSoapEnvelope(method, { ...params, id: 0 });
+    const retryRes = await fetch(ENDPOINT, { method: 'POST', headers, body: retryBody });
+    const retryText = await retryRes.text();
+
+    if (retryRes.ok) {
+      const retryParsed = parseResponse(retryText);
+      if (Object.keys(retryParsed).length > 0) {
+        logger.info(`[WMS] ${method} (${params.delivery_order}) → succès avec id=0 (${Object.keys(retryParsed).join(', ')})`);
+        return retryParsed;
+      }
+    }
+
+    logger.debug(`[WMS] ${method} (${params.delivery_order}) → réponse vide avec id=165 et id=0`);
   }
 
   return parsed;
