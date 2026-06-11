@@ -16,6 +16,17 @@ const clean = (v) => {
   return JUNK.has(s.toLowerCase()) ? null : s;
 };
 
+// Référence WMS exploitable = P-prefixée (VosFactures) ; les numériques Prestashop
+// ne sont pas accessibles via l'API SOAP Endurance.
+function wmsRef(shipment) {
+  const ref = shipment.order_ref;
+  if (/^P/i.test(ref)) return ref;
+  if (shipment.invoice_number && shipment.invoice_number !== ref && /^P/i.test(shipment.invoice_number)) {
+    return shipment.invoice_number;
+  }
+  return null;
+}
+
 // Extraire les champs WMS avec fallback historique
 function extractWmsFields(wmsInfo) {
   let status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
@@ -140,7 +151,9 @@ module.exports = (db) => {
       // Check WMS en arrière-plan (ne bloque pas la réponse)
       (async () => {
         try {
-          const wmsInfo = await wmsService.getFullInfo(db, order_ref);
+          const ref = wmsRef(shipment);
+          if (!ref) return; // Pas de ref WMS exploitable, le cron marquera NOWMS
+          const wmsInfo = await wmsService.getFullInfo(db, ref);
           const { status, statusCode, trackingNumber, carrierName } = extractWmsFields(wmsInfo);
           db.prepare(`
             UPDATE shipments
@@ -167,8 +180,16 @@ module.exports = (db) => {
         return res.status(404).json({ erreur: 'Envoi non trouvé' });
       }
 
+      // Déterminer la référence WMS exploitable
+      const ref = wmsRef(shipment);
+      if (!ref) {
+        db.prepare(`UPDATE shipments SET wms_status = 'Non dispo SOAP', wms_status_code = 'NOWMS', last_wms_check = datetime('now') WHERE id = ?`).run(req.params.id);
+        const updated = db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id);
+        return res.json({ ok: true, shipment: updated, note: 'Référence numérique non accessible via API SOAP Endurance' });
+      }
+
       // Récupérer les infos WMS
-      const wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
+      const wmsInfo = await wmsService.getFullInfo(db, ref);
 
       // Extraire les données pertinentes (avec fallback historique)
       const { status, statusCode, trackingNumber, carrierName } = extractWmsFields(wmsInfo);
@@ -183,7 +204,7 @@ module.exports = (db) => {
 
       const updated = db.prepare('SELECT * FROM shipments WHERE id = ?').get(req.params.id);
 
-      res.json({ ok: true, shipment: updated, wmsInfo });
+      res.json({ ok: true, shipment: updated, wmsInfo, wmsRef: ref });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
@@ -195,7 +216,7 @@ module.exports = (db) => {
       // Récupérer les envois non livrés (codes 9/10 = livré) et vérifiés il y a plus de 1h
       const shipments = db.prepare(`
         SELECT * FROM shipments
-        WHERE (wms_status_code IS NULL OR wms_status_code NOT IN ('9', '10'))
+        WHERE (wms_status_code IS NULL OR wms_status_code NOT IN ('9', '10', 'NOWMS'))
           AND (last_wms_check IS NULL OR last_wms_check < datetime('now', '-1 hour'))
         ORDER BY created_at DESC
         LIMIT 50
@@ -203,8 +224,14 @@ module.exports = (db) => {
 
       const results = [];
       for (const shipment of shipments) {
+        const ref = wmsRef(shipment);
+        if (!ref) {
+          db.prepare(`UPDATE shipments SET wms_status = 'Non dispo SOAP', wms_status_code = 'NOWMS', last_wms_check = datetime('now') WHERE id = ?`).run(shipment.id);
+          results.push({ id: shipment.id, ok: true, status: 'NOWMS' });
+          continue;
+        }
         try {
-          const wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
+          const wmsInfo = await wmsService.getFullInfo(db, ref);
           const { status, statusCode, trackingNumber, carrierName } = extractWmsFields(wmsInfo);
 
           db.prepare(`

@@ -23,11 +23,23 @@ const clean = (v) => {
   return JUNK.has(s.toLowerCase()) ? null : s;
 };
 
+// Référence WMS exploitable = commence par P (VosFactures) ; les refs numériques
+// Prestashop ne sont pas accessibles via l'API SOAP Endurance.
+function wmsRef(shipment) {
+  const ref = shipment.order_ref;
+  if (/^P/i.test(ref)) return ref;
+  // Fallback : invoice_number si c'est une P-reference différente
+  if (shipment.invoice_number && shipment.invoice_number !== ref && /^P/i.test(shipment.invoice_number)) {
+    return shipment.invoice_number;
+  }
+  return null; // Pas de référence WMS exploitable
+}
+
 // ─── Phase 1 : Refresh WMS Endurance (tracking + statut expédition) ─────────
 async function refreshWMS() {
   const shipments = db.prepare(`
     SELECT * FROM shipments
-    WHERE (wms_status_code IS NULL OR wms_status_code NOT IN ('9', '10'))
+    WHERE (wms_status_code IS NULL OR wms_status_code NOT IN ('9', '10', 'NOWMS'))
       AND (last_wms_check IS NULL OR last_wms_check < datetime('now', '-1 hour'))
     ORDER BY created_at DESC
     LIMIT 50
@@ -35,39 +47,39 @@ async function refreshWMS() {
 
   if (shipments.length === 0) return 0;
 
-  logger.info(`[WMS Refresh] ${shipments.length} envoi(s) à vérifier via Endurance`);
-
   let updated = 0;
+  let skipped = 0;
+
   for (const shipment of shipments) {
+    const ref = wmsRef(shipment);
+
+    // Pas de référence WMS exploitable → marquer et ne plus retenter
+    if (!ref) {
+      db.prepare(`
+        UPDATE shipments
+        SET wms_status = COALESCE(wms_status, 'Non dispo SOAP'),
+            wms_status_code = COALESCE(wms_status_code, 'NOWMS'),
+            last_wms_check = datetime('now')
+        WHERE id = ?
+      `).run(shipment.id);
+      skipped++;
+      continue;
+    }
+
     try {
-      let wmsInfo = await wmsService.getFullInfo(db, shipment.order_ref);
+      const wmsInfo = await wmsService.getFullInfo(db, ref);
 
       let status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
       let statusCode = clean(wmsInfo.status?.code_etat);
-      let trackingNumber = clean(wmsInfo.tracking?.tracking);
-      let carrierName = clean(wmsInfo.tracking?.transporteur);
+      const trackingNumber = clean(wmsInfo.tracking?.tracking);
+      const carrierName = clean(wmsInfo.tracking?.transporteur);
 
-      // Fallback 1 : si order_ref n'a rien retourné et invoice_number est différent (P-reference)
-      if (!status && !statusCode && shipment.invoice_number
-          && shipment.invoice_number !== shipment.order_ref) {
-        logger.debug(`[WMS Refresh] ${shipment.order_ref} vide, retry avec invoice_number=${shipment.invoice_number}`);
-        wmsInfo = await wmsService.getFullInfo(db, shipment.invoice_number);
-        status = clean(wmsInfo.status?.libelle_etat) || clean(wmsInfo.status?.code_etat);
-        statusCode = clean(wmsInfo.status?.code_etat);
-        trackingNumber = clean(wmsInfo.tracking?.tracking);
-        carrierName = clean(wmsInfo.tracking?.transporteur);
-        if (status || statusCode) {
-          logger.info(`[WMS Refresh] ${shipment.order_ref} trouvé via invoice_number=${shipment.invoice_number} → ${status}`);
-        }
-      }
-
-      // Fallback 2 : dériver statut depuis historique + tracking si getStatus vide
+      // Fallback : dériver statut depuis historique + tracking si getStatus vide
       if (!status && !statusCode) {
         const derived = wmsService.deriveStatusFromInfo(wmsInfo);
         if (derived) {
           status = derived.status;
           statusCode = derived.statusCode;
-          logger.info(`[WMS Refresh] Fallback historique ${shipment.order_ref} → ${derived.status} (code ${derived.statusCode})`);
         }
       }
 
@@ -84,10 +96,14 @@ async function refreshWMS() {
       updated++;
     } catch (e) {
       db.prepare(`UPDATE shipments SET last_wms_check = datetime('now') WHERE id = ?`).run(shipment.id);
-      logger.warn(`[WMS Refresh] Erreur ${shipment.order_ref}: ${e.message}`);
+      logger.warn(`[WMS Refresh] Erreur ${ref}: ${e.message}`);
     }
 
     await new Promise(r => setTimeout(r, 500));
+  }
+
+  if (updated > 0 || skipped > 0) {
+    logger.info(`[WMS Refresh] ${updated} mis à jour, ${skipped} sans ref WMS (marqués NOWMS)`);
   }
 
   return updated;

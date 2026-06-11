@@ -197,112 +197,6 @@ async function debugCall(db, deliveryOrder, method = 'getStatus') {
   };
 }
 
-// Debug : essayer différents formats de référence pour trouver le bon
-async function debugTryIds(db, deliveryOrder) {
-  const { user, pass } = getCredentials(db);
-  const auth = Buffer.from(`${user}:${pass}`).toString('base64');
-
-  // Formats de référence à tester
-  const refsToTry = [
-    deliveryOrder,
-    `WE${deliveryOrder}`,
-    `PS${deliveryOrder}`,
-    `CMD${deliveryOrder}`,
-    `P${deliveryOrder}`,
-    `TDM${deliveryOrder}`,
-    `BL${deliveryOrder}`,
-    deliveryOrder.padStart(8, '0'),       // 00007453
-    `WE${deliveryOrder.padStart(6, '0')}`, // WE007453
-  ];
-
-  const idsToTry = [0, 165];
-  const methods = ['getStatus', 'getHistorique'];
-
-  const results = {};
-
-  for (const ref of refsToTry) {
-    const refResults = {};
-    let found = false;
-
-    for (const id of idsToTry) {
-      for (const method of methods) {
-        const key = `id${id}_${method}`;
-        try {
-          const body = buildSoapEnvelope(method, { id, delivery_order: ref });
-          const res = await fetch(ENDPOINT, {
-            method: 'POST',
-            headers: {
-              'Content-Type': 'text/xml; charset=utf-8',
-              'SOAPAction': `${NAMESPACE}#${method}`,
-              'Authorization': `Basic ${auth}`,
-            },
-            body,
-          });
-          const text = await res.text();
-          const parsed = parseResponse(text);
-          const hasData = Object.keys(parsed).length > 0;
-
-          if (hasData) {
-            refResults[key] = { hasData: true, parsed };
-            found = true;
-            logger.info(`[WMS Debug] TROUVÉ : ref="${ref}", id=${id}, ${method} → ${JSON.stringify(parsed)}`);
-          }
-        } catch (e) {
-          refResults[key] = { error: e.message };
-        }
-      }
-    }
-
-    // N'inclure que les refs qui ont trouvé quelque chose, ou la ref originale
-    if (found || ref === deliveryOrder) {
-      results[ref] = found ? refResults : 'no data';
-    }
-  }
-
-  // Aussi tester le 2ème endpoint (ws_order_info.php)
-  const INFO_ENDPOINT = 'https://wms.endurancelogistique.fr/secure/ws_order_info.php';
-  const INFO_NS = 'urn:order_info';
-  try {
-    for (const ref of [deliveryOrder, `WE${deliveryOrder}`, `P${deliveryOrder}`]) {
-      const body = `<?xml version="1.0" encoding="UTF-8"?>
-<soapenv:Envelope xmlns:soapenv="http://schemas.xmlsoap.org/soap/envelope/"
-  xmlns:xsd="http://www.w3.org/2001/XMLSchema"
-  xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
-  xmlns:tns="${INFO_NS}">
-  <soapenv:Body>
-    <tns:getProducts>
-      <id xsi:type="xsd:int">165</id>
-      <delivery_order xsi:type="xsd:string">${ref}</delivery_order>
-    </tns:getProducts>
-  </soapenv:Body>
-</soapenv:Envelope>`;
-      const res = await fetch(INFO_ENDPOINT, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'text/xml; charset=utf-8',
-          'SOAPAction': `${INFO_NS}#getProducts`,
-          'Authorization': `Basic ${auth}`,
-        },
-        body,
-      });
-      const text = await res.text();
-      // Pour getProducts, ne pas filtrer les "unknown" — juste regarder s'il y a du contenu
-      const hasContent = text.includes('<reference') || text.includes('<libelle');
-      results[`info_${ref}`] = {
-        hasContent,
-        raw: text.substring(0, 500),
-      };
-      if (hasContent) {
-        logger.info(`[WMS Debug] ws_order_info TROUVÉ : ref="${ref}" → ${text.substring(0, 300)}`);
-      }
-    }
-  } catch (e) {
-    results['info_error'] = e.message;
-  }
-
-  return { delivery_order: deliveryOrder, results };
-}
-
 module.exports = {
   getStatus,
   getTracking,
@@ -310,7 +204,6 @@ module.exports = {
   getHistorique,
   getFullInfo,
   debugCall,
-  debugTryIds,
   deriveStatusFromInfo,
   JUNK_SET,
 };
