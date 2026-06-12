@@ -16,14 +16,17 @@ const clean = (v) => {
   return JUNK.has(s.toLowerCase()) ? null : s;
 };
 
-// Référence WMS exploitable = P-prefixée (VosFactures) ; les numériques Prestashop
-// ne sont pas accessibles via l'API SOAP Endurance.
+// Référence WMS exploitable : seules les P-references fonctionnent via SOAP Endurance
 function wmsRef(shipment) {
-  const ref = shipment.order_ref;
-  if (/^P/i.test(ref)) return ref;
-  if (shipment.invoice_number && shipment.invoice_number !== ref && /^P/i.test(shipment.invoice_number)) {
+  // Préférer invoice_number si c'est une P-reference
+  if (shipment.invoice_number && /^P/i.test(shipment.invoice_number)) {
     return shipment.invoice_number;
   }
+  // order_ref si c'est une P-reference
+  if (shipment.order_ref && /^P/i.test(shipment.order_ref)) {
+    return shipment.order_ref;
+  }
+  // Pas de P-reference → SOAP ne supporte pas les références numériques
   return null;
 }
 
@@ -152,7 +155,10 @@ module.exports = (db) => {
       (async () => {
         try {
           const ref = wmsRef(shipment);
-          if (!ref) return; // Pas de ref WMS exploitable, le cron marquera NOWMS
+          if (!ref) {
+            db.prepare(`UPDATE shipments SET wms_status = 'Non dispo SOAP', wms_status_code = 'NOWMS', last_wms_check = datetime('now') WHERE id = ?`).run(result.lastInsertRowid);
+            return;
+          }
           const wmsInfo = await wmsService.getFullInfo(db, ref);
           const { status, statusCode, trackingNumber, carrierName } = extractWmsFields(wmsInfo);
           db.prepare(`
