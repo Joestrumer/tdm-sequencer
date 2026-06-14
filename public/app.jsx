@@ -12014,33 +12014,6 @@ const parsePdfOrder = async (file) => {
 
 // ─── Factures Helpers ─────────────────────────────────────────────────────────
 
-// Construire l'adresse de livraison per-client depuis les champs VF dédiés
-// NB: client.delivery_address (sans suffixe) = adresse du département/compte VF, pas du client
-const buildClientDeliveryAddress = (client) => {
-  if (!client) return '';
-  // Méthode 1 : champs delivery_address_* per-client (VF multiple_delivery_addresses)
-  const street = client.delivery_address_street || '';
-  const city = client.delivery_address_city || '';
-  const zip = client.delivery_address_post_code || '';
-  if (street || city) {
-    return [
-      client.delivery_address_title || '',
-      street,
-      client.delivery_address_street_additional || '',
-      [zip, city].filter(Boolean).join(' '),
-    ].filter(Boolean).join('\n');
-  }
-  // Méthode 2 : tableau addresses[] embarqué (si VF le renvoie)
-  const addr = (client.addresses || []).find(a => a.kind === 'delivery');
-  if (addr) {
-    return [
-      addr.name || '',
-      addr.street || '',
-      [addr.post_code, addr.city].filter(Boolean).join(' '),
-    ].filter(Boolean).join('\n');
-  }
-  return '';
-};
 
 const getShippingIdForClient = (client, deliveryAddr = '') => {
   const idfDepts = ['75', '77', '78', '91', '92', '93', '94', '95'];
@@ -12600,12 +12573,9 @@ const FacturesSingle = ({ showToast }) => {
       {/* Step 3: Client */}
       {step === 3 && <FacturesClientSearch onSelect={(client) => {
         setSelectedClient(client);
-        // Adresse de livraison per-client (champs delivery_address_* de VF)
-        // NB: delivery_address (sans suffixe) = adresse du département, pas du client
-        const deliveryAddr = buildClientDeliveryAddress(client);
-        setDeliveryAddress(deliveryAddr);
+        setDeliveryAddress(client.delivery_address || '');
         doCalculation(client);
-        setShippingId(getShippingIdForClient(client, deliveryAddr));
+        setShippingId(getShippingIdForClient(client, client.delivery_address || ''));
         setStep(4);
       }} onBack={() => setStep(2)} onModifySaisie={() => setStep(1)} />}
 
@@ -13065,7 +13035,7 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
         {clients.map(c => {
           const billingAddr = [c.street, [c.post_code, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-          const deliveryAddr = buildClientDeliveryAddress(c).replace(/\n/g, ', ');
+          const deliveryAddr = (c.delivery_address || '').trim();
           const showDelivery = deliveryAddr && deliveryAddr !== billingAddr;
           return (
             <button key={c.id} onClick={() => onSelect(c)}
@@ -13223,7 +13193,7 @@ const FacturesBatch = ({ showToast }) => {
 
   const setOrderClient = async (orderId, client) => {
     const order = orders.find(o => o.id === orderId);
-    const deliveryAddr = buildClientDeliveryAddress(client);
+    const deliveryAddr = client?.delivery_address || '';
     const shippingId = getShippingIdForClient(client, deliveryAddr);
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId, deliveryAddress: deliveryAddr } : o));
     if (order) {
@@ -14603,7 +14573,7 @@ const FacturesSamples = ({ showToast }) => {
             <div className="absolute z-50 left-0 right-0 bg-white border border-slate-200 rounded-lg mt-1 max-h-64 overflow-y-auto shadow-lg">
               {clientResults.slice(0, 10).map(c => {
                 const billingAddr = [c.street, [c.post_code, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-                const deliveryAddr = buildClientDeliveryAddress(c).replace(/\n/g, ', ');
+                const deliveryAddr = (c.delivery_address || '').trim();
                 const showDelivery = deliveryAddr && deliveryAddr !== billingAddr;
                 return (
                   <button key={c.id} onClick={() => selectClient(c)}
