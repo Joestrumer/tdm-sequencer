@@ -12571,7 +12571,7 @@ const FacturesSingle = ({ showToast }) => {
       {/* Step 3: Client */}
       {step === 3 && <FacturesClientSearch onSelect={(client) => {
         setSelectedClient(client);
-        if (!deliveryAddress && client.delivery_address) setDeliveryAddress(client.delivery_address);
+        setDeliveryAddress(client.delivery_address || '');
         doCalculation(client);
         setShippingId(getShippingIdForClient(client, client.delivery_address || ''));
         setStep(4);
@@ -13191,9 +13191,9 @@ const FacturesBatch = ({ showToast }) => {
 
   const setOrderClient = async (orderId, client) => {
     const order = orders.find(o => o.id === orderId);
-    const deliveryAddr = order?.deliveryAddress || (client?.delivery_address || '');
+    const deliveryAddr = client?.delivery_address || '';
     const shippingId = getShippingIdForClient(client, deliveryAddr);
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId, deliveryAddress: o.deliveryAddress || (client?.delivery_address || '') } : o));
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId, deliveryAddress: client?.delivery_address || '' } : o));
     if (order) {
       calculateOrder(orderId, order.products, client);
     }
