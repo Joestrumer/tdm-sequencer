@@ -12573,9 +12573,10 @@ const FacturesSingle = ({ showToast }) => {
       {/* Step 3: Client */}
       {step === 3 && <FacturesClientSearch onSelect={(client) => {
         setSelectedClient(client);
-        setDeliveryAddress(client.delivery_address || '');
+        const delAddr = client.use_delivery_address ? (client.delivery_address || '') : '';
+        setDeliveryAddress(delAddr);
         doCalculation(client);
-        setShippingId(getShippingIdForClient(client, client.delivery_address || ''));
+        setShippingId(getShippingIdForClient(client, delAddr));
         setStep(4);
       }} onBack={() => setStep(2)} onModifySaisie={() => setStep(1)} />}
 
@@ -13035,7 +13036,7 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
       <div className="grid grid-cols-1 md:grid-cols-2 gap-2 max-h-80 overflow-y-auto">
         {clients.map(c => {
           const billingAddr = [c.street, [c.post_code, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-          const deliveryAddr = (c.delivery_address || '').trim();
+          const deliveryAddr = c.use_delivery_address ? (c.delivery_address || '').trim() : '';
           const showDelivery = deliveryAddr && deliveryAddr !== billingAddr;
           return (
             <button key={c.id} onClick={() => onSelect(c)}
@@ -13193,7 +13194,7 @@ const FacturesBatch = ({ showToast }) => {
 
   const setOrderClient = async (orderId, client) => {
     const order = orders.find(o => o.id === orderId);
-    const deliveryAddr = client?.delivery_address || '';
+    const deliveryAddr = client?.use_delivery_address ? (client.delivery_address || '') : '';
     const shippingId = getShippingIdForClient(client, deliveryAddr);
     setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId, deliveryAddress: deliveryAddr } : o));
     if (order) {
@@ -14573,7 +14574,7 @@ const FacturesSamples = ({ showToast }) => {
             <div className="absolute z-50 left-0 right-0 bg-white border border-slate-200 rounded-lg mt-1 max-h-64 overflow-y-auto shadow-lg">
               {clientResults.slice(0, 10).map(c => {
                 const billingAddr = [c.street, [c.post_code, c.city].filter(Boolean).join(' ')].filter(Boolean).join(', ');
-                const deliveryAddr = (c.delivery_address || '').trim();
+                const deliveryAddr = c.use_delivery_address ? (c.delivery_address || '').trim() : '';
                 const showDelivery = deliveryAddr && deliveryAddr !== billingAddr;
                 return (
                   <button key={c.id} onClick={() => selectClient(c)}
