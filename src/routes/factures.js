@@ -159,6 +159,16 @@ module.exports = (db) => {
   router.get('/clients/:id', async (req, res) => {
     try {
       const data = await req.vfService.getClient(req.params.id);
+      // Debug : montrer les champs liés aux adresses
+      if (req.query.debug === 'address') {
+        const addressFields = {};
+        for (const [k, v] of Object.entries(data)) {
+          if (/address|delivery|street|city|post_code|zip|country|livr/i.test(k) && v) {
+            addressFields[k] = v;
+          }
+        }
+        return res.json({ id: data.id, name: data.name, allKeys: Object.keys(data), addressFields });
+      }
       res.json(data);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
