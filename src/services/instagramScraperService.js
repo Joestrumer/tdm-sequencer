@@ -21,9 +21,12 @@ const IG_WEB_BASE = 'https://www.instagram.com';
 const IG_FOLLOWEES_QUERY_HASH = '58712303d941c6855d4e888c5f0cd22f';
 const IG_FOLLOWERS_QUERY_HASH = 'c76146de99bb02f6415203be841dd25a';
 
-// User-Agents
+// User-Agents (alignés sur instagrapi v2.14)
 const IG_MOBILE_UA = 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)';
-const IG_WEB_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
+// Web : Safari/macOS (instagrapi utilise un UA Safari pour les requêtes publiques web)
+const IG_WEB_UA = 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_13_6) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/11.1.2 Safari/605.1.15';
+// GraphQL : UA mobile iPhone (instagrapi utilise un UA iPhone pour les requêtes GraphQL doc_id)
+const IG_GRAPHQL_UA = 'Instagram 273.0.0.16.70 (iPhone15,2; iOS 17_5_1; en_US; en-US; scale=3.00; 1290x2796; 470085518)';
 
 const DEFAULT_DELAY_MS = 8000;
 const JITTER_MAX_MS = 5000;
@@ -309,6 +312,9 @@ async function resolveRealWebsite(linkInBioUrl) {
 
 const activeJobs = new Map(); // jobId → { paused: boolean, cancelled: boolean }
 
+// Timestamp du dernier appel API IG (anti rate-limit : minimum 1s entre requêtes)
+let lastIgRequestTs = 0;
+
 // ─── Helpers ────────────────────────────────────────────────────────────────
 
 function sleep(ms) {
@@ -318,6 +324,17 @@ function sleep(ms) {
 function jitteredDelay(baseMs = DEFAULT_DELAY_MS) {
   const jitter = Math.random() * JITTER_MAX_MS;
   return sleep(baseMs + jitter);
+}
+
+/**
+ * Petit délai aléatoire entre requêtes (instagrapi small_delay : 0.75-3.75s)
+ * + garantit un minimum de 1s depuis le dernier appel
+ */
+async function enforceMinInterval() {
+  const elapsed = Date.now() - lastIgRequestTs;
+  if (elapsed < 1000) {
+    await sleep(1000 - elapsed);
+  }
 }
 
 /**
@@ -399,6 +416,9 @@ function hasCredentials(db) {
  */
 function privateHeaders(credentials) {
   const dsUserId = extractUserId(credentials.sessionId);
+  // Bandwidth aléatoire (instagrapi : random 2500000-3000000 / 1000)
+  const bwSpeed = String(Math.floor((Math.random() * 500000 + 2500000) / 1000));
+  const bwBytes = String(Math.floor(Math.random() * 500000 + 1000000));
 
   return {
     'User-Agent': IG_MOBILE_UA,
@@ -412,12 +432,18 @@ function privateHeaders(credentials) {
     'X-IG-Capabilities': '3brTv10=',
     'X-IG-App-Locale': 'en_US',
     'X-IG-Device-Locale': 'en_US',
+    'X-IG-Timezone-Offset': String(new Date().getTimezoneOffset() * -60),
     'X-IG-WWW-Claim': '0',
+    'X-IG-Bandwidth-Speed-KBPS': bwSpeed,
+    'X-IG-Bandwidth-TotalBytes-B': bwBytes,
+    'X-IG-Bandwidth-TotalTime-MS': String(Math.floor(Math.random() * 300 + 100)),
+    'X-IG-SALT-IDS': String(Math.floor(Math.random() * 100000 + 1061162222)),
     'X-Pigeon-Rawclienttime': String(Date.now() / 1000),
     'X-Pigeon-Session-Id': `UFS-${randomUUID()}-1`,
     'X-FB-HTTP-Engine': 'Tigon/MNS/TCP',
     'X-FB-Client-IP': 'True',
     'X-FB-Server-Cluster': 'True',
+    'IG-U-DS-USER-ID': dsUserId || '',
     'IG-INTENDED-USER-ID': dsUserId || '0',
     'Accept-Language': 'en-US',
     'Accept-Encoding': 'gzip, deflate',
@@ -432,21 +458,24 @@ function privateHeaders(credentials) {
 }
 
 /**
- * Construit les headers pour l'API web (Instaloader-style)
- * Headers minimaux pour GraphQL, headers complets pour API REST
+ * Construit les headers pour l'API web
+ * GraphQL : UA iPhone mobile (instagrapi doc_id style) avec CSRF
+ * API REST : UA Safari/macOS (instagrapi public style)
  */
 function webHeaders(credentials, mode = 'api') {
   if (mode === 'graphql') {
-    // Instaloader utilise des headers MINIMAUX pour les requêtes GraphQL
+    // Instagrapi v2.14 : UA iPhone + CSRF pour les requêtes GraphQL
     return {
-      'User-Agent': IG_WEB_UA,
+      'User-Agent': IG_GRAPHQL_UA,
       'Accept': '*/*',
       'Accept-Encoding': 'gzip, deflate',
       'Accept-Language': 'en-US,en;q=0.8',
       'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}`,
+      'X-CSRFToken': credentials.csrfToken,
+      'Referer': 'https://www.instagram.com/',
     };
   }
-  // Headers complets pour les endpoints API REST (web_profile_info etc.)
+  // Headers Safari/macOS pour les endpoints API REST (web_profile_info etc.)
   return {
     'User-Agent': IG_WEB_UA,
     'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
@@ -472,11 +501,15 @@ async function igFetch(url, headers, retries = 3) {
 
   for (let attempt = 0; attempt < retries; attempt++) {
     try {
+      // Minimum 1s entre chaque appel API (anti rate-limit)
+      await enforceMinInterval();
+
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
 
       const res = await fetch(url, { headers, signal: controller.signal });
       clearTimeout(timeout);
+      lastIgRequestTs = Date.now();
 
       if (res.status === 429) {
         rateLimitHits++;
