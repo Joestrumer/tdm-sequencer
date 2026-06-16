@@ -128,6 +128,17 @@ db.exec(`
     created_at      TEXT DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS pause_periods (
+    id           TEXT PRIMARY KEY,
+    type         TEXT NOT NULL CHECK(type IN ('global', 'sequence')),
+    sequence_id  TEXT REFERENCES sequences(id) ON DELETE CASCADE,
+    mode         TEXT NOT NULL CHECK(mode IN ('scheduled', 'manual')),
+    date_debut   TEXT NOT NULL,
+    date_fin     TEXT,
+    raison       TEXT,
+    created_at   TEXT DEFAULT (datetime('now'))
+  );
+
   CREATE INDEX IF NOT EXISTS idx_leads_email       ON leads(email);
   CREATE INDEX IF NOT EXISTS idx_leads_statut      ON leads(statut);
   CREATE INDEX IF NOT EXISTS idx_inscriptions_next ON inscriptions(prochain_envoi, statut);
@@ -136,6 +147,8 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_events_lead       ON events(lead_id, created_at);
   CREATE INDEX IF NOT EXISTS idx_blocklist_value   ON email_blocklist(value);
   CREATE INDEX IF NOT EXISTS idx_blocklist_type    ON email_blocklist(type);
+  CREATE INDEX IF NOT EXISTS idx_pause_periods_active ON pause_periods(type, date_debut, date_fin);
+  CREATE INDEX IF NOT EXISTS idx_pause_periods_sequence ON pause_periods(sequence_id);
 
   -- ─── Tables Factures / VosFactures ──────────────────────────────────────────
 

@@ -13,6 +13,7 @@ const { envoyerEmail, estDansLaFenetreEnvoi, substituerVariables, getConfigVal, 
 const hubspot = require('../services/hubspotService');
 const { addOrUpdateTag } = require('../utils/leadTags');
 const { checkImapReplies } = require('../services/imapReplyService');
+const { getPauseGlobaleActive, compterJoursOuvres, ajouterJoursOuvres } = require('../services/pauseService');
 
 let db; // Injecté par initialiser()
 let isProcessing = false; // Mutex pour éviter les exécutions concurrentes
@@ -323,18 +324,34 @@ async function lancerVerification() {
     }
 
     const nowParis = formatSQLite(maintenant_paris());
+
+    // Verifier pause globale
+    const pauseGlobale = getPauseGlobaleActive(db, nowParis);
+    if (pauseGlobale) {
+      logger.info(`⏸️ Pause globale active (${pauseGlobale.raison || 'manuelle'}), aucun envoi`);
+      return;
+    }
+
     logger.info(`🔄 Vérification des séquences... (heure Paris: ${nowParis})`);
 
     // Utiliser datetime() pour normaliser les formats (T vs espace) des anciennes données
+    // Filtrer les sequences en pause individuelle via NOT EXISTS
     const inscriptions = db.prepare(`
       SELECT i.* FROM inscriptions i
       JOIN sequences s ON s.id = i.sequence_id
       WHERE i.statut = 'actif'
         AND i.prochain_envoi IS NOT NULL
         AND datetime(i.prochain_envoi) <= datetime(?)
+        AND NOT EXISTS (
+          SELECT 1 FROM pause_periods p
+          WHERE p.type = 'sequence'
+            AND p.sequence_id = i.sequence_id
+            AND datetime(p.date_debut) <= datetime(?)
+            AND (p.date_fin IS NULL OR datetime(p.date_fin) > datetime(?))
+        )
       ORDER BY COALESCE(s.priorite, 3) ASC, i.prochain_envoi ASC
       LIMIT 20
-    `).all(nowParis);
+    `).all(nowParis, nowParis, nowParis);
 
     if (!inscriptions.length) { logger.debug('Aucun email à envoyer'); return; }
     logger.info(`📬 ${inscriptions.length} email(s) à traiter`);
@@ -418,6 +435,75 @@ function inscrireLead(leadId, sequenceId, scheduledAt) {
   return { id, prochainEnvoi };
 }
 
+// ─── Recalcul des prochain_envoi apres reprise d'une pause ───────────────────
+function recalculerApresReprise(pauseId) {
+  const pause = db.prepare('SELECT * FROM pause_periods WHERE id = ?').get(pauseId);
+  if (!pause || !pause.date_fin) return 0;
+
+  // Charger les jours actifs
+  const rawJours = getConfigVal(db, 'jours_actifs', 'ACTIVE_DAYS', '1,2,3,4,5');
+  const jourMap = { lun: 1, mar: 2, mer: 3, jeu: 4, ven: 5, sam: 6, dim: 0 };
+  const joursActifs = rawJours.split(',').map(j => jourMap[j.trim()] !== undefined ? jourMap[j.trim()] : Number(j));
+
+  // Charger la fenetre d'envoi pour randomiser l'heure
+  const rawDebut = getConfigVal(db, 'heure_debut', 'SEND_HOUR_START', '8');
+  const rawFin = getConfigVal(db, 'heure_fin', 'SEND_HOUR_END', '18');
+  const [hD, mD] = parseHeurMinute(rawDebut, 8, 0);
+  const [hF, mF] = parseHeurMinute(rawFin, 18, 0);
+  const debutMin = hD * 60 + mD;
+  const finMin = hF * 60 + mF;
+  const plageMin = Math.max(finMin - debutMin, 60);
+
+  // Trouver les inscriptions dont prochain_envoi tombe dans la periode de pause
+  let inscriptions;
+  if (pause.type === 'global') {
+    inscriptions = db.prepare(`
+      SELECT * FROM inscriptions
+      WHERE statut = 'actif'
+        AND prochain_envoi IS NOT NULL
+        AND datetime(prochain_envoi) >= datetime(?)
+        AND datetime(prochain_envoi) <= datetime(?)
+    `).all(pause.date_debut, pause.date_fin);
+  } else {
+    inscriptions = db.prepare(`
+      SELECT * FROM inscriptions
+      WHERE statut = 'actif'
+        AND sequence_id = ?
+        AND prochain_envoi IS NOT NULL
+        AND datetime(prochain_envoi) >= datetime(?)
+        AND datetime(prochain_envoi) <= datetime(?)
+    `).all(pause.sequence_id, pause.date_debut, pause.date_fin);
+  }
+
+  if (inscriptions.length === 0) return 0;
+
+  const updateStmt = db.prepare('UPDATE inscriptions SET prochain_envoi = ? WHERE id = ?');
+
+  const recalcul = db.transaction(() => {
+    let count = 0;
+    for (const ins of inscriptions) {
+      // Compter les jours ouvres entre date_debut et prochain_envoi (= jours restants)
+      const joursRestants = compterJoursOuvres(pause.date_debut, ins.prochain_envoi, joursActifs);
+
+      // Nouveau prochain_envoi = date_fin + ces jours ouvres
+      const nouvelleDate = ajouterJoursOuvres(pause.date_fin, joursRestants, joursActifs);
+
+      // Randomiser l'heure dans la fenetre d'envoi
+      const randomMin = Math.floor(Math.random() * Math.min(plageMin, 120));
+      const totalMin = debutMin + randomMin;
+      nouvelleDate.setHours(Math.floor(totalMin / 60), totalMin % 60, 0, 0);
+
+      updateStmt.run(formatSQLite(nouvelleDate), ins.id);
+      count++;
+    }
+    return count;
+  });
+
+  const recalculated = recalcul();
+  logger.info(`Recalcul apres reprise de pause ${pauseId}`, { recalculated, type: pause.type });
+  return recalculated;
+}
+
 // ─── Initialiser le cron ──────────────────────────────────────────────────────
 function initialiser(database) {
   db = database;
@@ -436,6 +522,33 @@ function initialiser(database) {
     }
   });
 
+  // Cron detection fin de pause programmee (toutes les 15 min)
+  cron.schedule('*/15 * * * *', () => {
+    try {
+      const now = formatSQLite(maintenant_paris());
+      // Pauses programmees dont date_fin est recemment passee (dans les 20 dernieres minutes)
+      const pausesTerminees = db.prepare(`
+        SELECT * FROM pause_periods
+        WHERE mode = 'scheduled'
+          AND date_fin IS NOT NULL
+          AND datetime(date_fin) <= datetime(?)
+          AND datetime(date_fin) > datetime(?, '-20 minutes')
+      `).all(now, now);
+
+      for (const pause of pausesTerminees) {
+        // Verifier si deja traitee
+        const deja = db.prepare("SELECT valeur FROM config WHERE cle = ?").get(`pause_recalculated_${pause.id}`);
+        if (deja) continue;
+
+        const recalculated = recalculerApresReprise(pause.id);
+        db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES (?, ?)").run(`pause_recalculated_${pause.id}`, '1');
+        logger.info(`Pause programmee ${pause.id} terminee, recalcul effectue`, { recalculated });
+      }
+    } catch (err) {
+      logger.error('Erreur detection fin de pause', { error: err.message });
+    }
+  });
+
   logger.info('⏱️  Scheduler initialisé — vérification toutes les 15 minutes');
   setTimeout(() => lancerVerification().catch(err => logger.error('Erreur scheduler init', { error: err.message })), 5000);
 }
@@ -447,4 +560,5 @@ module.exports = {
   prochaineDateEnvoi,
   prochaineDateEnvoiOptimale,
   lancerVerification,
+  recalculerApresReprise,
 };

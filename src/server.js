@@ -147,6 +147,7 @@ app.use('/api/email-validation', requireAccessAuto('emails'), require('./routes/
 app.use('/api/segments',      requireAccessAuto('config'), require('./routes/segments')(db));
 app.use('/api/config',        requireAccessAuto('config'), require('./routes/config')(db));
 app.use('/api/blocklist',     requireAccessAuto('config'), require('./routes/blocklist')(db));
+app.use('/api/pauses',        requireAccessAuto('config'), require('./routes/pauses')(db));
 app.use('/api/qualification', requireAccessAuto('leads'), require('./routes/qualification')(db));
 app.use('/api/veille',        requireAccessAuto('veille'), require('./routes/veille')(db));
 app.use('/api/maps',          requireAccessAuto('leads'), require('./routes/maps')(db));
@@ -224,6 +225,7 @@ const RESTORE_SCHEMA = {
   sequences: ['id', 'nom', 'segment', 'options', 'actif', 'created_at'],
   leads: ['id', 'prenom', 'nom', 'email', 'hotel', 'ville', 'segment', 'tags', 'poste', 'langue', 'campaign', 'comment', 'statut', 'score', 'hubspot_id', 'unsubscribed', 'statut_email', 'email_score', 'created_at', 'updated_at'],
   email_blocklist: ['id', 'type', 'value', 'raison', 'override_allowed', 'created_at'],
+  pause_periods: ['id', 'type', 'sequence_id', 'mode', 'date_debut', 'date_fin', 'raison', 'created_at'],
   email_templates: ['id', 'nom', 'sujet', 'corps_html', 'categorie', 'created_at', 'updated_at'],
   envoi_quota: ['date', 'count'],
 };

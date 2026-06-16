@@ -8000,6 +8000,41 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
   const [testLoading, setTestLoading] = useState(false);
   const [expandedSeqs, setExpandedSeqs] = useState(new Set());
   const [actionLoading, setActionLoading] = useState(null);
+  const [seqPauses, setSeqPauses] = useState({});
+
+  useEffect(() => {
+    api.get('/pauses/status').then(data => {
+      const map = {};
+      (data.sequence_pauses || []).forEach(p => { map[p.sequence_id] = p; });
+      setSeqPauses(map);
+    }).catch(() => {});
+  }, []);
+
+  const pauserSequence = async (seqId) => {
+    setActionLoading(`pause-${seqId}`);
+    try {
+      await api.post('/pauses', { type: 'sequence', sequence_id: seqId, mode: 'manual' });
+      const data = await api.get('/pauses/status');
+      const map = {};
+      (data.sequence_pauses || []).forEach(p => { map[p.sequence_id] = p; });
+      setSeqPauses(map);
+      showToast('Sequence en pause', 'success');
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    setActionLoading(null);
+  };
+
+  const reprendreSequence = async (seqId, pauseId) => {
+    setActionLoading(`resume-${seqId}`);
+    try {
+      const res = await api.post(`/pauses/${pauseId}/resume`);
+      const data = await api.get('/pauses/status');
+      const map = {};
+      (data.sequence_pauses || []).forEach(p => { map[p.sequence_id] = p; });
+      setSeqPauses(map);
+      showToast(`Sequence reprise (${res.recalculated || 0} recalculee(s))`, 'success');
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+    setActionLoading(null);
+  };
 
   const toggleSeq = (id) => {
     setExpandedSeqs(prev => {
@@ -8080,6 +8115,7 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
             <div className="flex items-center gap-3 min-w-0">
               <span className={`text-slate-400 text-xs transition-transform duration-200 ${isExpanded ? 'rotate-90' : ''}`}>▶</span>
               <h3 className="text-sm font-semibold text-slate-800 truncate">{seq.nom}</h3>
+              {seqPauses[seq.id] && <span className="text-[10px] bg-amber-100 text-amber-700 px-2 py-0.5 rounded-full flex-shrink-0 font-medium">En pause</span>}
               <span className="text-xs bg-slate-100 text-slate-600 px-2 py-0.5 rounded-full flex-shrink-0">{seq.segment}</span>
               {seq.priorite != null && seq.priorite !== 3 && (
                 <span className={`text-xs px-2 py-0.5 rounded-full flex-shrink-0 font-medium ${seq.priorite <= 2 ? 'bg-amber-100 text-amber-700' : 'bg-slate-100 text-slate-400'}`}>P{seq.priorite}</span>
@@ -8091,6 +8127,15 @@ const VueSequences = ({ sequences, onNew, onEdit, onRefresh, showToast }) => {
               <button onClick={() => { setTestModal(seq.id); setTestEmail(""); }} className="px-3 py-1.5 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
                 Tester
               </button>
+              {seqPauses[seq.id] ? (
+                <button onClick={() => reprendreSequence(seq.id, seqPauses[seq.id].id)} disabled={!!actionLoading} className={`px-3 py-1.5 text-xs border border-emerald-200 text-emerald-600 rounded-lg hover:bg-emerald-50 transition-colors ${actionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {actionLoading === `resume-${seq.id}` ? '...' : 'Reprendre'}
+                </button>
+              ) : (
+                <button onClick={() => pauserSequence(seq.id)} disabled={!!actionLoading} className={`px-3 py-1.5 text-xs border border-amber-200 text-amber-600 rounded-lg hover:bg-amber-50 transition-colors ${actionLoading ? 'opacity-50 cursor-not-allowed' : ''}`}>
+                  {actionLoading === `pause-${seq.id}` ? '...' : 'Pause'}
+                </button>
+              )}
               <button onClick={() => onEdit(seq)} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 transition-colors">
                 Modifier
               </button>
@@ -15833,11 +15878,75 @@ const VueProduitsCatalog = () => {
   );
 };
 
-const VueParametres = () => {
+const VueParametres = ({ sequences: seqList, showToast }) => {
   const [sousOnglet, setSousOnglet] = useState('envoi');
   const [limites, setLimites] = useState({ maxParJour: 50, heureDebut: "08:00", heureFin: "18:00", joursActifs: ["lun", "mar", "mer", "jeu", "ven"], fuseau: "Europe/Paris", delaiEntreEmails: 2 });
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState("");
+
+  // --- Pauses state ---
+  const [pauses, setPauses] = useState([]);
+  const [globalPauseActive, setGlobalPauseActive] = useState(null);
+  const [showPauseForm, setShowPauseForm] = useState(false);
+  const [pauseForm, setPauseForm] = useState({ type: 'global', sequenceId: '', dateDebut: '', dateFin: '', raison: '' });
+  const [pauseLoading, setPauseLoading] = useState(false);
+
+  const chargerPauses = () => {
+    api.get('/pauses').then(data => setPauses(data.pauses || [])).catch(e => console.error(e));
+    api.get('/pauses/status').then(data => {
+      setGlobalPauseActive(data.global_pause || null);
+    }).catch(e => console.error(e));
+  };
+  useEffect(() => { chargerPauses(); }, []);
+
+  const pauserGlobal = async () => {
+    setPauseLoading(true);
+    try {
+      await api.post('/pauses', { type: 'global', mode: 'manual' });
+      chargerPauses();
+      if (showToast) showToast('Pause globale activee', 'success');
+    } catch (e) { if (showToast) showToast('Erreur: ' + e.message, 'error'); }
+    setPauseLoading(false);
+  };
+
+  const reprendreGlobal = async () => {
+    if (!globalPauseActive) return;
+    setPauseLoading(true);
+    try {
+      const res = await api.post(`/pauses/${globalPauseActive.id}/resume`);
+      chargerPauses();
+      if (showToast) showToast(`Envois repris (${res.recalculated || 0} inscription(s) recalculee(s))`, 'success');
+    } catch (e) { if (showToast) showToast('Erreur: ' + e.message, 'error'); }
+    setPauseLoading(false);
+  };
+
+  const creerPauseProgrammee = async () => {
+    if (!pauseForm.dateDebut || !pauseForm.dateFin) { if (showToast) showToast('Dates requises', 'error'); return; }
+    setPauseLoading(true);
+    try {
+      await api.post('/pauses', {
+        type: pauseForm.type,
+        sequence_id: pauseForm.type === 'sequence' ? pauseForm.sequenceId : undefined,
+        mode: 'scheduled',
+        date_debut: pauseForm.dateDebut.replace('T', ' '),
+        date_fin: pauseForm.dateFin.replace('T', ' '),
+        raison: pauseForm.raison || undefined,
+      });
+      setShowPauseForm(false);
+      setPauseForm({ type: 'global', sequenceId: '', dateDebut: '', dateFin: '', raison: '' });
+      chargerPauses();
+      if (showToast) showToast('Pause programmee creee', 'success');
+    } catch (e) { if (showToast) showToast('Erreur: ' + e.message, 'error'); }
+    setPauseLoading(false);
+  };
+
+  const supprimerPause = async (id) => {
+    try {
+      await api.delete(`/pauses/${id}`);
+      chargerPauses();
+      if (showToast) showToast('Pause supprimee', 'success');
+    } catch (e) { if (showToast) showToast('Erreur: ' + e.message, 'error'); }
+  };
   const jours = [["lun","Lun"],["mar","Mar"],["mer","Mer"],["jeu","Jeu"],["ven","Ven"],["sam","Sam"],["dim","Dim"]];
   const toggleJour = j => setLimites(l => ({ ...l, joursActifs: l.joursActifs.includes(j) ? l.joursActifs.filter(x => x !== j) : [...l.joursActifs, j] }));
 
@@ -15938,6 +16047,116 @@ const VueParametres = () => {
           <button onClick={sauvegarderEnvoi} disabled={saving} className="px-5 py-2.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-50">
             {saving ? "Sauvegarde..." : "Enregistrer les paramètres"}
           </button>
+
+          {/* Section Periodes de pause */}
+          <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4 mt-4">
+            <h3 className="text-sm font-semibold text-slate-800">Periodes de pause</h3>
+
+            {globalPauseActive && (
+              <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 flex items-center justify-between">
+                <div>
+                  <p className="text-sm font-medium text-amber-800">Pause globale active</p>
+                  <p className="text-xs text-amber-600">{globalPauseActive.raison || 'Pause manuelle'} — depuis {globalPauseActive.date_debut}</p>
+                </div>
+                <button onClick={reprendreGlobal} disabled={pauseLoading} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 disabled:opacity-50">
+                  {pauseLoading ? '...' : 'Reprendre les envois'}
+                </button>
+              </div>
+            )}
+
+            <div className="flex gap-2">
+              {!globalPauseActive && (
+                <button onClick={pauserGlobal} disabled={pauseLoading} className="px-4 py-2 text-xs bg-amber-500 text-white rounded-lg hover:bg-amber-600 disabled:opacity-50 font-medium">
+                  {pauseLoading ? '...' : 'Pause globale'}
+                </button>
+              )}
+              <button onClick={() => setShowPauseForm(true)} className="px-4 py-2 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-50 font-medium">
+                + Programmer une pause
+              </button>
+            </div>
+
+            {/* Modal programmation de pause */}
+            {showPauseForm && (
+              <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50">
+                <div className="bg-white rounded-xl shadow-2xl w-full max-w-md mx-4 p-5 space-y-3">
+                  <h3 className="text-sm font-semibold text-slate-900">Programmer une pause</h3>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Type</label>
+                    <select value={pauseForm.type} onChange={e => setPauseForm(f => ({ ...f, type: e.target.value, sequenceId: '' }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                      <option value="global">Globale (toutes les sequences)</option>
+                      <option value="sequence">Sequence specifique</option>
+                    </select>
+                    {pauseForm.type === 'sequence' && (
+                      <select value={pauseForm.sequenceId} onChange={e => setPauseForm(f => ({ ...f, sequenceId: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm mt-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                        <option value="">-- Choisir une sequence --</option>
+                        {(seqList || []).map(s => <option key={s.id} value={s.id}>{s.nom}</option>)}
+                      </select>
+                    )}
+                  </div>
+                  <div className="grid grid-cols-2 gap-3">
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 mb-1 block">Debut</label>
+                      <input type="datetime-local" value={pauseForm.dateDebut} onChange={e => setPauseForm(f => ({ ...f, dateDebut: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                    </div>
+                    <div>
+                      <label className="text-xs font-medium text-slate-500 mb-1 block">Fin</label>
+                      <input type="datetime-local" value={pauseForm.dateFin} onChange={e => setPauseForm(f => ({ ...f, dateFin: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                    </div>
+                  </div>
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Raison (optionnel)</label>
+                    <input type="text" value={pauseForm.raison} onChange={e => setPauseForm(f => ({ ...f, raison: e.target.value }))} placeholder="ex: Vacances, Fermeture..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                  </div>
+                  <div className="flex justify-end gap-2 pt-2">
+                    <button onClick={() => setShowPauseForm(false)} className="px-3 py-1.5 text-sm text-slate-500 hover:text-slate-700">Annuler</button>
+                    <button onClick={creerPauseProgrammee} disabled={pauseLoading} className="px-4 py-1.5 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-700 disabled:opacity-50">
+                      {pauseLoading ? '...' : 'Programmer'}
+                    </button>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {/* Tableau des pauses */}
+            {pauses.length > 0 && (
+              <div className="overflow-x-auto rounded-lg border border-slate-100">
+                <table className="w-full text-xs">
+                  <thead className="bg-slate-50">
+                    <tr>
+                      <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase">Type</th>
+                      <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase">Sequence</th>
+                      <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase">Debut</th>
+                      <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase">Fin</th>
+                      <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase">Raison</th>
+                      <th className="text-left px-3 py-1.5 text-[11px] font-medium text-slate-400 uppercase">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {pauses.map(p => {
+                      const now = new Date();
+                      const isActive = new Date(p.date_debut) <= now && (!p.date_fin || new Date(p.date_fin) > now);
+                      return (
+                        <tr key={p.id} className={`border-t border-slate-50 ${isActive ? 'bg-amber-50/50' : ''}`}>
+                          <td className="px-3 py-2">
+                            <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${p.type === 'global' ? 'bg-red-100 text-red-700' : 'bg-blue-100 text-blue-700'}`}>
+                              {p.type === 'global' ? 'Globale' : 'Sequence'}
+                            </span>
+                          </td>
+                          <td className="px-3 py-2 text-slate-600">{p.sequence_nom || '—'}</td>
+                          <td className="px-3 py-2 text-slate-500">{p.date_debut?.slice(0, 16)}</td>
+                          <td className="px-3 py-2 text-slate-500">{p.date_fin?.slice(0, 16) || <span className="text-amber-600 font-medium">En cours</span>}</td>
+                          <td className="px-3 py-2 text-slate-400">{p.raison || '—'}</td>
+                          <td className="px-3 py-2">
+                            <button onClick={() => supprimerPause(p.id)} className="text-red-500 hover:text-red-700 text-[11px]">Supprimer</button>
+                          </td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </div>
         </div>
       )}
 
@@ -25338,7 +25557,7 @@ function App() {
           {vue === "factures" && <VueFactures showToast={showToast} readOnly={!canWrite('factures')} />}
           {vue === "blocklist" && <VueBlocklist onRefresh={charger} showToast={showToast} readOnly={!canWrite('config')} />}
           {vue === "emails" && <VueValidationEmail leads={leads} sequences={sequences} onRefresh={charger} showToast={showToast} readOnly={!canWrite('emails')} />}
-          {vue === "parametres" && <VueParametres readOnly={!canWrite('config')} />}
+          {vue === "parametres" && <VueParametres readOnly={!canWrite('config')} sequences={sequences} showToast={showToast} />}
           {vue === "veille" && <VueVeille showToast={showToast} />}
           {vue === "equipe" && isAdmin && <VueEquipe showToast={showToast} />}
         </main>
