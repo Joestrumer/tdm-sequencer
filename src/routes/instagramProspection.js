@@ -12,6 +12,9 @@ const logger = require('../config/logger');
 const igService = require('../services/instagramScraperService');
 const { addOrUpdateTag } = require('../utils/leadTags');
 
+// Cooldown rate-limit Instagram : bloque les appels IG pendant 30 min apres un 429
+let igRateLimitedUntil = 0;
+
 module.exports = (db) => {
 
   // ─── Backfill pays + re-classification pour comptes existants ─────────────
@@ -130,6 +133,16 @@ module.exports = (db) => {
   // Une seule requête par API pour ne pas aggraver un éventuel rate limit.
   router.post('/test-credentials', async (req, res) => {
     try {
+      // Protection rate-limit : si on a recu un 429 recemment, ne pas appeler IG
+      if (Date.now() < igRateLimitedUntil) {
+        const minutesLeft = Math.ceil((igRateLimitedUntil - Date.now()) / 60000);
+        return res.json({
+          valid: false,
+          error: `Rate limit Instagram actif — réessayez dans ${minutesLeft} min`,
+          rate_limited: true,
+        });
+      }
+
       const { session_id, csrf_token } = req.body || {};
       const credentials = (session_id && csrf_token)
         ? { sessionId: session_id.trim(), csrfToken: csrf_token.trim() }
@@ -225,7 +238,9 @@ module.exports = (db) => {
       // Les deux ont échoué
       const detail = [];
       if (results.mobile_status === 429 || results.web_status === 429) {
-        detail.push('Rate limit (429) — IP temporairement bloquée');
+        igRateLimitedUntil = Date.now() + 30 * 60 * 1000; // cooldown 30 min
+        logger.warn('🚫 Instagram 429 détecté — cooldown 30 min activé');
+        detail.push('Rate limit (429) — IP temporairement bloquée (cooldown 30 min activé)');
       }
       if (results.mobile_status === 401 || results.web_status === 401) {
         detail.push('Session expirée (401) — recréez vos cookies');
@@ -480,6 +495,15 @@ module.exports = (db) => {
 
   // POST /api/instagram/jobs/:id/resume — Reprise
   router.post('/jobs/:id/resume', (req, res) => {
+    // Protection rate-limit : refuser le resume si IP bloquée
+    if (Date.now() < igRateLimitedUntil) {
+      const minutesLeft = Math.ceil((igRateLimitedUntil - Date.now()) / 60000);
+      return res.status(429).json({
+        erreur: `Instagram rate limit actif — reprise impossible pendant encore ${minutesLeft} min`,
+        rate_limited: true,
+      });
+    }
+
     const resumed = igService.resumeJob(req.params.id);
     if (resumed) {
       db.prepare("UPDATE instagram_scrape_jobs SET status = 'processing', updated_at = datetime('now') WHERE id = ?").run(req.params.id);

@@ -10,6 +10,20 @@ const logger = require('./config/logger');
 
 const db = require('./db/init.js');
 
+// Nettoyage jobs Instagram zombie (interrompus par redemarrage)
+try {
+  const zombieJobs = db.prepare(`
+    UPDATE instagram_scrape_jobs
+    SET status = 'error',
+        error_message = 'Interrompu par redémarrage serveur',
+        updated_at = datetime('now')
+    WHERE status IN ('processing', 'fetching_profile', 'fetching_following', 'fetching_followers', 'searching')
+  `).run();
+  if (zombieJobs.changes > 0) {
+    console.log(`🧟 ${zombieJobs.changes} job(s) Instagram zombie(s) marqué(s) comme interrompu(s)`);
+  }
+} catch (e) { /* table pas encore créée */ }
+
 // Auto-seed des données factures si manquantes ou incomplètes
 try {
   const check = db.prepare("SELECT COUNT(*) as n FROM vf_code_mappings WHERE type = 'product_id' AND code_source = 'P037-5000-41.00'").get();
