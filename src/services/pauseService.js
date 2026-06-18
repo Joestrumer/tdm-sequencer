@@ -61,6 +61,20 @@ function getPausesActives(db, nowISO) {
 }
 
 /**
+ * Retourne toutes les pauses (actives + programmees) qui chevauchent une plage de dates
+ */
+function getPausesInRange(db, dateDebut, dateFin) {
+  return db.prepare(`
+    SELECT p.*, s.nom as sequence_nom
+    FROM pause_periods p
+    LEFT JOIN sequences s ON s.id = p.sequence_id
+    WHERE datetime(p.date_debut) <= datetime(?)
+      AND (p.date_fin IS NULL OR datetime(p.date_fin) >= datetime(?))
+    ORDER BY date_debut ASC
+  `).all(dateFin, dateDebut);
+}
+
+/**
  * Liste toutes les pauses (historique)
  */
 function getAllPauses(db) {
@@ -120,6 +134,7 @@ module.exports = {
   getPauseSequenceActive,
   estEnPause,
   getPausesActives,
+  getPausesInRange,
   getAllPauses,
   compterJoursOuvres,
   ajouterJoursOuvres,

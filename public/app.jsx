@@ -1457,6 +1457,9 @@ const VueDashboard = ({ showToast }) => {
   const [loading, setLoading] = useState(true);
   const [analytics, setAnalytics] = useState(null);
   const [heatmapMetric, setHeatmapMetric] = useState('ouvertures');
+  const [showCalendar, setShowCalendar] = useState(false);
+  const [calendarData, setCalendarData] = useState(null);
+  const [calendarMonth, setCalendarMonth] = useState(0); // offset from current month
 
   const loadDashboard = async () => {
     setLoading(true);
@@ -1578,26 +1581,44 @@ const VueDashboard = ({ showToast }) => {
 
       {/* Prévision des envois 10 jours */}
       {previsionEnvois && previsionEnvois.length > 0 && (() => {
-        const maxTotal = Math.max(...previsionEnvois.map(j => j.total), 1);
+        const maxTotal = Math.max(...previsionEnvois.map(j => j.paused ? j.pausedCount : j.total), 1);
         const todayStr = previsionEnvois[0]?.date;
         return (
           <div className="bg-white rounded-xl border border-slate-100 p-5">
-            <h3 className="text-sm font-semibold text-slate-800 mb-4">Prévision des envois (10 jours)</h3>
+            <div className="flex items-center justify-between mb-4">
+              <h3 className="text-sm font-semibold text-slate-800">Prévision des envois (10 jours)</h3>
+              <button
+                onClick={() => setShowCalendar(true)}
+                className="text-xs text-blue-600 hover:text-blue-800 font-medium flex items-center gap-1"
+              >
+                <span>Calendrier des envois</span>
+                <svg className="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8 7V3m8 4V3m-9 8h10M5 21h14a2 2 0 002-2V7a2 2 0 00-2-2H5a2 2 0 00-2 2v12a2 2 0 002 2z" />
+                </svg>
+              </button>
+            </div>
             <div className="flex items-end gap-2" style={{ height: '160px' }}>
               {previsionEnvois.map((j, i) => {
-                const pct = (j.total / maxTotal) * 100;
+                const displayTotal = j.paused ? j.pausedCount : j.total;
+                const pct = (displayTotal / maxTotal) * 100;
                 const isToday = j.date === todayStr;
                 const dayNum = new Date(j.date + 'T12:00:00').getDay();
                 const isWeekend = dayNum === 0 || dayNum === 6;
-                const barColor = isToday ? 'bg-emerald-500' : isWeekend ? 'bg-slate-300' : 'bg-blue-500';
+                const barColor = j.paused ? 'bg-amber-400' : isToday ? 'bg-emerald-500' : isWeekend ? 'bg-slate-300' : 'bg-blue-500';
+                const barStyle = j.paused ? {
+                  height: `${Math.max(pct, 4)}%`, minHeight: '4px',
+                  backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 3px, rgba(255,255,255,0.3) 3px, rgba(255,255,255,0.3) 6px)'
+                } : { height: `${Math.max(pct, 4)}%`, minHeight: '4px' };
                 return (
-                  <div key={i} className="flex-1 flex flex-col items-center justify-end h-full">
-                    <span className="text-xs font-semibold text-slate-700 mb-1">{j.total}</span>
+                  <div key={i} className="flex-1 flex flex-col items-center justify-end h-full" title={j.paused ? `Pause : ${j.pausedCount} email(s) bloqué(s)` : `${j.total} email(s)`}>
+                    <span className={`text-xs font-semibold mb-1 ${j.paused ? 'text-amber-600' : 'text-slate-700'}`}>
+                      {j.paused ? '||' : j.total}
+                    </span>
                     <div
                       className={`w-full rounded-t-md ${barColor} transition-all duration-300`}
-                      style={{ height: `${Math.max(pct, 4)}%`, minHeight: '4px' }}
+                      style={barStyle}
                     />
-                    <span className={`text-xs mt-1.5 ${isToday ? 'font-bold text-emerald-700' : 'text-slate-500'}`}>
+                    <span className={`text-xs mt-1.5 ${isToday ? 'font-bold text-emerald-700' : j.paused ? 'text-amber-600' : 'text-slate-500'}`}>
                       {j.jourSemaine}
                     </span>
                   </div>
@@ -1616,6 +1637,175 @@ const VueDashboard = ({ showToast }) => {
               <div className="flex items-center gap-1.5">
                 <div className="w-3 h-3 rounded-sm bg-slate-300" />
                 <span className="text-xs text-slate-500">Week-end</span>
+              </div>
+              <div className="flex items-center gap-1.5">
+                <div className="w-3 h-3 rounded-sm bg-amber-400" style={{ backgroundImage: 'repeating-linear-gradient(45deg, transparent, transparent 2px, rgba(255,255,255,0.4) 2px, rgba(255,255,255,0.4) 4px)' }} />
+                <span className="text-xs text-slate-500">En pause</span>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* ── Modal Calendrier des envois ── */}
+      {showCalendar && (() => {
+        // Charger les donnees au premier affichage
+        if (!calendarData) {
+          api.get('/dashboard/calendar').then(setCalendarData).catch(() => {});
+        }
+
+        const moisNoms = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+        const joursLabels = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim'];
+
+        // Determiner le mois a afficher
+        const today = new Date();
+        const displayDate = new Date(today.getFullYear(), today.getMonth() + calendarMonth, 1);
+        const displayYear = displayDate.getFullYear();
+        const displayMonth = displayDate.getMonth();
+        const pad2 = n => String(n).padStart(2, '0');
+
+        // Jours du mois
+        const firstDay = new Date(displayYear, displayMonth, 1);
+        const lastDay = new Date(displayYear, displayMonth + 1, 0);
+        const daysInMonth = lastDay.getDate();
+        // getDay() : 0=dim, on veut lun=0 donc (getDay()+6)%7
+        const startOffset = (firstDay.getDay() + 6) % 7;
+
+        // Map des jours avec donnees
+        const jourMap = {};
+        if (calendarData) {
+          for (const j of calendarData.jours) jourMap[j.date] = j;
+        }
+
+        // Resume du mois affiche
+        let totalMois = 0;
+        for (let d = 1; d <= daysInMonth; d++) {
+          const key = `${displayYear}-${pad2(displayMonth + 1)}-${pad2(d)}`;
+          const info = jourMap[key];
+          if (info) totalMois += info.total;
+        }
+
+        const getCellColor = (info, dayNum) => {
+          const isWeekend = dayNum === 0 || dayNum === 6;
+          if (!info) return isWeekend ? 'bg-slate-50 text-slate-300' : 'bg-white text-slate-400';
+          if (info.paused) return 'bg-amber-50 text-amber-700 border-amber-200';
+          if (isWeekend) return 'bg-slate-50 text-slate-400';
+          if (info.total === 0) return 'bg-white text-slate-400';
+          if (info.total <= 5) return 'bg-emerald-50 text-emerald-700';
+          if (info.total <= 15) return 'bg-emerald-100 text-emerald-800';
+          return 'bg-emerald-200 text-emerald-900';
+        };
+
+        return (
+          <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40" onClick={() => setShowCalendar(false)}>
+            <div className="bg-white rounded-2xl shadow-xl border w-full max-w-lg mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+              {/* Header */}
+              <div className="flex items-center justify-between px-5 py-4 border-b flex-shrink-0">
+                <h2 className="text-base font-semibold text-slate-800">Calendrier des envois</h2>
+                <button onClick={() => setShowCalendar(false)} className="text-slate-400 hover:text-slate-600 text-xl leading-none">&times;</button>
+              </div>
+
+              {/* Navigation mois */}
+              <div className="flex items-center justify-between px-5 py-3 flex-shrink-0">
+                <button onClick={() => setCalendarMonth(calendarMonth - 1)} className="text-slate-500 hover:text-slate-800 p-1">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 19l-7-7 7-7" /></svg>
+                </button>
+                <span className="text-sm font-semibold text-slate-700">{moisNoms[displayMonth]} {displayYear}</span>
+                <button onClick={() => setCalendarMonth(calendarMonth + 1)} disabled={calendarMonth >= 2} className="text-slate-500 hover:text-slate-800 p-1 disabled:opacity-30 disabled:cursor-not-allowed">
+                  <svg className="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" /></svg>
+                </button>
+              </div>
+
+              {/* Contenu calendrier */}
+              <div className="px-5 pb-4 overflow-y-auto flex-1">
+                {!calendarData ? (
+                  <div className="flex items-center justify-center py-10">
+                    <div className="w-6 h-6 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin" />
+                  </div>
+                ) : (
+                  <>
+                    {/* Jours de la semaine */}
+                    <div className="grid grid-cols-7 gap-1 mb-1">
+                      {joursLabels.map(j => (
+                        <div key={j} className="text-center text-xs font-medium text-slate-400 py-1">{j}</div>
+                      ))}
+                    </div>
+
+                    {/* Grille des jours */}
+                    <div className="grid grid-cols-7 gap-1">
+                      {/* Cellules vides avant le 1er */}
+                      {Array.from({ length: startOffset }).map((_, i) => (
+                        <div key={`empty-${i}`} className="aspect-square" />
+                      ))}
+
+                      {/* Jours du mois */}
+                      {Array.from({ length: daysInMonth }).map((_, i) => {
+                        const dayNum = i + 1;
+                        const dateKey = `${displayYear}-${pad2(displayMonth + 1)}-${pad2(dayNum)}`;
+                        const info = jourMap[dateKey];
+                        const dayOfWeek = new Date(displayYear, displayMonth, dayNum).getDay();
+                        const cellColor = getCellColor(info, dayOfWeek);
+                        const isToday = dateKey === `${today.getFullYear()}-${pad2(today.getMonth() + 1)}-${pad2(today.getDate())}`;
+
+                        return (
+                          <div
+                            key={dayNum}
+                            className={`aspect-square rounded-md border flex flex-col items-center justify-center text-xs ${cellColor} ${isToday ? 'ring-2 ring-emerald-500 ring-offset-1' : 'border-slate-100'}`}
+                            title={info?.paused ? `${dateKey} — En pause` : `${dateKey} — ${info?.total || 0} email(s)`}
+                          >
+                            <span className={`text-[10px] ${isToday ? 'font-bold' : ''}`}>{dayNum}</span>
+                            {info && info.paused ? (
+                              <span className="text-[9px] font-medium">||</span>
+                            ) : info && info.total > 0 ? (
+                              <span className="text-[9px] font-bold">{info.total}</span>
+                            ) : null}
+                          </div>
+                        );
+                      })}
+                    </div>
+
+                    {/* Legende + resume */}
+                    <div className="mt-4 pt-3 border-t border-slate-100">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex items-center gap-1">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-50 border border-emerald-200" />
+                            <span className="text-[10px] text-slate-400">1-5</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-100 border border-emerald-300" />
+                            <span className="text-[10px] text-slate-400">5-15</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-emerald-200 border border-emerald-400" />
+                            <span className="text-[10px] text-slate-400">15+</span>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <div className="w-2.5 h-2.5 rounded-sm bg-amber-100 border border-amber-300" />
+                            <span className="text-[10px] text-slate-400">Pause</span>
+                          </div>
+                        </div>
+                        <div className="text-sm font-semibold text-slate-700">
+                          {totalMois} email{totalMois > 1 ? 's' : ''} ce mois
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Resume par mois */}
+                    {calendarData.mois && calendarData.mois.length > 1 && (
+                      <div className="mt-3 pt-3 border-t border-slate-100">
+                        <div className="flex items-center gap-3">
+                          {calendarData.mois.map((m, i) => (
+                            <div key={i} className="flex-1 text-center bg-slate-50 rounded-lg py-2 px-1">
+                              <div className="text-xs text-slate-500">{m.label.split(' ')[0].substring(0, 3)}.</div>
+                              <div className="text-sm font-bold text-slate-700">{m.totalEmails}</div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </>
+                )}
               </div>
             </div>
           </div>

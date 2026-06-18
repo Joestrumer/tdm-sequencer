@@ -133,8 +133,11 @@ function prochaineDateEnvoiOptimale(joursDelai) {
   const [hD] = parseHeurMinute(rawDebut, 8, 0);
   const [hF] = parseHeurMinute(rawFin, 18, 0);
 
-  // Filtrer les heures dans la fenêtre d'envoi
-  const validSlots = bestSlots.filter(s => s.heure >= hD && s.heure < hF);
+  // Limiter les heures optimales a 75% de la fenetre (eviter les heures tardives)
+  // Avec 8-18, ca donne 8-15 : l'heure la plus tardive sera 14:xx (+30min random = max 15:30)
+  const plageOptimale = Math.floor((hF - hD) * 0.75);
+  const hFOptimal = hD + plageOptimale;
+  const validSlots = bestSlots.filter(s => s.heure >= hD && s.heure < hFOptimal);
   if (!validSlots.length) return prochaineDateEnvoi(joursDelai);
 
   const bestHeure = validSlots[0].heure;

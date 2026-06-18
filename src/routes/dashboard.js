@@ -5,6 +5,7 @@
 const express = require('express');
 const router = express.Router();
 const logger = require('../config/logger');
+const { getPausesInRange } = require('../services/pauseService');
 
 module.exports = (db) => {
 
@@ -116,7 +117,17 @@ module.exports = (db) => {
       const dateDebut = dates10[0].date;
       const dateFin = dates10[dates10.length - 1].date;
 
-      const previsionRows = db.prepare(`
+      // Charger les pauses qui chevauchent la plage de prevision
+      const pauses10j = getPausesInRange(db, dateDebut + ' 00:00:00', dateFin + ' 23:59:59');
+
+      // IDs des sequences en pause (pour exclure de la query)
+      const sequencesEnPause = pauses10j
+        .filter(p => p.type === 'sequence' && p.sequence_id)
+        .map(p => p.sequence_id);
+      const hasPauseGlobale = pauses10j.some(p => p.type === 'global');
+
+      // Query prevision : exclure les sequences en pause individuelle
+      let previsionSQL = `
         SELECT DATE(i.prochain_envoi) as jour, COUNT(*) as total
         FROM inscriptions i
         JOIN leads l ON i.lead_id = l.id
@@ -125,17 +136,40 @@ module.exports = (db) => {
           AND l.unsubscribed = 0
           AND DATE(i.prochain_envoi) >= ?
           AND DATE(i.prochain_envoi) <= ?
-        GROUP BY DATE(i.prochain_envoi)
-      `).all(dateDebut, dateFin);
+      `;
+      const previsionParams = [dateDebut, dateFin];
+
+      if (sequencesEnPause.length > 0) {
+        const placeholders = sequencesEnPause.map(() => '?').join(',');
+        previsionSQL += ` AND i.sequence_id NOT IN (${placeholders})`;
+        previsionParams.push(...sequencesEnPause);
+      }
+
+      previsionSQL += ` GROUP BY DATE(i.prochain_envoi)`;
+      const previsionRows = db.prepare(previsionSQL).all(...previsionParams);
 
       const previsionMap = {};
       for (const row of previsionRows) previsionMap[row.jour] = row.total;
 
-      const previsionEnvois = dates10.map(d => ({
-        date: d.date,
-        total: previsionMap[d.date] || 0,
-        jourSemaine: d.label
-      }));
+      // Pour chaque jour, verifier si une pause globale couvre ce jour
+      const previsionEnvois = dates10.map(d => {
+        const dayStart = d.date + ' 00:00:00';
+        const dayEnd = d.date + ' 23:59:59';
+        const pauseGlobaleCeJour = pauses10j.some(p =>
+          p.type === 'global' &&
+          p.date_debut <= dayEnd &&
+          (p.date_fin === null || p.date_fin >= dayStart)
+        );
+
+        const totalBrut = previsionMap[d.date] || 0;
+        return {
+          date: d.date,
+          total: pauseGlobaleCeJour ? 0 : totalBrut,
+          pausedCount: pauseGlobaleCeJour ? totalBrut : 0,
+          paused: pauseGlobaleCeJour,
+          jourSemaine: d.label
+        };
+      });
 
       // 4. Activité récente (20 derniers events)
       const activite = db.prepare(`
@@ -197,6 +231,7 @@ module.exports = (db) => {
         quota: { utilise: quotaUtilise, max: quotaMax },
         envoiAujourdHui,
         previsionEnvois,
+        pauses: pauses10j,
         activite,
         erreurs,
         topSequences
@@ -442,6 +477,94 @@ module.exports = (db) => {
 
     } catch (err) {
       logger.error('GET /dashboard/send-analytics erreur', { error: err.message });
+      res.status(500).json({ erreur: err.message });
+    }
+  });
+
+  // GET /api/dashboard/calendar — Prevision calendrier 90 jours
+  router.get('/calendar', (req, res) => {
+    try {
+      const _pad2 = n => String(n).padStart(2, '0');
+      const _nowParis = new Date(new Date().toLocaleString('en-US', { timeZone: process.env.FUSEAU || 'Europe/Paris' }));
+      const joursNoms = ['dim.', 'lun.', 'mar.', 'mer.', 'jeu.', 'ven.', 'sam.'];
+
+      const dates90 = [];
+      for (let i = 0; i < 90; i++) {
+        const d = new Date(_nowParis);
+        d.setDate(d.getDate() + i);
+        const dateStr = `${d.getFullYear()}-${_pad2(d.getMonth()+1)}-${_pad2(d.getDate())}`;
+        dates90.push({ date: dateStr, jour: d.getDay(), mois: d.getMonth(), annee: d.getFullYear() });
+      }
+      const dateDebut = dates90[0].date;
+      const dateFin = dates90[dates90.length - 1].date;
+
+      // Charger les pauses sur la plage
+      const pauses = getPausesInRange(db, dateDebut + ' 00:00:00', dateFin + ' 23:59:59');
+
+      // IDs des sequences en pause
+      const sequencesEnPause = pauses
+        .filter(p => p.type === 'sequence' && p.sequence_id)
+        .map(p => p.sequence_id);
+
+      // Query prevision
+      let sql = `
+        SELECT DATE(i.prochain_envoi) as jour, COUNT(*) as total
+        FROM inscriptions i
+        JOIN leads l ON i.lead_id = l.id
+        WHERE i.statut = 'actif'
+          AND i.prochain_envoi IS NOT NULL
+          AND l.unsubscribed = 0
+          AND DATE(i.prochain_envoi) >= ?
+          AND DATE(i.prochain_envoi) <= ?
+      `;
+      const params = [dateDebut, dateFin];
+
+      if (sequencesEnPause.length > 0) {
+        const placeholders = sequencesEnPause.map(() => '?').join(',');
+        sql += ` AND i.sequence_id NOT IN (${placeholders})`;
+        params.push(...sequencesEnPause);
+      }
+
+      sql += ` GROUP BY DATE(i.prochain_envoi)`;
+      const rows = db.prepare(sql).all(...params);
+
+      const previsionMap = {};
+      for (const row of rows) previsionMap[row.jour] = row.total;
+
+      // Construire les jours avec info pause
+      const jours = dates90.map(d => {
+        const dayStart = d.date + ' 00:00:00';
+        const dayEnd = d.date + ' 23:59:59';
+        const pauseGlobale = pauses.some(p =>
+          p.type === 'global' &&
+          p.date_debut <= dayEnd &&
+          (p.date_fin === null || p.date_fin >= dayStart)
+        );
+
+        const totalBrut = previsionMap[d.date] || 0;
+        return {
+          date: d.date,
+          total: pauseGlobale ? 0 : totalBrut,
+          paused: pauseGlobale,
+          jourSemaine: joursNoms[d.jour]
+        };
+      });
+
+      // Resume par mois
+      const moisNoms = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+      const moisMap = {};
+      for (const d of dates90) {
+        const key = `${d.annee}-${_pad2(d.mois + 1)}`;
+        if (!moisMap[key]) moisMap[key] = { label: `${moisNoms[d.mois]} ${d.annee}`, totalEmails: 0 };
+        const j = jours.find(j => j.date === d.date);
+        moisMap[key].totalEmails += j ? j.total : 0;
+      }
+      const mois = Object.values(moisMap);
+
+      res.json({ jours, pauses, mois });
+
+    } catch (err) {
+      logger.error('GET /dashboard/calendar erreur', { error: err.message });
       res.status(500).json({ erreur: err.message });
     }
   });
