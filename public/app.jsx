@@ -13310,6 +13310,8 @@ const FacturesBatch = ({ showToast }) => {
   const [createHubspotDeal, setCreateHubspotDeal] = useState(true);
   const [catalog, setCatalog] = useState([]);
   const [addProductSearchBatch, setAddProductSearchBatch] = useState({});
+  const [semiAutoProducts, setSemiAutoProducts] = useState([]);
+  const [semiAutoSearch, setSemiAutoSearch] = useState('');
 
   useEffect(() => {
     api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data.filter(c => c.actif)); }).catch(e => console.error(e));
@@ -13795,9 +13797,97 @@ const FacturesBatch = ({ showToast }) => {
           </button>
         </div>
 
+        {/* Saisie semi-automatique */}
+        <div className="border border-slate-200 rounded-xl p-4 space-y-3">
+          <h4 className="text-xs font-semibold text-slate-500 uppercase tracking-wide">Saisie semi-automatique</h4>
+          <div className="relative">
+            <input type="text" value={semiAutoSearch} onChange={e => setSemiAutoSearch(e.target.value)}
+              placeholder="Chercher un produit (ref ou nom)..."
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+            {semiAutoSearch.length >= 2 && (() => {
+              const q = semiAutoSearch.toLowerCase();
+              const matches = catalog.filter(c =>
+                c.ref.toLowerCase().includes(q) || (c.nom || '').toLowerCase().includes(q)
+              ).slice(0, 8);
+              if (!matches.length) return null;
+              return (
+                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                  {matches.map(c => (
+                    <button key={c.ref} onClick={() => {
+                      const tva = c.tva || 20;
+                      const lineHT = c.prix_ht || 0;
+                      const newProduct = {
+                        ref: c.ref, nom: c.nom, quantite: 1, prix_ht: c.prix_ht || 0, discount: 0, tva,
+                        total_ht: Math.round(lineHT * 100) / 100,
+                        total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100,
+                      };
+                      setSemiAutoProducts(prev => {
+                        const existing = prev.findIndex(p => p.ref === c.ref);
+                        if (existing >= 0) {
+                          return prev.map((p, i) => {
+                            if (i !== existing) return p;
+                            const qty = p.quantite + 1;
+                            const ht = Math.round(p.prix_ht * qty * (1 - (p.discount || 0) / 100) * 100) / 100;
+                            return { ...p, quantite: qty, total_ht: ht, total_ttc: Math.round(ht * (1 + p.tva / 100) * 100) / 100 };
+                          });
+                        }
+                        return [...prev, newProduct];
+                      });
+                      setSemiAutoSearch('');
+                    }} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between border-b border-slate-50 last:border-0">
+                      <div>
+                        <span className="text-sm font-medium text-slate-900">{c.ref}</span>
+                        <span className="text-xs text-slate-500 ml-2">{c.nom}</span>
+                      </div>
+                      <span className="text-xs font-mono text-slate-600">{(c.prix_ht || 0).toFixed(2)}€</span>
+                    </button>
+                  ))}
+                </div>
+              );
+            })()}
+          </div>
+
+          {semiAutoProducts.length > 0 && (
+            <div className="space-y-1">
+              {semiAutoProducts.map((p, idx) => (
+                <div key={p.ref + '-' + idx} className="flex items-center gap-2 text-sm py-1 border-b border-slate-100 last:border-0">
+                  <span className="font-mono text-xs text-slate-600 w-24 shrink-0">{p.ref}</span>
+                  <span className="flex-1 text-xs text-slate-700 truncate">{p.nom}</span>
+                  <input type="number" min="1" value={p.quantite}
+                    onChange={e => {
+                      const qty = Math.max(1, parseInt(e.target.value) || 1);
+                      setSemiAutoProducts(prev => prev.map((item, i) => {
+                        if (i !== idx) return item;
+                        const ht = Math.round(item.prix_ht * qty * (1 - (item.discount || 0) / 100) * 100) / 100;
+                        return { ...item, quantite: qty, total_ht: ht, total_ttc: Math.round(ht * (1 + item.tva / 100) * 100) / 100 };
+                      }));
+                    }}
+                    className="w-16 border border-slate-200 rounded px-2 py-0.5 text-xs text-center font-mono" />
+                  <span className="text-xs font-mono text-slate-500 w-20 text-right">{p.total_ht.toFixed(2)}€ HT</span>
+                  <button onClick={() => setSemiAutoProducts(prev => prev.filter((_, i) => i !== idx))}
+                    className="text-red-400 hover:text-red-600 text-xs px-1">✕</button>
+                </div>
+              ))}
+              <div className="flex items-center justify-between pt-2">
+                <span className="text-xs text-slate-500">
+                  {semiAutoProducts.length} produit(s) — Total HT: {semiAutoProducts.reduce((s, p) => s + p.total_ht, 0).toFixed(2)}€
+                </span>
+                <button onClick={() => {
+                  addOrder(semiAutoProducts);
+                  setSemiAutoProducts([]);
+                  setSemiAutoSearch('');
+                  showToast(semiAutoProducts.length + ' produit(s) ajoutés', 'success');
+                }} className="px-4 py-1.5 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-800">
+                  Créer la commande
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+
         {/* Orders list with expandable review */}
         {orders.length === 0 && (
-          <div className="text-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">Ajoutez des commandes via Excel, saisie manuelle ou import facture VF.</div>
+          <div className="text-center py-8 text-slate-400 text-sm border-2 border-dashed border-slate-200 rounded-xl">Ajoutez des commandes via Excel, saisie manuelle, import facture VF ou saisie semi-automatique.</div>
         )}
         {orders.map(order => {
           const calc = order.calculation;
