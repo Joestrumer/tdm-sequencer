@@ -12704,27 +12704,6 @@ const FacturesSingle = ({ showToast }) => {
             <input id="file-upload-input" type="file" accept=".xlsx,.xls,.pdf" onChange={handleFile} className="hidden" />
           </div>
 
-          <div className="text-center text-xs text-slate-400 font-medium">— ou saisie manuelle —</div>
-          <textarea value={manualText} onChange={e => setManualText(e.target.value)}
-            placeholder={"Collez une commande email ici...\nEx: 10x P008-5000\n4x P007\n2 P011-5000"}
-            className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono h-32 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-          <button onClick={handleManualSubmit} disabled={!manualText.trim()}
-            className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-40 transition-colors">
-            Analyser la commande
-          </button>
-
-          <div className="text-center text-xs text-slate-400 font-medium">— ou importer une facture existante —</div>
-          <div className="flex gap-2">
-            <input type="text" value={importInvoiceId} onChange={e => setImportInvoiceId(e.target.value)}
-              placeholder="N° facture (ex: FV 2024/123) ou ID"
-              onKeyDown={e => e.key === 'Enter' && handleImportInvoice()}
-              className="flex-1 border border-slate-200 rounded-lg px-4 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-            <button onClick={handleImportInvoice} disabled={!importInvoiceId.trim() || importLoading}
-              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors whitespace-nowrap">
-              {importLoading ? 'Import...' : 'Importer'}
-            </button>
-          </div>
-
           <div className="text-center text-xs text-slate-400 font-medium">— ou saisie semi-automatique —</div>
           <div className="border border-slate-200 rounded-xl p-4 space-y-3">
             <div className="relative">
@@ -12859,6 +12838,27 @@ const FacturesSingle = ({ showToast }) => {
                 </div>
               </div>
             )}
+          </div>
+
+          <div className="text-center text-xs text-slate-400 font-medium">— ou saisie manuelle —</div>
+          <textarea value={manualText} onChange={e => setManualText(e.target.value)}
+            placeholder={"Collez une commande email ici...\nEx: 10x P008-5000\n4x P007\n2 P011-5000"}
+            className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm font-mono h-32 resize-y focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+          <button onClick={handleManualSubmit} disabled={!manualText.trim()}
+            className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-40 transition-colors">
+            Analyser la commande
+          </button>
+
+          <div className="text-center text-xs text-slate-400 font-medium">— ou importer une facture existante —</div>
+          <div className="flex gap-2">
+            <input type="text" value={importInvoiceId} onChange={e => setImportInvoiceId(e.target.value)}
+              placeholder="N° facture (ex: FV 2024/123) ou ID"
+              onKeyDown={e => e.key === 'Enter' && handleImportInvoice()}
+              className="flex-1 border border-slate-200 rounded-lg px-4 py-2 text-sm font-mono focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+            <button onClick={handleImportInvoice} disabled={!importInvoiceId.trim() || importLoading}
+              className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-40 transition-colors whitespace-nowrap">
+              {importLoading ? 'Import...' : 'Importer'}
+            </button>
           </div>
         </div>
       )}
