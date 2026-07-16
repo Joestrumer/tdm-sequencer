@@ -384,37 +384,43 @@
     // ─── Catalogue ──────────────────────────────────────────────────────────────
     const CATEGORIES_ORDER = [
       'Flacons 500 ml',
-      'Flacons vides',
       'Recharges 5 litres',
       'Portes flacons',
       'Cadeaux VIP & Spa',
       'Produits Spa & VIP',
       'Parfums & gel hydroalcoolique',
       'Produits hygi\u00e8ne format voyage',
-      'Produits hygi\u00e8ne format 30ml',
+      'Autres',
     ];
 
     const FLACONS_500_REFS = ['P008', 'P010', 'P024', 'P011', 'P007', 'P035', 'P036', 'P037', 'P034', 'P040', 'P042', 'P014', 'P019'];
-    const RECHARGES_5L_SUFFIXES = ['-5000'];
-    const PORTES_FLACONS_REFS = ['SPFS', 'PFS', 'PFD', 'PFT', 'P5L', 'P500ml', 'PFDS', 'PFSS', 'PFTS', 'BAV'];
+    const PORTES_FLACONS_REFS = ['SPFS', 'PFS', 'PFD', 'PFT', 'PFDS', 'PFSS', 'PFTS', 'BAV'];
     const VIP_CADEAUX_REFS = ['P016', 'P023', 'P012', 'P009', 'P020', 'P021-20'];
     const SPA_VIP_REFS = ['P021', 'P022', 'P317-100', 'P005', 'P006', 'P027', 'P003', 'P004', 'P004-500', 'P029'];
     const PARFUMS_PREFIXES = ['P039', 'P041', 'P018', 'P015'];
-    const FORMAT_VOYAGE_REFS = ['P010-30', 'P010-50', 'P010-150', 'P024-40', 'P011-100', 'P017-30', 'P017', 'P038-30', 'P008-150', 'P008-75', 'P026'];
-    const FORMAT_30ML_REFS = ['P035-30', 'P008-30', 'P011-30', 'P042-30', 'P007-30', 'P014-100', 'P034-100', 'P035-100', 'P036-100', 'P037-100'];
+    const FORMAT_VOYAGE_REFS = ['P010-30', 'P010-50', 'P010-150', 'P024-40', 'P011-100', 'P017-30', 'P017', 'P038-30', 'P008-150', 'P008-75', 'P026', 'P035-30', 'P008-30', 'P011-30', 'P042-30', 'P007-30', 'P014-100', 'P034-100', 'P035-100', 'P036-100', 'P037-100'];
+    const AUTRES_REFS = ['P5L', 'P500ml', 'P300ML', 'SPRAY-VIDE'];
 
     const getEffectiveCategory = (p) => {
       const ref = p.ref;
       const nom = (p.nom || '').toLowerCase();
-      if (nom.includes('pompe') || nom.includes('flacon vide') || ref === 'P5L' || ref === 'P500ml') return 'Flacons vides';
+      // Accessoires & packaging → Autres
+      if (AUTRES_REFS.includes(ref)) return 'Autres';
+      if (ref.startsWith('COFFRET')) return 'Autres';
+      if (nom.includes('pompe') || nom.includes('spray vide')) return 'Autres';
+      // Cat\u00e9gories produits
       if (FLACONS_500_REFS.includes(ref)) return 'Flacons 500 ml';
       if (ref.endsWith('-5000')) return 'Recharges 5 litres';
       if (PORTES_FLACONS_REFS.includes(ref)) return 'Portes flacons';
       if (VIP_CADEAUX_REFS.includes(ref)) return 'Cadeaux VIP & Spa';
       if (SPA_VIP_REFS.includes(ref)) return 'Produits Spa & VIP';
       if (FORMAT_VOYAGE_REFS.includes(ref)) return 'Produits hygi\u00e8ne format voyage';
-      if (FORMAT_30ML_REFS.includes(ref)) return 'Produits hygi\u00e8ne format 30ml';
       if (PARFUMS_PREFIXES.some(px => ref.startsWith(px))) return 'Parfums & gel hydroalcoolique';
+      // Variantes de flacons 500ml (taille r\u00e9duite) → format voyage
+      const baseMatch = ref.match(/^(P\\d+)-(.+)$/);
+      if (baseMatch && FLACONS_500_REFS.includes(baseMatch[1]) && !ref.endsWith('-5000')) {
+        return 'Produits hygi\u00e8ne format voyage';
+      }
       return p.categorie || 'Autres';
     };
 
@@ -916,7 +922,7 @@
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
                 <div>
-                  <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-8" />
+                  <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-10" />
                   <div className="text-[9px] text-gold-500 tracking-wider mt-0.5">{partner.nom || partner.contact_nom}</div>
                 </div>
               </div>

@@ -16278,6 +16278,10 @@ const VueProduitsCatalog = () => {
   const [editForm, setEditForm] = useState({});
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
+  const [showAdd, setShowAdd] = useState(false);
+  const [addForm, setAddForm] = useState({ ref: '', vf_product_id: '', nom: '', prix_ht: '', tva: 20, moq: 1, categorie: '' });
+  const [addSaving, setAddSaving] = useState(false);
+  const [deleting, setDeleting] = useState(null);
 
   const charger = async () => {
     setLoading(true);
@@ -16289,6 +16293,35 @@ const VueProduitsCatalog = () => {
   };
 
   useEffect(() => { charger(); }, []);
+
+  const handleAdd = async () => {
+    if (!addForm.ref.trim() || !addForm.nom.trim()) return;
+    setAddSaving(true);
+    try {
+      await api.post('/reference/catalog', {
+        ref: addForm.ref.trim(),
+        vf_product_id: addForm.vf_product_id.trim() || null,
+        nom: addForm.nom.trim(),
+        prix_ht: parseFloat(addForm.prix_ht) || 0,
+        tva: parseFloat(addForm.tva) || 20,
+        actif: 1,
+      });
+      setShowAdd(false);
+      setAddForm({ ref: '', vf_product_id: '', nom: '', prix_ht: '', tva: 20, moq: 1, categorie: '' });
+      charger();
+    } catch (e) { console.error(e); }
+    setAddSaving(false);
+  };
+
+  const handleDelete = async (ref) => {
+    if (!confirm(`Supprimer le produit ${ref} ?`)) return;
+    setDeleting(ref);
+    try {
+      await api.del(`/reference/catalog/${encodeURIComponent(ref)}`);
+      charger();
+    } catch (e) { console.error(e); }
+    setDeleting(null);
+  };
 
   const filtered = useMemo(() => {
     if (!search) return products;
@@ -16333,7 +16366,39 @@ const VueProduitsCatalog = () => {
           className="flex-1 max-w-md border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
         />
         <span className="text-xs text-slate-400">{filtered.length} produit{filtered.length > 1 ? 's' : ''}</span>
+        <button onClick={() => setShowAdd(!showAdd)} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 transition-colors">+ Ajouter</button>
       </div>
+      {showAdd && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 animate-fade-in">
+          <div className="text-sm font-medium text-slate-700 mb-3">Ajouter un produit</div>
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <div>
+              <label className="text-[11px] text-slate-500 mb-1 block">R&eacute;f&eacute;rence *</label>
+              <input type="text" value={addForm.ref} onChange={e => setAddForm(f => ({ ...f, ref: e.target.value }))} placeholder="P001" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-500 mb-1 block">ID Vos Factures</label>
+              <input type="text" value={addForm.vf_product_id} onChange={e => setAddForm(f => ({ ...f, vf_product_id: e.target.value }))} placeholder="123456" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+            <div className="col-span-2">
+              <label className="text-[11px] text-slate-500 mb-1 block">Nom du produit *</label>
+              <input type="text" value={addForm.nom} onChange={e => setAddForm(f => ({ ...f, nom: e.target.value }))} placeholder="Gel douche Verveine 500ml" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-500 mb-1 block">Prix HT</label>
+              <input type="number" step="0.01" value={addForm.prix_ht} onChange={e => setAddForm(f => ({ ...f, prix_ht: e.target.value }))} placeholder="12.50" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+            <div>
+              <label className="text-[11px] text-slate-500 mb-1 block">TVA %</label>
+              <input type="number" value={addForm.tva} onChange={e => setAddForm(f => ({ ...f, tva: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            </div>
+          </div>
+          <div className="flex gap-2 mt-3">
+            <button onClick={handleAdd} disabled={addSaving || !addForm.ref.trim() || !addForm.nom.trim()} className="px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 disabled:opacity-50 transition-colors">{addSaving ? 'Ajout...' : 'Ajouter le produit'}</button>
+            <button onClick={() => setShowAdd(false)} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs hover:bg-slate-50 transition-colors">Annuler</button>
+          </div>
+        </div>
+      )}
       {loading ? (
         <div className="text-xs text-slate-400 py-4">Chargement...</div>
       ) : (
@@ -16384,7 +16449,10 @@ const VueProduitsCatalog = () => {
                         <td className="px-4 py-2 text-right text-slate-700">{p.moq ?? 1}</td>
                         <td className="px-4 py-2 text-slate-500 text-xs">{p.categorie || '—'}</td>
                         <td className="px-4 py-2 text-right">
-                          <button onClick={() => startEdit(p)} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Modifier</button>
+                          <div className="flex gap-1 justify-end">
+                            <button onClick={() => startEdit(p)} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Modifier</button>
+                            <button onClick={() => handleDelete(p.ref)} disabled={deleting === p.ref} className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50">{deleting === p.ref ? '...' : 'Supprimer'}</button>
+                          </div>
                         </td>
                       </>
                     )}

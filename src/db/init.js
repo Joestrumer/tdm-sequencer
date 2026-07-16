@@ -1590,14 +1590,13 @@ if (nomsFixed > 0) console.log(`✏️  ${nomsFixed} nom(s) de produit(s) corrig
 // ─── Seed catégories catalogue ───────────────────────────────────────────────
 const CATEGORIE_MAP = {
   'Flacons 500 ml': ['P008', 'P010', 'P024', 'P011', 'P007', 'P035', 'P036', 'P037', 'P034', 'P040', 'P042', 'P014', 'P019'],
-  'Flacons vides': ['P5L', 'P500ml'],
   'Recharges 5 litres': ['P007-5000', 'P008-5000', 'P010-5000', 'P011-5000', 'P014-5000', 'P019-5000', 'P024-5000', 'P034-5000', 'P035-5000', 'P036-5000', 'P037-5000', 'P040-5000', 'P042-5000'],
   'Portes flacons': ['SPFS', 'PFS', 'PFD', 'PFT', 'PFDS', 'PFSS', 'PFTS', 'BAV'],
   'Cadeaux VIP & Spa': ['P016', 'P023', 'P012', 'P009', 'P020', 'P021-20', 'P026'],
   'Produits Spa & VIP': ['P021', 'P022', 'P317-100', 'P005', 'P006', 'P027', 'P003', 'P004', 'P004-500', 'P029'],
-  'Parfums & gel hydroalcoolique': ['P015', 'P039SPRAY-VIDE'],
-  'Produits hygiène format voyage': ['P010-30', 'P010-50', 'P010-150', 'P024-40', 'P011-100', 'P017-30', 'P017', 'P038-30', 'P008-150', 'P008-75'],
-  'Produits hygiène format 30ml': ['P035-30', 'P008-30', 'P011-30', 'P042-30', 'P007-30', 'P014-100', 'P034-100', 'P035-100', 'P036-100', 'P037-100'],
+  'Parfums & gel hydroalcoolique': ['P015'],
+  'Produits hygiène format voyage': ['P010-30', 'P010-50', 'P010-150', 'P024-40', 'P011-100', 'P017-30', 'P017', 'P038-30', 'P008-150', 'P008-75', 'P035-30', 'P008-30', 'P011-30', 'P042-30', 'P007-30', 'P014-100', 'P034-100', 'P035-100', 'P036-100', 'P037-100'],
+  'Autres': ['P5L', 'P500ml', 'P300ML', 'SPRAY-VIDE'],
 };
 
 // Refs avec wildcard (startsWith) pour Parfums & gel hydroalcoolique
