@@ -1590,9 +1590,10 @@ if (nomsFixed > 0) console.log(`✏️  ${nomsFixed} nom(s) de produit(s) corrig
 // ─── Seed catégories catalogue ───────────────────────────────────────────────
 const CATEGORIE_MAP = {
   'Flacons 500 ml': ['P008', 'P010', 'P024', 'P011', 'P007', 'P035', 'P036', 'P037', 'P034', 'P040', 'P042', 'P014', 'P019'],
+  'Flacons vides': ['P5L', 'P500ml'],
   'Recharges 5 litres': ['P007-5000', 'P008-5000', 'P010-5000', 'P011-5000', 'P014-5000', 'P019-5000', 'P024-5000', 'P034-5000', 'P035-5000', 'P036-5000', 'P037-5000', 'P040-5000', 'P042-5000'],
-  'Portes flacons': ['SPFS', 'PFS', 'PFD', 'PFT', 'P5L', 'P500ml', 'PFDS', 'PFSS', 'PFTS', 'BAV'],
-  'Cadeaux VIP & Spa': ['P016', 'P023', 'P012', 'P009', 'P020', 'P021-20'],
+  'Portes flacons': ['SPFS', 'PFS', 'PFD', 'PFT', 'PFDS', 'PFSS', 'PFTS', 'BAV'],
+  'Cadeaux VIP & Spa': ['P016', 'P023', 'P012', 'P009', 'P020', 'P021-20', 'P026'],
   'Produits Spa & VIP': ['P021', 'P022', 'P317-100', 'P005', 'P006', 'P027', 'P003', 'P004', 'P004-500', 'P029'],
   'Parfums & gel hydroalcoolique': ['P015', 'P039SPRAY-VIDE'],
   'Produits hygiène format voyage': ['P010-30', 'P010-50', 'P010-150', 'P024-40', 'P011-100', 'P017-30', 'P017', 'P038-30', 'P008-150', 'P008-75'],
@@ -1604,18 +1605,19 @@ const CATEGORIE_PREFIX = {
   'Parfums & gel hydroalcoolique': ['P039', 'P041', 'P018'],
 };
 
-const stmtUpdateCat = db.prepare('UPDATE vf_catalog SET categorie = ? WHERE ref = ? AND categorie IS NULL');
-let catUpdated = 0;
-
-// D'abord les refs exactes
+// Force update pour les refs listées explicitement (corrige les mauvaises catégories)
+const stmtForceCat = db.prepare('UPDATE vf_catalog SET categorie = ? WHERE ref = ?');
+let catForced = 0;
 for (const [cat, refs] of Object.entries(CATEGORIE_MAP)) {
   for (const ref of refs) {
-    const r = stmtUpdateCat.run(cat, ref);
-    if (r.changes > 0) catUpdated++;
+    const r = stmtForceCat.run(cat, ref);
+    if (r.changes > 0) catForced++;
   }
 }
 
-// Ensuite les refs par préfixe (pour P039*, P041*, P018*)
+// Ensuite les refs par préfixe pour les produits sans catégorie
+const stmtUpdateCat = db.prepare('UPDATE vf_catalog SET categorie = ? WHERE ref = ? AND categorie IS NULL');
+let catUpdated = 0;
 const allProducts = db.prepare('SELECT ref FROM vf_catalog WHERE categorie IS NULL').all();
 for (const [cat, prefixes] of Object.entries(CATEGORIE_PREFIX)) {
   for (const p of allProducts) {
@@ -1626,7 +1628,7 @@ for (const [cat, prefixes] of Object.entries(CATEGORIE_PREFIX)) {
   }
 }
 
-if (catUpdated > 0) console.log(`🏷️  ${catUpdated} catégorie(s) assignée(s) au catalogue`);
+if (catForced > 0 || catUpdated > 0) console.log(`🏷️  ${catForced + catUpdated} catégorie(s) assignée(s) au catalogue`);
 
 // ─── Seed MOQ (quantité par carton) ────────────────────────────────────────
 const MOQ_MAP = {
