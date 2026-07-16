@@ -13118,12 +13118,10 @@ const FacturesSingle = ({ showToast }) => {
               {processing ? '...' : 'Logger uniquement'}
             </button>
           </div>
-          {orderNumber && (
-            <button onClick={() => downloadCSVAndEmail()} disabled={!selectedClient || !shippingId}
-              className="w-full py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
-              CSV + Email Logisticien (sans créer de facture)
-            </button>
-          )}
+          <button onClick={() => downloadCSVAndEmail()} disabled={!selectedClient || !shippingId}
+            className="w-full py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
+            CSV + Email Logisticien (sans créer de facture)
+          </button>
         </div>
       )}
 
@@ -13310,6 +13308,12 @@ const FacturesBatch = ({ showToast }) => {
   const [sendEmail, setSendEmail] = useState(true);
   const [logGSheets, setLogGSheets] = useState(true);
   const [createHubspotDeal, setCreateHubspotDeal] = useState(true);
+  const [catalog, setCatalog] = useState([]);
+  const [addProductSearchBatch, setAddProductSearchBatch] = useState({});
+
+  useEffect(() => {
+    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data.filter(c => c.actif)); }).catch(e => console.error(e));
+  }, []);
 
   const addOrder = (products, client = null, orderNumber = '', deliveryAddr = '') => {
     const id = nextIdRef.current++;
@@ -13993,6 +13997,58 @@ const FacturesBatch = ({ showToast }) => {
                           })}
                         </tbody>
                       </table>
+                    </div>
+                  )}
+
+                  {/* Ajout de produit */}
+                  {order.client && (
+                    <div className="relative">
+                      <div className="flex gap-2">
+                        <input type="text" value={addProductSearchBatch[order.id] || ''} onChange={e => setAddProductSearchBatch(prev => ({ ...prev, [order.id]: e.target.value }))}
+                          placeholder="Ajouter un produit (ref ou nom)..."
+                          className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                        {addProductSearchBatch[order.id] && (
+                          <button onClick={() => setAddProductSearchBatch(prev => ({ ...prev, [order.id]: '' }))} className="text-xs text-slate-400 hover:text-slate-600 px-2">✕</button>
+                        )}
+                      </div>
+                      {(addProductSearchBatch[order.id] || '').length >= 2 && (() => {
+                        const q = (addProductSearchBatch[order.id] || '').toLowerCase();
+                        const matches = catalog.filter(c =>
+                          c.ref.toLowerCase().includes(q) || (c.nom || '').toLowerCase().includes(q)
+                        ).slice(0, 8);
+                        if (!matches.length) return null;
+                        return (
+                          <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                            {matches.map(c => (
+                              <button key={c.ref} onClick={() => {
+                                const tva = c.tva || 20;
+                                const lineHT = c.prix_ht || 0;
+                                const newProduct = {
+                                  ref: c.ref, nom: c.nom, quantite: 1, prix_ht: c.prix_ht || 0, discount: 0, tva,
+                                  total_ht: Math.round(lineHT * 100) / 100,
+                                  total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100,
+                                };
+                                setOrders(prev => prev.map(o => {
+                                  if (o.id !== order.id) return o;
+                                  const products = o.calculation?.products || o.products || [];
+                                  const updatedProducts = [...products, newProduct];
+                                  return o.calculation
+                                    ? { ...o, calculation: { ...o.calculation, products: updatedProducts } }
+                                    : { ...o, products: updatedProducts };
+                                }));
+                                setAddProductSearchBatch(prev => ({ ...prev, [order.id]: '' }));
+                                showToast(`${c.ref} ajouté`, 'success');
+                              }} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between border-b border-slate-50 last:border-0">
+                                <div>
+                                  <span className="text-sm font-medium text-slate-900">{c.ref}</span>
+                                  <span className="text-xs text-slate-500 ml-2">{c.nom}</span>
+                                </div>
+                                <span className="text-xs font-mono text-slate-600">{(c.prix_ht || 0).toFixed(2)}€</span>
+                              </button>
+                            ))}
+                          </div>
+                        );
+                      })()}
                     </div>
                   )}
 
@@ -19206,6 +19262,10 @@ const VueCommandes = ({ showToast }) => {
         a.click();
         URL.revokeObjectURL(url);
         showToast('CSV téléchargé', 'success');
+        const subject = encodeURIComponent(`Commande : ${commande.partner_nom} ${commande.vf_invoice_number || ''}`);
+        const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${commande.vf_invoice_number || ''} (${commande.partner_nom}).\n\nCordialement`);
+        const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+        window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_blank');
       } else {
         const err = await response.json();
         showToast(err.erreur || 'Erreur CSV', 'error');
@@ -19277,6 +19337,12 @@ const VueCommandes = ({ showToast }) => {
         document.body.removeChild(a);
         setTimeout(() => URL.revokeObjectURL(url), 1000);
         showToast(`CSV groupé téléchargé (${selectedOrderIds.size} commandes)`, 'success');
+        const selectedCommandes = commandes.filter(c => selectedOrderIds.has(c.id));
+        const orderNums = selectedCommandes.map(c => c.vf_invoice_number || '?').join(', ');
+        const subject = encodeURIComponent(`Commandes batch — ${orderNums}`);
+        const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV groupé pour ${selectedOrderIds.size} commande(s).\n\nCordialement`);
+        const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+        window.open(`mailto:service.client@endurancelogistique.fr?cc=${cc}&subject=${subject}&body=${body}`, '_blank');
         setSelectedOrderIds(new Set());
       } else {
         const err = await response.json();
@@ -19446,7 +19512,7 @@ const VueCommandes = ({ showToast }) => {
             {selectedOrderIds.size > 0 && (
               <button onClick={() => { setBatchCsvShippingId('1'); setBatchCsvModal(true); }} disabled={downloadingBatchCsv}
                 className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center gap-1.5">
-                CSV groupé ({selectedOrderIds.size})
+                CSV + Email groupé ({selectedOrderIds.size})
               </button>
             )}
           </div>
@@ -19537,7 +19603,7 @@ const VueCommandes = ({ showToast }) => {
                           </button>
                           <button onClick={(e) => { e.stopPropagation(); setCsvShippingId(c.shipping_id || '1'); setCsvModal(c); }} disabled={downloadingCsv === c.id}
                             className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors disabled:opacity-50 disabled:cursor-not-allowed">
-                            {downloadingCsv === c.id ? 'CSV...' : 'CSV'}
+                            {downloadingCsv === c.id ? 'CSV...' : 'CSV + Email'}
                           </button>
                           <button onClick={(e) => { e.stopPropagation(); openPdf(c); }}
                             className="px-3 py-1.5 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors">
