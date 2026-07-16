@@ -188,6 +188,7 @@ const STATUT_CONFIG = {
   "Fin de séquence": { bg: "bg-purple-50", text: "text-purple-700", dot: "bg-purple-500" },
   "Closed Lost": { bg: "bg-orange-50", text: "text-orange-700", dot: "bg-orange-500" },
   "Email Marketing Sent": { bg: "bg-indigo-50", text: "text-indigo-700", dot: "bg-indigo-500" },
+  "Partner": { bg: "bg-teal-50", text: "text-teal-700", dot: "bg-teal-500" },
   "Désabonné": { bg: "bg-red-50", text: "text-red-600", dot: "bg-red-400" },
 };
 
@@ -2632,7 +2633,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
 
-  const KANBAN_COLS = useMemo(() => ["Nouveau", "En séquence", "Répondu", "Converti", "Échantillon envoyé", "Fin de séquence", "Closed Lost", "Désabonné"], []);
+  const KANBAN_COLS = useMemo(() => ["Nouveau", "En séquence", "Répondu", "Converti", "Échantillon envoyé", "Fin de séquence", "Closed Lost", "Partner", "Désabonné"], []);
 
   // ── Import CSV ──────────────────────────────────────────────────────────
   const importerCSV = async (file) => {
@@ -2956,6 +2957,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               <option value="Échantillon envoyé">Échantillon envoyé</option>
               <option value="Fin de séquence">Fin de séquence</option>
               <option value="Closed Lost">Closed Lost</option>
+              <option value="Partner">Partner</option>
             </select>
             <input
               list="bulk-source-list"
@@ -18893,7 +18895,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
     else showToast(result?.erreur || 'Erreur', 'error');
   };
 
-  const STATUTS_DISPONIBLES = ['Nouveau', 'En séquence', 'Répondu', 'Converti', 'Fin de séquence', 'Closed Lost', 'Email Marketing Sent'];
+  const STATUTS_DISPONIBLES = ['Nouveau', 'En séquence', 'Répondu', 'Converti', 'Fin de séquence', 'Closed Lost', 'Email Marketing Sent', 'Partner'];
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40">
