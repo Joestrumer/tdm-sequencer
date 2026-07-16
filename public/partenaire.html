@@ -4,7 +4,7 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Terre de Mars — Espace Partenaire</title>
-  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e293b'/><text x='16' y='22' text-anchor='middle' font-family='Arial' font-weight='bold' font-size='13' fill='white'>TM</text></svg>" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%23A28E3F'/><text x='16' y='22' text-anchor='middle' font-family='Arial' font-weight='bold' font-size='13' fill='white'>TM</text></svg>" />
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
@@ -12,16 +12,16 @@
         extend: {
           colors: {
             gold: {
-              50: '#FEFBF3',
-              100: '#FCF3E1',
-              200: '#F7E4BF',
-              300: '#F0D299',
-              400: '#E5BC6C',
-              500: '#D4A44A',
-              600: '#B5892E',
-              700: '#916E25',
-              800: '#6D531C',
-              900: '#4A3914',
+              50: '#F9F7F1',
+              100: '#F1EDDD',
+              200: '#E3DCC0',
+              300: '#D1C79F',
+              400: '#B9AA6F',
+              500: '#A28E3F',
+              600: '#877633',
+              700: '#6C5E29',
+              800: '#51461F',
+              900: '#362F15',
             }
           },
           fontFamily: {
@@ -39,9 +39,41 @@
   <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     * { font-family: 'DM Sans', sans-serif; box-sizing: border-box; }
-    body { margin: 0; background: #0f172a; }
+    body { margin: 0; background: #FFFFFF; }
     @keyframes fade-in { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
     .animate-fade-in { animation: fade-in 0.3s ease-out; }
+    .tache {
+      position: fixed;
+      pointer-events: none;
+      z-index: 0;
+    }
+    .tache-1 {
+      top: -80px;
+      right: -60px;
+      width: 380px;
+      height: 380px;
+      background: radial-gradient(ellipse at 40% 50%, rgba(162,142,63,0.09) 0%, transparent 65%);
+      border-radius: 45% 55% 50% 40%;
+      transform: rotate(-20deg);
+    }
+    .tache-2 {
+      bottom: -100px;
+      left: -80px;
+      width: 320px;
+      height: 320px;
+      background: radial-gradient(ellipse at 60% 40%, rgba(162,142,63,0.07) 0%, transparent 65%);
+      border-radius: 55% 45% 40% 50%;
+      transform: rotate(15deg);
+    }
+    .tache-3 {
+      top: 35%;
+      right: -120px;
+      width: 280px;
+      height: 280px;
+      background: radial-gradient(ellipse at 50% 50%, rgba(162,142,63,0.05) 0%, transparent 60%);
+      border-radius: 50% 40% 55% 45%;
+      transform: rotate(30deg);
+    }
   </style>
 </head>
 <body>
@@ -69,10 +101,10 @@
     // ─── Toast ──────────────────────────────────────────────────────────────────
     const Toast = ({ toast }) => {
       if (!toast || !toast.visible) return null;
-      const colors = { success: "bg-green-600", error: "bg-red-500", info: "bg-slate-700" };
+      const colors = { success: "bg-green-600", error: "bg-red-500", info: "bg-gray-800" };
       return (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-white text-sm font-medium animate-fade-in ${colors[toast.type] || colors.info}`}>
-          {toast.type === "success" && "✓ "}{toast.type === "error" && "✗ "}{toast.message}
+          {toast.type === "success" && "\u2713 "}{toast.type === "error" && "\u2717 "}{toast.message}
         </div>
       );
     };
@@ -102,32 +134,33 @@
       };
 
       return (
-        <div className="min-h-screen flex items-center justify-center p-4">
-          <div className="w-full max-w-sm animate-fade-in text-center">
+        <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+          <div className="tache tache-1"></div>
+          <div className="tache tache-2"></div>
+          <div className="tache tache-3"></div>
+          <div className="relative z-10 w-full max-w-sm animate-fade-in text-center">
             <div className="mb-10">
-              <h1 className="font-display text-2xl tracking-[0.25em] text-white mb-2">TERRE DE MARS</h1>
-              <div className="w-12 h-px bg-gold-500 mx-auto mb-3"></div>
-              <p className="text-[10px] tracking-[0.2em] text-gold-400/70 uppercase">Maison de cosmétiques naturels</p>
+              <img src="/logo-tdm.png" alt="Terre de Mars" className="h-16 mx-auto mb-6" />
             </div>
-            <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur">
-              <h2 className="text-sm font-medium text-white/80 mb-1">Espace Partenaire</h2>
-              <p className="text-xs text-white/40 mb-6">Entrez votre mot de passe pour accéder au catalogue.</p>
+            <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
+              <h2 className="text-sm font-medium text-gray-700 mb-1">Espace Partenaire</h2>
+              <p className="text-xs text-gray-400 mb-6">Entrez votre mot de passe pour acc&eacute;der au catalogue.</p>
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleLogin()}
                 placeholder="Mot de passe..."
-                className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/30"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/40"
                 autoFocus
               />
-              {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+              {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
               <button
                 onClick={handleLogin}
                 disabled={loading}
-                className="w-full mt-4 bg-gold-500 text-white py-3 rounded-xl text-sm font-medium hover:bg-gold-400 transition-colors disabled:opacity-50"
+                className="w-full mt-4 bg-gold-500 text-white py-3 rounded-xl text-sm font-medium hover:bg-gold-600 transition-colors disabled:opacity-50"
               >
-                {loading ? "Connexion..." : "Accéder"}
+                {loading ? "Connexion..." : "Acc\u00e9der"}
               </button>
             </div>
           </div>
@@ -139,28 +172,28 @@
     const AMENITY_TYPES = [
       { key: 'gel_douche', label: 'Gel douche', gammes: [
         { ref: 'P008', gamme: 'Verveine / Reddition' },
-        { ref: 'P035', gamme: 'Thé Blanc / Élégance' },
+        { ref: 'P035', gamme: 'Th\u00e9 Blanc / \u00c9l\u00e9gance' },
       ]},
       { key: 'shampoing', label: 'Shampoing', gammes: [
         { ref: 'P019', gamme: 'Verveine / Reddition' },
-        { ref: 'P010', gamme: 'Cédrat / Irrévérence' },
-        { ref: 'P034', gamme: 'Thé Blanc / Élégance' },
+        { ref: 'P010', gamme: 'C\u00e9drat / Irr\u00e9v\u00e9rence' },
+        { ref: 'P034', gamme: 'Th\u00e9 Blanc / \u00c9l\u00e9gance' },
       ]},
       { key: 'gel_corps_cheveux', label: 'Gel Corps & Cheveux', gammes: [
         { ref: 'P042', gamme: 'Verveine / Reddition' },
-        { ref: 'P014', gamme: 'Cédrat / Irrévérence' },
-        { ref: 'P040', gamme: 'Thé Blanc / Élégance' },
+        { ref: 'P014', gamme: 'C\u00e9drat / Irr\u00e9v\u00e9rence' },
+        { ref: 'P040', gamme: 'Th\u00e9 Blanc / \u00c9l\u00e9gance' },
       ]},
-      { key: 'apres_shampoing', label: 'Après-shampoing', gammes: [
-        { ref: 'P024', gamme: 'Cédrat / Irrévérence' },
-        { ref: 'P037', gamme: 'Thé Blanc / Élégance' },
+      { key: 'apres_shampoing', label: 'Apr\u00e8s-shampoing', gammes: [
+        { ref: 'P024', gamme: 'C\u00e9drat / Irr\u00e9v\u00e9rence' },
+        { ref: 'P037', gamme: 'Th\u00e9 Blanc / \u00c9l\u00e9gance' },
       ]},
       { key: 'lotion', label: 'Lotion Corps & Main', gammes: [
-        { ref: 'P036', gamme: 'Thé Blanc / Élégance' },
-        { ref: 'P011', gamme: 'Vétiver / Imminence' },
+        { ref: 'P036', gamme: 'Th\u00e9 Blanc / \u00c9l\u00e9gance' },
+        { ref: 'P011', gamme: 'V\u00e9tiver / Imminence' },
       ]},
       { key: 'savon_main', label: 'Savon Liquide Main', gammes: [
-        { ref: 'P007', gamme: 'Vétiver / Insurrection' },
+        { ref: 'P007', gamme: 'V\u00e9tiver / Insurrection' },
       ]},
     ];
 
@@ -203,12 +236,12 @@
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
             <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-white">Vos produits en chambre</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Vos produits en chambre</h3>
           </div>
           <div className="space-y-3">
             {sections.map(({ type, gammeInfo, products }) => (
               <div key={type.key}>
-                <div className="text-xs text-slate-400 mb-1 px-2">{type.label} — <span className="text-gold-400">{gammeInfo?.gamme || ''}</span></div>
+                <div className="text-xs text-gray-500 mb-1 px-2">{type.label} — <span className="text-gold-600">{gammeInfo?.gamme || ''}</span></div>
                 <div className="space-y-0.5">
                   {products.map(p => {
                     const moq = p.moq || 1;
@@ -218,34 +251,34 @@
                     return (
                       <div
                         key={p.ref}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-500/10 border-l-2 border-l-gold-500' : 'hover:bg-gold-500/5'}`}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 border-l-2 border-l-gold-500' : 'hover:bg-gray-50'}`}
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
-                            <span className="font-mono text-[10px] text-slate-500 shrink-0">{p.ref}</span>
-                            <span className="text-xs sm:text-sm text-white truncate">{p.nom}</span>
+                            <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
+                            <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs font-semibold text-gold-400">{p.prix_remise.toFixed(2)} &euro; HT</span>
+                            <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
                             {p.discount_pct > 0 && (
-                              <span className="text-[10px] px-1 py-0.5 rounded bg-gold-500/20 text-gold-400 font-medium">-{p.discount_pct}%</span>
+                              <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
                             )}
                             {moq > 1 && (
-                              <span className="text-[10px] text-slate-500">carton de {moq}</span>
+                              <span className="text-[10px] text-gray-400">carton de {moq}</span>
                             )}
                           </div>
                         </div>
                         <div className="flex items-center gap-1 shrink-0">
                           {qty > 0 && (
-                            <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-base font-bold transition-colors">-</button>
+                            <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center text-base font-bold transition-colors">-</button>
                           )}
                           {qty > 0 && (
                             <div className="text-center min-w-[32px]">
-                              <div className="text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                              {moq > 1 && <div className="text-[9px] text-slate-500 leading-none">{qty} u.</div>}
+                              <div className="text-gray-900 font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                              {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{qty} u.</div>}
                             </div>
                           )}
-                          <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gold-500 text-white hover:bg-gold-400 flex items-center justify-center text-base font-bold transition-colors">+</button>
+                          <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
                         </div>
                       </div>
                     );
@@ -258,12 +291,12 @@
       );
     };
 
-    // ─── Section Dernière Commande ────────────────────────────────────────────
+    // ─── Section Derni\u00e8re Commande ────────────────────────────────────────────
     const DerniereCommandeSection = ({ commandes, catalogue, setPanier, setPanierOpen, showToast }) => {
       const [open, setOpen] = useState(false);
       if (!commandes || commandes.length === 0) return null;
 
-      const derniere = commandes[0]; // commandes triées par date desc
+      const derniere = commandes[0];
 
       const handleRecommander = () => {
         const newPanier = {};
@@ -275,13 +308,13 @@
         });
         setPanier(newPanier);
         setPanierOpen(true);
-        showToast('Panier rempli avec votre dernière commande', 'success');
+        showToast('Panier rempli avec votre derni\u00e8re commande', 'success');
       };
 
       const statutConfig = {
-        en_attente: { label: "En attente", bg: "bg-amber-500/20", text: "text-amber-400" },
-        validee: { label: "Validée", bg: "bg-gold-500/20", text: "text-gold-400" },
-        annulee: { label: "Annulée", bg: "bg-red-500/20", text: "text-red-400" },
+        en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700" },
+        validee: { label: "Valid\u00e9e", bg: "bg-green-50", text: "text-green-700" },
+        annulee: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
       };
       const cfg = statutConfig[derniere.statut] || statutConfig.en_attente;
 
@@ -291,14 +324,14 @@
             onClick={() => setOpen(!open)}
             className="flex items-center gap-2 mb-3 group"
           >
-            <div className="w-1 h-5 bg-blue-500 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-white">Votre dernière commande</h3>
-            <span className="text-slate-500 text-xs group-hover:text-slate-300 transition-colors">{open ? '▲' : '▼'}</span>
+            <div className="w-1 h-5 bg-gold-400 rounded-full"></div>
+            <h3 className="text-sm font-semibold text-gray-900">Votre derni\u00e8re commande</h3>
+            <span className="text-gray-400 text-xs group-hover:text-gray-600 transition-colors">{open ? '\u25b2' : '\u25bc'}</span>
           </button>
           {open && (
-            <div className="bg-white/5 border border-white/10 rounded-xl p-4 animate-fade-in">
+            <div className="bg-white border border-gray-200 rounded-xl p-4 animate-fade-in shadow-sm">
               <div className="flex items-center justify-between mb-3">
-                <div className="text-xs text-slate-400">
+                <div className="text-xs text-gray-500">
                   {new Date(derniere.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </div>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
@@ -306,16 +339,16 @@
               <div className="space-y-1 mb-3">
                 {derniere.products.map((p, i) => (
                   <div key={i} className="flex justify-between text-sm">
-                    <span className="text-slate-300">{p.quantite}x {p.nom || p.ref}</span>
-                    <span className="text-white">{p.total_ht.toFixed(2)} &euro;</span>
+                    <span className="text-gray-600">{p.quantite}x {p.nom || p.ref}</span>
+                    <span className="text-gray-900">{p.total_ht.toFixed(2)} &euro;</span>
                   </div>
                 ))}
               </div>
-              <div className="flex items-center justify-between border-t border-white/10 pt-3">
-                <div className="text-sm font-medium text-white">Total: {derniere.total_ht.toFixed(2)} &euro; HT</div>
+              <div className="flex items-center justify-between border-t border-gray-100 pt-3">
+                <div className="text-sm font-medium text-gray-900">Total: {derniere.total_ht.toFixed(2)} &euro; HT</div>
                 <button
                   onClick={handleRecommander}
-                  className="px-4 py-2 bg-blue-500 text-white text-xs font-medium rounded-lg hover:bg-blue-400 transition-colors"
+                  className="px-4 py-2 bg-gold-500 text-white text-xs font-medium rounded-lg hover:bg-gold-600 transition-colors"
                 >
                   Re-commander
                 </button>
@@ -339,7 +372,6 @@
       'Produits hygi\u00e8ne format 30ml',
     ];
 
-    // Re-catégoriser les produits mal classés côté frontend
     const FLACONS_500_REFS = ['P008', 'P010', 'P024', 'P011', 'P007', 'P035', 'P036', 'P037', 'P034', 'P040', 'P042', 'P014', 'P019'];
     const RECHARGES_5L_SUFFIXES = ['-5000'];
     const PORTES_FLACONS_REFS = ['SPFS', 'PFS', 'PFD', 'PFT', 'P5L', 'P500ml', 'PFDS', 'PFSS', 'PFTS', 'BAV'];
@@ -352,9 +384,7 @@
     const getEffectiveCategory = (p) => {
       const ref = p.ref;
       const nom = (p.nom || '').toLowerCase();
-      // Flacons vides (pompes, flacons vides)
       if (nom.includes('pompe') || nom.includes('flacon vide') || ref === 'P5L' || ref === 'P500ml') return 'Flacons vides';
-      // Refs exactes
       if (FLACONS_500_REFS.includes(ref)) return 'Flacons 500 ml';
       if (ref.endsWith('-5000')) return 'Recharges 5 litres';
       if (PORTES_FLACONS_REFS.includes(ref)) return 'Portes flacons';
@@ -362,9 +392,7 @@
       if (SPA_VIP_REFS.includes(ref)) return 'Produits Spa & VIP';
       if (FORMAT_VOYAGE_REFS.includes(ref)) return 'Produits hygi\u00e8ne format voyage';
       if (FORMAT_30ML_REFS.includes(ref)) return 'Produits hygi\u00e8ne format 30ml';
-      // Prefixes
       if (PARFUMS_PREFIXES.some(px => ref.startsWith(px))) return 'Parfums & gel hydroalcoolique';
-      // Fallback : utiliser la catégorie serveur ou Autres
       return p.categorie || 'Autres';
     };
 
@@ -395,7 +423,6 @@
         return ordered;
       }, [filtered]);
 
-      // Quand on recherche, ouvrir les catégories qui ont des résultats
       useEffect(() => {
         if (search && search.length >= 2) {
           setOpenCats(prev => {
@@ -429,7 +456,6 @@
         }
       };
 
-      // Compte les items du panier par catégorie effective
       const panierCountByCat = useMemo(() => {
         const counts = {};
         for (const ref of Object.keys(panier)) {
@@ -452,10 +478,10 @@
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Rechercher un produit..."
-                className="w-full bg-white/10 border border-white/20 rounded-xl px-4 py-3 text-sm text-white placeholder-white/40 focus:outline-none focus:ring-2 focus:ring-white/30"
+                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/40"
               />
               {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white text-lg px-1">&times;</button>
+                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg px-1">&times;</button>
               )}
             </div>
           </div>
@@ -468,13 +494,13 @@
               <div key={categorie} className="mb-3">
                 <button
                   onClick={() => toggleCat(categorie)}
-                  className="w-full flex items-center gap-2 px-3 py-3 rounded-xl bg-white/5 hover:bg-white/10 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
                 >
-                  <span className={`text-slate-400 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`} style={{display:'inline-block'}}>&#9654;</span>
-                  <span className="text-sm font-semibold text-white flex-1 text-left">{categorie}</span>
-                  <span className="text-xs text-slate-500">{products.length}</span>
+                  <span className={`text-gray-400 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`} style={{display:'inline-block'}}>&#9654;</span>
+                  <span className="text-sm font-semibold text-gray-900 flex-1 text-left">{categorie}</span>
+                  <span className="text-xs text-gray-400">{products.length}</span>
                   {catPanierCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-500/20 text-gold-400 font-medium">{catPanierCount} au panier</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-100 text-gold-700 font-medium">{catPanierCount} au panier</span>
                   )}
                 </button>
 
@@ -488,34 +514,34 @@
                       return (
                         <div
                           key={p.ref}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-500/10 border-l-2 border-l-gold-500' : 'hover:bg-white/5'}`}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 border-l-2 border-l-gold-500' : 'hover:bg-gray-50'}`}
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-[10px] text-slate-500 shrink-0">{p.ref}</span>
-                              <span className="text-xs sm:text-sm text-white truncate">{p.nom}</span>
+                              <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
+                              <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-xs font-semibold text-gold-400">{p.prix_remise.toFixed(2)} &euro; HT</span>
+                              <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
                               {p.discount_pct > 0 && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-gold-500/20 text-gold-400 font-medium">-{p.discount_pct}%</span>
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
                               )}
                               {moq > 1 && (
-                                <span className="text-[10px] text-slate-500">carton de {moq}</span>
+                                <span className="text-[10px] text-gray-400">carton de {moq}</span>
                               )}
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             {qty > 0 && (
-                              <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-white/10 text-white hover:bg-white/20 flex items-center justify-center text-base font-bold transition-colors">-</button>
+                              <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center text-base font-bold transition-colors">-</button>
                             )}
                             {qty > 0 && (
                               <div className="text-center min-w-[32px]">
-                                <div className="text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                                {moq > 1 && <div className="text-[9px] text-slate-500 leading-none">{qty} u.</div>}
+                                <div className="text-gray-900 font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                                {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{qty} u.</div>}
                               </div>
                             )}
-                            <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gold-500 text-white hover:bg-gold-400 flex items-center justify-center text-base font-bold transition-colors">+</button>
+                            <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
                           </div>
                         </div>
                       );
@@ -526,7 +552,7 @@
             );
           })}
           {filtered.length === 0 && (
-            <div className="text-center py-12 text-slate-400 text-sm">Aucun produit trouv&eacute;</div>
+            <div className="text-center py-12 text-gray-400 text-sm">Aucun produit trouv&eacute;</div>
           )}
         </div>
       );
@@ -560,7 +586,7 @@
 
       if (items.length === 0) {
         return (
-          <div className="text-center py-8 text-slate-400 text-sm">
+          <div className="text-center py-8 text-gray-400 text-sm">
             Votre panier est vide.<br />Ajoutez des produits depuis le catalogue.
           </div>
         );
@@ -572,20 +598,20 @@
             const moq = i.moq || 1;
             const cartons = moq > 1 ? Math.floor(i.quantite / moq) : i.quantite;
             return (
-              <div key={i.ref} className="bg-white/5 rounded-xl p-3">
+              <div key={i.ref} className="bg-gray-50 rounded-xl p-3">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs text-slate-400 font-mono">{i.ref}</div>
-                    <div className="text-sm text-white truncate">{i.nom}</div>
+                    <div className="text-xs text-gray-400 font-mono">{i.ref}</div>
+                    <div className="text-sm text-gray-900 truncate">{i.nom}</div>
                     <div className="flex items-center gap-2 mt-0.5">
                       {i.discount_pct > 0 ? (
                         <>
-                          <span className="text-xs text-slate-500 line-through">{i.prix_ht.toFixed(2)} &euro;</span>
-                          <span className="text-xs text-gold-400">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-400 font-medium">-{i.discount_pct}%</span>
+                          <span className="text-xs text-gray-400 line-through">{i.prix_ht.toFixed(2)} &euro;</span>
+                          <span className="text-xs text-gold-600">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{i.discount_pct}%</span>
                         </>
                       ) : (
-                        <span className="text-xs text-slate-400">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
+                        <span className="text-xs text-gray-500">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
                       )}
                     </div>
                   </div>
@@ -595,14 +621,14 @@
                         const next = i.quantite - moq;
                         if (next <= 0) { const n = { ...p }; delete n[i.ref]; return n; }
                         return { ...p, [i.ref]: { ...i, quantite: next } };
-                      })} className="w-6 h-6 rounded bg-white/10 text-white text-xs hover:bg-white/20 flex items-center justify-center">-</button>
+                      })} className="w-6 h-6 rounded bg-gray-200 text-gray-600 text-xs hover:bg-gray-300 flex items-center justify-center">-</button>
                       <div className="text-center min-w-[32px]">
-                        <div className="text-white text-sm font-semibold">{moq > 1 ? cartons : i.quantite}</div>
-                        {moq > 1 && <div className="text-[9px] text-slate-500 leading-none">{i.quantite} u.</div>}
+                        <div className="text-gray-900 text-sm font-semibold">{moq > 1 ? cartons : i.quantite}</div>
+                        {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{i.quantite} u.</div>}
                       </div>
-                      <button onClick={() => setPanier(p => ({ ...p, [i.ref]: { ...i, quantite: i.quantite + moq } }))} className="w-6 h-6 rounded bg-white/10 text-white text-xs hover:bg-white/20 flex items-center justify-center">+</button>
+                      <button onClick={() => setPanier(p => ({ ...p, [i.ref]: { ...i, quantite: i.quantite + moq } }))} className="w-6 h-6 rounded bg-gray-200 text-gray-600 text-xs hover:bg-gray-300 flex items-center justify-center">+</button>
                     </div>
-                    <div className="text-sm text-white font-medium w-20 text-right">{(i.prix_remise * i.quantite).toFixed(2)} &euro;</div>
+                    <div className="text-sm text-gray-900 font-medium w-20 text-right">{(i.prix_remise * i.quantite).toFixed(2)} &euro;</div>
                   </div>
                 </div>
               </div>
@@ -611,20 +637,20 @@
 
           {/* Barre de progression franco */}
           {!exonere && (
-            <div className="bg-white/5 rounded-xl p-3">
+            <div className="bg-gray-50 rounded-xl p-3">
               <div className="flex justify-between text-[11px] mb-1.5">
-                <span className={francoAtteint ? "text-gold-400" : "text-slate-400"}>
+                <span className={francoAtteint ? "text-gold-600 font-medium" : "text-gray-500"}>
                   {francoAtteint ? 'Franco atteint !' : `Encore ${manquePourFranco.toFixed(2)} \u20ac pour le franco`}
                 </span>
-                <span className="text-slate-500">{subtotalHT.toFixed(0)} / {francoSeuil.toFixed(0)} &euro; HT</span>
+                <span className="text-gray-400">{subtotalHT.toFixed(0)} / {francoSeuil.toFixed(0)} &euro; HT</span>
               </div>
-              <div className="w-full bg-white/10 rounded-full h-1.5">
+              <div className="w-full bg-gray-200 rounded-full h-1.5">
                 <div
                   className={`h-1.5 rounded-full transition-all ${francoAtteint ? 'bg-gold-500' : 'bg-amber-500'}`}
                   style={{ width: `${Math.min(100, (subtotalHT / francoSeuil) * 100)}%` }}
                 />
               </div>
-              <div className="text-[10px] mt-1 text-slate-500">
+              <div className="text-[10px] mt-1 text-gray-400">
                 {francoAtteint
                   ? `Frais de pr\u00e9paration : ${fpPrix.toFixed(2)} \u20ac HT (au lieu de ${fePrix.toFixed(2)} \u20ac d'exp\u00e9dition)`
                   : `Frais d'exp\u00e9dition : ${fePrix.toFixed(2)} \u20ac HT`
@@ -633,28 +659,28 @@
             </div>
           )}
 
-          <div className="border-t border-white/10 pt-4 space-y-2">
-            <div className="flex justify-between text-sm text-slate-300">
+          <div className="border-t border-gray-200 pt-4 space-y-2">
+            <div className="flex justify-between text-sm text-gray-500">
               <span>Sous-total HT</span>
               <span>{subtotalHT.toFixed(2)} &euro;</span>
             </div>
             {!exonere && (
-              <div className={`flex justify-between text-sm ${francoAtteint ? 'text-gold-400' : 'text-amber-400'}`}>
+              <div className={`flex justify-between text-sm ${francoAtteint ? 'text-gold-600' : 'text-amber-600'}`}>
                 <span>{fraisLabel}</span>
                 <span>{fraisMontant.toFixed(2)} &euro;</span>
               </div>
             )}
             {exonere === 1 && (
-              <div className="flex justify-between text-sm text-green-400">
+              <div className="flex justify-between text-sm text-green-600">
                 <span>Frais</span>
                 <span>Exon&eacute;r&eacute;</span>
               </div>
             )}
-            <div className="flex justify-between text-sm text-white font-semibold">
+            <div className="flex justify-between text-sm text-gray-900 font-semibold">
               <span>Total HT</span>
               <span>{totalHT.toFixed(2)} &euro;</span>
             </div>
-            <div className="flex justify-between text-sm text-slate-400">
+            <div className="flex justify-between text-sm text-gray-400">
               <span>Total TTC (20%)</span>
               <span>{totalTTC.toFixed(2)} &euro;</span>
             </div>
@@ -663,13 +689,13 @@
             value={notes}
             onChange={e => setNotes(e.target.value)}
             placeholder="Notes ou instructions (optionnel)..."
-            className="w-full bg-white/5 border border-white/10 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-2 focus:ring-white/20 resize-none"
+            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gold-500/50 resize-none"
             rows={3}
           />
           <button
             onClick={() => onCommander(notes)}
             disabled={loading}
-            className="w-full bg-gold-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-gold-400 transition-colors disabled:opacity-50"
+            className="w-full bg-gold-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-50"
           >
             {loading ? "Envoi en cours..." : `Commander (${totalHT.toFixed(2)} \u20ac HT)`}
           </button>
@@ -681,9 +707,9 @@
     const HistoriqueView = ({ commandes, onRefresh, catalogue, setPanier, setPanierOpen, setVue, showToast }) => {
       const [deleting, setDeleting] = useState(null);
       const statutConfig = {
-        en_attente: { label: "En attente", bg: "bg-amber-500/20", text: "text-amber-400" },
-        validee: { label: "Valid\u00e9e", bg: "bg-green-500/20", text: "text-green-400" },
-        annulee: { label: "Annul\u00e9e", bg: "bg-red-500/20", text: "text-red-400" },
+        en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700" },
+        validee: { label: "Valid\u00e9e", bg: "bg-green-50", text: "text-green-700" },
+        annulee: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
       };
 
       const handleDelete = async (id) => {
@@ -698,7 +724,6 @@
       };
 
       const handleModify = async (c) => {
-        // Supprimer d'abord l'ancienne commande
         try {
           const delRes = await api.del(`/commande/${c.id}`);
           if (delRes.erreur) {
@@ -709,14 +734,12 @@
           showToast('Erreur suppression commande', 'error');
           return;
         }
-        // Charger les produits de la commande dans le panier
         const newPanier = {};
         c.products.forEach(p => {
           const prod = catalogue.find(cat => cat.ref === p.ref);
           if (prod) {
             newPanier[p.ref] = { ...prod, quantite: p.quantite };
           } else {
-            // Produit plus au catalogue, utiliser les données de la commande
             newPanier[p.ref] = { ref: p.ref, nom: p.nom, prix_ht: p.prix_ht, prix_remise: p.prix_remise, discount_pct: p.discount_pct || 0, moq: 1, quantite: p.quantite };
           }
         });
@@ -728,7 +751,7 @@
       };
 
       if (commandes.length === 0) {
-        return <div className="text-center py-12 text-slate-400 text-sm">Aucune commande pass\u00e9e.</div>;
+        return <div className="text-center py-12 text-gray-400 text-sm">Aucune commande pass\u00e9e.</div>;
       }
 
       return (
@@ -736,36 +759,36 @@
           {commandes.map(c => {
             const cfg = statutConfig[c.statut] || statutConfig.en_attente;
             return (
-              <div key={c.id} className="bg-white/5 border border-white/10 rounded-2xl p-5">
+              <div key={c.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
                 <div className="flex items-center justify-between mb-3">
-                  <div className="text-xs text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
+                  <div className="text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                   <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
                 </div>
                 <div className="space-y-1 mb-3">
                   {c.products.map((p, i) => (
                     <div key={i} className="flex justify-between text-sm">
-                      <span className="text-slate-300">
+                      <span className="text-gray-600">
                         {p.quantite}x {p.nom}
-                        {p.discount_pct > 0 && <span className="text-gold-400/70 ml-1 text-xs">(-{p.discount_pct}%)</span>}
+                        {p.discount_pct > 0 && <span className="text-gold-600/70 ml-1 text-xs">(-{p.discount_pct}%)</span>}
                       </span>
-                      <span className="text-white">{p.total_ht.toFixed(2)} &euro;</span>
+                      <span className="text-gray-900">{p.total_ht.toFixed(2)} &euro;</span>
                     </div>
                   ))}
                 </div>
-                <div className="flex justify-between text-sm font-medium border-t border-white/10 pt-2">
-                  <span className="text-white">Total HT</span>
-                  <span className="text-white">{c.total_ht.toFixed(2)} &euro;</span>
+                <div className="flex justify-between text-sm font-medium border-t border-gray-100 pt-2">
+                  <span className="text-gray-900">Total HT</span>
+                  <span className="text-gray-900">{c.total_ht.toFixed(2)} &euro;</span>
                 </div>
                 {c.vf_invoice_number && (
-                  <div className="text-xs text-green-400 mt-2">Facture n&deg;{c.vf_invoice_number}</div>
+                  <div className="text-xs text-green-600 mt-2">Facture n&deg;{c.vf_invoice_number}</div>
                 )}
-                {c.notes && <div className="text-xs text-slate-400 mt-2 italic">"{c.notes}"</div>}
+                {c.notes && <div className="text-xs text-gray-400 mt-2 italic">"{c.notes}"</div>}
                 {c.statut === 'en_attente' && (
-                  <div className="flex gap-2 mt-3 pt-2 border-t border-white/5">
-                    <button onClick={() => handleModify(c)} className="text-xs px-3 py-1.5 rounded-lg bg-blue-500/20 text-blue-400 hover:bg-blue-500/30 transition-colors">
+                  <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
+                    <button onClick={() => handleModify(c)} className="text-xs px-3 py-1.5 rounded-lg bg-gold-50 text-gold-700 hover:bg-gold-100 transition-colors">
                       Modifier
                     </button>
-                    <button onClick={() => handleDelete(c.id)} disabled={deleting === c.id} className="text-xs px-3 py-1.5 rounded-lg bg-red-500/20 text-red-400 hover:bg-red-500/30 transition-colors disabled:opacity-50">
+                    <button onClick={() => handleDelete(c.id)} disabled={deleting === c.id} className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50">
                       {deleting === c.id ? 'Suppression...' : 'Supprimer'}
                     </button>
                   </div>
@@ -780,7 +803,7 @@
     // ─── App Principale ─────────────────────────────────────────────────────────
     const App = () => {
       const [partner, setPartner] = useState(null);
-      const [vue, setVue] = useState("catalogue"); // catalogue | historique
+      const [vue, setVue] = useState("catalogue");
       const [catalogue, setCatalogue] = useState([]);
       const [panier, setPanier] = useState({});
       const [commandes, setCommandes] = useState([]);
@@ -795,7 +818,6 @@
         setTimeout(() => setToast(t => t ? { ...t, visible: false } : null), 4000);
       };
 
-      // Check existing session
       useEffect(() => {
         const token = sessionStorage.getItem('partner_token');
         if (token) {
@@ -810,7 +832,6 @@
         }
       }, []);
 
-      // Load catalogue and orders
       useEffect(() => {
         if (!partner) return;
         api.get('/catalogue').then(data => { if (Array.isArray(data)) setCatalogue(data); });
@@ -863,32 +884,31 @@
       if (!partner) return <LoginScreen onLogin={handleLogin} />;
 
       return (
-        <div className="min-h-screen bg-slate-900 text-white">
+        <div className="min-h-screen bg-white text-gray-900 relative">
+          <div className="tache tache-1"></div>
+          <div className="tache tache-2"></div>
           <Toast toast={toast} />
 
           {/* Header */}
-          <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-gold-500/10">
+          <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200">
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div>
-                  <div className="font-display text-sm tracking-[0.15em] text-white">TERRE DE MARS</div>
-                  <div className="text-[9px] text-gold-400/60 tracking-wider">{partner.nom || partner.contact_nom}</div>
-                </div>
+                <img src="/logo-tdm.png" alt="Terre de Mars" className="h-8" />
               </div>
-              <div className="flex items-center gap-2">
-                <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-3 py-2 rounded-lg text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-white/10 text-white" : "text-slate-400 hover:text-white"}`}>
+              <div className="flex items-center gap-1">
+                <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-3 py-2 rounded-lg text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
                   Catalogue
                 </button>
-                <button onClick={() => { setVue("historique"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-3 py-2 rounded-lg text-sm transition-colors ${vue === "historique" ? "bg-white/10 text-white" : "text-slate-400 hover:text-white"}`}>
+                <button onClick={() => { setVue("historique"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-3 py-2 rounded-lg text-sm transition-colors ${vue === "historique" ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
                   Commandes
                 </button>
-                <button onClick={() => { setPanierOpen(!panierOpen); setVue("catalogue"); }} className="relative px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white transition-colors ml-2">
+                <button onClick={() => { setPanierOpen(!panierOpen); setVue("catalogue"); }} className="relative px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-gray-900 transition-colors ml-1">
                   <span className="text-lg">&#128722;</span>
                   {panierCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-gold-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">{panierCount}</span>
                   )}
                 </button>
-                <button onClick={handleLogout} className="text-slate-500 hover:text-slate-300 text-xs ml-2" title="D&eacute;connexion">
+                <button onClick={handleLogout} className="text-gray-400 hover:text-gray-600 text-xs ml-2" title="D&eacute;connexion">
                   &#x2192;
                 </button>
               </div>
@@ -897,19 +917,19 @@
 
           {/* Order success banner */}
           {orderSuccess && (
-            <div className="bg-gold-500/10 border-b border-gold-500/20 animate-fade-in">
+            <div className="bg-gold-50 border-b border-gold-200 animate-fade-in">
               <div className="max-w-6xl mx-auto px-4 py-4 text-center">
-                <div className="text-gold-400 font-semibold mb-1">Commande enregistr&eacute;e !</div>
-                <div className="text-sm text-slate-300">Nous vous recontactons sous 24h pour confirmer votre commande.</div>
+                <div className="text-gold-700 font-semibold mb-1">Commande enregistr&eacute;e !</div>
+                <div className="text-sm text-gray-600">Nous vous recontactons sous 24h pour confirmer votre commande.</div>
               </div>
             </div>
           )}
 
           {/* Main content */}
-          <main className={`max-w-6xl mx-auto px-4 py-6 ${panierCount > 0 && !panierOpen && vue === "catalogue" ? 'pb-24' : ''}`}>
+          <main className={`max-w-6xl mx-auto px-4 py-6 relative z-10 ${panierCount > 0 && !panierOpen && vue === "catalogue" ? 'pb-24' : ''}`}>
             {panierOpen ? (
               <div className="max-w-lg mx-auto animate-fade-in">
-                <h2 className="text-lg font-semibold mb-4">Votre panier</h2>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Votre panier</h2>
                 <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={loading} partner={partner} />
               </div>
             ) : vue === "catalogue" ? (
@@ -917,14 +937,14 @@
                 <AmenitiesSection amenities={amenities} catalogue={catalogue} panier={panier} setPanier={setPanier} />
                 <DerniereCommandeSection commandes={commandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} showToast={showToast} />
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold">Catalogue</h2>
-                  <span className="text-xs text-slate-400">{catalogue.length} produit{catalogue.length > 1 ? 's' : ''}</span>
+                  <h2 className="text-lg font-semibold text-gray-900">Catalogue</h2>
+                  <span className="text-xs text-gray-400">{catalogue.length} produit{catalogue.length > 1 ? 's' : ''}</span>
                 </div>
                 <CatalogueView catalogue={catalogue} panier={panier} setPanier={setPanier} />
               </div>
             ) : (
               <div className="max-w-2xl mx-auto animate-fade-in">
-                <h2 className="text-lg font-semibold mb-4">Historique des commandes</h2>
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Historique des commandes</h2>
                 <HistoriqueView commandes={commandes} onRefresh={refreshCommandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} setVue={setVue} showToast={showToast} />
               </div>
             )}
@@ -939,29 +959,29 @@
             const francoAtteint = subtotalHT >= francoSeuil;
             const manque = Math.max(0, francoSeuil - subtotalHT);
             return (
-              <div className="fixed bottom-0 left-0 right-0 z-20 bg-slate-800/95 backdrop-blur border-t border-white/10 shadow-2xl">
+              <div className="fixed bottom-0 left-0 right-0 z-20 bg-white/95 backdrop-blur border-t border-gray-200 shadow-lg">
                 <div className="max-w-6xl mx-auto px-4 py-3">
                   {!exonere && (
                     <div className="flex items-center gap-2 mb-2">
-                      <div className="flex-1 bg-white/10 rounded-full h-2">
+                      <div className="flex-1 bg-gray-200 rounded-full h-2">
                         <div
                           className={`h-2 rounded-full transition-all ${francoAtteint ? 'bg-gold-500' : 'bg-amber-500'}`}
                           style={{ width: `${Math.min(100, (subtotalHT / francoSeuil) * 100)}%` }}
                         />
                       </div>
-                      <span className={`text-[11px] font-medium shrink-0 ${francoAtteint ? 'text-gold-400' : 'text-amber-400'}`}>
+                      <span className={`text-[11px] font-medium shrink-0 ${francoAtteint ? 'text-gold-600' : 'text-amber-600'}`}>
                         {francoAtteint ? 'Franco atteint' : `Encore ${manque.toFixed(0)} \u20ac pour le franco`}
                       </span>
                     </div>
                   )}
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-white font-semibold text-sm">{subtotalHT.toFixed(2)} &euro; HT</span>
-                      <span className="text-slate-400 text-xs ml-2">{panierCount} article{panierCount > 1 ? 's' : ''}</span>
+                      <span className="text-gray-900 font-semibold text-sm">{subtotalHT.toFixed(2)} &euro; HT</span>
+                      <span className="text-gray-400 text-xs ml-2">{panierCount} article{panierCount > 1 ? 's' : ''}</span>
                     </div>
                     <button
                       onClick={() => setPanierOpen(true)}
-                      className="bg-gold-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-gold-400 transition-colors flex items-center gap-2"
+                      className="bg-gold-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors flex items-center gap-2"
                     >
                       Voir le panier
                     </button>
