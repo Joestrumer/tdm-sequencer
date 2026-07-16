@@ -394,13 +394,13 @@
       'Autres',
     ];
 
-    const FLACONS_500_REFS = ['P008', 'P010', 'P024', 'P011', 'P007', 'P035', 'P036', 'P037', 'P034', 'P040', 'P042', 'P014', 'P019', 'P044', 'P045', 'P046', 'P047'];
+    const FLACONS_500_REFS = ['P008', 'P010', 'P024', 'P011', 'P007', 'P035', 'P036', 'P037', 'P034', 'P014', 'P019', 'P044', 'P045', 'P046', 'P047'];
     const PORTES_FLACONS_REFS = ['SPFS', 'PFS', 'PFD', 'PFT', 'PFDS', 'PFSS', 'PFTS', 'BAV'];
     const VIP_CADEAUX_REFS = ['P016', 'P023', 'P012', 'P009', 'P020', 'P021-20'];
     const SPA_VIP_REFS = ['P021', 'P022', 'P317-100', 'P005', 'P006', 'P027', 'P003', 'P004', 'P004-500', 'P029'];
     const PARFUMS_PREFIXES = ['P039', 'P041', 'P018', 'P015'];
     const FORMAT_VOYAGE_REFS = ['P010-30', 'P010-50', 'P010-150', 'P024-40', 'P011-100', 'P017-30', 'P017', 'P038-30', 'P008-150', 'P008-75', 'P026', 'P035-30', 'P008-30', 'P011-30', 'P042-30', 'P007-30', 'P014-100', 'P034-100', 'P035-100', 'P036-100', 'P037-100', 'P019-50', 'P044-30', 'P046-150', 'P047-30'];
-    const FLACONS_VIDES_REFS = ['P007-300V', 'P008-300V', 'P010-300V', 'P011-300V', 'P024-300V', 'P042V', 'P040V-SANS POMPE'];
+    const FLACONS_VIDES_REFS = ['P007-300V', 'P008-300V', 'P010-300V', 'P011-300V', 'P024-300V', 'P042V', 'P040V-SANS POMPE', 'P042', 'P040'];
     const AUTRES_REFS = ['P5L', 'P500ml', 'P300ML', 'SPRAY-VIDE'];
 
     const getEffectiveCategory = (p) => {
@@ -438,6 +438,20 @@
         return catalogue.filter(p => p.ref.toLowerCase().includes(q) || p.nom.toLowerCase().includes(q));
       }, [catalogue, search]);
 
+      const GAMME_ORDER = ['Insurrection', 'Irreverence', 'Reddition', 'Revelation', 'Radiance', 'Imminence'];
+      const sortByGamme = (products) => {
+        return [...products].sort((a, b) => {
+          const nomA = (a.nom || '').toLowerCase();
+          const nomB = (b.nom || '').toLowerCase();
+          const idxA = GAMME_ORDER.findIndex(g => nomA.includes(g.toLowerCase()));
+          const idxB = GAMME_ORDER.findIndex(g => nomB.includes(g.toLowerCase()));
+          const gA = idxA >= 0 ? idxA : GAMME_ORDER.length;
+          const gB = idxB >= 0 ? idxB : GAMME_ORDER.length;
+          if (gA !== gB) return gA - gB;
+          return nomA.localeCompare(nomB);
+        });
+      };
+
       const grouped = useMemo(() => {
         const groups = {};
         for (const p of filtered) {
@@ -447,10 +461,10 @@
         }
         const ordered = [];
         for (const cat of CATEGORIES_ORDER) {
-          if (groups[cat]) ordered.push({ categorie: cat, products: groups[cat] });
+          if (groups[cat]) ordered.push({ categorie: cat, products: sortByGamme(groups[cat]) });
         }
         for (const cat of Object.keys(groups)) {
-          if (!CATEGORIES_ORDER.includes(cat)) ordered.push({ categorie: cat, products: groups[cat] });
+          if (!CATEGORIES_ORDER.includes(cat)) ordered.push({ categorie: cat, products: sortByGamme(groups[cat]) });
         }
         return ordered;
       }, [filtered]);
