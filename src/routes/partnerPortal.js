@@ -42,6 +42,11 @@ module.exports = (db) => {
         { expiresIn: '7d' }
       );
 
+      // Récupérer les prix FP/FE pour le calcul côté portail
+      const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
+      const fraisMap = {};
+      for (const r of fraisRows) fraisMap[r.ref] = r.prix_ht;
+
       res.json({
         token,
         partenaire: {
@@ -52,6 +57,8 @@ module.exports = (db) => {
           amenities: matched.amenities || null,
           franco_seuil: matched.franco_seuil ?? DEFAULT_FRANCO_SEUIL,
           frais_exonere: matched.frais_exonere ?? 0,
+          fp_prix: fraisMap['FP'] || 0,
+          fe_prix: fraisMap['FE'] || 0,
         },
       });
     } catch (e) {

@@ -6,12 +6,37 @@
   <title>Terre de Mars — Espace Partenaire</title>
   <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='6' fill='%231e293b'/><text x='16' y='22' text-anchor='middle' font-family='Arial' font-weight='bold' font-size='13' fill='white'>TM</text></svg>" />
   <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            gold: {
+              50: '#FEFBF3',
+              100: '#FCF3E1',
+              200: '#F7E4BF',
+              300: '#F0D299',
+              400: '#E5BC6C',
+              500: '#D4A44A',
+              600: '#B5892E',
+              700: '#916E25',
+              800: '#6D531C',
+              900: '#4A3914',
+            }
+          },
+          fontFamily: {
+            display: ['"Playfair Display"', 'Georgia', 'serif'],
+          }
+        }
+      }
+    }
+  </script>
   <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
   <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
   <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     * { font-family: 'DM Sans', sans-serif; box-sizing: border-box; }
     body { margin: 0; background: #0f172a; }
@@ -44,7 +69,7 @@
     // ─── Toast ──────────────────────────────────────────────────────────────────
     const Toast = ({ toast }) => {
       if (!toast || !toast.visible) return null;
-      const colors = { success: "bg-emerald-600", error: "bg-red-500", info: "bg-slate-700" };
+      const colors = { success: "bg-green-600", error: "bg-red-500", info: "bg-slate-700" };
       return (
         <div className={`fixed top-4 right-4 z-50 px-4 py-3 rounded-xl shadow-lg text-white text-sm font-medium animate-fade-in ${colors[toast.type] || colors.info}`}>
           {toast.type === "success" && "✓ "}{toast.type === "error" && "✗ "}{toast.message}
@@ -78,33 +103,33 @@
 
       return (
         <div className="min-h-screen flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-2xl p-8 w-full max-w-sm animate-fade-in">
-            <div className="flex items-center gap-3 mb-8">
-              <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white text-sm font-bold">TM</div>
-              <div>
-                <div className="text-sm font-semibold text-slate-900">Terre de Mars</div>
-                <div className="text-xs text-slate-400">Espace Partenaire</div>
-              </div>
+          <div className="w-full max-w-sm animate-fade-in text-center">
+            <div className="mb-10">
+              <h1 className="font-display text-2xl tracking-[0.25em] text-white mb-2">TERRE DE MARS</h1>
+              <div className="w-12 h-px bg-gold-500 mx-auto mb-3"></div>
+              <p className="text-[10px] tracking-[0.2em] text-gold-400/70 uppercase">Maison de cosmétiques naturels</p>
             </div>
-            <h2 className="text-lg font-semibold text-slate-900 mb-1">Bienvenue</h2>
-            <p className="text-sm text-slate-400 mb-6">Entrez votre mot de passe pour accéder au catalogue.</p>
-            <input
-              type="password"
-              value={password}
-              onChange={e => setPassword(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && handleLogin()}
-              placeholder="Mot de passe..."
-              className="w-full border border-slate-200 rounded-xl px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-slate-900/20 focus:border-slate-400"
-              autoFocus
-            />
-            {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
-            <button
-              onClick={handleLogin}
-              disabled={loading}
-              className="w-full mt-4 bg-slate-900 text-white py-3 rounded-xl text-sm font-medium hover:bg-slate-700 transition-colors disabled:opacity-50"
-            >
-              {loading ? "Connexion..." : "Accéder"}
-            </button>
+            <div className="bg-white/5 border border-white/10 rounded-2xl p-8 backdrop-blur">
+              <h2 className="text-sm font-medium text-white/80 mb-1">Espace Partenaire</h2>
+              <p className="text-xs text-white/40 mb-6">Entrez votre mot de passe pour accéder au catalogue.</p>
+              <input
+                type="password"
+                value={password}
+                onChange={e => setPassword(e.target.value)}
+                onKeyDown={e => e.key === 'Enter' && handleLogin()}
+                placeholder="Mot de passe..."
+                className="w-full bg-white/5 border border-white/15 rounded-xl px-4 py-3 text-sm text-white placeholder-white/30 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/30"
+                autoFocus
+              />
+              {error && <p className="text-red-400 text-xs mt-2">{error}</p>}
+              <button
+                onClick={handleLogin}
+                disabled={loading}
+                className="w-full mt-4 bg-gold-500 text-white py-3 rounded-xl text-sm font-medium hover:bg-gold-400 transition-colors disabled:opacity-50"
+              >
+                {loading ? "Connexion..." : "Accéder"}
+              </button>
+            </div>
           </div>
         </div>
       );
@@ -177,13 +202,13 @@
       return (
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-4">
-            <div className="w-1 h-5 bg-emerald-500 rounded-full"></div>
+            <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
             <h3 className="text-sm font-semibold text-white">Vos produits en chambre</h3>
           </div>
           <div className="space-y-3">
             {sections.map(({ type, gammeInfo, products }) => (
               <div key={type.key}>
-                <div className="text-xs text-slate-400 mb-1 px-2">{type.label} — <span className="text-emerald-400">{gammeInfo?.gamme || ''}</span></div>
+                <div className="text-xs text-slate-400 mb-1 px-2">{type.label} — <span className="text-gold-400">{gammeInfo?.gamme || ''}</span></div>
                 <div className="space-y-0.5">
                   {products.map(p => {
                     const moq = p.moq || 1;
@@ -193,7 +218,7 @@
                     return (
                       <div
                         key={p.ref}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-emerald-500/10 border-l-2 border-l-emerald-500' : 'hover:bg-emerald-500/5'}`}
+                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-500/10 border-l-2 border-l-gold-500' : 'hover:bg-gold-500/5'}`}
                       >
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2">
@@ -201,9 +226,9 @@
                             <span className="text-xs sm:text-sm text-white truncate">{p.nom}</span>
                           </div>
                           <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; HT</span>
+                            <span className="text-xs font-semibold text-gold-400">{p.prix_remise.toFixed(2)} &euro; HT</span>
                             {p.discount_pct > 0 && (
-                              <span className="text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-medium">-{p.discount_pct}%</span>
+                              <span className="text-[10px] px-1 py-0.5 rounded bg-gold-500/20 text-gold-400 font-medium">-{p.discount_pct}%</span>
                             )}
                             {moq > 1 && (
                               <span className="text-[10px] text-slate-500">carton de {moq}</span>
@@ -220,7 +245,7 @@
                               {moq > 1 && <div className="text-[9px] text-slate-500 leading-none">{qty} u.</div>}
                             </div>
                           )}
-                          <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-base font-bold transition-colors">+</button>
+                          <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gold-500 text-white hover:bg-gold-400 flex items-center justify-center text-base font-bold transition-colors">+</button>
                         </div>
                       </div>
                     );
@@ -255,7 +280,7 @@
 
       const statutConfig = {
         en_attente: { label: "En attente", bg: "bg-amber-500/20", text: "text-amber-400" },
-        validee: { label: "Validée", bg: "bg-emerald-500/20", text: "text-emerald-400" },
+        validee: { label: "Validée", bg: "bg-gold-500/20", text: "text-gold-400" },
         annulee: { label: "Annulée", bg: "bg-red-500/20", text: "text-red-400" },
       };
       const cfg = statutConfig[derniere.statut] || statutConfig.en_attente;
@@ -449,7 +474,7 @@
                   <span className="text-sm font-semibold text-white flex-1 text-left">{categorie}</span>
                   <span className="text-xs text-slate-500">{products.length}</span>
                   {catPanierCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-emerald-500/20 text-emerald-400 font-medium">{catPanierCount} au panier</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-500/20 text-gold-400 font-medium">{catPanierCount} au panier</span>
                   )}
                 </button>
 
@@ -463,7 +488,7 @@
                       return (
                         <div
                           key={p.ref}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-emerald-500/10 border-l-2 border-l-emerald-500' : 'hover:bg-white/5'}`}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-500/10 border-l-2 border-l-gold-500' : 'hover:bg-white/5'}`}
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
@@ -471,9 +496,9 @@
                               <span className="text-xs sm:text-sm text-white truncate">{p.nom}</span>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-xs font-semibold text-emerald-400">{p.prix_remise.toFixed(2)} &euro; HT</span>
+                              <span className="text-xs font-semibold text-gold-400">{p.prix_remise.toFixed(2)} &euro; HT</span>
                               {p.discount_pct > 0 && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-medium">-{p.discount_pct}%</span>
+                                <span className="text-[10px] px-1 py-0.5 rounded bg-gold-500/20 text-gold-400 font-medium">-{p.discount_pct}%</span>
                               )}
                               {moq > 1 && (
                                 <span className="text-[10px] text-slate-500">carton de {moq}</span>
@@ -490,7 +515,7 @@
                                 {moq > 1 && <div className="text-[9px] text-slate-500 leading-none">{qty} u.</div>}
                               </div>
                             )}
-                            <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-emerald-500 text-white hover:bg-emerald-400 flex items-center justify-center text-base font-bold transition-colors">+</button>
+                            <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gold-500 text-white hover:bg-gold-400 flex items-center justify-center text-base font-bold transition-colors">+</button>
                           </div>
                         </div>
                       );
@@ -556,8 +581,8 @@
                       {i.discount_pct > 0 ? (
                         <>
                           <span className="text-xs text-slate-500 line-through">{i.prix_ht.toFixed(2)} &euro;</span>
-                          <span className="text-xs text-emerald-400">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-400 font-medium">-{i.discount_pct}%</span>
+                          <span className="text-xs text-gold-400">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-500/20 text-gold-400 font-medium">-{i.discount_pct}%</span>
                         </>
                       ) : (
                         <span className="text-xs text-slate-400">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
@@ -588,14 +613,14 @@
           {!exonere && (
             <div className="bg-white/5 rounded-xl p-3">
               <div className="flex justify-between text-[11px] mb-1.5">
-                <span className={francoAtteint ? "text-emerald-400" : "text-slate-400"}>
+                <span className={francoAtteint ? "text-gold-400" : "text-slate-400"}>
                   {francoAtteint ? 'Franco atteint !' : `Encore ${manquePourFranco.toFixed(2)} \u20ac pour le franco`}
                 </span>
                 <span className="text-slate-500">{subtotalHT.toFixed(0)} / {francoSeuil.toFixed(0)} &euro; HT</span>
               </div>
               <div className="w-full bg-white/10 rounded-full h-1.5">
                 <div
-                  className={`h-1.5 rounded-full transition-all ${francoAtteint ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                  className={`h-1.5 rounded-full transition-all ${francoAtteint ? 'bg-gold-500' : 'bg-amber-500'}`}
                   style={{ width: `${Math.min(100, (subtotalHT / francoSeuil) * 100)}%` }}
                 />
               </div>
@@ -614,13 +639,13 @@
               <span>{subtotalHT.toFixed(2)} &euro;</span>
             </div>
             {!exonere && (
-              <div className={`flex justify-between text-sm ${francoAtteint ? 'text-emerald-400' : 'text-amber-400'}`}>
+              <div className={`flex justify-between text-sm ${francoAtteint ? 'text-gold-400' : 'text-amber-400'}`}>
                 <span>{fraisLabel}</span>
                 <span>{fraisMontant.toFixed(2)} &euro;</span>
               </div>
             )}
             {exonere === 1 && (
-              <div className="flex justify-between text-sm text-emerald-400">
+              <div className="flex justify-between text-sm text-green-400">
                 <span>Frais</span>
                 <span>Exon&eacute;r&eacute;</span>
               </div>
@@ -644,7 +669,7 @@
           <button
             onClick={() => onCommander(notes)}
             disabled={loading}
-            className="w-full bg-emerald-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-emerald-400 transition-colors disabled:opacity-50"
+            className="w-full bg-gold-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-gold-400 transition-colors disabled:opacity-50"
           >
             {loading ? "Envoi en cours..." : `Commander (${totalHT.toFixed(2)} \u20ac HT)`}
           </button>
@@ -657,7 +682,7 @@
       const [deleting, setDeleting] = useState(null);
       const statutConfig = {
         en_attente: { label: "En attente", bg: "bg-amber-500/20", text: "text-amber-400" },
-        validee: { label: "Valid\u00e9e", bg: "bg-emerald-500/20", text: "text-emerald-400" },
+        validee: { label: "Valid\u00e9e", bg: "bg-green-500/20", text: "text-green-400" },
         annulee: { label: "Annul\u00e9e", bg: "bg-red-500/20", text: "text-red-400" },
       };
 
@@ -721,7 +746,7 @@
                     <div key={i} className="flex justify-between text-sm">
                       <span className="text-slate-300">
                         {p.quantite}x {p.nom}
-                        {p.discount_pct > 0 && <span className="text-emerald-400/70 ml-1 text-xs">(-{p.discount_pct}%)</span>}
+                        {p.discount_pct > 0 && <span className="text-gold-400/70 ml-1 text-xs">(-{p.discount_pct}%)</span>}
                       </span>
                       <span className="text-white">{p.total_ht.toFixed(2)} &euro;</span>
                     </div>
@@ -732,7 +757,7 @@
                   <span className="text-white">{c.total_ht.toFixed(2)} &euro;</span>
                 </div>
                 {c.vf_invoice_number && (
-                  <div className="text-xs text-emerald-400 mt-2">Facture n&deg;{c.vf_invoice_number}</div>
+                  <div className="text-xs text-green-400 mt-2">Facture n&deg;{c.vf_invoice_number}</div>
                 )}
                 {c.notes && <div className="text-xs text-slate-400 mt-2 italic">"{c.notes}"</div>}
                 {c.statut === 'en_attente' && (
@@ -842,13 +867,12 @@
           <Toast toast={toast} />
 
           {/* Header */}
-          <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-white/10">
+          <header className="sticky top-0 z-30 bg-slate-900/95 backdrop-blur border-b border-gold-500/10">
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <div className="w-8 h-8 rounded-lg bg-white flex items-center justify-center text-slate-900 text-xs font-bold">TM</div>
-                <div className="hidden sm:block">
-                  <div className="text-sm font-semibold">Terre de Mars</div>
-                  <div className="text-xs text-slate-400">{partner.nom || partner.contact_nom}</div>
+                <div>
+                  <div className="font-display text-sm tracking-[0.15em] text-white">TERRE DE MARS</div>
+                  <div className="text-[9px] text-gold-400/60 tracking-wider">{partner.nom || partner.contact_nom}</div>
                 </div>
               </div>
               <div className="flex items-center gap-2">
@@ -861,7 +885,7 @@
                 <button onClick={() => { setPanierOpen(!panierOpen); setVue("catalogue"); }} className="relative px-3 py-2 rounded-lg text-sm text-slate-400 hover:text-white transition-colors ml-2">
                   <span className="text-lg">&#128722;</span>
                   {panierCount > 0 && (
-                    <span className="absolute -top-1 -right-1 bg-emerald-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">{panierCount}</span>
+                    <span className="absolute -top-1 -right-1 bg-gold-500 text-white text-xs font-bold w-5 h-5 rounded-full flex items-center justify-center">{panierCount}</span>
                   )}
                 </button>
                 <button onClick={handleLogout} className="text-slate-500 hover:text-slate-300 text-xs ml-2" title="D&eacute;connexion">
@@ -873,9 +897,9 @@
 
           {/* Order success banner */}
           {orderSuccess && (
-            <div className="bg-emerald-500/10 border-b border-emerald-500/20 animate-fade-in">
+            <div className="bg-gold-500/10 border-b border-gold-500/20 animate-fade-in">
               <div className="max-w-6xl mx-auto px-4 py-4 text-center">
-                <div className="text-emerald-400 font-semibold mb-1">Commande enregistr&eacute;e !</div>
+                <div className="text-gold-400 font-semibold mb-1">Commande enregistr&eacute;e !</div>
                 <div className="text-sm text-slate-300">Nous vous recontactons sous 24h pour confirmer votre commande.</div>
               </div>
             </div>
@@ -921,11 +945,11 @@
                     <div className="flex items-center gap-2 mb-2">
                       <div className="flex-1 bg-white/10 rounded-full h-2">
                         <div
-                          className={`h-2 rounded-full transition-all ${francoAtteint ? 'bg-emerald-500' : 'bg-amber-500'}`}
+                          className={`h-2 rounded-full transition-all ${francoAtteint ? 'bg-gold-500' : 'bg-amber-500'}`}
                           style={{ width: `${Math.min(100, (subtotalHT / francoSeuil) * 100)}%` }}
                         />
                       </div>
-                      <span className={`text-[11px] font-medium shrink-0 ${francoAtteint ? 'text-emerald-400' : 'text-amber-400'}`}>
+                      <span className={`text-[11px] font-medium shrink-0 ${francoAtteint ? 'text-gold-400' : 'text-amber-400'}`}>
                         {francoAtteint ? 'Franco atteint' : `Encore ${manque.toFixed(0)} \u20ac pour le franco`}
                       </span>
                     </div>
@@ -937,7 +961,7 @@
                     </div>
                     <button
                       onClick={() => setPanierOpen(true)}
-                      className="bg-emerald-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-emerald-400 transition-colors flex items-center gap-2"
+                      className="bg-gold-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-gold-400 transition-colors flex items-center gap-2"
                     >
                       Voir le panier
                     </button>
