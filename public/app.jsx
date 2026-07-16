@@ -16317,7 +16317,7 @@ const VueProduitsCatalog = () => {
     if (!confirm(`Supprimer le produit ${ref} ?`)) return;
     setDeleting(ref);
     try {
-      await api.del(`/reference/catalog/${encodeURIComponent(ref)}`);
+      await api.delete(`/reference/catalog/${encodeURIComponent(ref)}`);
       charger();
     } catch (e) { console.error(e); }
     setDeleting(null);
