@@ -20124,10 +20124,25 @@ const VuePartenaires = ({ showToast, readOnly }) => {
 
   const genererMotDePasse = async () => {
     if (!selected) return;
+    const action = selected.has_password ? 'régénérer' : 'générer';
+    const ok = await confirmDialog(`${action === 'régénérer' ? 'Régénérer' : 'Générer'} le mot de passe de ${selected.nom} ?`, {
+      title: 'Mot de passe portail',
+      confirmLabel: 'Continuer',
+      cancelLabel: 'Annuler',
+    });
+    if (!ok) return;
+    let sendEmail = false;
+    if (selected.email) {
+      sendEmail = await confirmDialog(`Envoyer le nouveau mot de passe par email à ${selected.email} ?`, {
+        title: 'Envoi email',
+        confirmLabel: 'Oui, envoyer',
+        cancelLabel: 'Non, ne pas envoyer',
+      });
+    }
     try {
-      const res = await api.post(`/reference/partners/${selected.id}/generate-password`);
+      const res = await api.post(`/reference/partners/${selected.id}/generate-password`, { sendEmail });
       if (res.ok) {
-        showToast('Mot de passe généré', "success");
+        showToast(res.emailSent ? 'Mot de passe généré et email envoyé' : 'Mot de passe généré (sans email)', "success");
         setShowPwd(true);
         charger();
       } else {

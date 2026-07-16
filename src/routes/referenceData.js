@@ -73,8 +73,8 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, amenities, franco_seuil, frais_port, vf_display_name FROM vf_partners ORDER BY nom').all()
-        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, amenities, franco_seuil, frais_port, vf_display_name FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -141,7 +141,7 @@ module.exports = (db) => {
   // Générer un mot de passe pour un partenaire
   router.post('/partners/:id/generate-password', async (req, res) => {
     try {
-      const partner = db.prepare('SELECT id, nom FROM vf_partners WHERE id = ?').get(req.params.id);
+      const partner = db.prepare('SELECT id, nom, email FROM vf_partners WHERE id = ?').get(req.params.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
       const plainPassword = crypto.randomBytes(4).toString('hex'); // 8 caractères hex
@@ -149,10 +149,46 @@ module.exports = (db) => {
 
       db.prepare('UPDATE vf_partners SET password_hash = ?, password_plain = ? WHERE id = ?').run(hash, plainPassword, partner.id);
 
+      // Envoyer l'email si demandé
+      const { sendEmail } = req.body || {};
+      let emailSent = false;
+      if (sendEmail && partner.email) {
+        try {
+          const brevoService = require('../services/brevoService');
+          const portalUrl = (process.env.PUBLIC_URL || 'https://tdm-sequencer-production.up.railway.app') + '/partenaire';
+          const payload = {
+            sender: brevoService.SENDER,
+            to: [{ email: partner.email, name: partner.nom }],
+            subject: 'Terre de Mars — Votre accès portail partenaire',
+            htmlContent: `
+              <div style="font-family: 'DM Sans', Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 32px;">
+                <div style="background: #1e293b; border-radius: 12px; padding: 32px; color: white;">
+                  <h2 style="margin: 0 0 8px; font-size: 18px;">Terre de Mars</h2>
+                  <p style="color: #94a3b8; margin: 0 0 24px; font-size: 14px;">Espace Partenaire</p>
+                  <p style="font-size: 14px; line-height: 1.6; color: #e2e8f0;">Bonjour,</p>
+                  <p style="font-size: 14px; line-height: 1.6; color: #e2e8f0;">Votre mot de passe pour accéder au portail partenaire Terre de Mars :</p>
+                  <div style="background: #0f172a; border-radius: 8px; padding: 16px; margin: 16px 0; text-align: center;">
+                    <code style="font-size: 20px; letter-spacing: 2px; color: #10b981;">${plainPassword}</code>
+                  </div>
+                  <p style="font-size: 14px; line-height: 1.6; color: #e2e8f0;">Accédez au portail :</p>
+                  <a href="${portalUrl}" style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin: 8px 0 16px;">Ouvrir le portail</a>
+                  <p style="font-size: 12px; color: #64748b; margin-top: 24px;">Terre de Mars — Cosmétiques d'exception pour l'hôtellerie</p>
+                </div>
+              </div>`,
+            replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
+          };
+          await brevoService.brevoSendEmail(payload);
+          emailSent = true;
+        } catch (emailErr) {
+          console.error('Erreur envoi email mot de passe:', emailErr.message);
+        }
+      }
+
       res.json({
         ok: true,
         password: plainPassword,
-        message: `Mot de passe généré pour ${partner.nom}.`,
+        emailSent,
+        message: `Mot de passe généré pour ${partner.nom}.` + (emailSent ? ' Email envoyé.' : ''),
       });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
