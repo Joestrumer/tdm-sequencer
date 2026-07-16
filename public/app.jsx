@@ -19122,6 +19122,33 @@ const VueCommandes = ({ showToast }) => {
   const [batchCsvModal, setBatchCsvModal] = useState(false);
   const [batchCsvShippingId, setBatchCsvShippingId] = useState('1');
   const [downloadingBatchCsv, setDownloadingBatchCsv] = useState(false);
+  const [catalogCmd, setCatalogCmd] = useState([]);
+  const [addProductSearchCmd, setAddProductSearchCmd] = useState({});
+  const [editableProducts, setEditableProducts] = useState({});
+
+  useEffect(() => {
+    api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalogCmd(data.filter(c => c.actif)); }).catch(e => console.error(e));
+  }, []);
+
+  const persistProducts = async (orderId, products) => {
+    try {
+      const res = await api.patch(`/partner-orders/${orderId}/products`, { products });
+      if (res && !res.erreur) {
+        setCommandes(prev => prev.map(c => c.id === orderId ? { ...c, products, total_ht: res.total_ht, total_ttc: res.total_ttc } : c));
+      } else {
+        showToast(res?.erreur || 'Erreur sauvegarde produits', 'error');
+      }
+    } catch (e) {
+      showToast('Erreur réseau', 'error');
+    }
+  };
+
+  const getEditableProducts = (c) => {
+    if (editableProducts[c.id]) return editableProducts[c.id];
+    const copy = (c.products || []).map(p => ({ ...p }));
+    setEditableProducts(prev => ({ ...prev, [c.id]: copy }));
+    return copy;
+  };
 
   useEscapeClose(() => { if (!validating) setValidateModal(null); });
 
@@ -19132,7 +19159,7 @@ const VueCommandes = ({ showToast }) => {
         api.get('/partner-orders' + (filtre !== 'tous' ? `?statut=${filtre}` : '')),
         api.get('/partner-orders/counts'),
       ]);
-      if (Array.isArray(orders)) setCommandes(orders);
+      if (Array.isArray(orders)) { setCommandes(orders); setEditableProducts({}); }
       if (c && !c.erreur) setCounts(c);
     } catch (e) {
       showToast('Erreur chargement commandes', 'error');
@@ -19144,7 +19171,9 @@ const VueCommandes = ({ showToast }) => {
 
   const openValidateModal = (commande) => {
     setValidateOptions({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
-    setValidateModal(commande);
+    // Utiliser les produits édités si disponibles
+    const currentProducts = editableProducts[commande.id] || commande.products;
+    setValidateModal({ ...commande, products: currentProducts });
   };
 
   const validerCommande = async () => {
@@ -19565,26 +19594,111 @@ const VueCommandes = ({ showToast }) => {
                   </div>
 
                   {/* Tableau produits */}
-                  <table className="w-full text-sm mb-4">
-                    <thead><tr className="text-xs text-slate-400 border-b border-slate-200">
-                      <th className="text-left py-2 font-medium">Ref</th>
-                      <th className="text-left py-2 font-medium">Produit</th>
-                      <th className="text-center py-2 font-medium">Qté</th>
-                      <th className="text-right py-2 font-medium">PU HT</th>
-                      <th className="text-right py-2 font-medium">Total HT</th>
-                    </tr></thead>
-                    <tbody>
-                      {(c.products || []).map((p, i) => (
-                        <tr key={i} className="border-b border-slate-100">
-                          <td className="py-2 font-mono text-xs text-slate-500">{p.ref}</td>
-                          <td className="py-2 text-slate-700">{p.nom}</td>
-                          <td className="py-2 text-center">{p.quantite}</td>
-                          <td className="py-2 text-right">{p.prix_remise?.toFixed(2)} &euro;</td>
-                          <td className="py-2 text-right font-medium">{p.total_ht?.toFixed(2)} &euro;</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
+                  {(() => {
+                    const isEditable = c.statut === 'en_attente';
+                    const displayProducts = isEditable ? getEditableProducts(c) : (c.products || []);
+                    return (
+                      <>
+                        <table className="w-full text-sm mb-4">
+                          <thead><tr className="text-xs text-slate-400 border-b border-slate-200">
+                            <th className="text-left py-2 font-medium">Ref</th>
+                            <th className="text-left py-2 font-medium">Produit</th>
+                            <th className="text-center py-2 font-medium">Qté</th>
+                            <th className="text-right py-2 font-medium">PU HT</th>
+                            <th className="text-right py-2 font-medium">Total HT</th>
+                            {isEditable && <th className="py-2 w-8"></th>}
+                          </tr></thead>
+                          <tbody>
+                            {displayProducts.map((p, i) => (
+                              <tr key={i} className="border-b border-slate-100">
+                                <td className="py-2 font-mono text-xs text-slate-500">{p.ref}</td>
+                                <td className="py-2 text-slate-700">{p.nom}</td>
+                                <td className="py-2 text-center">
+                                  {isEditable ? (
+                                    <input type="number" min="1" value={p.quantite || 1}
+                                      onChange={e => {
+                                        const val = Math.max(1, parseInt(e.target.value) || 1);
+                                        const updated = displayProducts.map((pr, idx) => {
+                                          if (idx !== i) return pr;
+                                          const unitPrice = pr.prix_ht || 0;
+                                          const tva = pr.tva || 20;
+                                          const totalHT = Math.round(unitPrice * val * 100) / 100;
+                                          const totalTTC = Math.round(totalHT * (1 + tva / 100) * 100) / 100;
+                                          return { ...pr, quantite: val, total_ht: totalHT, total_ttc: totalTTC };
+                                        });
+                                        setEditableProducts(prev => ({ ...prev, [c.id]: updated }));
+                                        persistProducts(c.id, updated);
+                                      }}
+                                      className="w-14 border border-slate-200 rounded px-1 py-0.5 text-xs text-center font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                                  ) : p.quantite}
+                                </td>
+                                <td className="py-2 text-right">{(p.prix_remise ?? p.prix_ht)?.toFixed(2)} &euro;</td>
+                                <td className="py-2 text-right font-medium">{p.total_ht?.toFixed(2)} &euro;</td>
+                                {isEditable && (
+                                  <td className="py-2 text-center">
+                                    <button onClick={(e) => {
+                                      e.stopPropagation();
+                                      const updated = displayProducts.filter((_, idx) => idx !== i);
+                                      setEditableProducts(prev => ({ ...prev, [c.id]: updated }));
+                                      persistProducts(c.id, updated);
+                                    }} className="text-red-400 hover:text-red-600 text-xs" title="Supprimer">&#10005;</button>
+                                  </td>
+                                )}
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+
+                        {/* Ajouter un produit — uniquement pour les commandes en attente */}
+                        {isEditable && (
+                          <div className="relative mb-4">
+                            <div className="flex gap-2">
+                              <input type="text" value={addProductSearchCmd[c.id] || ''} onChange={e => setAddProductSearchCmd(prev => ({ ...prev, [c.id]: e.target.value }))}
+                                placeholder="Ajouter un produit (ref ou nom)..."
+                                className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                              {addProductSearchCmd[c.id] && (
+                                <button onClick={() => setAddProductSearchCmd(prev => ({ ...prev, [c.id]: '' }))} className="text-xs text-slate-400 hover:text-slate-600 px-2">&#10005;</button>
+                              )}
+                            </div>
+                            {(addProductSearchCmd[c.id] || '').length >= 2 && (() => {
+                              const q = (addProductSearchCmd[c.id] || '').toLowerCase();
+                              const matches = catalogCmd.filter(cat =>
+                                cat.ref.toLowerCase().includes(q) || (cat.nom || '').toLowerCase().includes(q)
+                              ).slice(0, 8);
+                              if (!matches.length) return null;
+                              return (
+                                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                                  {matches.map(cat => (
+                                    <button key={cat.ref} onClick={() => {
+                                      const tva = cat.tva || 20;
+                                      const lineHT = cat.prix_ht || 0;
+                                      const newProduct = {
+                                        ref: cat.ref, nom: cat.nom, quantite: 1, prix_ht: cat.prix_ht || 0, tva,
+                                        total_ht: Math.round(lineHT * 100) / 100,
+                                        total_ttc: Math.round(lineHT * (1 + tva / 100) * 100) / 100,
+                                      };
+                                      const current = editableProducts[c.id] || (c.products || []).map(p => ({ ...p }));
+                                      const updated = [...current, newProduct];
+                                      setEditableProducts(prev => ({ ...prev, [c.id]: updated }));
+                                      persistProducts(c.id, updated);
+                                      setAddProductSearchCmd(prev => ({ ...prev, [c.id]: '' }));
+                                      showToast(`${cat.ref} ajouté`, 'success');
+                                    }} className="w-full text-left px-3 py-2 hover:bg-slate-50 flex items-center justify-between border-b border-slate-50 last:border-0">
+                                      <div>
+                                        <span className="text-sm font-medium text-slate-900">{cat.ref}</span>
+                                        <span className="text-xs text-slate-500 ml-2">{cat.nom}</span>
+                                      </div>
+                                      <span className="text-xs font-mono text-slate-600">{(cat.prix_ht || 0).toFixed(2)}&euro;</span>
+                                    </button>
+                                  ))}
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        )}
+                      </>
+                    );
+                  })()}
 
                   {c.notes && <div className="text-xs text-slate-500 italic mb-3">Notes : "{c.notes}"</div>}
 

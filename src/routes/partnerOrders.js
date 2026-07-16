@@ -591,6 +591,42 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Modifier les produits d'une commande en attente ──────────────────────
+  router.patch('/:id/products', (req, res) => {
+    try {
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ?').get(req.params.id);
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+      if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Seules les commandes en attente peuvent être modifiées' });
+
+      const { products } = req.body;
+      if (!Array.isArray(products)) return res.status(400).json({ erreur: 'products doit être un tableau' });
+
+      // Recalculer les totaux
+      let totalHT = 0;
+      let totalTTC = 0;
+      for (const p of products) {
+        totalHT += p.total_ht || 0;
+        totalTTC += p.total_ttc || 0;
+      }
+      totalHT = Math.round(totalHT * 100) / 100;
+      totalTTC = Math.round(totalTTC * 100) / 100;
+
+      db.prepare('UPDATE partner_orders SET products = ?, total_ht = ?, total_ttc = ? WHERE id = ?')
+        .run(JSON.stringify(products), totalHT, totalTTC, req.params.id);
+
+      const updated = db.prepare(`
+        SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact
+        FROM partner_orders po
+        JOIN vf_partners vp ON vp.id = po.partner_id
+        WHERE po.id = ?
+      `).get(req.params.id);
+
+      res.json({ ...updated, products: JSON.parse(updated.products || '[]') });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Annuler commande ─────────────────────────────────────────────────────
   router.post('/:id/cancel', (req, res) => {
     try {
