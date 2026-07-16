@@ -46,33 +46,56 @@
       position: fixed;
       pointer-events: none;
       z-index: 0;
+      overflow: hidden;
     }
     .tache-1 {
-      top: -80px;
-      right: -60px;
-      width: 380px;
-      height: 380px;
-      background: radial-gradient(ellipse at 40% 50%, rgba(162,142,63,0.09) 0%, transparent 65%);
-      border-radius: 45% 55% 50% 40%;
-      transform: rotate(-20deg);
+      top: -40px;
+      right: -30px;
+      width: 420px;
+      height: 420px;
+      background: radial-gradient(ellipse at 45% 45%, rgba(162,142,63,0.18) 0%, rgba(162,142,63,0.08) 35%, transparent 65%);
+      border-radius: 42% 58% 55% 45% / 50% 42% 58% 50%;
+      transform: rotate(-15deg);
     }
     .tache-2 {
-      bottom: -100px;
-      left: -80px;
-      width: 320px;
-      height: 320px;
-      background: radial-gradient(ellipse at 60% 40%, rgba(162,142,63,0.07) 0%, transparent 65%);
-      border-radius: 55% 45% 40% 50%;
-      transform: rotate(15deg);
+      bottom: 5%;
+      left: -40px;
+      width: 360px;
+      height: 360px;
+      background: radial-gradient(ellipse at 55% 50%, rgba(162,142,63,0.14) 0%, rgba(162,142,63,0.06) 35%, transparent 65%);
+      border-radius: 55% 45% 48% 52% / 45% 55% 45% 55%;
+      transform: rotate(10deg);
     }
     .tache-3 {
-      top: 35%;
-      right: -120px;
-      width: 280px;
-      height: 280px;
-      background: radial-gradient(ellipse at 50% 50%, rgba(162,142,63,0.05) 0%, transparent 60%);
-      border-radius: 50% 40% 55% 45%;
-      transform: rotate(30deg);
+      top: 40%;
+      right: 5%;
+      width: 300px;
+      height: 300px;
+      background: radial-gradient(ellipse at 50% 50%, rgba(162,142,63,0.10) 0%, rgba(162,142,63,0.04) 35%, transparent 60%);
+      border-radius: 48% 52% 45% 55% / 52% 48% 52% 48%;
+      transform: rotate(25deg);
+    }
+    .tache-login-1 {
+      top: 10%;
+      right: 5%;
+      width: 45vw;
+      height: 45vw;
+      max-width: 550px;
+      max-height: 550px;
+      background: radial-gradient(ellipse at 50% 50%, rgba(162,142,63,0.20) 0%, rgba(162,142,63,0.10) 30%, rgba(162,142,63,0.03) 55%, transparent 70%);
+      border-radius: 42% 58% 52% 48% / 48% 42% 58% 52%;
+      transform: rotate(-10deg);
+    }
+    .tache-login-2 {
+      bottom: 8%;
+      left: 3%;
+      width: 40vw;
+      height: 40vw;
+      max-width: 480px;
+      max-height: 480px;
+      background: radial-gradient(ellipse at 50% 50%, rgba(162,142,63,0.16) 0%, rgba(162,142,63,0.07) 35%, transparent 65%);
+      border-radius: 55% 45% 48% 52% / 52% 55% 45% 48%;
+      transform: rotate(20deg);
     }
   </style>
 </head>
@@ -135,12 +158,11 @@
 
       return (
         <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
-          <div className="tache tache-1"></div>
-          <div className="tache tache-2"></div>
-          <div className="tache tache-3"></div>
+          <div className="tache tache-login-1"></div>
+          <div className="tache tache-login-2"></div>
           <div className="relative z-10 w-full max-w-sm animate-fade-in text-center">
             <div className="mb-10">
-              <img src="/logo-tdm.png" alt="Terre de Mars" className="h-16 mx-auto mb-6" />
+              <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-24 mx-auto mb-6" />
             </div>
             <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
               <h2 className="text-sm font-medium text-gray-700 mb-1">Espace Partenaire</h2>
@@ -893,7 +915,10 @@
           <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200">
             <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between">
               <div className="flex items-center gap-3">
-                <img src="/logo-tdm.png" alt="Terre de Mars" className="h-8" />
+                <div>
+                  <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-8" />
+                  <div className="text-[9px] text-gold-500 tracking-wider mt-0.5">{partner.nom || partner.contact_nom}</div>
+                </div>
               </div>
               <div className="flex items-center gap-1">
                 <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-3 py-2 rounded-lg text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
