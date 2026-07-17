@@ -100,6 +100,84 @@ module.exports = (db) => {
     }
   });
 
+  // Auto-matcher les produits du catalogue avec les produits VosFactures
+  router.post('/catalog/auto-match-vf', async (req, res) => {
+    try {
+      const { dryRun } = req.body || {};
+      const vfService = require('../services/vosfacturesService')(db);
+      const vfProducts = await vfService.getAllProducts(true);
+
+      // Indexer les produits VF par code normalisé
+      // Un même code peut avoir plusieurs produits VF (ex: P037 500ml vs P037-5000 5L)
+      const vfByCode = {};
+      for (const vf of vfProducts) {
+        const code = (vf.code || '').trim().toUpperCase().replace(/\s+/g, '');
+        if (!code) continue;
+        if (!vfByCode[code]) vfByCode[code] = [];
+        vfByCode[code].push(vf);
+      }
+
+      // Produits du catalogue sans vf_product_id
+      const unmatched = db.prepare("SELECT ref, nom, prix_ht FROM vf_catalog WHERE actif = 1 AND (vf_product_id IS NULL OR vf_product_id = '')").all();
+
+      const matches = [];
+      const stmt = db.prepare('UPDATE vf_catalog SET vf_product_id = ?, nom = ? WHERE ref = ?');
+
+      for (const p of unmatched) {
+        const ref = p.ref.toUpperCase().replace(/\s+/g, '');
+        const candidates = vfByCode[ref] || [];
+
+        if (candidates.length === 0) {
+          matches.push({ ref: p.ref, status: 'no_match', vf_id: null, vf_name: null, score: 0 });
+          continue;
+        }
+
+        // Scorer chaque candidat
+        const scored = candidates.map(vf => {
+          let score = 0;
+          // Score prix : plus le prix VF est proche du prix catalogue, mieux c'est
+          const vfPrice = parseFloat(vf.price_net) || 0;
+          const catPrice = p.prix_ht || 0;
+          if (catPrice > 0 && vfPrice > 0) {
+            const ratio = Math.min(vfPrice, catPrice) / Math.max(vfPrice, catPrice);
+            score += ratio * 50; // max 50 points pour prix identique
+          }
+          // Score quantité vendue : plus il y a de quantité, plus c'est probablement le bon
+          const qty = parseFloat(vf.quantity) || 0;
+          score += Math.min(qty, 500) / 10; // max 50 points pour 500+ vendus
+          return { vf, score };
+        });
+
+        // Trier par score décroissant
+        scored.sort((a, b) => b.score - a.score);
+        const best = scored[0];
+
+        const matchInfo = {
+          ref: p.ref,
+          status: 'matched',
+          vf_id: String(best.vf.id),
+          vf_name: best.vf.name,
+          vf_code: best.vf.code,
+          vf_price: best.vf.price_net,
+          cat_price: p.prix_ht,
+          score: Math.round(best.score),
+          alternatives: scored.length > 1 ? scored.slice(1).map(s => ({ id: s.vf.id, name: s.vf.name, price: s.vf.price_net, score: Math.round(s.score) })) : [],
+        };
+        matches.push(matchInfo);
+
+        if (!dryRun) {
+          stmt.run(String(best.vf.id), best.vf.name, p.ref);
+        }
+      }
+
+      const matched = matches.filter(m => m.status === 'matched').length;
+      const noMatch = matches.filter(m => m.status === 'no_match').length;
+      res.json({ ok: true, total: unmatched.length, matched, noMatch, dryRun: !!dryRun, matches });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   router.patch('/catalog/:ref', (req, res) => {
     try {
       const updates = [];

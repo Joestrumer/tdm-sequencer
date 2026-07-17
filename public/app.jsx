@@ -16297,6 +16297,8 @@ const VueProduitsCatalog = () => {
   const [collapsedCats, setCollapsedCats] = useState({});
   const [customCategories, setCustomCategories] = useState([]);
   const [syncing, setSyncing] = useState(false);
+  const [autoMatching, setAutoMatching] = useState(false);
+  const [matchPreview, setMatchPreview] = useState(null);
   const sortableRefs = useRef({});
 
   const charger = async () => {
@@ -16434,6 +16436,23 @@ const VueProduitsCatalog = () => {
     setSyncing(false);
   };
 
+  const autoMatchVf = async (dryRun) => {
+    setAutoMatching(true);
+    try {
+      const res = await api.post('/reference/catalog/auto-match-vf', { dryRun });
+      if (dryRun) {
+        setMatchPreview(res);
+      } else {
+        setMatchPreview(null);
+        charger();
+        alert(`${res.matched} produit(s) associé(s) automatiquement.`);
+      }
+    } catch (e) {
+      alert('Erreur auto-match : ' + e.message);
+    }
+    setAutoMatching(false);
+  };
+
   const toggleCat = (cat) => setCollapsedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
 
   const handleAddCategory = () => {
@@ -16535,10 +16554,40 @@ const VueProduitsCatalog = () => {
           )}
         </div>
         <span className="text-xs text-slate-400">{filtered.length} produit{filtered.length > 1 ? 's' : ''}</span>
+        <button onClick={() => autoMatchVf(true)} disabled={autoMatching} className="px-3 py-2 rounded-xl border border-purple-200 text-purple-600 text-xs font-medium hover:bg-purple-50 disabled:opacity-50 transition-colors">{autoMatching ? 'Recherche...' : 'Auto-match VF'}</button>
         <button onClick={syncVfNames} disabled={syncing} className="px-3 py-2 rounded-xl border border-blue-200 text-blue-600 text-xs font-medium hover:bg-blue-50 disabled:opacity-50 transition-colors">{syncing ? 'Sync...' : 'Sync noms VF'}</button>
         <button onClick={handleAddCategory} className="px-3 py-2 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs font-medium hover:border-slate-400 hover:text-slate-700 transition-colors">+ Catégorie</button>
         <button onClick={() => setShowAdd(!showAdd)} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 transition-colors">+ Produit</button>
       </div>
+      {matchPreview && (
+        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 animate-fade-in">
+          <div className="flex items-center justify-between mb-3">
+            <div className="text-sm font-medium text-slate-700">
+              Auto-match VosFactures — {matchPreview.matched} trouvé(s) / {matchPreview.total} sans ID VF
+              {matchPreview.noMatch > 0 && <span className="text-slate-400 ml-1">({matchPreview.noMatch} sans correspondance)</span>}
+            </div>
+            <button onClick={() => setMatchPreview(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+          </div>
+          {matchPreview.matches.filter(m => m.status === 'matched').length > 0 && (
+            <div className="space-y-1 max-h-64 overflow-y-auto mb-3">
+              {matchPreview.matches.filter(m => m.status === 'matched').map(m => (
+                <div key={m.ref} className="flex items-center gap-3 text-xs bg-white rounded-lg px-3 py-2 border border-purple-100">
+                  <span className="font-mono text-slate-600 w-24 flex-shrink-0">{m.ref}</span>
+                  <span className="text-slate-400">→</span>
+                  <span className="flex-1 text-slate-800 truncate">{m.vf_name}</span>
+                  <span className="text-slate-500 flex-shrink-0">{m.vf_price ? Number(m.vf_price).toFixed(2) + ' \u20AC' : ''}{m.cat_price ? ' (cat: ' + Number(m.cat_price).toFixed(2) + ' \u20AC)' : ''}</span>
+                  <span className="text-purple-500 font-medium flex-shrink-0">score {m.score}</span>
+                  {m.alternatives.length > 0 && <span className="text-amber-500 flex-shrink-0" title={m.alternatives.map(a => a.name + ' (' + a.score + ')').join('\n')}>+{m.alternatives.length} alt.</span>}
+                </div>
+              ))}
+            </div>
+          )}
+          <div className="flex gap-2">
+            <button onClick={() => autoMatchVf(false)} disabled={autoMatching} className="px-4 py-2 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors">{autoMatching ? 'Application...' : 'Appliquer tout'}</button>
+            <button onClick={() => setMatchPreview(null)} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs hover:bg-slate-50 transition-colors">Annuler</button>
+          </div>
+        </div>
+      )}
       {search && <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Le glisser-déposer est désactivé pendant la recherche.</div>}
       {showAdd && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 animate-fade-in">
