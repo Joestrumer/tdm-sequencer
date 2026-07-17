@@ -16450,10 +16450,10 @@ const VueProduitsCatalog = () => {
     };
   }, []);
 
-  const ProductRow = ({ p }) => {
+  const renderProductRow = (p) => {
     if (editingRef === p.ref) {
       return (
-        <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg" data-ref={p.ref}>
+        <div key={p.ref} className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg" data-ref={p.ref}>
           <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
           <input type="text" value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
           <input type="number" step="0.01" value={editForm.prix_ht} onChange={e => setEditForm(f => ({ ...f, prix_ht: e.target.value }))} className="w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Prix" />
@@ -16465,7 +16465,7 @@ const VueProduitsCatalog = () => {
       );
     }
     return (
-      <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-100 rounded-lg hover:border-slate-200 transition-colors group" data-ref={p.ref}>
+      <div key={p.ref} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-100 rounded-lg hover:border-slate-200 transition-colors group" data-ref={p.ref}>
         {!search && <span className="drag-handle text-slate-300 hover:text-slate-500 text-sm flex-shrink-0" title="Glisser pour changer de catégorie">&#9776;</span>}
         <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
         <span className="flex-1 text-sm text-slate-800 truncate">{p.nom}</span>
@@ -16483,13 +16483,18 @@ const VueProduitsCatalog = () => {
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
-        <input
-          type="text"
-          value={search}
-          onChange={e => setSearch(e.target.value)}
-          placeholder="Rechercher par ref, nom, catégorie..."
-          className="flex-1 max-w-md border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-        />
+        <div className="relative flex-1 max-w-md">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher par ref, nom, catégorie..."
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+          />
+          {search && (
+            <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-lg leading-none" title="Effacer">&times;</button>
+          )}
+        </div>
         <span className="text-xs text-slate-400">{filtered.length} produit{filtered.length > 1 ? 's' : ''}</span>
         <button onClick={handleAddCategory} className="px-3 py-2 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs font-medium hover:border-slate-400 hover:text-slate-700 transition-colors">+ Catégorie</button>
         <button onClick={() => setShowAdd(!showAdd)} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 transition-colors">+ Produit</button>
@@ -16555,7 +16560,7 @@ const VueProduitsCatalog = () => {
                   data-categorie={g.categorie}
                   ref={el => initSortable(el, g.categorie)}
                 >
-                  {g.products.map(p => <ProductRow key={p.ref} p={p} />)}
+                  {g.products.map(p => renderProductRow(p))}
                   {g.products.length === 0 && (
                     <div className="text-xs text-slate-300 text-center py-4 border border-dashed border-slate-200 rounded-lg">
                       Glissez des produits ici
