@@ -74,6 +74,32 @@ module.exports = (db) => {
     }
   });
 
+  // Synchroniser les noms de tous les produits qui ont un vf_product_id
+  router.post('/catalog/sync-vf-names', async (req, res) => {
+    try {
+      const vfService = require('../services/vosfacturesService')(db);
+      const vfProducts = await vfService.getAllProducts(true);
+      const vfMap = {};
+      for (const p of vfProducts) vfMap[String(p.id)] = p.name;
+
+      const catalogProducts = db.prepare('SELECT ref, vf_product_id, nom FROM vf_catalog WHERE vf_product_id IS NOT NULL AND vf_product_id != \'\'').all();
+      const stmt = db.prepare('UPDATE vf_catalog SET nom = ? WHERE ref = ?');
+      let updated = 0;
+      const details = [];
+      for (const p of catalogProducts) {
+        const vfName = vfMap[String(p.vf_product_id)];
+        if (vfName && vfName !== p.nom) {
+          stmt.run(vfName, p.ref);
+          details.push({ ref: p.ref, ancien: p.nom, nouveau: vfName });
+          updated++;
+        }
+      }
+      res.json({ ok: true, total: catalogProducts.length, updated, details });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   router.patch('/catalog/:ref', (req, res) => {
     try {
       const updates = [];

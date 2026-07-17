@@ -16296,6 +16296,7 @@ const VueProduitsCatalog = () => {
   const [deleting, setDeleting] = useState(null);
   const [collapsedCats, setCollapsedCats] = useState({});
   const [customCategories, setCustomCategories] = useState([]);
+  const [syncing, setSyncing] = useState(false);
   const sortableRefs = useRef({});
 
   const charger = async () => {
@@ -16417,6 +16418,22 @@ const VueProduitsCatalog = () => {
     setSaving(false);
   };
 
+  const syncVfNames = async () => {
+    setSyncing(true);
+    try {
+      const res = await api.post('/reference/catalog/sync-vf-names');
+      if (res.updated > 0) {
+        alert(`${res.updated} nom(s) mis à jour depuis VosFactures.\n\n${res.details.map(d => `${d.ref} : ${d.ancien} → ${d.nouveau}`).join('\n')}`);
+        charger();
+      } else {
+        alert('Tous les noms sont déjà à jour.');
+      }
+    } catch (e) {
+      alert('Erreur sync VosFactures : ' + e.message);
+    }
+    setSyncing(false);
+  };
+
   const toggleCat = (cat) => setCollapsedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
 
   const handleAddCategory = () => {
@@ -16518,6 +16535,7 @@ const VueProduitsCatalog = () => {
           )}
         </div>
         <span className="text-xs text-slate-400">{filtered.length} produit{filtered.length > 1 ? 's' : ''}</span>
+        <button onClick={syncVfNames} disabled={syncing} className="px-3 py-2 rounded-xl border border-blue-200 text-blue-600 text-xs font-medium hover:bg-blue-50 disabled:opacity-50 transition-colors">{syncing ? 'Sync...' : 'Sync noms VF'}</button>
         <button onClick={handleAddCategory} className="px-3 py-2 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs font-medium hover:border-slate-400 hover:text-slate-700 transition-colors">+ Catégorie</button>
         <button onClick={() => setShowAdd(!showAdd)} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 transition-colors">+ Produit</button>
       </div>
