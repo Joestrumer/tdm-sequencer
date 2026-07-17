@@ -16425,6 +16425,11 @@ const VueProduitsCatalog = () => {
       ghostClass: 'sortable-ghost',
       chosenClass: 'sortable-chosen',
       dragClass: 'sortable-drag',
+      scroll: true,
+      scrollSensitivity: 80,
+      scrollSpeed: 15,
+      bubbleScroll: true,
+      forceAutoScrollFallback: true,
       onEnd: async (evt) => {
         const ref = evt.item.dataset.ref;
         const toCat = evt.to.dataset.categorie;
