@@ -1605,8 +1605,8 @@ const CATEGORIE_PREFIX = {
   'Parfums & gel hydroalcoolique': ['P039', 'P041', 'P018'],
 };
 
-// Force update pour les refs listées explicitement (corrige les mauvaises catégories)
-const stmtForceCat = db.prepare('UPDATE vf_catalog SET categorie = ? WHERE ref = ?');
+// Seed catégories uniquement pour les produits qui n'en ont pas encore
+const stmtForceCat = db.prepare('UPDATE vf_catalog SET categorie = ? WHERE ref = ? AND categorie IS NULL');
 let catForced = 0;
 for (const [cat, refs] of Object.entries(CATEGORIE_MAP)) {
   for (const ref of refs) {

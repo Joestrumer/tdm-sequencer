@@ -16271,6 +16271,18 @@ const VueCompteEmail = () => {
   );
 };
 
+const CATALOG_CATEGORIES_ORDER = [
+  'Flacons 500 ml',
+  'Recharges 5 litres',
+  'Portes flacons',
+  'Cadeaux VIP & Spa',
+  'Produits Spa & VIP',
+  'Parfums & gel hydroalcoolique',
+  'Produits hygiène format voyage',
+  'Flacons vides',
+  'Autres',
+];
+
 const VueProduitsCatalog = () => {
   const [products, setProducts] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -16282,6 +16294,9 @@ const VueProduitsCatalog = () => {
   const [addForm, setAddForm] = useState({ ref: '', vf_product_id: '', nom: '', prix_ht: '', tva: 20, moq: 1, categorie: '' });
   const [addSaving, setAddSaving] = useState(false);
   const [deleting, setDeleting] = useState(null);
+  const [collapsedCats, setCollapsedCats] = useState({});
+  const [customCategories, setCustomCategories] = useState([]);
+  const sortableRefs = useRef({});
 
   const charger = async () => {
     setLoading(true);
@@ -16306,6 +16321,10 @@ const VueProduitsCatalog = () => {
         tva: parseFloat(addForm.tva) || 20,
         actif: 1,
       });
+      // Set category if selected
+      if (addForm.categorie) {
+        await api.patch(`/reference/catalog/${encodeURIComponent(addForm.ref.trim())}`, { categorie: addForm.categorie });
+      }
       setShowAdd(false);
       setAddForm({ ref: '', vf_product_id: '', nom: '', prix_ht: '', tva: 20, moq: 1, categorie: '' });
       charger();
@@ -16328,6 +16347,32 @@ const VueProduitsCatalog = () => {
     const q = search.toLowerCase();
     return products.filter(p => p.ref.toLowerCase().includes(q) || (p.nom || '').toLowerCase().includes(q) || (p.categorie || '').toLowerCase().includes(q) || (p.csv_ref || '').toLowerCase().includes(q));
   }, [products, search]);
+
+  // All known categories (from products + custom)
+  const allCategories = useMemo(() => {
+    const cats = new Set();
+    for (const p of products) cats.add(p.categorie || 'Autres');
+    for (const c of customCategories) cats.add(c);
+    // Order: predefined first, then custom, then any DB-only
+    const ordered = [];
+    for (const c of CATALOG_CATEGORIES_ORDER) {
+      if (cats.has(c)) { ordered.push(c); cats.delete(c); }
+    }
+    for (const c of cats) ordered.push(c);
+    return ordered;
+  }, [products, customCategories]);
+
+  // Group filtered products by category
+  const grouped = useMemo(() => {
+    const groups = {};
+    for (const cat of allCategories) groups[cat] = [];
+    for (const p of filtered) {
+      const cat = p.categorie || 'Autres';
+      if (!groups[cat]) groups[cat] = [];
+      groups[cat].push(p);
+    }
+    return allCategories.map(cat => ({ categorie: cat, products: groups[cat] || [] }));
+  }, [filtered, allCategories]);
 
   const startEdit = (p) => {
     setEditingRef(p.ref);
@@ -16355,6 +16400,86 @@ const VueProduitsCatalog = () => {
     setSaving(false);
   };
 
+  const toggleCat = (cat) => setCollapsedCats(prev => ({ ...prev, [cat]: !prev[cat] }));
+
+  const handleAddCategory = () => {
+    const name = prompt('Nom de la nouvelle catégorie :');
+    if (!name || !name.trim()) return;
+    const trimmed = name.trim();
+    if (allCategories.includes(trimmed)) return alert('Cette catégorie existe déjà.');
+    setCustomCategories(prev => [...prev, trimmed]);
+  };
+
+  // Initialize SortableJS on each category container
+  const initSortable = useCallback((el, catName) => {
+    if (!el || search) return;
+    // Destroy previous instance
+    if (sortableRefs.current[catName]) {
+      sortableRefs.current[catName].destroy();
+      delete sortableRefs.current[catName];
+    }
+    sortableRefs.current[catName] = new Sortable(el, {
+      group: 'catalog-categories',
+      animation: 150,
+      handle: '.drag-handle',
+      ghostClass: 'sortable-ghost',
+      chosenClass: 'sortable-chosen',
+      dragClass: 'sortable-drag',
+      onEnd: async (evt) => {
+        const ref = evt.item.dataset.ref;
+        const toCat = evt.to.dataset.categorie;
+        if (!ref || !toCat) return;
+        // Revert DOM (let React re-render after fetch)
+        if (evt.from !== evt.to) {
+          evt.from.insertBefore(evt.item, evt.from.children[evt.oldIndex] || null);
+        }
+        try {
+          await api.patch('/reference/catalog/batch-categorie', { updates: [{ ref, categorie: toCat === 'Autres' ? null : toCat }] });
+          charger();
+        } catch (e) { console.error(e); }
+      },
+    });
+  }, [search]);
+
+  // Cleanup sortable instances on unmount
+  useEffect(() => {
+    return () => {
+      for (const key of Object.keys(sortableRefs.current)) {
+        if (sortableRefs.current[key]) sortableRefs.current[key].destroy();
+      }
+    };
+  }, []);
+
+  const ProductRow = ({ p }) => {
+    if (editingRef === p.ref) {
+      return (
+        <div className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg" data-ref={p.ref}>
+          <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
+          <input type="text" value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          <input type="number" step="0.01" value={editForm.prix_ht} onChange={e => setEditForm(f => ({ ...f, prix_ht: e.target.value }))} className="w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Prix" />
+          <input type="text" value={editForm.vf_product_id} onChange={e => setEditForm(f => ({ ...f, vf_product_id: e.target.value }))} placeholder="ID VF" className="w-20 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" />
+          <input type="number" value={editForm.moq} onChange={e => setEditForm(f => ({ ...f, moq: e.target.value }))} className="w-14 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="MOQ" />
+          <button onClick={saveEdit} disabled={saving} className="text-[11px] px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50">{saving ? '...' : 'OK'}</button>
+          <button onClick={cancelEdit} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Annuler</button>
+        </div>
+      );
+    }
+    return (
+      <div className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-100 rounded-lg hover:border-slate-200 transition-colors group" data-ref={p.ref}>
+        {!search && <span className="drag-handle text-slate-300 hover:text-slate-500 text-sm flex-shrink-0" title="Glisser pour changer de catégorie">&#9776;</span>}
+        <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
+        <span className="flex-1 text-sm text-slate-800 truncate">{p.nom}</span>
+        <span className="text-sm text-slate-600 w-20 text-right flex-shrink-0">{p.prix_ht != null ? Number(p.prix_ht).toFixed(2) + ' \u20AC' : '—'}</span>
+        <span className="font-mono text-xs w-16 text-right flex-shrink-0">{p.vf_product_id ? <a href={`https://terredemars.vosfactures.fr/products/${p.vf_product_id}`} target="_blank" rel="noopener" className="text-blue-500 hover:text-blue-700 underline">{p.vf_product_id}</a> : <span className="text-amber-500">—</span>}</span>
+        <span className="text-xs text-slate-400 w-12 text-right flex-shrink-0">x{p.moq ?? 1}</span>
+        <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0">
+          <button onClick={() => startEdit(p)} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Modifier</button>
+          <button onClick={() => handleDelete(p.ref)} disabled={deleting === p.ref} className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50">{deleting === p.ref ? '...' : 'Suppr.'}</button>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className="space-y-4">
       <div className="flex items-center gap-3">
@@ -16366,14 +16491,16 @@ const VueProduitsCatalog = () => {
           className="flex-1 max-w-md border border-slate-200 rounded-xl px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
         />
         <span className="text-xs text-slate-400">{filtered.length} produit{filtered.length > 1 ? 's' : ''}</span>
-        <button onClick={() => setShowAdd(!showAdd)} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 transition-colors">+ Ajouter</button>
+        <button onClick={handleAddCategory} className="px-3 py-2 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs font-medium hover:border-slate-400 hover:text-slate-700 transition-colors">+ Catégorie</button>
+        <button onClick={() => setShowAdd(!showAdd)} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 transition-colors">+ Produit</button>
       </div>
+      {search && <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Le glisser-déposer est désactivé pendant la recherche.</div>}
       {showAdd && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 animate-fade-in">
           <div className="text-sm font-medium text-slate-700 mb-3">Ajouter un produit</div>
           <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
             <div>
-              <label className="text-[11px] text-slate-500 mb-1 block">R&eacute;f&eacute;rence *</label>
+              <label className="text-[11px] text-slate-500 mb-1 block">Référence *</label>
               <input type="text" value={addForm.ref} onChange={e => setAddForm(f => ({ ...f, ref: e.target.value }))} placeholder="P001" className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
             </div>
             <div>
@@ -16392,6 +16519,13 @@ const VueProduitsCatalog = () => {
               <label className="text-[11px] text-slate-500 mb-1 block">TVA %</label>
               <input type="number" value={addForm.tva} onChange={e => setAddForm(f => ({ ...f, tva: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
             </div>
+            <div>
+              <label className="text-[11px] text-slate-500 mb-1 block">Catégorie</label>
+              <select value={addForm.categorie} onChange={e => setAddForm(f => ({ ...f, categorie: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white">
+                <option value="">— Aucune —</option>
+                {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
+              </select>
+            </div>
           </div>
           <div className="flex gap-2 mt-3">
             <button onClick={handleAdd} disabled={addSaving || !addForm.ref.trim() || !addForm.nom.trim()} className="px-4 py-2 rounded-lg bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 disabled:opacity-50 transition-colors">{addSaving ? 'Ajout...' : 'Ajouter le produit'}</button>
@@ -16402,68 +16536,38 @@ const VueProduitsCatalog = () => {
       {loading ? (
         <div className="text-xs text-slate-400 py-4">Chargement...</div>
       ) : (
-        <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
-          <div className="overflow-x-auto">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="border-b border-slate-100">
-                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">Ref</th>
-                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">Nom</th>
-                  <th className="text-right text-xs text-slate-400 font-medium px-4 py-3">Prix HT</th>
-                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">ID VF</th>
-                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">CSV Ref</th>
-                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">VF Ref</th>
-                  <th className="text-right text-xs text-slate-400 font-medium px-4 py-3">MOQ</th>
-                  <th className="text-left text-xs text-slate-400 font-medium px-4 py-3">Catégorie</th>
-                  <th className="text-right text-xs text-slate-400 font-medium px-4 py-3">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filtered.map(p => (
-                  <tr key={p.ref} className="border-b border-slate-50 hover:bg-slate-50/50">
-                    {editingRef === p.ref ? (
-                      <>
-                        <td className="px-4 py-2 font-mono text-xs text-slate-600">{p.ref}</td>
-                        <td className="px-4 py-2"><input type="text" value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
-                        <td className="px-4 py-2"><input type="number" step="0.01" value={editForm.prix_ht} onChange={e => setEditForm(f => ({ ...f, prix_ht: e.target.value }))} className="w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
-                        <td className="px-4 py-2"><input type="text" value={editForm.vf_product_id} onChange={e => setEditForm(f => ({ ...f, vf_product_id: e.target.value }))} placeholder="ID VosFactures" className="w-28 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
-                        <td className="px-4 py-2"><input type="text" value={editForm.csv_ref} onChange={e => setEditForm(f => ({ ...f, csv_ref: e.target.value }))} className="w-24 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
-                        <td className="px-4 py-2"><input type="text" value={editForm.vf_ref} onChange={e => setEditForm(f => ({ ...f, vf_ref: e.target.value }))} className="w-24 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
-                        <td className="px-4 py-2"><input type="number" value={editForm.moq} onChange={e => setEditForm(f => ({ ...f, moq: e.target.value }))} className="w-16 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
-                        <td className="px-4 py-2"><input type="text" value={editForm.categorie} onChange={e => setEditForm(f => ({ ...f, categorie: e.target.value }))} className="w-full border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" /></td>
-                        <td className="px-4 py-2 text-right">
-                          <div className="flex gap-1 justify-end">
-                            <button onClick={saveEdit} disabled={saving} className="text-[11px] px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50">{saving ? '...' : 'OK'}</button>
-                            <button onClick={cancelEdit} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Annuler</button>
-                          </div>
-                        </td>
-                      </>
-                    ) : (
-                      <>
-                        <td className="px-4 py-2 font-mono text-xs text-slate-600">{p.ref}</td>
-                        <td className="px-4 py-2 text-slate-800">{p.nom}</td>
-                        <td className="px-4 py-2 text-right text-slate-700">{p.prix_ht != null ? Number(p.prix_ht).toFixed(2) + ' \u20AC' : '—'}</td>
-                        <td className="px-4 py-2 font-mono text-xs">{p.vf_product_id ? <a href={`https://terredemars.vosfactures.fr/products/${p.vf_product_id}`} target="_blank" rel="noopener" className="text-blue-500 hover:text-blue-700 underline">{p.vf_product_id}</a> : <span className="text-amber-500">—</span>}</td>
-                        <td className="px-4 py-2 text-slate-500 font-mono text-xs">{p.csv_ref || '—'}</td>
-                        <td className="px-4 py-2 text-slate-500 font-mono text-xs">{p.vf_ref || '—'}</td>
-                        <td className="px-4 py-2 text-right text-slate-700">{p.moq ?? 1}</td>
-                        <td className="px-4 py-2 text-slate-500 text-xs">{p.categorie || '—'}</td>
-                        <td className="px-4 py-2 text-right">
-                          <div className="flex gap-1 justify-end">
-                            <button onClick={() => startEdit(p)} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Modifier</button>
-                            <button onClick={() => handleDelete(p.ref)} disabled={deleting === p.ref} className="text-[11px] px-2 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 disabled:opacity-50">{deleting === p.ref ? '...' : 'Supprimer'}</button>
-                          </div>
-                        </td>
-                      </>
-                    )}
-                  </tr>
-                ))}
-                {filtered.length === 0 && (
-                  <tr><td colSpan={9} className="px-4 py-6 text-center text-xs text-slate-400">Aucun produit{search ? ' trouvé' : ''}</td></tr>
-                )}
-              </tbody>
-            </table>
-          </div>
+        <div className="space-y-3">
+          {grouped.map(g => (
+            <div key={g.categorie} className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+              <button
+                onClick={() => toggleCat(g.categorie)}
+                className="w-full flex items-center justify-between px-4 py-3 hover:bg-slate-50 transition-colors text-left"
+              >
+                <div className="flex items-center gap-2">
+                  <span className="text-xs text-slate-400">{collapsedCats[g.categorie] ? '\u25B6' : '\u25BC'}</span>
+                  <span className="text-sm font-semibold text-slate-700">{g.categorie}</span>
+                  <span className="text-xs text-slate-400 bg-slate-100 px-2 py-0.5 rounded-full">{g.products.length}</span>
+                </div>
+              </button>
+              {!collapsedCats[g.categorie] && (
+                <div
+                  className="px-3 pb-3 space-y-1 min-h-[40px]"
+                  data-categorie={g.categorie}
+                  ref={el => initSortable(el, g.categorie)}
+                >
+                  {g.products.map(p => <ProductRow key={p.ref} p={p} />)}
+                  {g.products.length === 0 && (
+                    <div className="text-xs text-slate-300 text-center py-4 border border-dashed border-slate-200 rounded-lg">
+                      Glissez des produits ici
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+          {filtered.length === 0 && (
+            <div className="text-center text-xs text-slate-400 py-6">Aucun produit{search ? ' trouvé' : ''}</div>
+          )}
         </div>
       )}
     </div>

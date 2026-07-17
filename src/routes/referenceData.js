@@ -38,6 +38,29 @@ module.exports = (db) => {
     }
   });
 
+  // Mise à jour batch des catégories (drag & drop)
+  router.patch('/catalog/batch-categorie', (req, res) => {
+    try {
+      const { updates } = req.body;
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return res.status(400).json({ erreur: 'updates[] requis' });
+      }
+      const stmt = db.prepare('UPDATE vf_catalog SET categorie = ? WHERE ref = ?');
+      const run = db.transaction((items) => {
+        let count = 0;
+        for (const { ref, categorie } of items) {
+          const r = stmt.run(categorie || null, ref);
+          count += r.changes;
+        }
+        return count;
+      });
+      const count = run(updates);
+      res.json({ ok: true, updated: count });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   router.patch('/catalog/:ref', (req, res) => {
     try {
       const updates = [];

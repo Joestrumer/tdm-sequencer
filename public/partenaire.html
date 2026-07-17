@@ -394,40 +394,6 @@
       'Autres',
     ];
 
-    const FLACONS_500_REFS = ['P008', 'P010', 'P024', 'P011', 'P007', 'P035', 'P036', 'P037', 'P034', 'P014', 'P019', 'P044', 'P045', 'P046', 'P047'];
-    const PORTES_FLACONS_REFS = ['SPFS', 'PFS', 'PFD', 'PFT', 'PFDS', 'PFSS', 'PFTS', 'BAV'];
-    const VIP_CADEAUX_REFS = ['P016', 'P023', 'P012', 'P009', 'P020', 'P021-20'];
-    const SPA_VIP_REFS = ['P021', 'P022', 'P317-100', 'P005', 'P006', 'P027', 'P003', 'P004', 'P004-500', 'P029'];
-    const PARFUMS_PREFIXES = ['P039', 'P041', 'P018', 'P015'];
-    const FORMAT_VOYAGE_REFS = ['P010-30', 'P010-50', 'P010-150', 'P024-40', 'P011-100', 'P017-30', 'P017', 'P038-30', 'P008-150', 'P008-75', 'P026', 'P035-30', 'P008-30', 'P011-30', 'P042-30', 'P007-30', 'P014-100', 'P034-100', 'P035-100', 'P036-100', 'P037-100', 'P019-50', 'P044-30', 'P046-150', 'P047-30'];
-    const FLACONS_VIDES_REFS = ['P007-300V', 'P008-300V', 'P010-300V', 'P011-300V', 'P024-300V', 'P042V', 'P040V-SANS POMPE', 'P042', 'P040'];
-    const AUTRES_REFS = ['P5L', 'P500ml', 'P300ML', 'SPRAY-VIDE'];
-
-    const getEffectiveCategory = (p) => {
-      const ref = p.ref;
-      const nom = (p.nom || '').toLowerCase();
-      // Flacons vides
-      if (FLACONS_VIDES_REFS.includes(ref)) return 'Flacons vides';
-      // Accessoires & packaging → Autres
-      if (AUTRES_REFS.includes(ref)) return 'Autres';
-      if (ref.startsWith('COFFRET')) return 'Autres';
-      if (nom.includes('pompe') || nom.includes('spray vide')) return 'Autres';
-      // Cat\u00e9gories produits
-      if (FLACONS_500_REFS.includes(ref)) return 'Flacons 500 ml';
-      if (ref.endsWith('-5000')) return 'Recharges 5 litres';
-      if (PORTES_FLACONS_REFS.includes(ref)) return 'Portes flacons';
-      if (VIP_CADEAUX_REFS.includes(ref)) return 'Cadeaux VIP & Spa';
-      if (SPA_VIP_REFS.includes(ref)) return 'Produits Spa & VIP';
-      if (FORMAT_VOYAGE_REFS.includes(ref)) return 'Produits hygi\u00e8ne format voyage';
-      if (PARFUMS_PREFIXES.some(px => ref.startsWith(px))) return 'Parfums & gel hydroalcoolique';
-      // Variantes de flacons 500ml (taille r\u00e9duite) → format voyage
-      const baseMatch = ref.match(/^(P\\d+)-(.+)$/);
-      if (baseMatch && FLACONS_500_REFS.includes(baseMatch[1]) && !ref.endsWith('-5000')) {
-        return 'Produits hygi\u00e8ne format voyage';
-      }
-      return p.categorie || 'Autres';
-    };
-
     const CatalogueView = ({ catalogue, panier, setPanier }) => {
       const [search, setSearch] = useState("");
       const [openCats, setOpenCats] = useState({});
@@ -455,7 +421,7 @@
       const grouped = useMemo(() => {
         const groups = {};
         for (const p of filtered) {
-          const cat = getEffectiveCategory(p);
+          const cat = p.categorie || 'Autres';
           if (!groups[cat]) groups[cat] = [];
           groups[cat].push(p);
         }
@@ -507,7 +473,7 @@
         for (const ref of Object.keys(panier)) {
           const prod = catalogue.find(c => c.ref === ref);
           if (prod) {
-            const cat = getEffectiveCategory(prod);
+            const cat = prod.categorie || 'Autres';
             counts[cat] = (counts[cat] || 0) + 1;
           }
         }

@@ -126,9 +126,15 @@ function findVFProduct(ref, price, catalog, codeMappings, productIdMapping, prod
     if (idEntry) productId = idEntry.valeur;
 
     // Fallback : chercher par REF avec n'importe quel prix (prend le premier match)
+    // On ne matche que les clés de type REF-PRIX (ex: P037-7.50), pas REF-TAILLE-PRIX (ex: P037-5000-41.00)
     if (!productId) {
       const prefix = mappedRef + '-';
-      const fallbackEntry = productIdMapping.find(m => m.code_source.startsWith(prefix));
+      const fallbackEntry = productIdMapping.find(m => {
+        if (!m.code_source.startsWith(prefix)) return false;
+        // Vérifier que ce qui suit le préfixe est un prix (nombre), pas un suffixe de ref (ex: 5000-41.00)
+        const suffix = m.code_source.slice(prefix.length);
+        return /^\d+\.\d{2}$/.test(suffix);
+      });
       if (fallbackEntry) {
         productId = fallbackEntry.valeur;
         logger.debug(`⚠️ findVFProduct fallback: ${lookupKey} non trouvé, utilisation de ${fallbackEntry.code_source} → ${productId}`);
@@ -137,9 +143,14 @@ function findVFProduct(ref, price, catalog, codeMappings, productIdMapping, prod
   }
 
   // Fallback product_name si pas trouvé non plus
+  // Même logique : ne matcher que les clés REF-PRIX, pas REF-TAILLE-PRIX
   if (!productName && productNameMapping) {
     const prefix = mappedRef + '-';
-    const fallbackName = productNameMapping.find(m => m.code_source.startsWith(prefix));
+    const fallbackName = productNameMapping.find(m => {
+      if (!m.code_source.startsWith(prefix)) return false;
+      const suffix = m.code_source.slice(prefix.length);
+      return /^\d+\.\d{2}$/.test(suffix);
+    });
     if (fallbackName) productName = fallbackName.valeur;
   }
 
