@@ -61,6 +61,19 @@ module.exports = (db) => {
     }
   });
 
+  // Récupérer un produit VosFactures par ID (pour auto-remplir le nom)
+  router.get('/catalog/vf-product/:id', async (req, res) => {
+    try {
+      const vfService = require('../services/vosfacturesService')(db);
+      const data = await vfService.getAllProducts(false);
+      const product = data.find(p => String(p.id) === String(req.params.id));
+      if (!product) return res.status(404).json({ erreur: 'Produit VosFactures non trouvé' });
+      res.json({ id: product.id, name: product.name, code: product.code });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   router.patch('/catalog/:ref', (req, res) => {
     try {
       const updates = [];

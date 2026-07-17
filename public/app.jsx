@@ -16385,14 +16385,31 @@ const VueProduitsCatalog = () => {
     if (!editingRef) return;
     setSaving(true);
     try {
+      const newVfId = (editForm.vf_product_id || '').trim();
+      const oldProduct = products.find(p => p.ref === editingRef);
+      const oldVfId = (oldProduct?.vf_product_id || '').trim();
+
+      // Si le vf_product_id a changé, récupérer le nom depuis VosFactures
+      let nomToSave = editForm.nom;
+      if (newVfId && newVfId !== oldVfId) {
+        try {
+          const vfProduct = await api.get(`/reference/catalog/vf-product/${encodeURIComponent(newVfId)}`);
+          if (vfProduct && vfProduct.name) {
+            nomToSave = vfProduct.name;
+          }
+        } catch (e) {
+          console.warn('Impossible de récupérer le nom VosFactures:', e);
+        }
+      }
+
       await api.patch(`/reference/catalog/${encodeURIComponent(editingRef)}`, {
-        nom: editForm.nom,
+        nom: nomToSave,
         prix_ht: parseFloat(editForm.prix_ht) || 0,
         csv_ref: editForm.csv_ref || null,
         vf_ref: editForm.vf_ref || null,
         moq: parseInt(editForm.moq) || 1,
         categorie: editForm.categorie || null,
-        vf_product_id: editForm.vf_product_id || null,
+        vf_product_id: newVfId || null,
       });
       setEditingRef(null);
       charger();
