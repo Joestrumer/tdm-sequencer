@@ -103,7 +103,7 @@ module.exports = (db) => {
   // Auto-matcher les produits du catalogue avec les produits VosFactures
   router.post('/catalog/auto-match-vf', async (req, res) => {
     try {
-      const { dryRun } = req.body || {};
+      const { dryRun, selections } = req.body || {};
       const vfService = require('../services/vosfacturesService')(db);
       const vfProducts = await vfService.getAllProducts(true);
 
@@ -165,14 +165,28 @@ module.exports = (db) => {
         };
         matches.push(matchInfo);
 
-        if (!dryRun) {
-          stmt.run(String(best.vf.id), best.vf.name, p.ref);
+      }
+
+      // Mode application : on utilise les sélections du frontend
+      if (!dryRun && Array.isArray(selections)) {
+        // selections = [{ ref, vf_id, vf_name }]
+        // Construire un index des produits VF par ID pour résoudre le nom
+        const vfById = {};
+        for (const vf of vfProducts) vfById[String(vf.id)] = vf;
+
+        let applied = 0;
+        for (const sel of selections) {
+          const vf = vfById[String(sel.vf_id)];
+          const name = vf ? vf.name : sel.vf_name;
+          stmt.run(String(sel.vf_id), name, sel.ref);
+          applied++;
         }
+        return res.json({ ok: true, applied });
       }
 
       const matched = matches.filter(m => m.status === 'matched').length;
       const noMatch = matches.filter(m => m.status === 'no_match').length;
-      res.json({ ok: true, total: unmatched.length, matched, noMatch, dryRun: !!dryRun, matches });
+      res.json({ ok: true, total: unmatched.length, matched, noMatch, dryRun: true, matches });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }

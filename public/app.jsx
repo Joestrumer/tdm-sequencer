@@ -16299,6 +16299,8 @@ const VueProduitsCatalog = () => {
   const [syncing, setSyncing] = useState(false);
   const [autoMatching, setAutoMatching] = useState(false);
   const [matchPreview, setMatchPreview] = useState(null);
+  const [matchSelections, setMatchSelections] = useState({});
+  const [matchExpanded, setMatchExpanded] = useState({});
   const sortableRefs = useRef({});
 
   const charger = async () => {
@@ -16436,19 +16438,40 @@ const VueProduitsCatalog = () => {
     setSyncing(false);
   };
 
-  const autoMatchVf = async (dryRun) => {
+  const autoMatchVf = async () => {
     setAutoMatching(true);
     try {
-      const res = await api.post('/reference/catalog/auto-match-vf', { dryRun });
-      if (dryRun) {
-        setMatchPreview(res);
-      } else {
-        setMatchPreview(null);
-        charger();
-        alert(`${res.matched} produit(s) associé(s) automatiquement.`);
+      const res = await api.post('/reference/catalog/auto-match-vf', { dryRun: true });
+      // Initialiser la sélection : chaque match "matched" est coché par défaut avec le meilleur candidat
+      const sel = {};
+      for (const m of res.matches) {
+        if (m.status === 'matched') {
+          sel[m.ref] = { vf_id: m.vf_id, vf_name: m.vf_name, accepted: true };
+        }
       }
+      setMatchSelections(sel);
+      setMatchExpanded({});
+      setMatchPreview(res);
     } catch (e) {
       alert('Erreur auto-match : ' + e.message);
+    }
+    setAutoMatching(false);
+  };
+
+  const applySelectedMatches = async () => {
+    const selections = Object.entries(matchSelections)
+      .filter(([, v]) => v.accepted)
+      .map(([ref, v]) => ({ ref, vf_id: v.vf_id, vf_name: v.vf_name }));
+    if (selections.length === 0) { alert('Aucun match sélectionné.'); return; }
+    setAutoMatching(true);
+    try {
+      const res = await api.post('/reference/catalog/auto-match-vf', { dryRun: false, selections });
+      setMatchPreview(null);
+      setMatchSelections({});
+      charger();
+      alert(`${res.applied} produit(s) associé(s).`);
+    } catch (e) {
+      alert('Erreur application : ' + e.message);
     }
     setAutoMatching(false);
   };
@@ -16554,40 +16577,76 @@ const VueProduitsCatalog = () => {
           )}
         </div>
         <span className="text-xs text-slate-400">{filtered.length} produit{filtered.length > 1 ? 's' : ''}</span>
-        <button onClick={() => autoMatchVf(true)} disabled={autoMatching} className="px-3 py-2 rounded-xl border border-purple-200 text-purple-600 text-xs font-medium hover:bg-purple-50 disabled:opacity-50 transition-colors">{autoMatching ? 'Recherche...' : 'Auto-match VF'}</button>
+        <button onClick={autoMatchVf} disabled={autoMatching} className="px-3 py-2 rounded-xl border border-purple-200 text-purple-600 text-xs font-medium hover:bg-purple-50 disabled:opacity-50 transition-colors">{autoMatching ? 'Recherche...' : 'Auto-match VF'}</button>
         <button onClick={syncVfNames} disabled={syncing} className="px-3 py-2 rounded-xl border border-blue-200 text-blue-600 text-xs font-medium hover:bg-blue-50 disabled:opacity-50 transition-colors">{syncing ? 'Sync...' : 'Sync noms VF'}</button>
         <button onClick={handleAddCategory} className="px-3 py-2 rounded-xl border border-dashed border-slate-300 text-slate-500 text-xs font-medium hover:border-slate-400 hover:text-slate-700 transition-colors">+ Catégorie</button>
         <button onClick={() => setShowAdd(!showAdd)} className="px-3 py-2 rounded-xl bg-slate-900 text-white text-xs font-medium hover:bg-slate-700 transition-colors">+ Produit</button>
       </div>
-      {matchPreview && (
-        <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 animate-fade-in">
-          <div className="flex items-center justify-between mb-3">
-            <div className="text-sm font-medium text-slate-700">
-              Auto-match VosFactures — {matchPreview.matched} trouvé(s) / {matchPreview.total} sans ID VF
-              {matchPreview.noMatch > 0 && <span className="text-slate-400 ml-1">({matchPreview.noMatch} sans correspondance)</span>}
+      {matchPreview && (() => {
+        const matched = matchPreview.matches.filter(m => m.status === 'matched');
+        const selectedCount = Object.values(matchSelections).filter(v => v.accepted).length;
+        return (
+          <div className="bg-purple-50 border border-purple-200 rounded-xl p-4 animate-fade-in">
+            <div className="flex items-center justify-between mb-3">
+              <div className="text-sm font-medium text-slate-700">
+                Auto-match VosFactures — {matched.length} trouvé(s) / {matchPreview.total} sans ID VF
+                {matchPreview.noMatch > 0 && <span className="text-slate-400 ml-1">({matchPreview.noMatch} sans correspondance)</span>}
+                <span className="ml-2 text-purple-600">{selectedCount} sélectionné(s)</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <button onClick={() => { const all = {}; for (const m of matched) all[m.ref] = { ...matchSelections[m.ref], accepted: true }; setMatchSelections(prev => ({ ...prev, ...all })); }} className="text-[11px] text-purple-600 hover:text-purple-800">Tout cocher</button>
+                <button onClick={() => { const all = {}; for (const m of matched) all[m.ref] = { ...matchSelections[m.ref], accepted: false }; setMatchSelections(prev => ({ ...prev, ...all })); }} className="text-[11px] text-slate-400 hover:text-slate-600">Tout décocher</button>
+                <button onClick={() => setMatchPreview(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
+              </div>
             </div>
-            <button onClick={() => setMatchPreview(null)} className="text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>
-          </div>
-          {matchPreview.matches.filter(m => m.status === 'matched').length > 0 && (
-            <div className="space-y-1 max-h-64 overflow-y-auto mb-3">
-              {matchPreview.matches.filter(m => m.status === 'matched').map(m => (
-                <div key={m.ref} className="flex items-center gap-3 text-xs bg-white rounded-lg px-3 py-2 border border-purple-100">
-                  <span className="font-mono text-slate-600 w-24 flex-shrink-0">{m.ref}</span>
-                  <span className="text-slate-400">→</span>
-                  <span className="flex-1 text-slate-800 truncate">{m.vf_name}</span>
-                  <span className="text-slate-500 flex-shrink-0">{m.vf_price ? Number(m.vf_price).toFixed(2) + ' \u20AC' : ''}{m.cat_price ? ' (cat: ' + Number(m.cat_price).toFixed(2) + ' \u20AC)' : ''}</span>
-                  <span className="text-purple-500 font-medium flex-shrink-0">score {m.score}</span>
-                  {m.alternatives.length > 0 && <span className="text-amber-500 flex-shrink-0" title={m.alternatives.map(a => a.name + ' (' + a.score + ')').join('\n')}>+{m.alternatives.length} alt.</span>}
-                </div>
-              ))}
+            {matched.length > 0 && (
+              <div className="space-y-1 max-h-96 overflow-y-auto mb-3">
+                {matched.map(m => {
+                  const sel = matchSelections[m.ref] || {};
+                  const expanded = matchExpanded[m.ref];
+                  return (
+                    <div key={m.ref}>
+                      <div className={`flex items-center gap-2 text-xs rounded-lg px-3 py-2 border ${sel.accepted ? 'bg-white border-purple-200' : 'bg-slate-50 border-slate-100 opacity-60'}`}>
+                        <input type="checkbox" checked={!!sel.accepted} onChange={e => setMatchSelections(prev => ({ ...prev, [m.ref]: { ...prev[m.ref], accepted: e.target.checked } }))} className="flex-shrink-0" />
+                        <span className="font-mono text-slate-600 w-24 flex-shrink-0">{m.ref}</span>
+                        <span className="text-slate-400 flex-shrink-0">&rarr;</span>
+                        <span className="flex-1 text-slate-800 truncate" title={sel.vf_name}>{sel.vf_name}</span>
+                        <span className="text-slate-400 flex-shrink-0">{m.cat_price ? Number(m.cat_price).toFixed(2) : '?'} &rarr; {(sel.vf_id === m.vf_id ? m.vf_price : (m.alternatives.find(a => String(a.id) === String(sel.vf_id)) || {}).price) ? Number((sel.vf_id === m.vf_id ? m.vf_price : (m.alternatives.find(a => String(a.id) === String(sel.vf_id)) || {}).price)).toFixed(2) : '?'} &euro;</span>
+                        <span className="text-purple-500 font-medium flex-shrink-0 w-14 text-right">{sel.vf_id === m.vf_id ? m.score : (m.alternatives.find(a => String(a.id) === String(sel.vf_id)) || {}).score || '?'} pts</span>
+                        {m.alternatives.length > 0 && (
+                          <button onClick={() => setMatchExpanded(prev => ({ ...prev, [m.ref]: !prev[m.ref] }))} className="text-amber-500 hover:text-amber-700 flex-shrink-0 font-medium">
+                            {expanded ? '\u25B2' : '\u25BC'} {m.alternatives.length + 1}
+                          </button>
+                        )}
+                      </div>
+                      {expanded && m.alternatives.length > 0 && (
+                        <div className="ml-8 mt-1 space-y-1 mb-1">
+                          {[{ id: m.vf_id, name: m.vf_name, price: m.vf_price, score: m.score }].concat(m.alternatives).map(alt => (
+                            <button
+                              key={alt.id}
+                              onClick={() => setMatchSelections(prev => ({ ...prev, [m.ref]: { vf_id: String(alt.id), vf_name: alt.name, accepted: true } }))}
+                              className={`w-full flex items-center gap-2 text-xs rounded px-3 py-1.5 border text-left transition-colors ${String(sel.vf_id) === String(alt.id) ? 'bg-purple-100 border-purple-300' : 'bg-white border-slate-100 hover:border-purple-200'}`}
+                            >
+                              <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${String(sel.vf_id) === String(alt.id) ? 'border-purple-500 bg-purple-500' : 'border-slate-300'}`}></span>
+                              <span className="flex-1 truncate">{alt.name}</span>
+                              <span className="text-slate-400 flex-shrink-0">{alt.price ? Number(alt.price).toFixed(2) + ' \u20AC' : ''}</span>
+                              <span className="text-purple-500 flex-shrink-0">{alt.score} pts</span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+            <div className="flex gap-2">
+              <button onClick={applySelectedMatches} disabled={autoMatching || selectedCount === 0} className="px-4 py-2 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors">{autoMatching ? 'Application...' : `Appliquer (${selectedCount})`}</button>
+              <button onClick={() => setMatchPreview(null)} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs hover:bg-slate-50 transition-colors">Annuler</button>
             </div>
-          )}
-          <div className="flex gap-2">
-            <button onClick={() => autoMatchVf(false)} disabled={autoMatching} className="px-4 py-2 rounded-lg bg-purple-600 text-white text-xs font-medium hover:bg-purple-700 disabled:opacity-50 transition-colors">{autoMatching ? 'Application...' : 'Appliquer tout'}</button>
-            <button onClick={() => setMatchPreview(null)} className="px-4 py-2 rounded-lg border border-slate-200 text-slate-600 text-xs hover:bg-slate-50 transition-colors">Annuler</button>
           </div>
-        </div>
-      )}
+        );
+      })()}
       {search && <div className="text-xs text-amber-600 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Le glisser-déposer est désactivé pendant la recherche.</div>}
       {showAdd && (
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 animate-fade-in">
