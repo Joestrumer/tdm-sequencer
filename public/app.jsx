@@ -16610,6 +16610,7 @@ const VueProduitsCatalog = () => {
                         <input type="checkbox" checked={!!sel.accepted} onChange={e => setMatchSelections(prev => ({ ...prev, [m.ref]: { ...prev[m.ref], accepted: e.target.checked } }))} className="flex-shrink-0" />
                         <span className="font-mono text-slate-600 w-24 flex-shrink-0">{m.ref}</span>
                         <span className="text-slate-400 flex-shrink-0">&rarr;</span>
+                        <a href={`https://terredemars.vosfactures.fr/products/${sel.vf_id}`} target="_blank" rel="noopener" className="font-mono text-blue-500 hover:text-blue-700 underline flex-shrink-0" onClick={e => e.stopPropagation()}>{sel.vf_id}</a>
                         <span className="flex-1 text-slate-800 truncate" title={sel.vf_name}>{sel.vf_name}</span>
                         <span className="text-slate-400 flex-shrink-0">{m.cat_price ? Number(m.cat_price).toFixed(2) : '?'} &rarr; {(sel.vf_id === m.vf_id ? m.vf_price : (m.alternatives.find(a => String(a.id) === String(sel.vf_id)) || {}).price) ? Number((sel.vf_id === m.vf_id ? m.vf_price : (m.alternatives.find(a => String(a.id) === String(sel.vf_id)) || {}).price)).toFixed(2) : '?'} &euro;</span>
                         <span className="text-purple-500 font-medium flex-shrink-0 w-14 text-right">{sel.vf_id === m.vf_id ? m.score : (m.alternatives.find(a => String(a.id) === String(sel.vf_id)) || {}).score || '?'} pts</span>
@@ -16628,6 +16629,7 @@ const VueProduitsCatalog = () => {
                               className={`w-full flex items-center gap-2 text-xs rounded px-3 py-1.5 border text-left transition-colors ${String(sel.vf_id) === String(alt.id) ? 'bg-purple-100 border-purple-300' : 'bg-white border-slate-100 hover:border-purple-200'}`}
                             >
                               <span className={`w-4 h-4 rounded-full border-2 flex-shrink-0 ${String(sel.vf_id) === String(alt.id) ? 'border-purple-500 bg-purple-500' : 'border-slate-300'}`}></span>
+                              <a href={`https://terredemars.vosfactures.fr/products/${alt.id}`} target="_blank" rel="noopener" className="font-mono text-blue-500 hover:text-blue-700 underline flex-shrink-0" onClick={e => e.stopPropagation()}>{alt.id}</a>
                               <span className="flex-1 truncate">{alt.name}</span>
                               <span className="text-slate-400 flex-shrink-0">{alt.price ? Number(alt.price).toFixed(2) + ' \u20AC' : ''}</span>
                               <span className="text-purple-500 flex-shrink-0">{alt.score} pts</span>
