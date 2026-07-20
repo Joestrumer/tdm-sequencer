@@ -13,7 +13,7 @@ module.exports = (db) => {
 
   router.get('/catalog', (req, res) => {
     try {
-      const rows = db.prepare('SELECT * FROM vf_catalog WHERE actif = 1 ORDER BY ref').all();
+      const rows = db.prepare('SELECT * FROM vf_catalog WHERE actif = 1 ORDER BY sort_order, ref').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -56,6 +56,26 @@ module.exports = (db) => {
       });
       const count = run(updates);
       res.json({ ok: true, updated: count });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Mise à jour de l'ordre des produits dans une catégorie (drag & drop)
+  router.patch('/catalog/batch-order', (req, res) => {
+    try {
+      const { updates } = req.body;
+      if (!Array.isArray(updates) || updates.length === 0) {
+        return res.status(400).json({ erreur: 'updates[] requis' });
+      }
+      const stmt = db.prepare('UPDATE vf_catalog SET sort_order = ?, categorie = ? WHERE ref = ?');
+      const run = db.transaction((items) => {
+        for (const { ref, sort_order, categorie } of items) {
+          stmt.run(sort_order, categorie || null, ref);
+        }
+      });
+      run(updates);
+      res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }

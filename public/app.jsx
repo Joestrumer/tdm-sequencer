@@ -16510,12 +16510,23 @@ const VueProduitsCatalog = () => {
         const ref = evt.item.dataset.ref;
         const toCat = evt.to.dataset.categorie;
         if (!ref || !toCat) return;
-        // Revert DOM (let React re-render after fetch)
+        // Récupérer le nouvel ordre de tous les éléments dans la catégorie cible
+        const children = Array.from(evt.to.children).filter(el => el.dataset.ref);
+        const updates = children.map((el, i) => ({
+          ref: el.dataset.ref,
+          sort_order: i,
+          categorie: toCat === 'Autres' ? null : toCat,
+        }));
+        // Si déplacement entre catégories, aussi réordonner la catégorie source
         if (evt.from !== evt.to) {
-          evt.from.insertBefore(evt.item, evt.from.children[evt.oldIndex] || null);
+          const fromCat = evt.from.dataset.categorie;
+          const fromChildren = Array.from(evt.from.children).filter(el => el.dataset.ref);
+          fromChildren.forEach((el, i) => {
+            updates.push({ ref: el.dataset.ref, sort_order: i, categorie: fromCat === 'Autres' ? null : fromCat });
+          });
         }
         try {
-          await api.patch('/reference/catalog/batch-categorie', { updates: [{ ref, categorie: toCat === 'Autres' ? null : toCat }] });
+          await api.patch('/reference/catalog/batch-order', { updates });
           charger();
         } catch (e) { console.error(e); }
       },

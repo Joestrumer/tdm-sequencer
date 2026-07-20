@@ -1044,6 +1044,7 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN frais_port REAL DEFAULT 0',
   'ALTER TABLE vf_partners ADD COLUMN frais_exonere INTEGER DEFAULT 0',
   'ALTER TABLE vf_catalog ADD COLUMN categorie TEXT',
+  'ALTER TABLE vf_catalog ADD COLUMN sort_order INTEGER DEFAULT 0',
   'ALTER TABLE partner_orders ADD COLUMN validated_by TEXT',
   'ALTER TABLE users ADD COLUMN gsheets_spreadsheet_id TEXT',
   'ALTER TABLE emails ADD COLUMN campaign_id TEXT',
