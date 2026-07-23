@@ -12315,6 +12315,7 @@ const FacturesSingle = ({ showToast }) => {
   const [manualText, setManualText] = useState('');
   const [shippingId, setShippingId] = useState('1302');
   const [deliveryAddress, setDeliveryAddress] = useState('');
+  const [deliveryComment, setDeliveryComment] = useState('');
   const includeShipping = true; // Toujours inclure les frais de port
   const [sendEmail, setSendEmail] = useState(true);
   const [logGSheets, setLogGSheets] = useState(true);
@@ -12642,7 +12643,7 @@ const FacturesSingle = ({ showToast }) => {
       const res = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceData, client: selectedClient, shippingId, deliveryAddress }),
+        body: JSON.stringify({ invoiceData, client: selectedClient, shippingId, deliveryAddress, deliveryComment }),
       });
       if (!res.ok) {
         const errData = await res.json().catch(() => ({}));
@@ -12993,12 +12994,21 @@ const FacturesSingle = ({ showToast }) => {
             </div>
           )}
 
+          {/* Commentaire de livraison */}
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Commentaire de livraison (col. 13 CSV)</label>
+            <textarea value={deliveryComment} onChange={e => setDeliveryComment(e.target.value)}
+              placeholder="Commentaire pour le logisticien..."
+              rows={2}
+              className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm resize-y min-h-[2.5rem]" />
+          </div>
+
           {calculation && (() => {
             const productsHT = calculation.products?.reduce((s, p) => s + (p.total_ht || 0), 0) || 0;
-            const fraisHT = (calculation.frais_port || []).reduce((s, f) => s + f.prix_ht * f.quantite, 0);
+            const fraisHT = (calculation.frais_port || []).reduce((s, f) => s + f.prix_ht * (1 - (f.discount || 0) / 100) * f.quantite, 0);
             const totalHT = productsHT + fraisHT;
             const productsTTC = calculation.products?.reduce((s, p) => s + (p.total_ttc || 0), 0) || 0;
-            const fraisTTC = (calculation.frais_port || []).reduce((s, f) => s + f.prix_ht * f.quantite * 1.2, 0);
+            const fraisTTC = (calculation.frais_port || []).reduce((s, f) => s + f.prix_ht * (1 - (f.discount || 0) / 100) * f.quantite * 1.2, 0);
             const totalTTC = productsTTC + fraisTTC;
             return (
             <div className="space-y-3">
@@ -13180,6 +13190,14 @@ const FacturesSingle = ({ showToast }) => {
                       }}
                       className="w-20 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
                     <span className="text-xs">€ HT</span>
+                    <input type="number" step="1" min="0" max="100" value={f.discount || 0}
+                      onChange={e => {
+                        const newFrais = [...(calculation.frais_port || [])];
+                        newFrais[i] = { ...newFrais[i], discount: parseFloat(e.target.value) || 0 };
+                        setCalculation({ ...calculation, frais_port: newFrais });
+                      }}
+                      className="w-14 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
+                    <span className="text-xs">%</span>
                     <button onClick={() => {
                       const newFrais = (calculation.frais_port || []).filter((_, idx) => idx !== i);
                       setCalculation({ ...calculation, frais_port: newFrais });
@@ -13301,7 +13319,7 @@ const FacturesSingle = ({ showToast }) => {
                 Voir sur VosFactures ↗
               </a>
             )}
-            <button onClick={() => { setStep(1); setResult(null); setMatchedProducts([]); setSelectedClient(null); setCalculation(null); setError(null); setManualText(''); setOrderNumber(''); setDeliveryAddress(''); }}
+            <button onClick={() => { setStep(1); setResult(null); setMatchedProducts([]); setSelectedClient(null); setCalculation(null); setError(null); setManualText(''); setOrderNumber(''); setDeliveryAddress(''); setDeliveryComment(''); }}
               className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200">
               Nouvelle commande
             </button>
@@ -13752,10 +13770,11 @@ const FacturesBatch = ({ showToast }) => {
       const client = order?.client || {};
       const orderShippingId = order?.shippingId || '1302';
       const orderDeliveryAddress = order?.deliveryAddress || '';
+      const orderDeliveryComment = order?.deliveryComment || '';
       const res2 = await fetch(window.location.origin + '/api/factures/csv-logisticien', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ invoiceData, client, shippingId: orderShippingId, deliveryAddress: orderDeliveryAddress }),
+        body: JSON.stringify({ invoiceData, client, shippingId: orderShippingId, deliveryAddress: orderDeliveryAddress, deliveryComment: orderDeliveryComment }),
       });
       if (!res2.ok) {
         const errData = await res2.json().catch(() => ({}));
@@ -13810,6 +13829,7 @@ const FacturesBatch = ({ showToast }) => {
           client: order?.client || {},
           shippingId: order?.shippingId || '1302',
           deliveryAddress: order?.deliveryAddress || '',
+          deliveryComment: order?.deliveryComment || '',
         };
       });
       const res2 = await fetch('/api/factures/csv-logisticien-batch', {
@@ -13867,6 +13887,7 @@ const FacturesBatch = ({ showToast }) => {
         client: order.client || {},
         shippingId: order.shippingId || '1302',
         deliveryAddress: order.deliveryAddress || '',
+        deliveryComment: order.deliveryComment || '',
       }));
       const res = await fetch('/api/factures/csv-logisticien-batch', {
         method: 'POST',
@@ -14080,10 +14101,10 @@ const FacturesBatch = ({ showToast }) => {
         {orders.map(order => {
           const calc = order.calculation;
           const productsHT = calc?.products?.reduce((s, p) => s + (p.total_ht || 0), 0) || 0;
-          const fraisHT = (calc?.frais_port || []).reduce((s, f) => s + f.prix_ht * f.quantite, 0);
+          const fraisHT = (calc?.frais_port || []).reduce((s, f) => s + f.prix_ht * (1 - (f.discount || 0) / 100) * f.quantite, 0);
           const totalHT = productsHT + fraisHT;
           const productsTTC = calc?.products?.reduce((s, p) => s + (p.total_ttc || 0), 0) || 0;
-          const fraisTTC = (calc?.frais_port || []).reduce((s, f) => s + f.prix_ht * f.quantite * 1.2, 0);
+          const fraisTTC = (calc?.frais_port || []).reduce((s, f) => s + f.prix_ht * (1 - (f.discount || 0) / 100) * f.quantite * 1.2, 0);
           const totalTTC = productsTTC + fraisTTC;
 
           return (
@@ -14339,6 +14360,10 @@ const FacturesBatch = ({ showToast }) => {
                           onChange={e => updateOrderFraisPort(order.id, i, 'prix_ht', parseFloat(e.target.value) || 0)}
                           className="w-20 border border-slate-200 rounded px-2 py-0.5 text-xs text-right font-mono" />
                         <span className="text-xs">€ HT</span>
+                        <input type="number" step="1" min="0" max="100" value={f.discount || 0}
+                          onChange={e => updateOrderFraisPort(order.id, i, 'discount', parseFloat(e.target.value) || 0)}
+                          className="w-14 border border-slate-200 rounded px-2 py-0.5 text-xs text-right font-mono" />
+                        <span className="text-xs">%</span>
                         <button onClick={() => removeOrderFrais(order.id, i)} className="ml-1 text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
                       </div>
                     </div>
@@ -14386,6 +14411,15 @@ const FacturesBatch = ({ showToast }) => {
                     <label className="text-xs font-medium text-slate-500 mb-1 block">Adresse de livraison</label>
                     <textarea value={order.deliveryAddress || ''} onChange={e => updateOrderField(order.id, 'deliveryAddress', e.target.value)}
                       placeholder="Si différente de l'adresse de facturation"
+                      rows={2}
+                      className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm resize-y min-h-[2.5rem]" />
+                  </div>
+
+                  {/* Commentaire de livraison */}
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Commentaire de livraison (col. 13 CSV)</label>
+                    <textarea value={order.deliveryComment || ''} onChange={e => updateOrderField(order.id, 'deliveryComment', e.target.value)}
+                      placeholder="Commentaire pour le logisticien..."
                       rows={2}
                       className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm resize-y min-h-[2.5rem]" />
                   </div>

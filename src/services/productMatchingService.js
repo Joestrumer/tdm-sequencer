@@ -298,7 +298,7 @@ function genererCSVLogisticien(invoiceData, client, shippingNames, options = {})
       clean(deliveryCountry) || 'FR',                                    // Pays
       clean(shippingId),                                                 // id du transporteur
       clean(transporterName),                                            // Nom du transporteur
-      clean(invoiceData.notes),                                          // Commentaire de livraison
+      clean(options.deliveryComment || invoiceData.notes || ''),            // Commentaire de livraison
       clean(client.email),                                               // Adresse mail
       clean(client.phone),                                               // Téléphone 1
       '',                                                                // Téléphone 2

@@ -375,7 +375,9 @@ module.exports = (db) => {
         const qty = f.quantite || f.quantity || 1;
         const taxRate = f.tva || 20;
         const priceHT = f.prix_ht || 0;
-        const gross = priceHT * qty * (1 + taxRate / 100);
+        const fraisDiscount = f.discount || 0;
+        const effectivePriceHT = priceHT * (1 - fraisDiscount / 100);
+        const gross = effectivePriceHT * qty * (1 + taxRate / 100);
 
         const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
 
@@ -387,6 +389,10 @@ module.exports = (db) => {
           tax: taxRate,
           quantity: qty,
         };
+        if (fraisDiscount > 0) {
+          position.discount_percent = fraisDiscount;
+          hasDiscount = true;
+        }
         if (vfProduct.productId) position.product_id = vfProduct.productId;
 
         positions.push(position);
@@ -429,10 +435,11 @@ module.exports = (db) => {
         const discount = p.discount || 0;
         return s + priceHT * (1 - discount / 100) * qty;
       }, 0);
-      // Inclure frais de port/préparation dans le total
+      // Inclure frais de port/préparation dans le total (avec discount)
       for (const f of (fraisPort || [])) {
         const qty = f.quantite || f.quantity || 1;
-        montantHT += (f.prix_ht || 0) * qty;
+        const fd = f.discount || 0;
+        montantHT += (f.prix_ht || 0) * (1 - fd / 100) * qty;
       }
       const montantTTC = montantHT * 1.2;
       db.prepare(`
@@ -889,9 +896,9 @@ module.exports = (db) => {
 
   router.post('/csv-logisticien', (req, res) => {
     try {
-      const { invoiceData, client, shippingId, deliveryAddress } = req.body;
+      const { invoiceData, client, shippingId, deliveryAddress, deliveryComment } = req.body;
       const shippingNamesMap = getShippingNames();
-      const csv = genererCSVLogisticien(invoiceData, client, shippingNamesMap, { shippingId, deliveryAddress });
+      const csv = genererCSVLogisticien(invoiceData, client, shippingNamesMap, { shippingId, deliveryAddress, deliveryComment });
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="logisticien-${invoiceData.number || 'facture'}.csv"`);
       res.send(csv);
@@ -914,8 +921,8 @@ module.exports = (db) => {
       const allLines = [];
 
       for (const order of orders) {
-        const { invoiceData, client, shippingId, deliveryAddress } = order;
-        const csv = genererCSVLogisticien(invoiceData, client, shippingNamesMap, { shippingId, deliveryAddress });
+        const { invoiceData, client, shippingId, deliveryAddress, deliveryComment } = order;
+        const csv = genererCSVLogisticien(invoiceData, client, shippingNamesMap, { shippingId, deliveryAddress, deliveryComment });
         const raw = csv.replace(/^\uFEFF/, '');
         const lines = raw.split('\n');
         if (!headerLine && lines.length > 0) headerLine = lines[0];
