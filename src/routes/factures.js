@@ -376,8 +376,8 @@ module.exports = (db) => {
         const taxRate = f.tva || 20;
         const priceHT = f.prix_ht || 0;
         const fraisDiscount = f.discount || 0;
-        const effectivePriceHT = priceHT * (1 - fraisDiscount / 100);
-        const gross = effectivePriceHT * qty * (1 + taxRate / 100);
+        // Calculer gross sur le prix original — VF appliquera le discount via discount_percent
+        const gross = priceHT * qty * (1 + taxRate / 100);
 
         const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
 
