@@ -525,12 +525,17 @@ async function igFetch(url, headers, retries = 3) {
       if (json?.require_login || json?.authenticated === false) {
         throw new Error('IG_LOGIN_REQUIRED: Session invalide — reconfigurer les credentials.');
       }
+      // Détecter status: "fail" générique (session expirée ou autre erreur serveur)
+      if (json?.status === 'fail') {
+        throw new Error(`IG_API_FAIL: ${json.message || 'Erreur inconnue'} (status=fail)`);
+      }
 
       return json;
     } catch (err) {
       if (err.message.includes('IG_LOGIN_REQUIRED')) throw err;
       if (err.message.includes('IG_CHALLENGE')) throw err;
       if (err.message.includes('IG_CHECKPOINT')) throw err;
+      if (err.message.includes('IG_API_FAIL')) throw err;
       if (err.message.includes('IG_SPAM_DETECTED')) throw err;
       if (err.message.includes('IG_RATE_LIMITED')) throw err;
       if (err.message.includes('rate limit') || err.message.includes('429')) throw err;
