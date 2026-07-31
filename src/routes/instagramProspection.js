@@ -165,7 +165,7 @@ module.exports = (db) => {
 
         const mobileRes = await fetch(mobileUrl, {
           headers: {
-            'User-Agent': 'Instagram 441.0.0.2.81 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 588927498)',
+            'User-Agent': 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)',
             'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}`,
             'X-CSRFToken': credentials.csrfToken,
             'X-IG-App-ID': '936619743392459',
@@ -284,7 +284,7 @@ module.exports = (db) => {
         setTimeout(() => ctrl1.abort(), 10000);
         const mobileRes = await fetch('https://i.instagram.com/api/v1/users/instagram/usernameinfo/', {
           headers: {
-            'User-Agent': 'Instagram 441.0.0.2.81 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 588927498)',
+            'User-Agent': 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)',
             'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}`,
             'X-CSRFToken': credentials.csrfToken,
             'X-IG-App-ID': '936619743392459',

@@ -22,7 +22,7 @@ const IG_FOLLOWEES_QUERY_HASH = '58712303d941c6855d4e888c5f0cd22f';
 const IG_FOLLOWERS_QUERY_HASH = 'c76146de99bb02f6415203be841dd25a';
 
 // User-Agents
-const IG_MOBILE_UA = 'Instagram 441.0.0.2.81 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 588927498)';
+const IG_MOBILE_UA = 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)';
 const IG_WEB_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
 
 const DEFAULT_DELAY_MS = 8000;
