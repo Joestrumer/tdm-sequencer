@@ -165,7 +165,7 @@ module.exports = (db) => {
 
         const mobileRes = await fetch(mobileUrl, {
           headers: {
-            'User-Agent': 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)',
+            'User-Agent': 'Instagram 441.0.0.2.81 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 588927498)',
             'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}`,
             'X-CSRFToken': credentials.csrfToken,
             'X-IG-App-ID': '936619743392459',
@@ -186,13 +186,21 @@ module.exports = (db) => {
         results.mobile_status = mobileRes.status;
         if (mobileRes.ok) {
           const data = await mobileRes.json();
-          if (data?.user?.pk) {
+          const userId = data?.user?.pk || data?.user?.id;
+          if (userId) {
             return res.json({
               valid: true,
-              message: `Session valide via API mobile (test: @instagram, id=${data.user.pk})`,
+              message: `Session valide via API mobile (test: @instagram, id=${userId})`,
               api: 'mobile',
             });
           }
+          // 200 OK mais pas de user — session expirée ou format changé
+          if (data?.message === 'login_required' || data?.message === 'challenge_required' || data?.message === 'checkpoint_required') {
+            results.mobile_error = data.message;
+          } else {
+            results.mobile_error = `200 OK mais pas de user (status=${data?.status}, message=${data?.message}, keys=${Object.keys(data || {}).join(',')})`;
+          }
+          logger.warn(`⚠️ IG test mobile @instagram — ${results.mobile_error}`);
         }
       } catch (err) {
         results.mobile_error = err.name === 'AbortError' ? 'timeout' : err.message;
@@ -206,7 +214,7 @@ module.exports = (db) => {
 
         const webRes = await fetch(webUrl, {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
             'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
             'X-CSRFToken': credentials.csrfToken,
             'X-Instagram-AJAX': '1',
@@ -276,7 +284,7 @@ module.exports = (db) => {
         setTimeout(() => ctrl1.abort(), 10000);
         const mobileRes = await fetch('https://i.instagram.com/api/v1/users/instagram/usernameinfo/', {
           headers: {
-            'User-Agent': 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)',
+            'User-Agent': 'Instagram 441.0.0.2.81 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 588927498)',
             'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}`,
             'X-CSRFToken': credentials.csrfToken,
             'X-IG-App-ID': '936619743392459',
@@ -301,7 +309,7 @@ module.exports = (db) => {
         setTimeout(() => ctrl2.abort(), 10000);
         const webRes = await fetch('https://www.instagram.com/api/v1/users/web_profile_info/?username=instagram', {
           headers: {
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36',
+            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
             'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
             'X-CSRFToken': credentials.csrfToken,
             'X-Instagram-AJAX': '1',

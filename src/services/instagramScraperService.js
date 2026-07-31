@@ -22,8 +22,8 @@ const IG_FOLLOWEES_QUERY_HASH = '58712303d941c6855d4e888c5f0cd22f';
 const IG_FOLLOWERS_QUERY_HASH = 'c76146de99bb02f6415203be841dd25a';
 
 // User-Agents
-const IG_MOBILE_UA = 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)';
-const IG_WEB_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/142.0.0.0 Safari/537.36';
+const IG_MOBILE_UA = 'Instagram 441.0.0.2.81 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 588927498)';
+const IG_WEB_UA = 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36';
 
 const DEFAULT_DELAY_MS = 8000;
 const JITTER_MAX_MS = 5000;
@@ -509,8 +509,28 @@ async function igFetch(url, headers, retries = 3) {
         throw new Error(`IG API ${res.status}: ${res.statusText}`);
       }
 
-      return await res.json();
+      const json = await res.json();
+
+      // Détecter login_required / challenge_required dans les réponses 200
+      // Instagram peut renvoyer un 200 avec un message d'erreur dans le body
+      if (json?.message === 'login_required' || json?.status === 'fail' && json?.message?.includes?.('login_required')) {
+        throw new Error('IG_LOGIN_REQUIRED: Session expirée — Instagram demande une reconnexion.');
+      }
+      if (json?.message === 'challenge_required' || json?.challenge) {
+        throw new Error('IG_CHALLENGE_REQUIRED: Instagram demande une vérification (challenge). Reconnectez-vous sur Instagram et reconfigurez vos cookies.');
+      }
+      if (json?.message === 'checkpoint_required') {
+        throw new Error('IG_CHECKPOINT: Instagram a bloqué le compte temporairement. Reconnectez-vous manuellement.');
+      }
+      if (json?.require_login || json?.authenticated === false) {
+        throw new Error('IG_LOGIN_REQUIRED: Session invalide — reconfigurer les credentials.');
+      }
+
+      return json;
     } catch (err) {
+      if (err.message.includes('IG_LOGIN_REQUIRED')) throw err;
+      if (err.message.includes('IG_CHALLENGE')) throw err;
+      if (err.message.includes('IG_CHECKPOINT')) throw err;
       if (err.message.includes('IG_SPAM_DETECTED')) throw err;
       if (err.message.includes('IG_RATE_LIMITED')) throw err;
       if (err.message.includes('rate limit') || err.message.includes('429')) throw err;
@@ -560,6 +580,9 @@ async function fetchUserProfile(username, credentials) {
         phone_number: user.public_phone_number || user.contact_phone_number || null,
         address_street: user.address_street || null,
       };
+    } else {
+      // API mobile a répondu 200 mais sans données user — loguer pour diagnostic
+      logger.warn(`⚠️ IG API privée @${username} — réponse 200 mais pas de user. Clés reçues: ${JSON.stringify(Object.keys(data || {}))}, status: ${data?.status}, message: ${data?.message}`);
     }
   } catch (err) {
     logger.warn(`⚠️ IG API privée @${username} échoué: ${err.message}, tentative API web...`);
