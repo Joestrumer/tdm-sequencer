@@ -525,9 +525,14 @@ async function igFetch(url, headers, retries = 3) {
       if (json?.require_login || json?.authenticated === false) {
         throw new Error('IG_LOGIN_REQUIRED: Session invalide — reconfigurer les credentials.');
       }
-      // Détecter status: "fail" générique (session expirée ou autre erreur serveur)
+      // Détecter status: "fail" — distinguer soft-block IP du fail générique
       if (json?.status === 'fail') {
-        throw new Error(`IG_API_FAIL: ${json.message || 'Erreur inconnue'} (status=fail)`);
+        const msg = json.message || '';
+        // "something went wrong" = soft-block IP (Instagram masque le 429 en erreur serveur)
+        if (msg.includes('sorry') || msg.includes('went wrong') || msg.includes('try again')) {
+          throw new Error(`IG_SOFT_BLOCKED: IP soft-bloquée par Instagram — ${msg}`);
+        }
+        throw new Error(`IG_API_FAIL: ${msg || 'Erreur inconnue'} (status=fail)`);
       }
 
       return json;
@@ -536,6 +541,7 @@ async function igFetch(url, headers, retries = 3) {
       if (err.message.includes('IG_CHALLENGE')) throw err;
       if (err.message.includes('IG_CHECKPOINT')) throw err;
       if (err.message.includes('IG_API_FAIL')) throw err;
+      if (err.message.includes('IG_SOFT_BLOCKED')) throw err;
       if (err.message.includes('IG_SPAM_DETECTED')) throw err;
       if (err.message.includes('IG_RATE_LIMITED')) throw err;
       if (err.message.includes('rate limit') || err.message.includes('429')) throw err;
@@ -590,10 +596,14 @@ async function fetchUserProfile(username, credentials) {
       logger.warn(`⚠️ IG API privée @${username} — réponse 200 mais pas de user. Clés reçues: ${JSON.stringify(Object.keys(data || {}))}, status: ${data?.status}, message: ${data?.message}`);
     }
   } catch (err) {
+    // Soft-block IP ou rate-limit → ne pas fallback sur le web (même ban, ça aggrave le 429)
+    if (err.message.includes('IG_SOFT_BLOCKED') || err.message.includes('IG_RATE_LIMITED') || err.message.includes('IG_SPAM_DETECTED')) {
+      throw err;
+    }
     logger.warn(`⚠️ IG API privée @${username} échoué: ${err.message}, tentative API web...`);
   }
 
-  // Approche 2 : API web (Instaloader-style)
+  // Approche 2 : API web (Instaloader-style) — seulement si l'erreur mobile n'est pas un ban IP
   const url = `${IG_WEB_BASE}/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
   const data = await igFetch(url, webHeaders(credentials, 'api'));
   const user = data?.data?.user;
@@ -1316,10 +1326,12 @@ async function processJob(db, jobId) {
           accountProfile = await fetchUserProfile(user.username, credentials);
         } catch (err) {
           // Spam détecté ou rate limit épuisé → auto-pause le job
-          if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED')) {
+          if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED') || err.message.includes('IG_SOFT_BLOCKED')) {
             logger.warn(`🚫 IG Job ${jobId}: auto-pause — ${err.message}`);
             const pauseMsg = err.message.includes('SPAM')
               ? 'Session flaggée spam par Instagram. Attendez 15-30 min puis reprenez.'
+              : err.message.includes('SOFT_BLOCKED')
+              ? 'IP soft-bloquée par Instagram ("something went wrong"). Attendez 1-2h ou changez d\'IP.'
               : 'Trop de rate limits. Attendez quelques minutes puis reprenez.';
             db.prepare(`
               UPDATE instagram_scrape_jobs
@@ -1674,7 +1686,7 @@ async function searchUsers(query, credentials, maxResults = 150) {
       if (!data.has_more && page > 0) break;
     } catch (err) {
       logger.warn(`⚠️ IG search "${query}" page ${page} échoué: ${err.message}`);
-      if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED')) throw err;
+      if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED') || err.message.includes('IG_SOFT_BLOCKED')) throw err;
       break;
     }
 
@@ -1779,10 +1791,12 @@ async function processCategorySearchJob(db, jobId) {
           searchResults = await searchUsers(query, credentials);
         } catch (err) {
           // Auto-pause sur spam/rate-limit
-          if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED')) {
+          if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED') || err.message.includes('IG_SOFT_BLOCKED')) {
             logger.warn(`🚫 IG Category Job ${jobId}: auto-pause — ${err.message}`);
             const pauseMsg = err.message.includes('SPAM')
               ? 'Session flaggée spam par Instagram. Attendez 15-30 min puis reprenez.'
+              : err.message.includes('SOFT_BLOCKED')
+              ? 'IP soft-bloquée par Instagram ("something went wrong"). Attendez 1-2h ou changez d\'IP.'
               : 'Trop de rate limits. Attendez quelques minutes puis reprenez.';
             db.prepare("UPDATE instagram_scrape_jobs SET status = 'paused', error_message = ?, search_progress = ?, updated_at = datetime('now') WHERE id = ?")
               .run(pauseMsg, JSON.stringify(progress), jobId);
@@ -1842,10 +1856,12 @@ async function processCategorySearchJob(db, jobId) {
             try {
               accountProfile = await fetchUserProfile(user.username, credentials);
             } catch (err) {
-              if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED')) {
+              if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED') || err.message.includes('IG_SOFT_BLOCKED')) {
                 logger.warn(`🚫 IG Category Job ${jobId}: auto-pause (profil) — ${err.message}`);
                 const pauseMsg = err.message.includes('SPAM')
                   ? 'Session flaggée spam par Instagram. Attendez 15-30 min puis reprenez.'
+                  : err.message.includes('SOFT_BLOCKED')
+                  ? 'IP soft-bloquée par Instagram ("something went wrong"). Attendez 1-2h ou changez d\'IP.'
                   : 'Trop de rate limits. Attendez quelques minutes puis reprenez.';
                 db.prepare("UPDATE instagram_scrape_jobs SET status = 'paused', error_message = ?, search_progress = ?, updated_at = datetime('now') WHERE id = ?")
                   .run(pauseMsg, JSON.stringify(progress), jobId);
