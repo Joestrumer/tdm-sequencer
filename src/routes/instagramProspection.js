@@ -179,11 +179,37 @@ module.exports = (db) => {
           // Extraire l'ID depuis pk, pk_id, id (Instagram varie le format selon l'endpoint)
           const userId = user?.pk || user?.pk_id || user?.id;
           if (data?.status === 'ok' && user) {
-            // status=ok + objet user présent → session valide
+            // status=ok + objet user présent → session valide pour le propre profil
+            // Test supplémentaire : vérifier l'accès à un profil tiers (détecte les restrictions de compte)
+            let thirdPartyOk = null;
+            try {
+              const testCtrl = new AbortController();
+              setTimeout(() => testCtrl.abort(), 8000);
+              const testUrl = `https://i.instagram.com/api/v1/users/web_profile_info/?username=instagram`;
+              const testOpts = { headers: igService.privateHeaders(credentials), signal: testCtrl.signal };
+              if (proxy) testOpts.dispatcher = proxy;
+              const testRes = await fetch(testUrl, testOpts);
+              if (testRes.ok) {
+                const testData = await testRes.json();
+                const testUser = testData?.data?.user || testData?.user;
+                thirdPartyOk = !!testUser;
+                if (!thirdPartyOk && testData?.status === 'fail') {
+                  thirdPartyOk = false;
+                }
+              } else {
+                thirdPartyOk = false;
+              }
+            } catch { thirdPartyOk = false; }
+
+            const restriction = thirdPartyOk === false
+              ? ' ⚠️ Accès profils tiers restreint (IP ou compte limité)'
+              : '';
+
             return res.json({
               valid: true,
-              message: `Session valide via API mobile (user_id=${userId || dsUserId}, @${user.username || dsUserId})`,
+              message: `Session valide via API mobile (user_id=${userId || dsUserId}, @${user.username || dsUserId})${restriction}`,
               api: 'mobile',
+              third_party_access: thirdPartyOk,
             });
           }
           // 200 OK mais pas de user — analyser la raison

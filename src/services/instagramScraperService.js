@@ -613,65 +613,97 @@ async function igFetch(url, headers, retries = 3) {
  * Fallback sur l'API web si la private échoue
  */
 async function fetchUserProfile(username, credentials) {
-  // Approche 1 : API privée mobile (Instagrapi-style)
+  // Helper pour normaliser un user privé
+  const normalizePrivateUser = (user) => ({
+    user_id: user.pk?.toString() || user.id?.toString(),
+    username: user.username,
+    full_name: user.full_name,
+    bio: user.biography,
+    external_url: user.external_url,
+    business_email: user.public_email || user.business_email,
+    category: user.category || user.category_name,
+    is_business: user.is_business ? 1 : 0,
+    is_private: user.is_private ? 1 : 0,
+    follower_count: user.follower_count,
+    following_count: user.following_count,
+    city_name: user.city_name || null,
+    phone_country_code: user.public_phone_country_code ? `+${user.public_phone_country_code}` : null,
+    phone_number: user.public_phone_number || user.contact_phone_number || null,
+    address_street: user.address_street || null,
+  });
+
+  let lastPrivateError = null;
+
+  // Approche 1 : API privée mobile — /users/{username}/usernameinfo/ (endpoint principal instagrapi)
   try {
     const url = `${IG_PRIVATE_BASE}/users/${encodeURIComponent(username)}/usernameinfo/`;
     const data = await igFetch(url, privateHeaders(credentials));
     const user = data?.user;
     if (user) {
-      logger.info(`📱 IG profil @${username} via API privée OK`);
+      logger.info(`📱 IG profil @${username} via API privée (usernameinfo) OK`);
+      return normalizePrivateUser(user);
+    }
+    logger.warn(`⚠️ IG API privée @${username} usernameinfo — 200 mais pas de user. status: ${data?.status}, message: ${data?.message}`);
+  } catch (err) {
+    lastPrivateError = err;
+    logger.warn(`⚠️ IG API privée @${username} usernameinfo échoué: ${err.message}`);
+  }
+
+  // Approche 2 : API privée mobile — /users/web_profile_info/ (endpoint alternatif instagrapi)
+  // Même host (i.instagram.com), endpoint différent → peut contourner un block ciblé sur usernameinfo
+  try {
+    const url = `${IG_PRIVATE_BASE}/users/web_profile_info/?username=${encodeURIComponent(username)}`;
+    const data = await igFetch(url, privateHeaders(credentials));
+    // Réponse au format web: data.data.user ou data.user
+    const user = data?.data?.user || data?.user;
+    if (user) {
+      logger.info(`📱 IG profil @${username} via API privée (web_profile_info) OK`);
+      return normalizePrivateUser(user);
+    }
+    logger.warn(`⚠️ IG API privée @${username} web_profile_info — 200 mais pas de user. status: ${data?.status}`);
+  } catch (err) {
+    logger.warn(`⚠️ IG API privée @${username} web_profile_info échoué: ${err.message}`);
+    // Si les 2 endpoints privés échouent en soft-block → ne pas fallback web (même IP)
+    if (lastPrivateError?.message?.includes('IG_SOFT_BLOCKED') && err.message.includes('IG_SOFT_BLOCKED')) {
+      throw err; // Les 2 endpoints privés soft-bloqués, ça ne sert à rien d'essayer le web
+    }
+    if (err.message.includes('IG_SPAM_DETECTED') || err.message.includes('IG_RATE_LIMITED')) {
+      throw err;
+    }
+  }
+
+  // Approche 3 : API web (www.instagram.com) — dernier recours
+  try {
+    const url = `${IG_WEB_BASE}/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
+    const data = await igFetch(url, webHeaders(credentials, 'api'));
+    const user = data?.data?.user;
+    if (user) {
+      logger.info(`🌐 IG profil @${username} via API web OK`);
       return {
-        user_id: user.pk?.toString() || user.id?.toString(),
+        user_id: user.id || user.pk,
         username: user.username,
         full_name: user.full_name,
         bio: user.biography,
         external_url: user.external_url,
-        business_email: user.public_email || user.business_email,
-        category: user.category || user.category_name,
-        is_business: user.is_business ? 1 : 0,
+        business_email: user.business_email || user.public_email,
+        category: user.category_name || user.category,
+        is_business: user.is_business_account || user.is_professional_account ? 1 : 0,
         is_private: user.is_private ? 1 : 0,
-        follower_count: user.follower_count,
-        following_count: user.following_count,
-        city_name: user.city_name || null,
+        follower_count: user.edge_followed_by?.count || user.follower_count,
+        following_count: user.edge_follow?.count || user.following_count,
+        city_name: user.city_name || user.business_address_json?.city_name || null,
         phone_country_code: user.public_phone_country_code ? `+${user.public_phone_country_code}` : null,
-        phone_number: user.public_phone_number || user.contact_phone_number || null,
-        address_street: user.address_street || null,
+        phone_number: user.business_phone_number || user.public_phone_number || user.contact_phone_number || null,
+        address_street: user.address_street || user.business_address_json?.street_address || null,
       };
-    } else {
-      // API mobile a répondu 200 mais sans données user — loguer pour diagnostic
-      logger.warn(`⚠️ IG API privée @${username} — réponse 200 mais pas de user. Clés reçues: ${JSON.stringify(Object.keys(data || {}))}, status: ${data?.status}, message: ${data?.message}`);
     }
   } catch (err) {
-    // Soft-block IP ou rate-limit → ne pas fallback sur le web (même ban, ça aggrave le 429)
-    if (err.message.includes('IG_SOFT_BLOCKED') || err.message.includes('IG_RATE_LIMITED') || err.message.includes('IG_SPAM_DETECTED')) {
-      throw err;
-    }
-    logger.warn(`⚠️ IG API privée @${username} échoué: ${err.message}, tentative API web...`);
+    logger.warn(`⚠️ IG API web @${username} échoué: ${err.message}`);
   }
 
-  // Approche 2 : API web (Instaloader-style) — seulement si l'erreur mobile n'est pas un ban IP
-  const url = `${IG_WEB_BASE}/api/v1/users/web_profile_info/?username=${encodeURIComponent(username)}`;
-  const data = await igFetch(url, webHeaders(credentials, 'api'));
-  const user = data?.data?.user;
-  if (!user) throw new Error(`Profil Instagram @${username} non trouvé`);
-
-  return {
-    user_id: user.id || user.pk,
-    username: user.username,
-    full_name: user.full_name,
-    bio: user.biography,
-    external_url: user.external_url,
-    business_email: user.business_email || user.public_email,
-    category: user.category_name || user.category,
-    is_business: user.is_business_account || user.is_professional_account ? 1 : 0,
-    is_private: user.is_private ? 1 : 0,
-    follower_count: user.edge_followed_by?.count || user.follower_count,
-    following_count: user.edge_follow?.count || user.following_count,
-    city_name: user.city_name || user.business_address_json?.city_name || null,
-    phone_country_code: user.public_phone_country_code ? `+${user.public_phone_country_code}` : null,
-    phone_number: user.business_phone_number || user.public_phone_number || user.contact_phone_number || null,
-    address_street: user.address_street || user.business_address_json?.street_address || null,
-  };
+  // Tout a échoué — remonter l'erreur la plus pertinente
+  if (lastPrivateError) throw lastPrivateError;
+  throw new Error(`Profil Instagram @${username} non trouvé (tous les endpoints échoués)`);
 }
 
 /**
@@ -697,8 +729,15 @@ async function fetchFollowingPrivate(userId, credentials, maxAccounts) {
   let maxId = '';
 
   while (following.length < maxAccounts) {
-    let url = `${IG_PRIVATE_BASE}/friendships/${userId}/following/?count=200&search_surface=follow_list_page`;
-    if (maxId) url += `&max_id=${maxId}`;
+    const params = new URLSearchParams({
+      count: '200',
+      rank_token: `${extractUserId(credentials.sessionId)}_${DEVICE.uuid}`,
+      search_surface: 'follow_list_page',
+      query: '',
+      enable_groups: 'true',
+    });
+    if (maxId) params.set('max_id', maxId);
+    let url = `${IG_PRIVATE_BASE}/friendships/${userId}/following/?${params}`;
 
     const data = await igFetch(url, privateHeaders(credentials));
 
@@ -788,8 +827,15 @@ async function fetchFollowersPrivate(userId, credentials, maxAccounts) {
   let maxId = '';
 
   while (followers.length < maxAccounts) {
-    let url = `${IG_PRIVATE_BASE}/friendships/${userId}/followers/?count=200&search_surface=follow_list_page`;
-    if (maxId) url += `&max_id=${maxId}`;
+    const params = new URLSearchParams({
+      count: '200',
+      rank_token: `${extractUserId(credentials.sessionId)}_${DEVICE.uuid}`,
+      search_surface: 'follow_list_page',
+      query: '',
+      enable_groups: 'true',
+    });
+    if (maxId) params.set('max_id', maxId);
+    let url = `${IG_PRIVATE_BASE}/friendships/${userId}/followers/?${params}`;
 
     const data = await igFetch(url, privateHeaders(credentials));
 
@@ -1231,6 +1277,19 @@ async function processJob(db, jobId) {
       }
     } else {
       // ── Mode normal : premier lancement ──
+
+      // Étape 0 : Warm-up — requête sur le propre profil pour "réveiller" la session
+      // (identique à ce que fait instagrapi avant toute action)
+      try {
+        const dsUserId = extractUserId(credentials.sessionId);
+        if (dsUserId) {
+          await igFetch(`${IG_PRIVATE_BASE}/users/${dsUserId}/info/`, privateHeaders(credentials));
+          logger.info(`📱 IG warm-up session OK (user_id=${dsUserId})`);
+          await sleep(2000 + Math.random() * 3000); // Pause naturelle entre warm-up et scraping
+        }
+      } catch (warmupErr) {
+        logger.warn(`⚠️ IG warm-up échoué: ${warmupErr.message} — tentative de scraping quand même`);
+      }
 
       // Étape 1 : Récupérer le profil source
       db.prepare("UPDATE instagram_scrape_jobs SET status = 'fetching_profile', updated_at = datetime('now') WHERE id = ?").run(jobId);
