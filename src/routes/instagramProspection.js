@@ -176,11 +176,13 @@ module.exports = (db) => {
         if (mobileRes.ok) {
           const data = await mobileRes.json();
           const user = data?.user;
-          const userId = user?.pk || user?.id;
-          if (userId) {
+          // Extraire l'ID depuis pk, pk_id, id (Instagram varie le format selon l'endpoint)
+          const userId = user?.pk || user?.pk_id || user?.id;
+          if (data?.status === 'ok' && user) {
+            // status=ok + objet user présent → session valide
             return res.json({
               valid: true,
-              message: `Session valide via API mobile (user_id=${userId}, @${user.username || dsUserId})`,
+              message: `Session valide via API mobile (user_id=${userId || dsUserId}, @${user.username || dsUserId})`,
               api: 'mobile',
             });
           }
@@ -201,11 +203,13 @@ module.exports = (db) => {
       }
 
       // Test 2 : API web (www.instagram.com) — fallback
-      // Utilise webHeaders() du service pour la cohérence
+      // L'API web n'a pas d'endpoint /users/{id}/info/, on utilise web_profile_info
+      // avec le username récupéré du test mobile, ou un test léger sur l'endpoint accounts
       try {
         const controller2 = new AbortController();
         setTimeout(() => controller2.abort(), 10000);
-        const webUrl = `https://www.instagram.com/api/v1/users/${dsUserId}/info/`;
+        // Endpoint léger qui fonctionne avec le web API et valide la session
+        const webUrl = `https://www.instagram.com/api/v1/accounts/edit/web_form_data/`;
 
         const webRes = await fetch(webUrl, {
           headers: igService.webHeaders(credentials, 'api'),
@@ -215,11 +219,11 @@ module.exports = (db) => {
         results.web_status = webRes.status;
         if (webRes.ok) {
           const data = await webRes.json();
-          const user = data?.user || data?.data?.user;
-          if (user?.id || user?.pk) {
+          // Cet endpoint retourne les infos du compte connecté si la session est valide
+          if (data?.form_data || data?.status === 'ok' || data?.user) {
             return res.json({
               valid: true,
-              message: `Session valide via API web (user_id=${user.id || user.pk}, @${user.username || dsUserId})`,
+              message: `Session valide via API web`,
               api: 'web',
             });
           }
