@@ -12,6 +12,21 @@ const logger = require('../config/logger');
 const { findEmailsFromWebsite } = require('./mapsEmailFinder');
 const { extractEmails } = require('./hotelScraperService');
 
+// ─── Proxy Instagram (optionnel) ────────────────────────────────────────────
+// Configurer INSTAGRAM_PROXY dans .env pour router les requêtes IG via un proxy résidentiel
+// Format: http://user:pass@host:port ou socks5://user:pass@host:port
+let igProxyDispatcher = null;
+if (process.env.INSTAGRAM_PROXY) {
+  try {
+    const { ProxyAgent } = require('undici');
+    igProxyDispatcher = new ProxyAgent(process.env.INSTAGRAM_PROXY);
+    const masked = process.env.INSTAGRAM_PROXY.replace(/:\/\/([^:]+):([^@]+)@/, '://$1:***@');
+    logger.info(`🌐 IG Proxy configuré: ${masked}`);
+  } catch (err) {
+    logger.warn(`⚠️ IG Proxy non disponible: ${err.message}`);
+  }
+}
+
 // ─── Configuration IG API ───────────────────────────────────────────────────
 
 // Approche Instagrapi : API privée mobile (i.instagram.com) — plus fiable, autre pool de serveurs
@@ -475,7 +490,9 @@ async function igFetch(url, headers, retries = 3) {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 15000);
 
-      const res = await fetch(url, { headers, signal: controller.signal });
+      const fetchOpts = { headers, signal: controller.signal };
+      if (igProxyDispatcher) fetchOpts.dispatcher = igProxyDispatcher;
+      const res = await fetch(url, fetchOpts);
       clearTimeout(timeout);
 
       if (res.status === 429) {
@@ -2052,6 +2069,7 @@ module.exports = {
   igFetch,
   privateHeaders,
   webHeaders,
+  getProxyDispatcher: () => igProxyDispatcher,
   fetchUserProfile,
   fetchFollowingList,
   classifyBusiness,

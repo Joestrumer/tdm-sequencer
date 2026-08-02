@@ -167,10 +167,10 @@ module.exports = (db) => {
         // Tester avec le propre user_id — moins susceptible d'être rate-limité
         const mobileUrl = `https://i.instagram.com/api/v1/users/${dsUserId}/info/`;
 
-        const mobileRes = await fetch(mobileUrl, {
-          headers: igService.privateHeaders(credentials),
-          signal: controller1.signal,
-        });
+        const fetchOpts1 = { headers: igService.privateHeaders(credentials), signal: controller1.signal };
+        const proxy = igService.getProxyDispatcher();
+        if (proxy) fetchOpts1.dispatcher = proxy;
+        const mobileRes = await fetch(mobileUrl, fetchOpts1);
 
         results.mobile_status = mobileRes.status;
         if (mobileRes.ok) {
@@ -211,10 +211,10 @@ module.exports = (db) => {
         // Endpoint léger qui fonctionne avec le web API et valide la session
         const webUrl = `https://www.instagram.com/api/v1/accounts/edit/web_form_data/`;
 
-        const webRes = await fetch(webUrl, {
-          headers: igService.webHeaders(credentials, 'api'),
-          signal: controller2.signal,
-        });
+        const fetchOpts2 = { headers: igService.webHeaders(credentials, 'api'), signal: controller2.signal };
+        const proxy2 = igService.getProxyDispatcher();
+        if (proxy2) fetchOpts2.dispatcher = proxy2;
+        const webRes = await fetch(webUrl, fetchOpts2);
 
         results.web_status = webRes.status;
         if (webRes.ok) {
