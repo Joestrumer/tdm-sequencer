@@ -382,6 +382,8 @@ const DEVICE = {
   phoneId: randomUUID(),
   androidDeviceId: 'android-' + Math.random().toString(36).substring(2, 18),
   advertisingId: randomUUID(),
+  // mid = machine ID, token base64url stable par device (28 chars)
+  mid: Buffer.from(randomUUID().replace(/-/g, '').slice(0, 21), 'hex').toString('base64url'),
 };
 
 // ─── Credentials ────────────────────────────────────────────────────────────
@@ -410,16 +412,18 @@ function hasCredentials(db) {
 
 /**
  * Construit les headers pour l'API privée mobile via i.instagram.com
- * Auth via Cookie (pas Bearer token — le Bearer nécessite un vrai login mobile)
+ * Aligné sur instagrapi v2.14+ (https://github.com/subzeroid/instagrapi)
  */
 function privateHeaders(credentials) {
   const dsUserId = extractUserId(credentials.sessionId);
+  const now = Date.now() / 1000;
 
   return {
     'User-Agent': IG_MOBILE_UA,
-    'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}`,
+    'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}; mid=${DEVICE.mid}`,
     'X-CSRFToken': credentials.csrfToken,
-    'X-IG-App-ID': '936619743392459',
+    // App ID mobile (567067343352427) — PAS l'ID web (936619743392459)
+    'X-IG-App-ID': '567067343352427',
     'X-IG-Device-ID': DEVICE.uuid,
     'X-IG-Family-Device-ID': DEVICE.phoneId,
     'X-IG-Android-ID': DEVICE.androidDeviceId,
@@ -427,22 +431,47 @@ function privateHeaders(credentials) {
     'X-IG-Capabilities': '3brTv10=',
     'X-IG-App-Locale': 'en_US',
     'X-IG-Device-Locale': 'en_US',
+    'X-IG-Mapped-Locale': 'en_US',
     'X-IG-WWW-Claim': '0',
-    'X-Pigeon-Rawclienttime': String(Date.now() / 1000),
+    // Bloks version ID — obligatoire pour app version 428.0.0.47.67
+    'X-Bloks-Version-Id': '7189b949425f9bf80ea8bd880cf5a3080b292d9b1c4b38a18d112f7c4b71e7a8',
+    'X-Bloks-Is-Layout-RTL': 'false',
+    'X-Bloks-Is-Panorama-Enabled': 'true',
+    // Pigeon (analytics)
+    'X-Pigeon-Rawclienttime': now.toFixed(3),
     'X-Pigeon-Session-Id': `UFS-${randomUUID()}-1`,
+    // Bandwidth (randomisé pour ressembler à un vrai device)
+    'X-IG-Bandwidth-Speed-KBPS': (Math.random() * 500 + 2500).toFixed(3),
+    'X-IG-Bandwidth-TotalBytes-B': String(Math.floor(Math.random() * 85000000 + 5000000)),
+    'X-IG-Bandwidth-TotalTime-MS': String(Math.floor(Math.random() * 7000 + 2000)),
+    // Timezone
+    'X-IG-Timezone-Offset': String(-new Date().getTimezoneOffset() * 60),
+    // SALT IDs (randomisé par requête, range instagrapi)
+    'X-IG-SALT-IDS': String(Math.floor(Math.random() * 100000 + 1061162222)),
+    // FB / Tigon engine
     'X-FB-HTTP-Engine': 'Tigon/MNS/TCP',
     'X-FB-Client-IP': 'True',
     'X-FB-Server-Cluster': 'True',
+    'X-Tigon-Is-Retry': 'False',
+    // Zero balance (transport layer)
+    'X-Zero-Balance': 'INIT',
+    'X-Zero-Eh': '',
+    'X-Zero-State': 'unknown',
+    'Zero-HTTP-Network-Interface': 'wifi',
+    // Navigation chain (fingerprint app)
+    'X-IG-Nav-Chain': '9MV:self_profile:2:main_profile:1589462283:8',
+    // Priorité requête
+    'Priority': 'u=3',
+    // User identification
     'IG-INTENDED-USER-ID': dsUserId || '0',
+    'IG-U-DS-USER-ID': dsUserId || '',
+    // App startup
+    'X-IG-App-Startup-Country': 'FR',
     'Accept-Language': 'en-US',
     'Accept-Encoding': 'gzip, deflate',
     'Host': 'i.instagram.com',
     'Connection': 'keep-alive',
     'Accept': '*/*',
-    // Sec-Fetch-* headers — requis par la couche sécurité IG (sinon 400 "SecFetch Policy violation")
-    'Sec-Fetch-Site': 'same-origin',
-    'Sec-Fetch-Mode': 'cors',
-    'Sec-Fetch-Dest': 'empty',
   };
 }
 
