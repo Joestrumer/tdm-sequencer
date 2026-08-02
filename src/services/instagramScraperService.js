@@ -2034,6 +2034,8 @@ module.exports = {
   hasCredentials,
   extractUsername,
   igFetch,
+  privateHeaders,
+  webHeaders,
   fetchUserProfile,
   fetchFollowingList,
   classifyBusiness,

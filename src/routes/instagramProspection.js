@@ -131,6 +131,8 @@ module.exports = (db) => {
   // Teste via l'API privée mobile (i.instagram.com) en priorité,
   // puis via l'API web (www.instagram.com) en fallback.
   // Une seule requête par API pour ne pas aggraver un éventuel rate limit.
+  // Utilise le propre compte de l'utilisateur (ds_user_id) au lieu de @instagram
+  // pour éviter les protections spéciales sur les gros comptes.
   router.post('/test-credentials', async (req, res) => {
     try {
       // Protection rate-limit : si on a recu un 429 recemment, ne pas appeler IG
@@ -152,89 +154,72 @@ module.exports = (db) => {
         return res.json({ valid: false, error: 'Credentials non configurées' });
       }
 
+      // Extraire le ds_user_id pour tester sur le propre compte de l'utilisateur
+      const dsUserId = credentials.sessionId.split('%3A')[0] || credentials.sessionId.split(':')[0];
+
       const results = {};
 
       // Test 1 : API privée mobile (i.instagram.com) — pool de serveurs différent
+      // Utilise privateHeaders() du service pour avoir les device IDs cohérents
       try {
         const controller1 = new AbortController();
         setTimeout(() => controller1.abort(), 10000);
-        const mobileUrl = 'https://i.instagram.com/api/v1/users/instagram/usernameinfo/';
-
-        // Auth via Cookie (pas Bearer — le Bearer nécessite un vrai login mobile)
-        const dsUserId = credentials.sessionId.split('%3A')[0] || credentials.sessionId.split(':')[0];
+        // Tester avec le propre user_id — moins susceptible d'être rate-limité
+        const mobileUrl = `https://i.instagram.com/api/v1/users/${dsUserId}/info/`;
 
         const mobileRes = await fetch(mobileUrl, {
-          headers: {
-            'User-Agent': 'Instagram 428.0.0.47.67 Android (34/14; 480dpi; 1344x2992; Google/google; Pixel 8 Pro; husky; husky; en_US; 961145276)',
-            'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ds_user_id=${dsUserId}`,
-            'X-CSRFToken': credentials.csrfToken,
-            'X-IG-App-ID': '936619743392459',
-            'X-IG-Connection-Type': 'WIFI',
-            'X-IG-Capabilities': '3brTv10=',
-            'X-FB-HTTP-Engine': 'Tigon/MNS/TCP',
-            'Host': 'i.instagram.com',
-            'Accept': '*/*',
-            'Accept-Language': 'en-US',
-            'Connection': 'keep-alive',
-            'Sec-Fetch-Site': 'same-origin',
-            'Sec-Fetch-Mode': 'cors',
-            'Sec-Fetch-Dest': 'empty',
-          },
+          headers: igService.privateHeaders(credentials),
           signal: controller1.signal,
         });
 
         results.mobile_status = mobileRes.status;
         if (mobileRes.ok) {
           const data = await mobileRes.json();
-          const userId = data?.user?.pk || data?.user?.id;
+          const user = data?.user;
+          const userId = user?.pk || user?.id;
           if (userId) {
             return res.json({
               valid: true,
-              message: `Session valide via API mobile (test: @instagram, id=${userId})`,
+              message: `Session valide via API mobile (user_id=${userId}, @${user.username || dsUserId})`,
               api: 'mobile',
             });
           }
-          // 200 OK mais pas de user — session expirée ou format changé
+          // 200 OK mais pas de user — analyser la raison
           if (data?.message === 'login_required' || data?.message === 'challenge_required' || data?.message === 'checkpoint_required') {
             results.mobile_error = data.message;
+          } else if (data?.status === 'fail') {
+            // Instagram soft-ban : retourne 200 avec status=fail au lieu d'un vrai 429
+            results.mobile_error = `soft_block`;
+            results.mobile_fail_message = data?.message || 'unknown';
           } else {
             results.mobile_error = `200 OK mais pas de user (status=${data?.status}, message=${data?.message}, keys=${Object.keys(data || {}).join(',')})`;
           }
-          logger.warn(`⚠️ IG test mobile @instagram — ${results.mobile_error}`);
+          logger.warn(`⚠️ IG test mobile user_id=${dsUserId} — ${results.mobile_error} (${results.mobile_fail_message || ''})`);
         }
       } catch (err) {
         results.mobile_error = err.name === 'AbortError' ? 'timeout' : err.message;
       }
 
       // Test 2 : API web (www.instagram.com) — fallback
+      // Utilise webHeaders() du service pour la cohérence
       try {
         const controller2 = new AbortController();
         setTimeout(() => controller2.abort(), 10000);
-        const webUrl = 'https://www.instagram.com/api/v1/users/web_profile_info/?username=instagram';
+        const webUrl = `https://www.instagram.com/api/v1/users/${dsUserId}/info/`;
 
         const webRes = await fetch(webUrl, {
-          headers: {
-            'User-Agent': 'Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/143.0.0.0 Safari/537.36',
-            'Cookie': `sessionid=${credentials.sessionId}; csrftoken=${credentials.csrfToken}; ig_pr=1; ig_vw=1920; ig_cb=1`,
-            'X-CSRFToken': credentials.csrfToken,
-            'X-Instagram-AJAX': '1',
-            'X-Requested-With': 'XMLHttpRequest',
-            'Origin': 'https://www.instagram.com',
-            'Referer': 'https://www.instagram.com/',
-            'Host': 'www.instagram.com',
-            'Accept': '*/*',
-            'Accept-Language': 'en-US,en;q=0.8',
-          },
+          headers: igService.webHeaders(credentials, 'api'),
           signal: controller2.signal,
         });
 
         results.web_status = webRes.status;
         if (webRes.ok) {
           const data = await webRes.json();
-          if (data?.data?.user?.id) {
+          const user = data?.user || data?.data?.user;
+          if (user?.id || user?.pk) {
             return res.json({
               valid: true,
-              message: `Session valide via API web (test: @instagram, id=${data.data.user.id})`,
+              message: `Session valide via API web (user_id=${user.id || user.pk}, @${user.username || dsUserId})`,
               api: 'web',
             });
           }
@@ -243,16 +228,34 @@ module.exports = (db) => {
         results.web_error = err.name === 'AbortError' ? 'timeout' : err.message;
       }
 
-      // Les deux ont échoué
+      // Les deux ont échoué — diagnostic précis
       const detail = [];
-      if (results.mobile_status === 429 || results.web_status === 429) {
-        igRateLimitedUntil = Date.now() + 30 * 60 * 1000; // cooldown 30 min
+      const isMobileSoftBlock = results.mobile_error === 'soft_block';
+      const isWeb429 = results.web_status === 429;
+      const isMobile429 = results.mobile_status === 429;
+
+      if (isMobileSoftBlock && isWeb429) {
+        // Les deux APIs bloquent → IP grillée, cooldown long
+        igRateLimitedUntil = Date.now() + 60 * 60 * 1000; // 1h au lieu de 30 min
+        logger.warn('🚫 Instagram IP bloquée sur les 2 APIs — cooldown 1h activé');
+        detail.push('IP bloquée par Instagram (mobile: soft-block, web: 429). Cooldown 1h activé. Après 7k+ scrapes, l\'IP Railway est probablement flaggée — envisager un changement d\'IP ou attendre plusieurs heures');
+      } else if (isMobile429 || isWeb429) {
+        igRateLimitedUntil = Date.now() + 30 * 60 * 1000;
         logger.warn('🚫 Instagram 429 détecté — cooldown 30 min activé');
         detail.push('Rate limit (429) — IP temporairement bloquée (cooldown 30 min activé)');
+      } else if (isMobileSoftBlock) {
+        igRateLimitedUntil = Date.now() + 30 * 60 * 1000;
+        logger.warn('🚫 Instagram soft-block détecté — cooldown 30 min activé');
+        detail.push('Instagram retourne "something went wrong" — soft-block IP (cooldown 30 min)');
+      }
+
+      if (results.mobile_error === 'login_required' || results.mobile_error === 'challenge_required' || results.mobile_error === 'checkpoint_required') {
+        detail.push(`Session expirée (${results.mobile_error}) — recréez vos cookies Instagram`);
       }
       if (results.mobile_status === 401 || results.web_status === 401) {
         detail.push('Session expirée (401) — recréez vos cookies');
       }
+
       logger.warn('⚠️ IG test credentials échoué:', results);
       res.json({
         valid: false,
