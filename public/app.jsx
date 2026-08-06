@@ -13442,6 +13442,10 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
               {showDelivery && (
                 <div className="text-xs text-amber-500 mt-0.5">Livraison : {deliveryAddr}</div>
               )}
+              <div className="text-xs text-slate-400 mt-0.5">N° FISCAL (ex: TVA) : {c.tax_no || ''}</div>
+              <a href={`https://terredemars.vosfactures.fr/clients/${c.id}`} target="_blank" rel="noopener noreferrer"
+                onClick={e => e.stopPropagation()}
+                className="text-xs text-blue-500 hover:text-blue-700 mt-1 inline-block">Voir sur VF</a>
             </button>
           );
         })}
