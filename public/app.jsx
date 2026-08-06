@@ -12985,12 +12985,18 @@ const FacturesSingle = ({ showToast }) => {
                   </div>
                 )}
               </div>
+              <div className="text-xs text-slate-500 px-1">
+                <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">N° FISCAL (ex: TVA) : </span>
+                {selectedClient.tax_no || ''}
+              </div>
               {sendEmail && selectedClient.email && (
                 <div className="text-xs text-slate-500">
                   <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">Email : </span>
                   {selectedClient.email}
                 </div>
               )}
+              <a href={`https://terredemars.vosfactures.fr/clients/${selectedClient.id}`} target="_blank" rel="noopener noreferrer"
+                className="text-xs text-blue-500 hover:text-blue-700 mt-1 inline-block">Voir sur VF</a>
             </div>
           )}
 
@@ -14161,12 +14167,18 @@ const FacturesBatch = ({ showToast }) => {
                           ))}
                         </div>
                       )}
+                      <div className="text-xs text-slate-500 px-1">
+                        <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">N° FISCAL (ex: TVA) : </span>
+                        {order.client.tax_no || ''}
+                      </div>
                       {sendEmail && order.client.email && (
                         <div className="text-xs text-slate-500 px-1">
                           <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">Email : </span>
                           {order.client.email}
                         </div>
                       )}
+                      <a href={`https://terredemars.vosfactures.fr/clients/${order.client.id}`} target="_blank" rel="noopener noreferrer"
+                        className="text-xs text-blue-500 hover:text-blue-700 mt-1 inline-block">Voir sur VF</a>
                     </div>
                   )}
 
@@ -15196,6 +15208,10 @@ const FacturesSamples = ({ showToast }) => {
                     {showDelivery && (
                       <div className="text-xs text-amber-500 mt-0.5">Livraison : {deliveryAddr}</div>
                     )}
+                    <div className="text-xs text-slate-400 mt-0.5">N° FISCAL (ex: TVA) : {c.tax_no || ''}</div>
+                    <a href={`https://terredemars.vosfactures.fr/clients/${c.id}`} target="_blank" rel="noopener noreferrer"
+                      onClick={e => e.stopPropagation()}
+                      className="text-xs text-blue-500 hover:text-blue-700 mt-1 inline-block">Voir sur VF</a>
                   </button>
                 );
               })}
