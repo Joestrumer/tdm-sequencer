@@ -13508,38 +13508,73 @@ const FacturesBatch = ({ showToast }) => {
     const file = e.target.files?.[0];
     if (!file) return;
     try {
-      const data = new Uint8Array(await file.arrayBuffer());
-      const workbook = XLSX.read(data, { type: 'array' });
-      const sheet = workbook.Sheets[workbook.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
-      const products = [];
-      for (const row of json) {
-        if (!row[0] || row[0] === 'Ref 500ml' || row[0] === 'Menu Déroulant' || row[0] === 'TOTAL') continue;
-        const rawRef = String(row[0]).trim();
-        const qtyUnits = parseFloat(row[6]) || 0;
-        const qtyCartons = parseFloat(row[5]) || 0;
-        const quantity = qtyUnits > 0 ? qtyUnits : qtyCartons;
-        let priceHT = parseFloat(String(row[3] || '0').replace(/[€\s]/g, '').replace(',', '.')) || 0;
-        const discountStr = row[9] ? String(row[9]).trim() : '';
-        let discount = 0;
-        if (discountStr && discountStr !== '-') {
-          discount = parseFloat(discountStr.replace('%', '').replace(',', '.')) || 0;
-          if (discount > 0 && discount < 1) discount *= 100;
-        }
-        if (rawRef && quantity > 0) products.push({ ref: rawRef, quantity, priceHT, discount });
-      }
-      if (products.length > 0) {
-        // Match products via API like Single does
-        try {
-          const matched = await api.post('/factures/match-products', { lignes: products });
-          if (matched.erreur) { showToast(matched.erreur, 'error'); return; }
-          addOrder(matched);
-          showToast(matched.length + ' produit(s) ajoutés', 'success');
-        } catch (matchErr) {
-          showToast('Erreur matching: ' + matchErr.message, 'error');
+      if (file.name.endsWith('.pdf')) {
+        // ── PDF : même logique que le unitaire ──
+        showToast('Parsing PDF en cours...', 'info');
+        const data = await parsePdfOrder(file);
+
+        if (data.vfInvoiceNumber) {
+          // Facture VF détectée → import automatique via API
+          showToast('Facture VF détectée : ' + data.vfInvoiceNumber + ' — import en cours...', 'info');
+          try {
+            const results = await api.get('/factures/invoices/search?number=' + encodeURIComponent(data.vfInvoiceNumber));
+            const list = Array.isArray(results) ? results : [];
+            if (list.length === 0) { showToast('Facture VF "' + data.vfInvoiceNumber + '" non trouvée sur VosFactures', 'error'); return; }
+            const invoiceId = list[0].id;
+            const importData = await api.get('/factures/invoices/' + invoiceId + '/products');
+            if (importData.erreur) { showToast(importData.erreur, 'error'); return; }
+            if (!importData.products || importData.products.length === 0) { showToast('Aucun produit dans la facture VF', 'error'); return; }
+            addOrder(importData.products, importData.client || null, importData.invoiceNumber || '', importData.delivery_address || '');
+            showToast('Facture VF importée — ' + importData.products.length + ' produit(s)', 'success');
+          } catch (importErr) {
+            showToast('Erreur import facture VF: ' + importErr.message, 'error');
+          }
+        } else {
+          // PDF tiers → matcher les produits
+          if (data.products.length === 0) { showToast('Aucun produit trouvé dans le PDF', 'error'); return; }
+          try {
+            const matched = await api.post('/factures/match-products', { lignes: data.products });
+            if (matched.erreur) { showToast(matched.erreur, 'error'); return; }
+            addOrder(matched);
+            showToast(matched.length + ' produit(s) ajoutés depuis le PDF', 'success');
+          } catch (matchErr) {
+            showToast('Erreur matching PDF: ' + matchErr.message, 'error');
+          }
         }
       } else {
-        showToast('Aucun produit trouvé', 'error');
+        // ── Excel : logique existante ──
+        const data = new Uint8Array(await file.arrayBuffer());
+        const workbook = XLSX.read(data, { type: 'array' });
+        const sheet = workbook.Sheets[workbook.SheetNames[0]];
+        const json = XLSX.utils.sheet_to_json(sheet, { header: 1 });
+        const products = [];
+        for (const row of json) {
+          if (!row[0] || row[0] === 'Ref 500ml' || row[0] === 'Menu Déroulant' || row[0] === 'TOTAL') continue;
+          const rawRef = String(row[0]).trim();
+          const qtyUnits = parseFloat(row[6]) || 0;
+          const qtyCartons = parseFloat(row[5]) || 0;
+          const quantity = qtyUnits > 0 ? qtyUnits : qtyCartons;
+          let priceHT = parseFloat(String(row[3] || '0').replace(/[€\s]/g, '').replace(',', '.')) || 0;
+          const discountStr = row[9] ? String(row[9]).trim() : '';
+          let discount = 0;
+          if (discountStr && discountStr !== '-') {
+            discount = parseFloat(discountStr.replace('%', '').replace(',', '.')) || 0;
+            if (discount > 0 && discount < 1) discount *= 100;
+          }
+          if (rawRef && quantity > 0) products.push({ ref: rawRef, quantity, priceHT, discount });
+        }
+        if (products.length > 0) {
+          try {
+            const matched = await api.post('/factures/match-products', { lignes: products });
+            if (matched.erreur) { showToast(matched.erreur, 'error'); return; }
+            addOrder(matched);
+            showToast(matched.length + ' produit(s) ajoutés', 'success');
+          } catch (matchErr) {
+            showToast('Erreur matching: ' + matchErr.message, 'error');
+          }
+        } else {
+          showToast('Aucun produit trouvé', 'error');
+        }
       }
     } catch (err) {
       showToast('Erreur: ' + err.message, 'error');
@@ -13943,8 +13978,8 @@ const FacturesBatch = ({ showToast }) => {
         {/* Inputs : Excel + Manuel + Import VF */}
         <div className="flex gap-2">
           <label className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200 cursor-pointer">
-            + Fichier Excel
-            <input type="file" accept=".xlsx,.xls" onChange={handleFile} className="hidden" />
+            + Fichier Excel / PDF
+            <input type="file" accept=".xlsx,.xls,.pdf" onChange={handleFile} className="hidden" />
           </label>
         </div>
 
