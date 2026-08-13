@@ -769,6 +769,7 @@ module.exports = (db) => {
 
       const client = data.buyer_name ? {
         name: data.buyer_name,
+        id: data.client_id,
         vf_id: data.client_id,
         street: data.buyer_street || '',
         city: data.buyer_city || '',
@@ -776,6 +777,9 @@ module.exports = (db) => {
         country: data.buyer_country || '',
         email: data.buyer_email || '',
         phone: data.buyer_phone || '',
+        tax_no: data.buyer_tax_no || '',
+        delivery_address: data.delivery_address || '',
+        use_delivery_address: data.use_delivery_address || false,
       } : null;
 
       // Adresse de livraison (si différente de facturation)
@@ -935,6 +939,41 @@ module.exports = (db) => {
       res.setHeader('Content-Type', 'text/csv; charset=utf-8');
       res.setHeader('Content-Disposition', `attachment; filename="logisticien-batch-${orders.length}-commandes.csv"`);
       res.send(finalCsv);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Adresses de livraison sauvegardées par client ─────────────────────────
+
+  router.get('/client-addresses/:vfClientId', (req, res) => {
+    try {
+      const rows = db.prepare('SELECT * FROM vf_client_addresses WHERE vf_client_id = ? ORDER BY created_at DESC')
+        .all(String(req.params.vfClientId));
+      res.json(rows);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.post('/client-addresses', (req, res) => {
+    try {
+      const { vf_client_id, label, address_text } = req.body;
+      if (!vf_client_id || !label || !address_text) {
+        return res.status(400).json({ erreur: 'vf_client_id, label et address_text requis' });
+      }
+      const result = db.prepare('INSERT INTO vf_client_addresses (vf_client_id, label, address_text) VALUES (?, ?, ?)')
+        .run(String(vf_client_id), label.trim(), address_text.trim());
+      res.json({ id: result.lastInsertRowid, vf_client_id: String(vf_client_id), label: label.trim(), address_text: address_text.trim() });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.delete('/client-addresses/:id', (req, res) => {
+    try {
+      db.prepare('DELETE FROM vf_client_addresses WHERE id = ?').run(req.params.id);
+      res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }

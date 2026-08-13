@@ -12267,6 +12267,27 @@ const getShippingIdForClient = (client, deliveryAddr = '') => {
   return isIDF ? '101' : '1302';
 };
 
+const buildBillingAddress = (client) => {
+  if (!client) return '';
+  return [client.name, client.street,
+    [client.post_code || client.zip, client.city].filter(Boolean).join(' '),
+    client.country].filter(Boolean).join('\n');
+};
+
+const getVfClientId = (client) => String(client?.id || client?.vf_id || '');
+
+const getDefaultAddressMode = (client) => {
+  if (!client) return 'facturation';
+  if (client.use_delivery_address && client.delivery_address) return 'vf_livraison';
+  return 'facturation';
+};
+
+const resolveAddressText = (mode, client) => {
+  if (mode === 'vf_livraison' && client?.delivery_address) return client.delivery_address;
+  if (mode === 'facturation') return buildBillingAddress(client);
+  return '';
+};
+
 const DEFAULT_FRANCO_SEUIL = 800;
 
 const SHIPPING_OPTIONS = [
@@ -12316,6 +12337,7 @@ const FacturesSingle = ({ showToast }) => {
   const [shippingId, setShippingId] = useState('1302');
   const [deliveryAddress, setDeliveryAddress] = useState('');
   const [deliveryComment, setDeliveryComment] = useState('');
+  const [addressMode, setAddressMode] = useState('facturation');
   const includeShipping = true; // Toujours inclure les frais de port
   const [sendEmail, setSendEmail] = useState(true);
   const [logGSheets, setLogGSheets] = useState(true);
@@ -12363,11 +12385,14 @@ const FacturesSingle = ({ showToast }) => {
       if (data.client) {
         setSelectedClient(data.client);
         setOrderNumber(data.invoiceNumber || '');
-        setDeliveryAddress(data.delivery_address || '');
+        const defMode = getDefaultAddressMode(data.client);
+        setAddressMode(defMode);
+        const addr = defMode === 'vf_livraison' ? (data.delivery_address || '') : resolveAddressText(defMode, data.client);
+        setDeliveryAddress(addr);
         // Calculer directement et aller au step 4
         const calcRes = await api.post('/factures/calculate', { products: data.products, clientName: data.client.name, includeShipping });
         setCalculation(calcRes);
-        setShippingId(getShippingIdForClient(data.client, data.delivery_address || ''));
+        setShippingId(getShippingIdForClient(data.client, addr));
         setStep(4);
         showToast('Facture importée — ' + data.products.length + ' produit(s)', 'success');
       } else {
@@ -12458,10 +12483,13 @@ const FacturesSingle = ({ showToast }) => {
             if (importData.client) {
               setSelectedClient(importData.client);
               setOrderNumber(importData.invoiceNumber || '');
-              setDeliveryAddress(importData.delivery_address || '');
+              const defMode = getDefaultAddressMode(importData.client);
+              setAddressMode(defMode);
+              const addr = defMode === 'vf_livraison' ? (importData.delivery_address || '') : resolveAddressText(defMode, importData.client);
+              setDeliveryAddress(addr);
               const calcRes = await api.post('/factures/calculate', { products: importData.products, clientName: importData.client.name, includeShipping });
               setCalculation(calcRes);
-              setShippingId(getShippingIdForClient(importData.client, importData.delivery_address || ''));
+              setShippingId(getShippingIdForClient(importData.client, addr));
               setStep(4);
               showToast('Facture VF importée — ' + importData.products.length + ' produit(s)', 'success');
             } else {
@@ -12949,7 +12977,9 @@ const FacturesSingle = ({ showToast }) => {
       {/* Step 3: Client */}
       {step === 3 && <FacturesClientSearch onSelect={(client) => {
         setSelectedClient(client);
-        const delAddr = client.use_delivery_address ? (client.delivery_address || '') : '';
+        const defMode = getDefaultAddressMode(client);
+        setAddressMode(defMode);
+        const delAddr = resolveAddressText(defMode, client);
         setDeliveryAddress(delAddr);
         doCalculation(client);
         setShippingId(getShippingIdForClient(client, delAddr));
@@ -12976,14 +13006,16 @@ const FacturesSingle = ({ showToast }) => {
                   {selectedClient.street && <div className="text-xs text-slate-500">{selectedClient.street}</div>}
                   {(selectedClient.zip || selectedClient.city) && <div className="text-xs text-slate-500">{[selectedClient.zip, selectedClient.city].filter(Boolean).join(' ')}</div>}
                 </div>
-                {deliveryAddress && (
-                  <div className="flex-1 border-l border-slate-200 pl-4">
-                    <div className="text-[10px] font-medium text-amber-500 uppercase tracking-wide mb-0.5">Livraison</div>
-                    {deliveryAddress.split('\n').map((line, i) => (
-                      <div key={i} className={`text-xs ${i === 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>{line}</div>
-                    ))}
-                  </div>
-                )}
+                <div className="flex-1 border-l border-slate-200 pl-4">
+                  <AddressSelector
+                    client={selectedClient}
+                    value={deliveryAddress}
+                    onChange={(addr) => { setDeliveryAddress(addr); setShippingId(getShippingIdForClient(selectedClient, addr)); }}
+                    mode={addressMode}
+                    onModeChange={setAddressMode}
+                    instanceId="single"
+                  />
+                </div>
               </div>
               <div className="text-xs text-slate-500 px-1">
                 <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">N° FISCAL (ex: TVA) : </span>
@@ -13463,6 +13495,116 @@ const FacturesClientSearch = ({ onSelect, onBack, onModifySaisie }) => {
   );
 };
 
+// ─── Address Selector Component ──────────────────────────────────────────────
+const AddressSelector = ({ client, value, onChange, mode, onModeChange, instanceId = 'single' }) => {
+  const [savedAddresses, setSavedAddresses] = useState([]);
+  const [saveLabel, setSaveLabel] = useState('');
+  const [saving, setSaving] = useState(false);
+  const vfClientId = getVfClientId(client);
+  const hasVfDelivery = !!(client?.use_delivery_address && client?.delivery_address);
+  const radioName = `addr-mode-${instanceId}`;
+
+  useEffect(() => {
+    if (!vfClientId) { setSavedAddresses([]); return; }
+    api.get('/factures/client-addresses/' + vfClientId)
+      .then(data => { if (Array.isArray(data)) setSavedAddresses(data); })
+      .catch(() => {});
+  }, [vfClientId]);
+
+  const handleModeChange = (newMode) => {
+    onModeChange(newMode);
+    if (newMode === 'vf_livraison') {
+      onChange(client?.delivery_address || '');
+    } else if (newMode === 'facturation') {
+      onChange(buildBillingAddress(client));
+    }
+    // manuelle: keep current value
+  };
+
+  const handleSave = async () => {
+    if (!saveLabel.trim() || !value.trim() || !vfClientId) return;
+    setSaving(true);
+    try {
+      await api.post('/factures/client-addresses', { vf_client_id: vfClientId, label: saveLabel.trim(), address_text: value.trim() });
+      const data = await api.get('/factures/client-addresses/' + vfClientId);
+      if (Array.isArray(data)) setSavedAddresses(data);
+      setSaveLabel('');
+    } catch (e) {
+      console.error('Erreur sauvegarde adresse:', e);
+    }
+    setSaving(false);
+  };
+
+  const handleDelete = async (addrId) => {
+    try {
+      await api.delete('/factures/client-addresses/' + addrId);
+      setSavedAddresses(prev => prev.filter(a => a.id !== addrId));
+    } catch (e) {
+      console.error('Erreur suppression adresse:', e);
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[10px] font-medium text-amber-500 uppercase tracking-wide">Adresse de livraison</div>
+      <div className="flex flex-wrap gap-3 text-xs">
+        {hasVfDelivery && (
+          <label className="flex items-center gap-1.5 cursor-pointer">
+            <input type="radio" name={radioName} checked={mode === 'vf_livraison'} onChange={() => handleModeChange('vf_livraison')} className="text-blue-600" />
+            Livraison VF
+          </label>
+        )}
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="radio" name={radioName} checked={mode === 'facturation'} onChange={() => handleModeChange('facturation')} className="text-blue-600" />
+          Facturation
+        </label>
+        <label className="flex items-center gap-1.5 cursor-pointer">
+          <input type="radio" name={radioName} checked={mode === 'manuelle'} onChange={() => handleModeChange('manuelle')} className="text-blue-600" />
+          Manuelle
+        </label>
+      </div>
+
+      {mode !== 'manuelle' && value && (
+        <div className="bg-amber-50 rounded-lg px-3 py-1.5">
+          {value.split('\n').map((line, i) => (
+            <div key={i} className={`text-xs ${i === 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>{line}</div>
+          ))}
+        </div>
+      )}
+
+      {mode === 'manuelle' && (
+        <div className="space-y-2">
+          {savedAddresses.length > 0 && (
+            <div className="flex flex-wrap gap-1.5">
+              {savedAddresses.map(addr => (
+                <span key={addr.id} className="inline-flex items-center gap-1 bg-blue-50 text-blue-700 rounded-full px-2.5 py-0.5 text-xs cursor-pointer hover:bg-blue-100"
+                  onClick={() => onChange(addr.address_text)}>
+                  {addr.label}
+                  <button onClick={(e) => { e.stopPropagation(); handleDelete(addr.id); }}
+                    className="text-blue-400 hover:text-red-500 ml-0.5">&times;</button>
+                </span>
+              ))}
+            </div>
+          )}
+          <textarea value={value || ''} onChange={e => onChange(e.target.value)}
+            placeholder="Saisir l'adresse de livraison..."
+            rows={3}
+            className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm resize-y min-h-[3rem]" />
+          <div className="flex items-center gap-2">
+            <input value={saveLabel} onChange={e => setSaveLabel(e.target.value)}
+              placeholder="Label (ex: Entrepôt Lyon)"
+              className="flex-1 border border-slate-200 rounded-lg px-2.5 py-1 text-xs" />
+            <button onClick={handleSave} disabled={saving || !saveLabel.trim() || !value.trim()}
+              className="text-xs bg-blue-500 text-white px-3 py-1 rounded-lg hover:bg-blue-600 disabled:opacity-50 disabled:cursor-not-allowed">
+              {saving ? '...' : 'Enregistrer'}
+            </button>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Factures Batch ───────────────────────────────────────────────────────────
 const FacturesBatch = ({ showToast }) => {
   const [orders, setOrders] = useState([]);
@@ -13487,8 +13629,10 @@ const FacturesBatch = ({ showToast }) => {
 
   const addOrder = (products, client = null, orderNumber = '', deliveryAddr = '') => {
     const id = nextIdRef.current++;
-    const shippingId = client ? getShippingIdForClient(client, deliveryAddr) : '1302';
-    setOrders(prev => [...prev, { id, products, client, calculation: null, shippingId, orderNumber, deliveryAddress: deliveryAddr, expanded: !client }]);
+    const defMode = getDefaultAddressMode(client);
+    const addr = client ? resolveAddressText(defMode, client) : deliveryAddr;
+    const shippingId = client ? getShippingIdForClient(client, addr) : '1302';
+    setOrders(prev => [...prev, { id, products, client, calculation: null, shippingId, orderNumber, deliveryAddress: addr, addressMode: defMode, expanded: !client }]);
     // Auto-calculate if client is already set
     if (client) {
       calculateOrder(id, products, client);
@@ -13638,9 +13782,10 @@ const FacturesBatch = ({ showToast }) => {
 
   const setOrderClient = async (orderId, client) => {
     const order = orders.find(o => o.id === orderId);
-    const deliveryAddr = client?.use_delivery_address ? (client.delivery_address || '') : '';
-    const shippingId = getShippingIdForClient(client, deliveryAddr);
-    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId, deliveryAddress: deliveryAddr } : o));
+    const defMode = getDefaultAddressMode(client);
+    const deliveryAddr = client ? resolveAddressText(defMode, client) : '';
+    const shippingId = client ? getShippingIdForClient(client, deliveryAddr) : '1302';
+    setOrders(prev => prev.map(o => o.id === orderId ? { ...o, client, shippingId, deliveryAddress: deliveryAddr, addressMode: defMode } : o));
     if (order) {
       calculateOrder(orderId, order.products, client);
     }
@@ -14194,14 +14339,17 @@ const FacturesBatch = ({ showToast }) => {
                           <div className="text-xs text-slate-600">{[order.client.post_code || order.client.zip, order.client.city].filter(Boolean).join(' ')}</div>
                         )}
                       </div>
-                      {order.deliveryAddress && (
-                        <div className="bg-amber-50 rounded-lg px-3 py-1.5">
-                          <div className="text-[10px] font-medium text-amber-500 uppercase tracking-wide mb-0.5">Livraison</div>
-                          {order.deliveryAddress.split('\n').map((line, i) => (
-                            <div key={i} className={`text-xs ${i === 0 ? 'font-medium text-slate-800' : 'text-slate-500'}`}>{line}</div>
-                          ))}
-                        </div>
-                      )}
+                      <AddressSelector
+                        client={order.client}
+                        value={order.deliveryAddress || ''}
+                        onChange={(addr) => {
+                          const newShippingId = getShippingIdForClient(order.client, addr);
+                          setOrders(prev => prev.map(o => o.id === order.id ? { ...o, deliveryAddress: addr, shippingId: newShippingId } : o));
+                        }}
+                        mode={order.addressMode || 'facturation'}
+                        onModeChange={(m) => updateOrderField(order.id, 'addressMode', m)}
+                        instanceId={`batch-${order.id}`}
+                      />
                       <div className="text-xs text-slate-500 px-1">
                         <span className="text-[10px] font-medium text-slate-400 uppercase tracking-wide">N° FISCAL (ex: TVA) : </span>
                         {order.client.tax_no || ''}
@@ -14455,15 +14603,6 @@ const FacturesBatch = ({ showToast }) => {
                         {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
                       </select>
                     </div>
-                  </div>
-
-                  {/* Adresse de livraison */}
-                  <div>
-                    <label className="text-xs font-medium text-slate-500 mb-1 block">Adresse de livraison</label>
-                    <textarea value={order.deliveryAddress || ''} onChange={e => updateOrderField(order.id, 'deliveryAddress', e.target.value)}
-                      placeholder="Si différente de l'adresse de facturation"
-                      rows={2}
-                      className="w-full border border-slate-200 rounded-lg px-3 py-1.5 text-sm resize-y min-h-[2.5rem]" />
                   </div>
 
                   {/* Commentaire de livraison */}

@@ -1018,6 +1018,18 @@ db.exec(`
   )
 `);
 
+// ─── Adresses de livraison sauvegardées par client ──────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS vf_client_addresses (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    vf_client_id TEXT NOT NULL,
+    label TEXT NOT NULL,
+    address_text TEXT NOT NULL,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_vf_client_addresses_client ON vf_client_addresses(vf_client_id);
+`);
+
 // ─── Migrations colonnes (bases existantes) ───────────────────────────────────
 const migrations = [
   'ALTER TABLE etapes    ADD COLUMN corps_html   TEXT',
