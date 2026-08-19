@@ -692,6 +692,58 @@ function parseOrderText(text) {
       }
     }
 
+    // Format "REF description : N carton(s)" sans détail bidons
+    // Ex: "H-008 en 5L : 1 carton", "P008 5L : 2 cartons", "008 Gel 5L : 1 carton"
+    // 1 carton de 5L = 4 bidons
+    if (!foundAny && /\d+\s*cartons?\s*$/i.test(line)) {
+      const cartonRefMatch = line.match(/^\s*(?:([HhNn]\s*-?\s*\d{3})|([Pp]\d{3}(?:-\d+[A-Za-z]*)?)|0*(\d{1,3}))\s*(?:\(.*?\))?\s*.*?[-:,]\s*(\d+)\s*cartons?\s*$/i);
+      if (cartonRefMatch) {
+        let ref;
+        if (cartonRefMatch[1]) {
+          ref = localNormalizeRef(cartonRefMatch[1], lineNorm);
+        } else if (cartonRefMatch[2]) {
+          ref = localNormalizeRef(cartonRefMatch[2], lineNorm);
+        } else {
+          const codeNum = cartonRefMatch[3].padStart(3, '0');
+          const is5L = /5\s*l|\bbidons?\b/i.test(line);
+          ref = is5L ? `P${codeNum}-5000` : `P${codeNum}`;
+        }
+        const cartons = parseInt(cartonRefMatch[4], 10);
+        const is5L = /5\s*l|\bbidons?\b/i.test(line);
+        const qty = is5L ? cartons * 4 : cartons;
+        if (ref && qty > 0 && qty < 9999) {
+          const existing = products.find(p => p.ref === ref);
+          if (existing) existing.quantity += qty;
+          else products.push({ ref, quantity: qty });
+          foundAny = true;
+          logger.debug(`📦 Format REF+cartons détecté: ${ref} x${qty} (${cartons} carton(s))`);
+          return;
+        }
+      }
+
+      // Fallback nom produit + cartons : "Shampoing en 5L : 1 carton"
+      const nameCartonMatch = line.match(/^(.+?)[-:,]\s*(\d+)\s*cartons?\s*$/i);
+      if (nameCartonMatch && !foundAny) {
+        const cartons = parseInt(nameCartonMatch[2], 10);
+        let ref = null;
+        for (const r of nameRules) {
+          if (r.re.test(lineNorm)) { ref = r.ref; break; }
+        }
+        if (ref) {
+          const is5L = /5\s*l|\bbidons?\b/i.test(line);
+          const qty = is5L ? cartons * 4 : cartons;
+          if (qty > 0 && qty < 9999) {
+            const existing = products.find(p => p.ref === ref);
+            if (existing) existing.quantity += qty;
+            else products.push({ ref, quantity: qty });
+            foundAny = true;
+            logger.debug(`📦 Format nom+cartons détecté: ${ref} x${qty} (${cartons} carton(s))`);
+            return;
+          }
+        }
+      }
+    }
+
     // Format "REF (description) : qty unit" — e.g. "H-008 (500ml) : 24 pcs", "N-010 (500ml) : 24 pcs"
     const refDescQtyMatch = line.match(/^\s*(?:([HhNn]\s*-?\s*\d{3})|([Pp]\d{3}(?:-\d+[A-Za-z]*)?)|0*(\d{1,3}))\s*(?:\(.*?\))?\s*.*?:\s*(\d+)\s*(?:pcs|pi[eè]ces?|unit[eé]s?|bidons?|flacons?|bouteilles?)?\s*$/i);
     if (refDescQtyMatch && !foundAny) {
