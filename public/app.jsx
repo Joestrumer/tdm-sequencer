@@ -4629,7 +4629,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [igSearchOptions, setIgSearchOptions] = useState({ categories: [], countries: [] });
   const [igSearchCategory, setIgSearchCategory] = useState('');
   const [igSearchCountry, setIgSearchCountry] = useState('');
-  const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '', country: '', status: '', has_contacts: '', source: '' });
+  const [igFilters, setIgFilters] = useState({ search: '', business_type: '', has_email: '', country: '', status: '', has_contacts: '', source: '', imported_as_lead: '' });
   const [igSort, setIgSort] = useState({ column: '', direction: 'asc' });
   const [igFilterOptions, setIgFilterOptions] = useState({ sources: [], countries: [], types: [] });
   const [igPagination, setIgPagination] = useState({ limit: 50, offset: 0 });
@@ -7658,6 +7658,15 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
               <option value="">Contacts</option>
               <option value="true">Avec contacts</option>
               <option value="false">Sans contacts</option>
+            </select>
+            <select
+              value={igFilters.imported_as_lead}
+              onChange={e => setIgFilters(f => ({ ...f, imported_as_lead: e.target.value }))}
+              className="px-3 py-2 border border-slate-300 rounded-lg text-sm bg-white focus:outline-none focus:ring-2 focus:ring-purple-500"
+            >
+              <option value="">Lead</option>
+              <option value="false">Non converti</option>
+              <option value="true">Converti en lead</option>
             </select>
 
             <div className="flex items-center gap-2 ml-auto">

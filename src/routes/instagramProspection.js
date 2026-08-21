@@ -578,7 +578,7 @@ module.exports = (db) => {
   // GET /api/instagram/jobs/:id/accounts — Liste paginée + filtres
   router.get('/jobs/:id/accounts', (req, res) => {
     try {
-      const { search, business_type, has_email, has_website, status, country, has_contacts, sort_column, sort_direction, limit = 100, offset = 0 } = req.query;
+      const { search, business_type, has_email, has_website, status, country, has_contacts, imported_as_lead, sort_column, sort_direction, limit = 100, offset = 0 } = req.query;
 
       let where = 'WHERE job_id = ?';
       const params = [req.params.id];
@@ -618,6 +618,12 @@ module.exports = (db) => {
         where += " AND linkedin_contacts IS NOT NULL AND linkedin_contacts != '[]'";
       } else if (has_contacts === 'false') {
         where += " AND (linkedin_contacts IS NULL OR linkedin_contacts = '[]')";
+      }
+
+      if (imported_as_lead === 'true') {
+        where += ' AND imported_as_lead = 1';
+      } else if (imported_as_lead === 'false') {
+        where += ' AND imported_as_lead = 0';
       }
 
       const total = db.prepare(`SELECT COUNT(*) as count FROM instagram_scraped_accounts ${where}`).get(...params).count;
@@ -974,7 +980,7 @@ module.exports = (db) => {
   // GET /api/instagram/accounts/all — Tous les comptes cross-jobs avec filtres
   router.get('/accounts/all', (req, res) => {
     try {
-      const { search, business_type, has_email, country, status, has_contacts, source, sort_column, sort_direction, limit = 200, offset = 0 } = req.query;
+      const { search, business_type, has_email, country, status, has_contacts, source, imported_as_lead, sort_column, sort_direction, limit = 200, offset = 0 } = req.query;
 
       let where = 'WHERE 1=1';
       const params = [];
@@ -1000,6 +1006,12 @@ module.exports = (db) => {
         where += " AND a.linkedin_contacts IS NOT NULL AND a.linkedin_contacts != '[]'";
       } else if (has_contacts === 'false') {
         where += " AND (a.linkedin_contacts IS NULL OR a.linkedin_contacts = '[]')";
+      }
+
+      if (imported_as_lead === 'true') {
+        where += ' AND a.imported_as_lead = 1';
+      } else if (imported_as_lead === 'false') {
+        where += ' AND a.imported_as_lead = 0';
       }
 
       const statsRow = db.prepare(`
@@ -1044,7 +1056,7 @@ module.exports = (db) => {
   // GET /api/instagram/accounts/all/ids — Tous les IDs correspondant aux filtres (sans pagination)
   router.get('/accounts/all/ids', (req, res) => {
     try {
-      const { search, business_type, has_email, country, status, has_contacts, source } = req.query;
+      const { search, business_type, has_email, country, status, has_contacts, source, imported_as_lead } = req.query;
 
       let where = 'WHERE 1=1';
       const params = [];
@@ -1070,6 +1082,12 @@ module.exports = (db) => {
         where += " AND a.linkedin_contacts IS NOT NULL AND a.linkedin_contacts != '[]'";
       } else if (has_contacts === 'false') {
         where += " AND (a.linkedin_contacts IS NULL OR a.linkedin_contacts = '[]')";
+      }
+
+      if (imported_as_lead === 'true') {
+        where += ' AND a.imported_as_lead = 1';
+      } else if (imported_as_lead === 'false') {
+        where += ' AND a.imported_as_lead = 0';
       }
 
       const ids = db.prepare(`
