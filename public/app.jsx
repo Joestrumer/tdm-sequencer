@@ -7671,11 +7671,28 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
 
             <div className="flex items-center gap-2 ml-auto">
               <button
-                onClick={() => {
-                  const next = new Set(selectedIgAccounts);
-                  const unselected = igAccounts.filter(a => !next.has(a.id));
-                  unselected.slice(0, 10).forEach(a => next.add(a.id));
-                  setSelectedIgAccounts(next);
+                onClick={async () => {
+                  try {
+                    const queryObj = { ...igFilters };
+                    const params = new URLSearchParams(queryObj);
+                    for (const key of [...params.keys()]) {
+                      if (params.get(key) === '') params.delete(key);
+                    }
+                    const res = await api.get(`/instagram/accounts/all/ids?${params}`);
+                    const allIds = res.ids || [];
+                    const next = new Set(selectedIgAccounts);
+                    let added = 0;
+                    for (const id of allIds) {
+                      if (!next.has(id)) {
+                        next.add(id);
+                        added++;
+                      }
+                      if (added >= 10) break;
+                    }
+                    setSelectedIgAccounts(next);
+                  } catch (err) {
+                    showToast('Erreur sélection: ' + err.message, 'error');
+                  }
                 }}
                 className="px-2 py-1.5 bg-slate-100 text-slate-700 rounded-lg text-xs font-medium hover:bg-slate-200"
               >
