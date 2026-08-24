@@ -90,7 +90,7 @@ async function rechercherCompanies(query) {
         filterGroups: [{
           filters: [{ propertyName: 'name', operator: 'CONTAINS_TOKEN', value: query }]
         }],
-        properties: ['name', 'domain', 'city', 'phone'],
+        properties: ['name', 'domain', 'city', 'phone', 'address', 'zip', 'country'],
         limit: 10,
       }),
     });
@@ -99,6 +99,10 @@ async function rechercherCompanies(query) {
       nom: c.properties.name,
       domaine: c.properties.domain,
       ville: c.properties.city,
+      phone: c.properties.phone || '',
+      address: c.properties.address || '',
+      zip: c.properties.zip || '',
+      country: c.properties.country || '',
     }));
   } catch (err) {
     logger.error('HubSpot rechercherCompanies', { error: err.message });
@@ -214,7 +218,7 @@ async function contactsDeCompany(companyId) {
       method: 'POST',
       body: JSON.stringify({
         inputs: uniqueIds.map(id => ({ id })),
-        properties: ['firstname', 'lastname', 'email', 'jobtitle'],
+        properties: ['firstname', 'lastname', 'email', 'jobtitle', 'phone'],
       }),
     });
     return (details?.results || []).map(c => ({
@@ -223,6 +227,7 @@ async function contactsDeCompany(companyId) {
       nom: c.properties.lastname || '',
       email: c.properties.email || '',
       poste: c.properties.jobtitle || '',
+      phone: c.properties.phone || '',
     }));
   } catch (err) {
     logger.error('HubSpot contactsDeCompany', { error: err.message });

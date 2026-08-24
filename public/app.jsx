@@ -14776,6 +14776,14 @@ const FacturesSamples = ({ showToast }) => {
   const clientSearchTimer = useRef(null);
   const clientAbortRef = useRef(null);
 
+  // HubSpot search
+  const [hsQuery, setHsQuery] = useState('');
+  const [hsCompanies, setHsCompanies] = useState([]);
+  const [hsSelectedCompany, setHsSelectedCompany] = useState(null);
+  const [hsContacts, setHsContacts] = useState([]);
+  const [hsSearching, setHsSearching] = useState(false);
+  const hsSearchTimer = useRef(null);
+
   useEffect(() => {
     api.get('/factures/produits').then(data => setCatalog(Array.isArray(data) ? data : [])).catch(e => console.error(e));
   }, []);
@@ -14809,6 +14817,48 @@ const FacturesSamples = ({ showToast }) => {
     setClientPhone(c.phone || '');
     setClientSearch('');
     setClientResults([]);
+  };
+
+  // HubSpot search functions
+  const rechercherHS = (q) => {
+    setHsQuery(q);
+    setHsSelectedCompany(null);
+    setHsContacts([]);
+    clearTimeout(hsSearchTimer.current);
+    if (!q || q.length < 2) { setHsCompanies([]); return; }
+    hsSearchTimer.current = setTimeout(async () => {
+      setHsSearching(true);
+      try {
+        const res = await api.get(`/hubspot/recherche-companies?q=${encodeURIComponent(q)}`);
+        setHsCompanies(Array.isArray(res) ? res : []);
+      } catch { setHsCompanies([]); }
+      setHsSearching(false);
+    }, 400);
+  };
+
+  const selectHsCompany = async (company) => {
+    setHsSelectedCompany(company);
+    setHsCompanies([]);
+    setHsQuery(company.nom);
+    setClientName(company.nom || '');
+    setClientAddress(company.address || '');
+    setClientCity(company.ville || '');
+    setClientZip(company.zip || '');
+    setClientCountry(company.country || 'FR');
+    setClientPhone(company.phone || '');
+    try {
+      const contacts = await api.get(`/hubspot/contacts-company/${company.id}`);
+      setHsContacts(Array.isArray(contacts) ? contacts : []);
+    } catch { setHsContacts([]); }
+  };
+
+  const selectHsContact = (contact) => {
+    const fullName = [contact.prenom, contact.nom].filter(Boolean).join(' ');
+    const companyName = hsSelectedCompany?.nom || '';
+    setClientName(companyName && fullName ? `${companyName} - ${fullName}` : companyName || fullName);
+    setClientEmail(contact.email || '');
+    if (contact.phone) setClientPhone(contact.phone);
+    setHsContacts([]);
   };
 
   const resetClientFields = () => {
@@ -15415,6 +15465,43 @@ const FacturesSamples = ({ showToast }) => {
                   </button>
                 );
               })}
+            </div>
+          )}
+        </div>
+
+        {/* HubSpot search */}
+        <div className="relative">
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Rechercher un compte HubSpot</label>
+          <div className="relative">
+            <input value={hsQuery} onChange={e => rechercherHS(e.target.value)}
+              placeholder="Nom du compte..."
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm" />
+            {hsSearching && <div className="absolute right-3 top-1/2 -translate-y-1/2 text-xs text-slate-400 pointer-events-none">Recherche...</div>}
+          </div>
+          {hsCompanies.length > 0 && (
+            <div className="absolute z-50 left-0 right-0 bg-white border border-slate-200 rounded-lg mt-1 max-h-64 overflow-y-auto shadow-lg">
+              {hsCompanies.map(c => (
+                <button key={c.id} onClick={() => selectHsCompany(c)}
+                  className="w-full text-left px-3 py-2 text-sm hover:bg-slate-50 border-b border-slate-100 last:border-0">
+                  <span className="font-medium">{c.nom}</span>
+                  {c.ville && <span className="text-xs text-slate-400 ml-2">{c.ville}</span>}
+                  {c.address && <div className="text-xs text-slate-400 mt-0.5">{[c.address, [c.zip, c.ville].filter(Boolean).join(' '), c.country].filter(Boolean).join(', ')}</div>}
+                </button>
+              ))}
+            </div>
+          )}
+          {hsContacts.length > 0 && (
+            <div className="mt-2 bg-orange-50 border border-orange-200 rounded-lg p-2">
+              <div className="text-xs font-medium text-orange-700 mb-1">Contacts du compte :</div>
+              {hsContacts.map(c => (
+                <button key={c.hubspot_id} onClick={() => selectHsContact(c)}
+                  className="w-full text-left px-2 py-1.5 text-sm hover:bg-orange-100 rounded border-b border-orange-100 last:border-0">
+                  <span className="font-medium">{[c.prenom, c.nom].filter(Boolean).join(' ') || '(sans nom)'}</span>
+                  {c.poste && <span className="text-xs text-slate-500 ml-2">{c.poste}</span>}
+                  {c.email && <div className="text-xs text-slate-400">{c.email}</div>}
+                  {c.phone && <div className="text-xs text-slate-400">{c.phone}</div>}
+                </button>
+              ))}
             </div>
           )}
         </div>
