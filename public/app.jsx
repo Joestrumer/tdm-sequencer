@@ -14745,14 +14745,15 @@ const FacturesBatch = ({ showToast }) => {
 };
 
 // ─── Factures Échantillons ────────────────────────────────────────────────────
+const DEFAULT_SAMPLE_PRODUCTS = [
+  { ref: 'P035-30', quantity: 1 }, { ref: 'P011-30', quantity: 1 },
+  { ref: 'P008-30', quantity: 1 }, { ref: 'P007-30', quantity: 1 },
+  { ref: 'P042-30', quantity: 1 }, { ref: 'P010-30', quantity: 1 },
+  { ref: 'P044-30', quantity: 1 }, { ref: 'P047-30', quantity: 1 },
+];
 const FacturesSamples = ({ showToast }) => {
   const [catalog, setCatalog] = useState([]);
-  const [products, setProducts] = useState([
-    { ref: 'P035-30', quantity: 1 }, { ref: 'P011-30', quantity: 1 },
-    { ref: 'P008-30', quantity: 1 }, { ref: 'P007-30', quantity: 1 },
-    { ref: 'P042-30', quantity: 1 }, { ref: 'P010-30', quantity: 1 },
-    { ref: 'P044-30', quantity: 1 }, { ref: 'P047-30', quantity: 1 },
-  ]);
+  const [products, setProducts] = useState([]);
   const [clientName, setClientName] = useState('');
   const [clientAddress, setClientAddress] = useState('');
   const [clientCity, setClientCity] = useState('');
@@ -14775,6 +14776,7 @@ const FacturesSamples = ({ showToast }) => {
   const [editingIndex, setEditingIndex] = useState(null);
   const clientSearchTimer = useRef(null);
   const clientAbortRef = useRef(null);
+  const defaultProductsRef = useRef(DEFAULT_SAMPLE_PRODUCTS);
 
   // HubSpot search
   const [hsQuery, setHsQuery] = useState('');
@@ -14786,6 +14788,15 @@ const FacturesSamples = ({ showToast }) => {
 
   useEffect(() => {
     api.get('/factures/produits').then(data => setCatalog(Array.isArray(data) ? data : [])).catch(e => console.error(e));
+    api.get('/config/sample_default_products').then(res => {
+      if (res && res.valeur) {
+        try {
+          const parsed = JSON.parse(res.valeur);
+          if (Array.isArray(parsed) && parsed.length > 0) { defaultProductsRef.current = parsed; setProducts(parsed); return; }
+        } catch (_) {}
+      }
+      setProducts(DEFAULT_SAMPLE_PRODUCTS);
+    }).catch(() => setProducts(DEFAULT_SAMPLE_PRODUCTS));
   }, []);
 
   const rechercherClient = (q) => {
@@ -14866,6 +14877,7 @@ const FacturesSamples = ({ showToast }) => {
     setClientCity(''); setClientZip(''); setClientCountry('FR');
     setClientPhone(''); setClientSearch(''); setClientResults([]);
     setShippingId('300'); setBusinessType('Hotel 4*'); setDeliveryComment('Joindre lettre accompagnement FR');
+    setProducts(defaultProductsRef.current);
     setResult(null);
   };
 
@@ -17167,6 +17179,7 @@ const VueParametres = ({ sequences: seqList, showToast }) => {
     { id: 'integrations', label: 'Intégrations' },
     { id: 'segments', label: 'Segments' },
     ...(hasProducts ? [{ id: 'produits', label: 'Produits' }] : []),
+    { id: 'echantillons', label: 'Échantillons' },
   ];
 
   useEffect(() => {
@@ -17391,7 +17404,137 @@ const VueParametres = ({ sequences: seqList, showToast }) => {
 
       {/* Sous-onglet Produits */}
       {sousOnglet === 'produits' && <VueProduitsCatalog />}
+
+      {/* Sous-onglet Échantillons */}
+      {sousOnglet === 'echantillons' && <VueSampleDefaultProducts />}
     </div>
+  );
+};
+
+// ─── Config Échantillons par défaut ──────────────────────────────────────────
+const VueSampleDefaultProducts = () => {
+  const [catalog, setCatalog] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+  const [searchRef, setSearchRef] = useState('');
+
+  useEffect(() => {
+    const load = async () => {
+      setLoading(true);
+      try {
+        const [catData, configRes] = await Promise.all([
+          api.get('/reference/catalog'),
+          api.get('/config/sample_default_products').catch(() => null),
+        ]);
+        if (Array.isArray(catData)) setCatalog(catData.filter(c => c.actif));
+        if (configRes && configRes.valeur) {
+          try {
+            const parsed = JSON.parse(configRes.valeur);
+            if (Array.isArray(parsed)) setProducts(parsed);
+          } catch (_) {}
+        }
+      } catch (e) { console.error(e); }
+      setLoading(false);
+    };
+    load();
+  }, []);
+
+  const catalogMap = useMemo(() => {
+    const m = {};
+    catalog.forEach(c => { m[c.ref] = c; });
+    return m;
+  }, [catalog]);
+
+  const filteredCatalog = useMemo(() => {
+    if (!searchRef) return [];
+    const q = searchRef.toLowerCase();
+    const existingRefs = new Set(products.map(p => p.ref));
+    return catalog.filter(c => !existingRefs.has(c.ref) && (c.ref.toLowerCase().includes(q) || (c.nom || '').toLowerCase().includes(q))).slice(0, 10);
+  }, [searchRef, catalog, products]);
+
+  const addProduct = (ref) => {
+    if (products.some(p => p.ref === ref)) return;
+    setProducts(prev => [...prev, { ref, quantity: 1 }]);
+    setSearchRef('');
+  };
+
+  const removeProduct = (ref) => {
+    setProducts(prev => prev.filter(p => p.ref !== ref));
+  };
+
+  const updateQuantity = (ref, qty) => {
+    setProducts(prev => prev.map(p => p.ref === ref ? { ...p, quantity: Math.max(1, parseInt(qty) || 1) } : p));
+  };
+
+  const handleSave = async () => {
+    setSaving(true); setMsg('');
+    try {
+      await api.post('/config', { sample_default_products: JSON.stringify(products) });
+      setMsg('Configuration sauvegardée');
+    } catch (e) { setMsg('Erreur: ' + (e.message || 'Échec de la sauvegarde')); }
+    setSaving(false);
+  };
+
+  if (loading) return React.createElement('div', { className: 'p-4 text-gray-400' }, 'Chargement...');
+
+  return React.createElement('div', { className: 'max-w-2xl' },
+    React.createElement('h3', { className: 'text-lg font-semibold text-white mb-1' }, 'Produits échantillons par défaut'),
+    React.createElement('p', { className: 'text-sm text-gray-400 mb-4' }, 'Définissez les produits ajoutés automatiquement lors de la création d\'un nouvel échantillon.'),
+
+    // Liste des produits configurés
+    products.length > 0 && React.createElement('div', { className: 'space-y-2 mb-4' },
+      products.map(p => {
+        const cat = catalogMap[p.ref];
+        return React.createElement('div', { key: p.ref, className: 'flex items-center gap-3 bg-gray-800 rounded-lg px-3 py-2' },
+          React.createElement('span', { className: 'text-xs font-mono text-amber-400 w-20 flex-shrink-0' }, p.ref),
+          React.createElement('span', { className: 'text-sm text-gray-200 flex-1 truncate' }, cat ? cat.nom : '(produit inconnu)'),
+          React.createElement('input', {
+            type: 'number', min: 1, value: p.quantity,
+            onChange: e => updateQuantity(p.ref, e.target.value),
+            className: 'w-16 bg-gray-700 border border-gray-600 rounded px-2 py-1 text-sm text-white text-center'
+          }),
+          React.createElement('button', {
+            onClick: () => removeProduct(p.ref),
+            className: 'text-red-400 hover:text-red-300 text-sm px-1', title: 'Supprimer'
+          }, '✕')
+        );
+      })
+    ),
+
+    // Si aucun produit
+    products.length === 0 && React.createElement('div', { className: 'text-sm text-gray-500 italic mb-4 bg-gray-800 rounded-lg px-3 py-3' },
+      'Aucun produit par défaut configuré. Les échantillons utiliseront le fallback intégré.'
+    ),
+
+    // Recherche pour ajouter
+    React.createElement('div', { className: 'relative mb-4' },
+      React.createElement('input', {
+        type: 'text', value: searchRef, onChange: e => setSearchRef(e.target.value),
+        placeholder: 'Rechercher un produit à ajouter (ref ou nom)...',
+        className: 'w-full bg-gray-800 border border-gray-600 rounded-lg px-3 py-2 text-sm text-white placeholder-gray-500'
+      }),
+      filteredCatalog.length > 0 && React.createElement('div', { className: 'absolute z-10 mt-1 w-full bg-gray-800 border border-gray-600 rounded-lg shadow-lg max-h-60 overflow-y-auto' },
+        filteredCatalog.map(c => React.createElement('button', {
+          key: c.ref,
+          onClick: () => addProduct(c.ref),
+          className: 'w-full text-left px-3 py-2 hover:bg-gray-700 flex items-center gap-2 text-sm'
+        },
+          React.createElement('span', { className: 'font-mono text-amber-400 text-xs w-20 flex-shrink-0' }, c.ref),
+          React.createElement('span', { className: 'text-gray-200 truncate' }, c.nom || '-')
+        ))
+      )
+    ),
+
+    // Bouton sauvegarder + message
+    React.createElement('div', { className: 'flex items-center gap-3' },
+      React.createElement('button', {
+        onClick: handleSave, disabled: saving,
+        className: 'px-4 py-2 bg-amber-600 hover:bg-amber-500 disabled:opacity-50 text-white rounded-lg text-sm font-medium'
+      }, saving ? 'Sauvegarde...' : 'Sauvegarder'),
+      msg && React.createElement('span', { className: 'text-sm ' + (msg.startsWith('Erreur') ? 'text-red-400' : 'text-green-400') }, msg)
+    )
   );
 };
 
