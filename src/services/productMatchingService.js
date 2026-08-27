@@ -261,7 +261,12 @@ function genererCSVLogisticien(invoiceData, client, shippingNames, options = {})
       deliveryName = dLines[0];
       deliveryStreet = dLines.length >= 3 ? dLines[1] : '';
       // Chercher la ligne CP + Ville (format "75008 Paris" ou "FR-75008 Paris")
-      const cpVilleLine = dLines.find(l => /\d{4,5}\s/.test(l)) || dLines[dLines.length - 1];
+      // Exclure les lignes déjà assignées (nom=0, rue=1) et les lignes avec mots-clés de rue
+      // pour éviter de confondre un numéro de rue (ex: 2469) avec un code postal
+      const streetKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|lot|zi|zone|voie|rte|chem)\b/i;
+      const skipLines = new Set([0]);
+      if (dLines.length >= 3) skipLines.add(1);
+      const cpVilleLine = dLines.find((l, i) => !skipLines.has(i) && /\d{4,5}\s/.test(l) && !streetKw.test(l)) || dLines[dLines.length - 1];
       const cpMatch = cpVilleLine.match(/(\d{4,5})\s+(.+)/);
       if (cpMatch) {
         deliveryZip = cpMatch[1];
