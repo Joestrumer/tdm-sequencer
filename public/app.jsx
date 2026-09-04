@@ -12642,6 +12642,55 @@ const FacturesSingle = ({ showToast }) => {
     setProcessing(false);
   };
 
+  // Créer facture/proforma uniquement (sans CSV/mailto logisticien)
+  const createInvoiceOnly = async () => {
+    setProcessing(true);
+    setError(null);
+    try {
+      const res = await api.post('/factures/invoices', {
+        client: selectedClient,
+        products: calculation?.products || matchedProducts,
+        fraisPort: calculation?.frais_port || [],
+        documentType,
+        orderNumber,
+        sendEmail,
+        logGSheets,
+        createHubspotDeal,
+      });
+      if (res.erreur) throw new Error(res.erreur);
+      setResult(res);
+      setStep(5);
+      showToast('Facture créée avec succès !', 'success');
+      if (sendEmail && res.email_error) {
+        showToast('Attention : email non envoyé — ' + res.email_error, 'error');
+      }
+      // Ajouter automatiquement à la table shipments
+      try {
+        await api.post('/shipments', {
+          type: 'commande',
+          order_ref: orderNumber || res.number || `CMD-${Date.now()}`,
+          invoice_id: res.id,
+          invoice_number: res.number,
+          client_name: selectedClient?.name || '',
+          client_email: selectedClient?.email || '',
+          client_address: selectedClient?.street || '',
+          client_city: selectedClient?.city || '',
+          client_country: selectedClient?.country || 'FR',
+          shipping_id: shippingId,
+          montant_ht: res.price_net || 0,
+          montant_ttc: res.price_gross || 0,
+          notes: `Commande ${orderNumber || ''}`.trim(),
+        });
+      } catch (shipErr) {
+        console.warn('Erreur ajout shipment:', shipErr);
+      }
+    } catch (err) {
+      setError(err.message);
+      showToast('Erreur: ' + err.message, 'error');
+    }
+    setProcessing(false);
+  };
+
   // Log only (Google Sheets sans facture)
   const logOnly = async () => {
     setProcessing(true);
@@ -13330,20 +13379,24 @@ const FacturesSingle = ({ showToast }) => {
             </label>
           </div>
 
-          <div className="flex gap-2">
+          <div className="grid grid-cols-2 gap-2">
             <button onClick={createInvoice} disabled={processing || !selectedClient || !calculation?.products?.length}
-              className="flex-1 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
+              className="py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
               {processing ? 'En cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'} et envoyer au logisticien`}
             </button>
+            <button onClick={createInvoiceOnly} disabled={processing || !selectedClient || !calculation?.products?.length}
+              className="py-3 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-500 disabled:opacity-50 transition-colors">
+              {processing ? 'En cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'} uniquement`}
+            </button>
+            <button onClick={() => downloadCSVAndEmail()} disabled={!selectedClient || !shippingId}
+              className="py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
+              CSV + Email Logisticien (sans facture)
+            </button>
             <button onClick={logOnly} disabled={processing || !selectedClient || !calculation?.products?.length}
-              className="py-3 px-4 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors whitespace-nowrap">
+              className="py-3 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors">
               {processing ? '...' : 'Logger uniquement'}
             </button>
           </div>
-          <button onClick={() => downloadCSVAndEmail()} disabled={!selectedClient || !shippingId}
-            className="w-full py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
-            CSV + Email Logisticien (sans créer de facture)
-          </button>
         </div>
       )}
 
@@ -13951,6 +14004,63 @@ const FacturesBatch = ({ showToast }) => {
     showToast(`${okCount}/${allResults.length} facture(s) créée(s)`, okCount > 0 ? 'success' : 'error');
     if (emailErrors.length > 0) {
       showToast(`${emailErrors.length} email(s) non envoyé(s)`, 'error');
+    }
+  };
+
+  // Créer toutes les factures + envoyer CSV/email logisticien
+  const createAllAndEmail = async () => {
+    if (readyOrders.length === 0) { showToast('Aucune commande prête (client + produits requis)', 'error'); return; }
+    setProcessing(true);
+    const allResults = [];
+    for (const order of readyOrders) {
+      try {
+        const inv = await api.post('/factures/invoices', {
+          client: order.client,
+          products: order.calculation.products,
+          fraisPort: order.calculation.frais_port || [],
+          documentType,
+          orderNumber: order.orderNumber || '',
+          sendEmail,
+          logGSheets,
+          createHubspotDeal,
+        });
+        if (inv.erreur) throw new Error(inv.erreur);
+        allResults.push({ ok: true, orderId: order.id, partnerName: order.client?.name || order.client?.shortname || '', ...inv });
+        // Ajouter automatiquement à la table shipments
+        try {
+          await api.post('/shipments', {
+            type: 'commande',
+            order_ref: order.orderNumber || inv.number || `CMD-${Date.now()}`,
+            invoice_id: inv.id,
+            invoice_number: inv.number,
+            client_name: order.client?.name || '',
+            client_email: order.client?.email || '',
+            client_address: order.client?.street || '',
+            client_city: order.client?.city || '',
+            client_country: order.client?.country || 'FR',
+            shipping_id: order.shippingId || '1302',
+            montant_ht: inv.price_net || 0,
+            montant_ttc: inv.price_gross || 0,
+            notes: `Commande batch ${order.orderNumber || ''}`.trim(),
+          });
+        } catch (shipErr) {
+          console.warn('Erreur ajout shipment:', shipErr);
+        }
+      } catch (err) {
+        allResults.push({ ok: false, orderId: order.id, partnerName: order.client?.name || order.client?.shortname || '', erreur: err.message });
+      }
+    }
+    setResults(allResults);
+    const okCount = allResults.filter(r => r.ok).length;
+    const emailErrors = allResults.filter(r => r.ok && r.email_error);
+    showToast(`${okCount}/${allResults.length} facture(s) créée(s)`, okCount > 0 ? 'success' : 'error');
+    if (emailErrors.length > 0) {
+      showToast(`${emailErrors.length} email(s) non envoyé(s)`, 'error');
+    }
+    // Enchaîner CSV + email logisticien automatiquement
+    setProcessing(false);
+    try { await csvEmailDirect(); } catch (csvErr) {
+      showToast('Erreur CSV logisticien: ' + csvErr.message, 'error');
     }
   };
 
@@ -14675,20 +14785,24 @@ const FacturesBatch = ({ showToast }) => {
               </div>
             </div>
 
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-2">
+              <button onClick={createAllAndEmail} disabled={processing || readyOrders.length === 0}
+                className="py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
+                {processing ? 'Création...' : `Créer ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'} et envoyer au logisticien`}
+              </button>
               <button onClick={createAll} disabled={processing || readyOrders.length === 0}
-                className="flex-1 py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
-                {processing ? 'Création...' : `Créer ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'}`}
+                className="py-3 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-500 disabled:opacity-50 transition-colors">
+                {processing ? 'Création...' : `Créer ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'} uniquement`}
+              </button>
+              <button onClick={csvEmailDirect} disabled={processing || orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length === 0}
+                className="py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
+                {processing ? 'Génération...' : `CSV + Email Logisticien (${orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length} commande(s))`}
               </button>
               <button onClick={logOnlyAll} disabled={processing || readyOrders.length === 0}
-                className="py-3 px-4 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors whitespace-nowrap">
+                className="py-3 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors">
                 {processing ? '...' : 'Logger uniquement'}
               </button>
             </div>
-            <button onClick={csvEmailDirect} disabled={processing || orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length === 0}
-              className="w-full py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
-              {processing ? 'Génération...' : `CSV + Email Logisticien (${orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length} commande(s))`}
-            </button>
           </>
         )}
 
