@@ -160,6 +160,7 @@ app.use('/api/shipments',     requireAccessAuto('portail'), require('./routes/sh
 app.use('/api/email-validation', requireAccessAuto('emails'), require('./routes/emailValidation')(db));
 app.use('/api/segments',      requireAccessAuto('config'), require('./routes/segments')(db));
 app.use('/api/config',        requireAccessAuto('config'), require('./routes/config')(db));
+app.use('/api/signatures',   requireAccessAuto('config'), require('./routes/signatures')(db));
 app.use('/api/blocklist',     requireAccessAuto('config'), require('./routes/blocklist')(db));
 app.use('/api/pauses',        requireAccessAuto('config'), require('./routes/pauses')(db));
 app.use('/api/qualification', requireAccessAuto('leads'), require('./routes/qualification')(db));

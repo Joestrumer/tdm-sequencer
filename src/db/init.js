@@ -119,6 +119,15 @@ db.exec(`
     updated_at TEXT DEFAULT (datetime('now'))
   );
 
+  CREATE TABLE IF NOT EXISTS email_signatures (
+    id         TEXT PRIMARY KEY,
+    nom        TEXT NOT NULL,
+    contenu_html TEXT NOT NULL,
+    is_active  INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now')),
+    updated_at TEXT DEFAULT (datetime('now'))
+  );
+
   CREATE TABLE IF NOT EXISTS email_blocklist (
     id              TEXT PRIMARY KEY,
     type            TEXT NOT NULL CHECK(type IN ('email', 'domain')),
@@ -1941,6 +1950,45 @@ try {
   }
 } catch (e) {
   console.error('⚠️  Erreur fix blocklist types:', e.message);
+}
+
+// ─── Migration : importer la signature existante dans email_signatures ────────
+try {
+  const sigCount = db.prepare('SELECT COUNT(*) as n FROM email_signatures').get().n;
+  if (sigCount === 0) {
+    const { v4: uuidv4 } = require('uuid');
+    const existingSig = db.prepare("SELECT valeur FROM config WHERE cle = 'email_signature_html'").get();
+    const contenu = existingSig?.valeur || null;
+    if (contenu) {
+      db.prepare('INSERT INTO email_signatures (id, nom, contenu_html, is_active) VALUES (?, ?, ?, 1)')
+        .run(uuidv4(), 'Signature principale', contenu);
+      console.log('✅ Migration email_signatures : signature existante importée');
+    } else {
+      // Pas de signature custom dans config, importer le fallback SIGNATURE_HUGO
+      const SIGNATURE_HUGO = `
+<table cellpadding="0" cellspacing="0" border="0" style="font-family:Arial,Helvetica,sans-serif;font-size:13px;color:#1a1a1a;margin-top:4px;">
+<tr>
+  <td style="padding-right:16px;border-right:2px solid #aa8d3e;vertical-align:top;">
+    <div style="font-weight:700;font-size:14px;color:#1a1a1a;">Hugo Montiel</div>
+    <div style="color:#555;font-size:12px;line-height:1.5;">Sales Director</div>
+    <div style="color:#555;font-size:12px;">Terre de Mars</div>
+  </td>
+  <td style="padding-left:16px;vertical-align:top;">
+    <div style="font-size:12px;color:#555;line-height:1.6;">
+      <a href="mailto:hugo@terredemars.com" style="color:#aa8d3e;text-decoration:none;">hugo@terredemars.com</a><br>
+      <a href="tel:+33612345678" style="color:#555;text-decoration:none;">+33 6 12 34 56 78</a><br>
+      <a href="https://www.terredemars.com" style="color:#aa8d3e;text-decoration:none;">www.terredemars.com</a>
+    </div>
+  </td>
+</tr>
+</table>`;
+      db.prepare('INSERT INTO email_signatures (id, nom, contenu_html, is_active) VALUES (?, ?, ?, 1)')
+        .run(uuidv4(), 'Signature principale', SIGNATURE_HUGO.trim());
+      console.log('✅ Migration email_signatures : signature par défaut créée');
+    }
+  }
+} catch (e) {
+  console.error('⚠️  Erreur migration email_signatures:', e.message);
 }
 
 console.log('✅ Base de données initialisée :', DB_PATH);

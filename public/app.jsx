@@ -16430,9 +16430,16 @@ const VueCompteEmail = () => {
   const [imap, setImap] = useState({ host: '', port: '993', user: '', password: '', secure: true });
   const [smtpConfigured, setSmtpConfigured] = useState(false);
   const [imapConfigured, setImapConfigured] = useState(false);
-  const [signatureHtml, setSignatureHtml] = useState('');
-  const [signatureMode, setSignatureMode] = useState('html');
-  const [signatureDefault, setSignatureDefault] = useState('');
+  // Multi-signatures
+  const [signatures, setSignatures] = useState([]);
+  const [editingSigId, setEditingSigId] = useState(null);
+  const [editingSigNom, setEditingSigNom] = useState('');
+  const [editingSigHtml, setEditingSigHtml] = useState('');
+  const [sigMode, setSigMode] = useState('html');
+  const [showNewSig, setShowNewSig] = useState(false);
+  const [newSigNom, setNewSigNom] = useState('');
+  const [newSigHtml, setNewSigHtml] = useState('');
+  const [newSigMode, setNewSigMode] = useState('html');
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
 
@@ -16453,11 +16460,8 @@ const VueCompteEmail = () => {
       if (cfg.imap_secure) setImap(s => ({ ...s, secure: cfg.imap_secure === 'true' }));
       if (cfg.imap_password_configured) setImapConfigured(true);
     }).catch(e => console.warn('Config load:', e.message));
-    api.get('/config/signature').then(data => {
-      setSignatureHtml(data.signature || '');
-      setSignatureDefault(data.signature || '');
-      if (data.is_default) setSignatureDefault(data.signature);
-    }).catch(e => console.warn('Signature load:', e.message));
+    // Charger les signatures multiples
+    api.get('/signatures').then(sigs => setSignatures(sigs || [])).catch(e => console.warn('Signatures load:', e.message));
   }, []);
 
   const sauvegarder = async () => {
@@ -16475,12 +16479,7 @@ const VueCompteEmail = () => {
       if (imap.user) payload.imap_user = imap.user;
       if (imap.password) { payload.imap_password = imap.password; setImapConfigured(true); setImap(s => ({ ...s, password: '' })); }
       payload.imap_secure = String(imap.secure);
-      // En mode texte, convertir en HTML basique
-      payload.email_signature_html = signatureMode === 'texte'
-        ? signatureHtml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')
-        : signatureHtml;
       await api.post('/config', payload);
-      await reloadSignature();
       setMsg('Paramètres email sauvegardés');
     } catch (e) {
       setMsg('Erreur: ' + (e.message || 'Erreur inconnue'));
@@ -16488,13 +16487,58 @@ const VueCompteEmail = () => {
     setSaving(false);
   };
 
-  const resetSignature = async () => {
+  const loadSignatures = () => api.get('/signatures').then(sigs => setSignatures(sigs || []));
+
+  const creerSignature = async () => {
+    if (!newSigNom.trim() || !newSigHtml.trim()) return setMsg('Nom et contenu requis');
+    setSaving(true); setMsg('');
     try {
-      await api.post('/config', { email_signature_html: '' });
-      const sig = await reloadSignature();
-      setSignatureHtml(sig);
-      setMsg('Signature réinitialisée par défaut');
-    } catch (e) { setMsg('Erreur: ' + e.message); }
+      const contenu = newSigMode === 'texte'
+        ? newSigHtml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')
+        : newSigHtml;
+      await api.post('/signatures', { nom: newSigNom.trim(), contenu_html: contenu });
+      await loadSignatures();
+      setNewSigNom(''); setNewSigHtml(''); setShowNewSig(false);
+      setMsg('Signature créée');
+    } catch (e) { setMsg('Erreur: ' + (e.message || 'Erreur inconnue')); }
+    setSaving(false);
+  };
+
+  const modifierSignature = async (id) => {
+    setSaving(true); setMsg('');
+    try {
+      const contenu = sigMode === 'texte'
+        ? editingSigHtml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>')
+        : editingSigHtml;
+      await api.put('/signatures/' + id, { nom: editingSigNom, contenu_html: contenu });
+      await loadSignatures();
+      await reloadSignature();
+      setEditingSigId(null);
+      setMsg('Signature modifiée');
+    } catch (e) { setMsg('Erreur: ' + (e.message || 'Erreur inconnue')); }
+    setSaving(false);
+  };
+
+  const activerSignature = async (id) => {
+    setSaving(true); setMsg('');
+    try {
+      await api.put('/signatures/' + id + '/activate');
+      await loadSignatures();
+      await reloadSignature();
+      setMsg('Signature activée');
+    } catch (e) { setMsg('Erreur: ' + (e.message || 'Erreur inconnue')); }
+    setSaving(false);
+  };
+
+  const supprimerSignature = async (id) => {
+    if (!confirm('Supprimer cette signature ?')) return;
+    setSaving(true); setMsg('');
+    try {
+      await api.delete('/signatures/' + id);
+      await loadSignatures();
+      setMsg('Signature supprimée');
+    } catch (e) { setMsg('Erreur: ' + (e.message || 'Erreur inconnue')); }
+    setSaving(false);
   };
 
   const inputCls = "w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400";
@@ -16585,35 +16629,90 @@ const VueCompteEmail = () => {
         </label>
       </div>
 
-      {/* Signature email */}
+      {/* Signatures email (multi) */}
       <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
         <div className="flex items-center justify-between">
-          <h3 className="text-sm font-semibold text-slate-800">Signature email</h3>
-          <div className="flex items-center gap-2">
-            <button onClick={() => setSignatureMode('html')} className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${signatureMode === 'html' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>HTML</button>
-            <button onClick={() => setSignatureMode('texte')} className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${signatureMode === 'texte' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>Texte</button>
-          </div>
-        </div>
-        <textarea
-          value={signatureHtml}
-          onChange={e => setSignatureHtml(e.target.value)}
-          rows={signatureMode === 'html' ? 12 : 6}
-          placeholder={signatureMode === 'html' ? '<table cellpadding="0">...</table>' : 'Hugo Montiel\nSales Director\nTerre de Mars'}
-          className={inputCls + " font-mono text-xs resize-y"}
-        />
-        <div className="flex items-center gap-2">
-          <button onClick={resetSignature} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50 transition-colors">
-            Réinitialiser par défaut
+          <h3 className="text-sm font-semibold text-slate-800">Signatures email</h3>
+          <button onClick={() => setShowNewSig(!showNewSig)} className="px-3 py-1.5 text-xs bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors">
+            {showNewSig ? 'Annuler' : '+ Nouvelle signature'}
           </button>
         </div>
-        {signatureHtml && (
-          <div>
-            <label className="text-xs font-medium text-slate-500 mb-2 block">Aperçu</label>
-            <div className="border border-slate-200 rounded-lg p-4 bg-white" dangerouslySetInnerHTML={{
-              __html: signatureMode === 'texte' ? signatureHtml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') : signatureHtml
-            }} />
+
+        {/* Formulaire nouvelle signature */}
+        {showNewSig && (
+          <div className="border border-blue-200 bg-blue-50/30 rounded-xl p-4 space-y-3">
+            <h4 className="text-xs font-semibold text-slate-700">Nouvelle signature</h4>
+            <input value={newSigNom} onChange={e => setNewSigNom(e.target.value)} placeholder="Nom de la signature" className={inputCls} />
+            <div className="flex items-center gap-2">
+              <button onClick={() => setNewSigMode('html')} className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${newSigMode === 'html' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>HTML</button>
+              <button onClick={() => setNewSigMode('texte')} className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${newSigMode === 'texte' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>Texte</button>
+            </div>
+            <textarea value={newSigHtml} onChange={e => setNewSigHtml(e.target.value)} rows={8} placeholder={newSigMode === 'html' ? '<table cellpadding="0">...</table>' : 'Hugo Montiel\nSales Director\nTerre de Mars'} className={inputCls + " font-mono text-xs resize-y"} />
+            {newSigHtml && (
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Aperçu</label>
+                <div className="border border-slate-200 rounded-lg p-3 bg-white text-sm" dangerouslySetInnerHTML={{ __html: newSigMode === 'texte' ? newSigHtml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') : newSigHtml }} />
+              </div>
+            )}
+            <button onClick={creerSignature} disabled={saving} className="px-4 py-2 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 transition-colors disabled:opacity-50">
+              {saving ? 'Création...' : 'Créer la signature'}
+            </button>
           </div>
         )}
+
+        {/* Liste des signatures */}
+        {signatures.length === 0 && !showNewSig && (
+          <p className="text-xs text-slate-400">Aucune signature. Créez-en une pour commencer.</p>
+        )}
+        {signatures.map(sig => (
+          <div key={sig.id} className={`border rounded-xl p-4 space-y-3 ${sig.is_active ? 'border-emerald-300 bg-emerald-50/30' : 'border-slate-200'}`}>
+            {editingSigId === sig.id ? (
+              /* Mode édition */
+              <>
+                <input value={editingSigNom} onChange={e => setEditingSigNom(e.target.value)} className={inputCls} />
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setSigMode('html')} className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${sigMode === 'html' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>HTML</button>
+                  <button onClick={() => setSigMode('texte')} className={`px-2.5 py-1 rounded text-xs font-medium transition-colors ${sigMode === 'texte' ? 'bg-slate-900 text-white' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'}`}>Texte</button>
+                </div>
+                <textarea value={editingSigHtml} onChange={e => setEditingSigHtml(e.target.value)} rows={10} className={inputCls + " font-mono text-xs resize-y"} />
+                {editingSigHtml && (
+                  <div>
+                    <label className="text-xs font-medium text-slate-500 mb-1 block">Aperçu</label>
+                    <div className="border border-slate-200 rounded-lg p-3 bg-white text-sm" dangerouslySetInnerHTML={{ __html: sigMode === 'texte' ? editingSigHtml.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/\n/g,'<br>') : editingSigHtml }} />
+                  </div>
+                )}
+                <div className="flex items-center gap-2">
+                  <button onClick={() => modifierSignature(sig.id)} disabled={saving} className="px-3 py-1.5 text-xs bg-blue-600 text-white rounded-lg hover:bg-blue-500 disabled:opacity-50">{saving ? 'Sauvegarde...' : 'Sauvegarder'}</button>
+                  <button onClick={() => setEditingSigId(null)} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-500 rounded-lg hover:bg-slate-50">Annuler</button>
+                </div>
+              </>
+            ) : (
+              /* Mode lecture */
+              <>
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-2">
+                    <span className="text-sm font-medium text-slate-800">{sig.nom}</span>
+                    {sig.is_active ? (
+                      <span className="px-2 py-0.5 text-[10px] font-semibold bg-emerald-100 text-emerald-700 rounded-full">Active</span>
+                    ) : null}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    {!sig.is_active && (
+                      <button onClick={() => activerSignature(sig.id)} className="px-2.5 py-1 text-[11px] bg-emerald-50 text-emerald-700 border border-emerald-200 rounded-lg hover:bg-emerald-100 transition-colors">Activer</button>
+                    )}
+                    <button onClick={() => { setEditingSigId(sig.id); setEditingSigNom(sig.nom); setEditingSigHtml(sig.contenu_html); setSigMode('html'); }} className="px-2.5 py-1 text-[11px] bg-slate-50 text-slate-600 border border-slate-200 rounded-lg hover:bg-slate-100 transition-colors">Modifier</button>
+                    {!sig.is_active && (
+                      <button onClick={() => supprimerSignature(sig.id)} className="px-2.5 py-1 text-[11px] bg-red-50 text-red-600 border border-red-200 rounded-lg hover:bg-red-100 transition-colors">Supprimer</button>
+                    )}
+                  </div>
+                </div>
+                <div className="border border-slate-200 rounded-lg p-3 bg-white max-h-32 overflow-y-auto">
+                  <div className="text-sm" dangerouslySetInnerHTML={{ __html: sig.contenu_html }} />
+                </div>
+              </>
+            )}
+          </div>
+        ))}
       </div>
 
       {msg && <p className={`text-sm font-medium ${msg.startsWith('Erreur') ? 'text-red-600' : 'text-emerald-600'}`}>{msg}</p>}

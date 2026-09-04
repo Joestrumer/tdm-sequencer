@@ -72,9 +72,17 @@ module.exports = (db) => {
     }
   });
 
-  // Lire la signature email (complète, non masquée)
+  // Lire la signature email active (complète, non masquée)
   router.get('/signature', (req, res) => {
     try {
+      // 1. Lire depuis email_signatures (nouvelle table)
+      try {
+        const sig = db.prepare('SELECT contenu_html, nom, id FROM email_signatures WHERE is_active = 1').get();
+        if (sig?.contenu_html) {
+          return res.json({ signature: sig.contenu_html, is_default: false, id: sig.id, nom: sig.nom });
+        }
+      } catch (_) { /* table pas encore créée */ }
+      // 2. Fallback : ancienne clé config
       const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('email_signature_html');
       const { SIGNATURE_HUGO } = require('../services/brevoService');
       res.json({ signature: row?.valeur || SIGNATURE_HUGO, is_default: !row?.valeur });

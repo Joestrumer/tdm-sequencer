@@ -228,12 +228,21 @@ const SIGNATURE_HUGO = `
 
 // ─── Charger la signature depuis la DB (fallback SIGNATURE_HUGO) ─────────────
 function getSignature(db) {
+  // 1. Lire depuis email_signatures (nouvelle table)
+  try {
+    const row = db.prepare('SELECT contenu_html FROM email_signatures WHERE is_active = 1').get();
+    if (row?.contenu_html) return row.contenu_html;
+  } catch (e) {
+    // Table pas encore créée ou erreur — fallback
+  }
+  // 2. Fallback : ancienne clé config
   try {
     const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('email_signature_html');
     if (row?.valeur) return row.valeur;
   } catch (e) {
     logger.warn('Erreur chargement signature depuis DB', { error: e.message });
   }
+  // 3. Fallback final
   return SIGNATURE_HUGO;
 }
 
