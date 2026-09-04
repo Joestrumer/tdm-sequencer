@@ -12716,7 +12716,7 @@ const FacturesSingle = ({ showToast }) => {
   const downloadPDF = async () => {
     try {
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
-      const res = await fetch(window.location.origin + '/api/factures/invoices/' + result.id + '/pdf', {
+      const res = await fetch(window.location.origin + '/api/factures/invoices/' + result.id + '/pdf' + (documentType === 'proforma' ? '?type=proforma' : ''), {
         headers: { 'Authorization': 'Bearer ' + token },
       });
       if (!res.ok) throw new Error('Erreur PDF: ' + res.status);
@@ -12726,7 +12726,7 @@ const FacturesSingle = ({ showToast }) => {
       // Téléchargement automatique avec le bon nom
       const a = document.createElement('a');
       a.href = url;
-      a.download = `facture-invoice-${result.number || result.id}.pdf`;
+      a.download = documentType === 'proforma' ? `facture-proforma-${result.number || result.id}.pdf` : `facture-invoice-${result.number || result.id}.pdf`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
@@ -14131,12 +14131,12 @@ const FacturesBatch = ({ showToast }) => {
   const downloadPdfBatch = async (r) => {
     try {
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
-      const res2 = await fetch(`/api/factures/invoices/${r.id}/pdf`, {
+      const res2 = await fetch(`/api/factures/invoices/${r.id}/pdf${documentType === 'proforma' ? '?type=proforma' : ''}`, {
         headers: { 'Authorization': 'Bearer ' + token },
       });
       if (!res2.ok) throw new Error('Erreur PDF: ' + res2.status);
       const blob = await res2.blob();
-      const fileName = `facture-${r.number || r.id}.pdf`;
+      const fileName = documentType === 'proforma' ? `facture-proforma-${r.number || r.id}.pdf` : `facture-invoice-${r.number || r.id}.pdf`;
       downloadFallback(blob, fileName);
       showToast('PDF téléchargé', 'success');
     } catch (err) {

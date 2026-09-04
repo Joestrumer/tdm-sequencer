@@ -836,7 +836,8 @@ module.exports = (db) => {
       if (!pdfRes.ok) return res.status(pdfRes.status).json({ erreur: `VF PDF error: ${pdfRes.status}` });
 
       res.setHeader('Content-Type', 'application/pdf');
-      res.setHeader('Content-Disposition', `inline; filename="facture-${req.params.id}.pdf"`);
+      const prefix = req.query.type === 'proforma' ? 'facture-proforma' : 'facture-invoice';
+      res.setHeader('Content-Disposition', `inline; filename="${prefix}-${req.params.id}.pdf"`);
       const buffer = Buffer.from(await pdfRes.arrayBuffer());
       res.send(buffer);
     } catch (e) {
