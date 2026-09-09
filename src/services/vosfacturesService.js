@@ -118,7 +118,8 @@ module.exports = (db, userToken = null) => ({
     return all.filter(c =>
       stripDiacritics(c.name || '').toLowerCase().includes(term) ||
       stripDiacritics(c.shortcut || '').toLowerCase().includes(term) ||
-      stripDiacritics(c.city || '').toLowerCase().includes(term)
+      stripDiacritics(c.city || '').toLowerCase().includes(term) ||
+      (c.email || '').toLowerCase().includes(term)
     ).slice(0, 30);
   },
 
