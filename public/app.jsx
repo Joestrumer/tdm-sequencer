@@ -14798,21 +14798,21 @@ const FacturesBatch = ({ showToast }) => {
             </div>
 
             <div className="grid grid-cols-2 gap-2">
-              <button onClick={createAllAndEmail} disabled={processing || readyOrders.length === 0}
-                className="py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
-                {processing ? 'Création...' : `Créer ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'} et envoyer au logisticien`}
+              <button onClick={() => { markClicked('createAndEmail'); createAllAndEmail(); }} disabled={processing || readyOrders.length === 0}
+                className={`py-3 text-white text-sm font-medium rounded-xl disabled:opacity-50 transition-colors ${clickedButtons.createAndEmail ? 'bg-slate-400 ring-2 ring-slate-600' : 'bg-slate-900 hover:bg-slate-700'}`}>
+                {processing ? 'Création...' : clickedButtons.createAndEmail ? `\u2713 ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'} créée(s) + logisticien` : `Créer ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'} et envoyer au logisticien`}
               </button>
-              <button onClick={createAll} disabled={processing || readyOrders.length === 0}
-                className="py-3 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-500 disabled:opacity-50 transition-colors">
-                {processing ? 'Création...' : `Créer ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'} uniquement`}
+              <button onClick={() => { markClicked('createOnly'); createAll(); }} disabled={processing || readyOrders.length === 0}
+                className={`py-3 text-white text-sm font-medium rounded-xl disabled:opacity-50 transition-colors ${clickedButtons.createOnly ? 'bg-blue-300 ring-2 ring-blue-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
+                {processing ? 'Création...' : clickedButtons.createOnly ? `\u2713 ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'} créée(s)` : `Créer ${readyOrders.length} ${documentType === 'proforma' ? 'proforma(s)' : 'facture(s)'} uniquement`}
               </button>
-              <button onClick={csvEmailDirect} disabled={processing || orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length === 0}
-                className="py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
-                {processing ? 'Génération...' : `CSV + Email Logisticien (${orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length} commande(s))`}
+              <button onClick={() => { markClicked('csvDirect'); csvEmailDirect(); }} disabled={processing || orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length === 0}
+                className={`py-3 text-white text-sm font-medium rounded-xl disabled:opacity-50 transition-colors ${clickedButtons.csvDirect ? 'bg-amber-300 ring-2 ring-amber-500' : 'bg-amber-600 hover:bg-amber-700'}`}>
+                {processing ? 'Génération...' : clickedButtons.csvDirect ? `\u2713 CSV + Email envoyé` : `CSV + Email Logisticien (${orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length)).length} commande(s))`}
               </button>
-              <button onClick={logOnlyAll} disabled={processing || readyOrders.length === 0}
-                className="py-3 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors">
-                {processing ? '...' : 'Logger uniquement'}
+              <button onClick={() => { markClicked('logOnly'); logOnlyAll(); }} disabled={processing || readyOrders.length === 0}
+                className={`py-3 text-white text-sm font-medium rounded-xl disabled:opacity-50 transition-colors ${clickedButtons.logOnly ? 'bg-emerald-300 ring-2 ring-emerald-500' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                {processing ? '...' : clickedButtons.logOnly ? '\u2713 Loggé' : 'Logger uniquement'}
               </button>
             </div>
           </>
