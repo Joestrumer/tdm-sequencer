@@ -5,6 +5,10 @@
 const logger = require('../config/logger');
 const VF_BASE_URL = process.env.VF_BASE_URL || 'https://terredemars.vosfactures.fr';
 
+function stripDiacritics(s) {
+  return (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+}
+
 function getToken(db, userToken) {
   if (userToken) return userToken;
   const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('vf_api_token');
@@ -110,11 +114,11 @@ module.exports = (db, userToken = null) => ({
   async rechercherClients(query) {
     const all = await this.getAllClients();
     if (!query || query.length < 2) return all.slice(0, 50);
-    const term = query.toLowerCase();
+    const term = stripDiacritics(query).toLowerCase();
     return all.filter(c =>
-      (c.name || '').toLowerCase().includes(term) ||
-      (c.shortcut || '').toLowerCase().includes(term) ||
-      (c.city || '').toLowerCase().includes(term)
+      stripDiacritics(c.name || '').toLowerCase().includes(term) ||
+      stripDiacritics(c.shortcut || '').toLowerCase().includes(term) ||
+      stripDiacritics(c.city || '').toLowerCase().includes(term)
     ).slice(0, 30);
   },
 
