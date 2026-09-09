@@ -13690,6 +13690,8 @@ const FacturesBatch = ({ showToast }) => {
   const nextIdRef = useRef(1);
   const [processing, setProcessing] = useState(false);
   const [results, setResults] = useState(null);
+  const [clickedButtons, setClickedButtons] = useState({}); // { "pdf-0": true, "vf-1": true, "csv-0": true, "csvGrouped": true }
+  const markClicked = (key) => setClickedButtons(prev => ({ ...prev, [key]: true }));
   const [manualText, setManualText] = useState('');
   const [importInvoiceId, setImportInvoiceId] = useState('');
   const [importLoading, setImportLoading] = useState(false);
@@ -13997,7 +13999,7 @@ const FacturesBatch = ({ showToast }) => {
         allResults.push({ ok: false, orderId: order.id, partnerName: order.client?.name || order.client?.shortname || '', erreur: err.message });
       }
     }
-    setResults(allResults);
+    setResults(allResults); setClickedButtons({});
     setProcessing(false);
     const okCount = allResults.filter(r => r.ok).length;
     const emailErrors = allResults.filter(r => r.ok && r.email_error);
@@ -14050,7 +14052,7 @@ const FacturesBatch = ({ showToast }) => {
         allResults.push({ ok: false, orderId: order.id, partnerName: order.client?.name || order.client?.shortname || '', erreur: err.message });
       }
     }
-    setResults(allResults);
+    setResults(allResults); setClickedButtons({});
     const okCount = allResults.filter(r => r.ok).length;
     const emailErrors = allResults.filter(r => r.ok && r.email_error);
     showToast(`${okCount}/${allResults.length} facture(s) créée(s)`, okCount > 0 ? 'success' : 'error');
@@ -14082,7 +14084,7 @@ const FacturesBatch = ({ showToast }) => {
         allResults.push({ ok: false, orderId: order.id, partnerName: order.client?.name || order.client?.shortname || '', erreur: err.message });
       }
     }
-    setResults(allResults);
+    setResults(allResults); setClickedButtons({});
     setProcessing(false);
     const okCount = allResults.filter(r => r.ok).length;
     showToast(`${okCount}/${allResults.length} commande(s) loggée(s) dans Google Sheets`, okCount > 0 ? 'success' : 'error');
@@ -14831,21 +14833,22 @@ const FacturesBatch = ({ showToast }) => {
                   </span>
                   <div className="flex items-center gap-1">
                     {r.ok && !r.logOnly && r.id && (
-                      <button onClick={() => downloadPdfBatch(r)}
-                        className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">
-                        PDF
+                      <button onClick={() => { markClicked(`pdf-${i}`); downloadPdfBatch(r); }}
+                        className={`px-2 py-1 text-white text-xs rounded ${clickedButtons[`pdf-${i}`] ? 'bg-blue-300 ring-1 ring-blue-500' : 'bg-blue-600 hover:bg-blue-700'}`}>
+                        {clickedButtons[`pdf-${i}`] ? 'PDF \u2713' : 'PDF'}
                       </button>
                     )}
                     {r.ok && !r.logOnly && r.id && (
                       <a href={`https://terredemars.vosfactures.fr/invoices/${r.id}`} target="_blank" rel="noopener"
-                        className="px-2 py-1 bg-slate-500 text-white text-xs rounded hover:bg-slate-600">
-                        VF ↗
+                        onClick={() => markClicked(`vf-${i}`)}
+                        className={`px-2 py-1 text-white text-xs rounded ${clickedButtons[`vf-${i}`] ? 'bg-slate-300 ring-1 ring-slate-500' : 'bg-slate-500 hover:bg-slate-600'}`}>
+                        {clickedButtons[`vf-${i}`] ? 'VF \u2713' : 'VF \u2197'}
                       </a>
                     )}
                     {r.ok && !r.logOnly && (
-                      <button onClick={() => downloadCSVBatch(r)}
-                        className="px-2 py-1 bg-emerald-600 text-white text-xs rounded hover:bg-emerald-700">
-                        CSV + Email
+                      <button onClick={() => { markClicked(`csv-${i}`); downloadCSVBatch(r); }}
+                        className={`px-2 py-1 text-white text-xs rounded ${clickedButtons[`csv-${i}`] ? 'bg-emerald-300 ring-1 ring-emerald-500' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+                        {clickedButtons[`csv-${i}`] ? 'CSV + Email \u2713' : 'CSV + Email'}
                       </button>
                     )}
                   </div>
@@ -14856,9 +14859,9 @@ const FacturesBatch = ({ showToast }) => {
               </div>
             ))}
             {results.filter(r => r.ok && !r.logOnly).length > 1 && (
-              <button onClick={downloadAllCsvGrouped}
-                className="w-full mt-2 py-2 bg-emerald-700 text-white text-sm font-medium rounded-lg hover:bg-emerald-800 transition-colors">
-                CSV groupé ({results.filter(r => r.ok && !r.logOnly).length} commandes) + Email
+              <button onClick={() => { markClicked('csvGrouped'); downloadAllCsvGrouped(); }}
+                className={`w-full mt-2 py-2 text-white text-sm font-medium rounded-lg transition-colors ${clickedButtons.csvGrouped ? 'bg-emerald-400 ring-2 ring-emerald-600' : 'bg-emerald-700 hover:bg-emerald-800'}`}>
+                {clickedButtons.csvGrouped ? '\u2713 ' : ''}CSV groupé ({results.filter(r => r.ok && !r.logOnly).length} commandes) + Email
               </button>
             )}
           </div>
