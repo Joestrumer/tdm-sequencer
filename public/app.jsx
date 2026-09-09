@@ -14057,9 +14057,9 @@ const FacturesBatch = ({ showToast }) => {
     if (emailErrors.length > 0) {
       showToast(`${emailErrors.length} email(s) non envoyé(s)`, 'error');
     }
-    // Enchaîner CSV + email logisticien automatiquement
+    // Enchaîner CSV + email logisticien automatiquement (passer les résultats pour les numéros VF)
     setProcessing(false);
-    try { await csvEmailDirect(); } catch (csvErr) {
+    try { await csvEmailDirect(allResults); } catch (csvErr) {
       showToast('Erreur CSV logisticien: ' + csvErr.message, 'error');
     }
   };
@@ -14198,23 +14198,29 @@ const FacturesBatch = ({ showToast }) => {
   };
 
   // CSV + Email logisticien directement depuis les commandes importées (sans créer de facture)
-  const csvEmailDirect = async () => {
+  // invoiceResults optionnel : résultats VF après createAll, pour récupérer les numéros de facture
+  const csvEmailDirect = async (invoiceResults = null) => {
     const eligibleOrders = orders.filter(o => o.client && (o.calculation?.products?.length || o.products?.length));
     if (eligibleOrders.length === 0) { showToast('Aucune commande avec client + produits', 'error'); return; }
     setProcessing(true);
     try {
       const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
-      const batchOrders = eligibleOrders.map(order => ({
-        invoiceData: {
-          products: order.calculation?.products || order.products || [],
-          orderNumber: order.orderNumber || '',
-          number: order.orderNumber || '',
-        },
-        client: order.client || {},
-        shippingId: order.shippingId || '1302',
-        deliveryAddress: order.deliveryAddress || '',
-        deliveryComment: order.deliveryComment || '',
-      }));
+      const batchOrders = eligibleOrders.map(order => {
+        // Si des factures viennent d'être créées, récupérer le numéro VF
+        const matchingResult = invoiceResults?.find(r => r.ok && r.orderId === order.id);
+        const invoiceNumber = matchingResult?.number || order.orderNumber || '';
+        return {
+          invoiceData: {
+            products: order.calculation?.products || order.products || [],
+            orderNumber: invoiceNumber,
+            number: invoiceNumber,
+          },
+          client: order.client || {},
+          shippingId: order.shippingId || '1302',
+          deliveryAddress: order.deliveryAddress || '',
+          deliveryComment: order.deliveryComment || '',
+        };
+      });
       const res = await fetch('/api/factures/csv-logisticien-batch', {
         method: 'POST',
         headers: { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' },
@@ -14236,11 +14242,15 @@ const FacturesBatch = ({ showToast }) => {
       }
 
       const orderLines = eligibleOrders.map((order, i) => {
-        const num = order.orderNumber || '?';
+        const matchingResult = invoiceResults?.find(r => r.ok && r.orderId === order.id);
+        const num = matchingResult?.number || order.orderNumber || '?';
         const partner = order.client?.name || '';
         return `${i + 1}. ${partner} — N°${num}`;
       }).join('\n');
-      const orderNums = eligibleOrders.map(o => o.orderNumber || '?').join(', ');
+      const orderNums = eligibleOrders.map(o => {
+        const matchingResult = invoiceResults?.find(r => r.ok && r.orderId === o.id);
+        return matchingResult?.number || o.orderNumber || '?';
+      }).join(', ');
       const subject = encodeURIComponent(`Commandes batch — ${orderNums}`);
       const body = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV groupé pour ${eligibleOrders.length} commande(s) :\n\n${orderLines}\n\nCordialement`);
       const cc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');

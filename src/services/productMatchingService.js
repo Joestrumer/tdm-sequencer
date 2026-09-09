@@ -256,28 +256,38 @@ function genererCSVLogisticien(invoiceData, client, shippingNames, options = {})
   const rawDelivery = (options.deliveryAddress || '').trim();
   if (rawDelivery) {
     const dLines = rawDelivery.split(/\n/).map(l => l.trim()).filter(Boolean);
+    const streetKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|lot|zi|zone|voie|rte|chem)\b/i;
+    const countryNames = { 'france': 'FR', 'belgique': 'BE', 'suisse': 'CH', 'luxembourg': 'LU', 'allemagne': 'DE', 'italie': 'IT', 'espagne': 'ES', 'autriche': 'AT', 'pays-bas': 'NL', 'portugal': 'PT', 'royaume-uni': 'GB' };
     if (dLines.length >= 2) {
-      // Première ligne = nom, dernière(s) = adresse
-      deliveryName = dLines[0];
-      deliveryStreet = dLines.length >= 3 ? dLines[1] : '';
-      // Chercher la ligne CP + Ville (format "75008 Paris" ou "FR-75008 Paris")
-      // Exclure les lignes déjà assignées (nom=0, rue=1) et les lignes avec mots-clés de rue
-      // pour éviter de confondre un numéro de rue (ex: 2469) avec un code postal
-      const streetKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|lot|zi|zone|voie|rte|chem)\b/i;
-      const skipLines = new Set([0]);
-      if (dLines.length >= 3) skipLines.add(1);
-      const cpVilleLine = dLines.find((l, i) => !skipLines.has(i) && /\d{4,5}\s/.test(l) && !streetKw.test(l)) || dLines[dLines.length - 1];
-      const cpMatch = cpVilleLine.match(/(\d{4,5})\s+(.+)/);
-      if (cpMatch) {
-        deliveryZip = cpMatch[1];
-        deliveryCity = cpMatch[2];
-      } else if (dLines.length >= 3) {
-        deliveryCity = dLines[dLines.length - 1];
+      // Détecter si la première ligne est une adresse (commence par un numéro ou contient un mot-clé de rue)
+      const firstLineIsStreet = /^\d/.test(dLines[0]) || streetKw.test(dLines[0]);
+
+      let addrLines; // lignes restantes à parser (CP+Ville, Pays)
+      if (firstLineIsStreet) {
+        // Pas de nom dans l'adresse — garder le deliveryName du client
+        deliveryStreet = dLines[0];
+        addrLines = dLines.slice(1);
+      } else {
+        // Première ligne = nom du destinataire
+        deliveryName = dLines[0];
+        deliveryStreet = dLines.length >= 3 ? dLines[1] : '';
+        addrLines = dLines.length >= 3 ? dLines.slice(2) : dLines.slice(1);
       }
-      // Pays si dernière ligne est un code pays ou nom de pays
-      const lastLine = dLines[dLines.length - 1];
-      if (/^[A-Z]{2}$/.test(lastLine) || /^(France|Belgique|Suisse|Luxembourg|Allemagne|Italie|Espagne)$/i.test(lastLine)) {
-        deliveryCountry = lastLine;
+
+      // Chercher CP + Ville dans les lignes restantes
+      for (const line of addrLines) {
+        const cpMatch = line.match(/(\d{4,5})\s+(.+)/);
+        if (cpMatch) {
+          deliveryZip = cpMatch[1];
+          deliveryCity = cpMatch[2];
+          continue;
+        }
+        // Code pays 2 lettres ou nom de pays
+        if (/^[A-Z]{2}$/.test(line)) {
+          deliveryCountry = line;
+        } else if (countryNames[line.toLowerCase()]) {
+          deliveryCountry = countryNames[line.toLowerCase()];
+        }
       }
     } else if (dLines.length === 1) {
       // Adresse sur une seule ligne — mettre en rue
