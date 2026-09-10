@@ -11841,6 +11841,235 @@ const FacturesNotifications = ({ showToast }) => {
   );
 };
 
+// ─── Factures > Partenaires (mappings VF ↔ nom canonique) ─────────────────────
+const FacturesPartners = ({ showToast }) => {
+  const [partners, setPartners] = useState([]);
+  const [mappings, setMappings] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [search, setSearch] = useState("");
+  const [addingFor, setAddingFor] = useState(null); // partner nom or "__orphan__"
+  const [newVfName, setNewVfName] = useState("");
+  const [newFileName, setNewFileName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const charger = async () => {
+    setLoading(true);
+    try {
+      const [p, m] = await Promise.all([
+        api.get('/reference/partners?all=1'),
+        api.get('/reference/client-mappings'),
+      ]);
+      setPartners(Array.isArray(p) ? p : []);
+      setMappings(Array.isArray(m) ? m : []);
+    } catch (e) {
+      showToast('Erreur chargement partenaires/mappings', 'error');
+    }
+    setLoading(false);
+  };
+
+  useEffect(() => { charger(); }, []);
+
+  // Accent-insensitive filter
+  const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+
+  const partnerMappings = useMemo(() => {
+    const q = norm(search);
+    return partners
+      .filter(p => !q || norm(p.nom).includes(q))
+      .map(p => ({
+        ...p,
+        vfNames: mappings.filter(m => m.file_name === p.nom),
+      }));
+  }, [partners, mappings, search]);
+
+  const orphanMappings = useMemo(() => {
+    const partnerNoms = new Set(partners.map(p => p.nom));
+    const q = norm(search);
+    return mappings.filter(m =>
+      !m.file_name || !partnerNoms.has(m.file_name)
+    ).filter(m => !q || norm(m.vf_name).includes(q) || norm(m.file_name).includes(q));
+  }, [partners, mappings, search]);
+
+  const addMapping = async (vfName, fileName) => {
+    if (!vfName?.trim()) return;
+    setSaving(true);
+    try {
+      await api.post('/reference/client-mappings', { vf_name: vfName.trim(), file_name: fileName || null });
+      showToast('Mapping ajouté', 'success');
+      setNewVfName('');
+      setNewFileName('');
+      setAddingFor(null);
+      await charger();
+    } catch (e) {
+      showToast('Erreur ajout mapping', 'error');
+    }
+    setSaving(false);
+  };
+
+  const deleteMapping = async (id) => {
+    try {
+      await api.delete('/reference/client-mappings/' + id);
+      showToast('Mapping supprimé', 'success');
+      await charger();
+    } catch (e) {
+      showToast('Erreur suppression', 'error');
+    }
+  };
+
+  const assignOrphan = async (mappingId, fileName) => {
+    if (!fileName) return;
+    try {
+      await api.delete('/reference/client-mappings/' + mappingId);
+      const m = mappings.find(x => x.id === mappingId);
+      await api.post('/reference/client-mappings', {
+        vf_name: m.vf_name,
+        file_name: fileName,
+        vf_client_id: m.vf_client_id || null,
+      });
+      showToast('Mapping assigné', 'success');
+      await charger();
+    } catch (e) {
+      showToast('Erreur assignation', 'error');
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="flex items-center gap-2 text-sm text-slate-400 py-8">
+        <span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" />
+        Chargement des partenaires...
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-6">
+      {/* Search bar */}
+      <div className="flex items-center gap-3">
+        <input
+          value={search}
+          onChange={e => setSearch(e.target.value)}
+          placeholder="Rechercher un partenaire..."
+          className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-72 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+        />
+        <span className="text-xs text-slate-400">{partnerMappings.length} partenaires · {mappings.length} mappings</span>
+      </div>
+
+      {/* Partners table */}
+      <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+        <table className="w-full">
+          <thead>
+            <tr className="border-b border-slate-100">
+              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Nom canonique</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Noms VosFactures</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide w-32">Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {partnerMappings.map((p, i) => (
+              <tr key={p.id} className={`border-b border-slate-50 hover:bg-slate-50/50 transition-colors ${i === partnerMappings.length - 1 ? 'border-0' : ''}`}>
+                <td className="px-4 py-3">
+                  <div className="font-medium text-slate-800 text-sm">{p.nom}</div>
+                  {p.vf_client_id && <div className="text-xs text-slate-400">VF #{p.vf_client_id}</div>}
+                </td>
+                <td className="px-4 py-3">
+                  <div className="flex flex-wrap gap-1.5">
+                    {p.vfNames.length === 0 && <span className="text-xs text-slate-300 italic">Aucun mapping</span>}
+                    {p.vfNames.map(m => (
+                      <span key={m.id} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md">
+                        {m.vf_name}
+                        <button onClick={() => deleteMapping(m.id)} className="text-blue-400 hover:text-red-500 ml-0.5" title="Supprimer ce mapping">×</button>
+                      </span>
+                    ))}
+                  </div>
+                  {/* Inline add form */}
+                  {addingFor === p.nom && (
+                    <div className="flex items-center gap-2 mt-2">
+                      <input
+                        value={newVfName}
+                        onChange={e => setNewVfName(e.target.value)}
+                        placeholder="Nom VosFactures exact..."
+                        className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-48 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                        autoFocus
+                        onKeyDown={e => e.key === 'Enter' && addMapping(newVfName, p.nom)}
+                      />
+                      <button
+                        onClick={() => addMapping(newVfName, p.nom)}
+                        disabled={saving || !newVfName.trim()}
+                        className="px-2 py-1 text-xs font-medium bg-slate-900 text-white rounded-md hover:bg-slate-700 transition-colors disabled:opacity-40"
+                      >
+                        {saving ? '...' : 'Ajouter'}
+                      </button>
+                      <button onClick={() => { setAddingFor(null); setNewVfName(''); }} className="text-xs text-slate-400 hover:text-slate-600">Annuler</button>
+                    </div>
+                  )}
+                </td>
+                <td className="px-4 py-3">
+                  {addingFor !== p.nom && (
+                    <button
+                      onClick={() => { setAddingFor(p.nom); setNewVfName(''); }}
+                      className="px-2 py-1 text-xs border border-slate-200 text-slate-600 rounded-md hover:bg-slate-50 transition-colors"
+                    >
+                      + Mapping
+                    </button>
+                  )}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        {partnerMappings.length === 0 && (
+          <div className="text-center py-8 text-slate-400 text-sm">Aucun partenaire trouvé</div>
+        )}
+      </div>
+
+      {/* Orphan mappings */}
+      {orphanMappings.length > 0 && (
+        <div className="space-y-3">
+          <h3 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
+            <span>⚠️</span>
+            Mappings orphelins ({orphanMappings.length})
+            <span className="text-xs font-normal text-amber-600">— file_name absent ou non résolu</span>
+          </h3>
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
+            <table className="w-full">
+              <thead>
+                <tr className="border-b border-amber-200">
+                  <th className="text-left px-4 py-2 text-xs font-medium text-amber-700 uppercase tracking-wide">Nom VF</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-amber-700 uppercase tracking-wide">file_name actuel</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-amber-700 uppercase tracking-wide">Assigner à</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-amber-700 uppercase tracking-wide w-24">Actions</th>
+                </tr>
+              </thead>
+              <tbody>
+                {orphanMappings.map(m => (
+                  <tr key={m.id} className="border-b border-amber-100 last:border-0">
+                    <td className="px-4 py-2 text-sm text-slate-800">{m.vf_name}</td>
+                    <td className="px-4 py-2 text-xs text-slate-400 italic">{m.file_name || '(vide)'}</td>
+                    <td className="px-4 py-2">
+                      <select
+                        defaultValue=""
+                        onChange={e => { if (e.target.value) assignOrphan(m.id, e.target.value); }}
+                        className="border border-amber-300 rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/30 w-full max-w-[220px]"
+                      >
+                        <option value="">— choisir —</option>
+                        {partners.map(p => <option key={p.id} value={p.nom}>{p.nom}</option>)}
+                      </select>
+                    </td>
+                    <td className="px-4 py-2">
+                      <button onClick={() => deleteMapping(m.id)} className="text-xs text-red-500 hover:text-red-700">Supprimer</button>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ─── Vue Factures ─────────────────────────────────────────────────────────────
 const VueFactures = ({ showToast }) => {
   const [tab, setTab] = useState("commande");
@@ -11859,6 +12088,7 @@ const VueFactures = ({ showToast }) => {
     { id: "relances", label: "Relances", icon: "📨" },
     { id: "envois", label: "Envois", icon: "📮" },
     { id: "notifications", label: "Notifications", icon: "🔔" },
+    { id: "partenaires", label: "Partenaires", icon: "🏨" },
   ];
 
   return (
@@ -11892,6 +12122,7 @@ const VueFactures = ({ showToast }) => {
       {tab === "relances" && <FacturesReminders showToast={showToast} />}
       {tab === "envois" && <FacturesShipments showToast={showToast} />}
       {tab === "notifications" && <FacturesNotifications showToast={showToast} />}
+      {tab === "partenaires" && <FacturesPartners showToast={showToast} />}
     </div>
   );
 };
