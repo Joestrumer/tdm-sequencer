@@ -12379,6 +12379,8 @@ const FacturesSingle = ({ showToast }) => {
   const [addProductSearch, setAddProductSearch] = useState('');
   const [semiAutoProducts, setSemiAutoProducts] = useState([]);
   const [semiAutoSearch, setSemiAutoSearch] = useState('');
+  const [clickedActions, setClickedActions] = useState({});
+  const markAction = (key) => setClickedActions(prev => ({ ...prev, [key]: true }));
 
   useEffect(() => {
     api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data.filter(c => c.actif)); }).catch(e => console.error(e));
@@ -13380,21 +13382,21 @@ const FacturesSingle = ({ showToast }) => {
           </div>
 
           <div className="grid grid-cols-2 gap-2">
-            <button onClick={createInvoice} disabled={processing || !selectedClient || !calculation?.products?.length}
-              className="py-3 bg-slate-900 text-white text-sm font-medium rounded-xl hover:bg-slate-700 disabled:opacity-50 transition-colors">
-              {processing ? 'En cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'} et envoyer au logisticien`}
+            <button onClick={() => { markAction('createAndSend'); createInvoice(); }} disabled={processing || !selectedClient || !calculation?.products?.length}
+              className={`py-3 text-white text-sm font-medium rounded-xl disabled:opacity-50 transition-colors ${clickedActions.createAndSend ? 'bg-slate-400 ring-2 ring-slate-600' : 'bg-slate-900 hover:bg-slate-700'}`}>
+              {processing ? 'En cours...' : clickedActions.createAndSend ? `\u2713 ${documentType === 'proforma' ? 'Proforma' : 'Facture'} créée + logisticien` : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'} et envoyer au logisticien`}
             </button>
-            <button onClick={createInvoiceOnly} disabled={processing || !selectedClient || !calculation?.products?.length}
-              className="py-3 bg-blue-600 text-white text-sm font-medium rounded-xl hover:bg-blue-500 disabled:opacity-50 transition-colors">
-              {processing ? 'En cours...' : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'} uniquement`}
+            <button onClick={() => { markAction('createOnly'); createInvoiceOnly(); }} disabled={processing || !selectedClient || !calculation?.products?.length}
+              className={`py-3 text-white text-sm font-medium rounded-xl disabled:opacity-50 transition-colors ${clickedActions.createOnly ? 'bg-blue-300 ring-2 ring-blue-500' : 'bg-blue-600 hover:bg-blue-500'}`}>
+              {processing ? 'En cours...' : clickedActions.createOnly ? `\u2713 ${documentType === 'proforma' ? 'Proforma' : 'Facture'} créée` : `Créer la ${documentType === 'proforma' ? 'proforma' : 'facture'} uniquement`}
             </button>
-            <button onClick={() => downloadCSVAndEmail()} disabled={!selectedClient || !shippingId}
-              className="py-3 bg-amber-600 text-white text-sm font-medium rounded-xl hover:bg-amber-700 disabled:opacity-50 transition-colors">
-              CSV + Email Logisticien (sans facture)
+            <button onClick={() => { markAction('csvDirect'); downloadCSVAndEmail(); }} disabled={!selectedClient || !shippingId}
+              className={`py-3 text-white text-sm font-medium rounded-xl disabled:opacity-50 transition-colors ${clickedActions.csvDirect ? 'bg-amber-300 ring-2 ring-amber-500' : 'bg-amber-600 hover:bg-amber-700'}`}>
+              {clickedActions.csvDirect ? '\u2713 CSV + Email envoyé' : 'CSV + Email Logisticien (sans facture)'}
             </button>
-            <button onClick={logOnly} disabled={processing || !selectedClient || !calculation?.products?.length}
-              className="py-3 bg-emerald-600 text-white text-sm font-medium rounded-xl hover:bg-emerald-700 disabled:opacity-50 transition-colors">
-              {processing ? '...' : 'Logger uniquement'}
+            <button onClick={() => { markAction('logOnly'); logOnly(); }} disabled={processing || !selectedClient || !calculation?.products?.length}
+              className={`py-3 text-white text-sm font-medium rounded-xl disabled:opacity-50 transition-colors ${clickedActions.logOnly ? 'bg-emerald-300 ring-2 ring-emerald-500' : 'bg-emerald-600 hover:bg-emerald-700'}`}>
+              {processing ? '...' : clickedActions.logOnly ? '\u2713 Loggé' : 'Logger uniquement'}
             </button>
           </div>
         </div>
