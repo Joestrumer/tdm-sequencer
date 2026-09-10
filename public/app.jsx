@@ -13438,7 +13438,7 @@ const FacturesSingle = ({ showToast }) => {
                 Voir sur VosFactures ↗
               </a>
             )}
-            <button onClick={() => { setStep(1); setResult(null); setMatchedProducts([]); setSelectedClient(null); setCalculation(null); setError(null); setManualText(''); setOrderNumber(''); setDeliveryAddress(''); setDeliveryComment(''); }}
+            <button onClick={() => { setStep(1); setResult(null); setMatchedProducts([]); setSelectedClient(null); setCalculation(null); setError(null); setManualText(''); setOrderNumber(''); setDeliveryAddress(''); setDeliveryComment(''); setClickedActions({}); }}
               className="px-4 py-2 bg-slate-100 text-slate-700 text-sm rounded-lg hover:bg-slate-200">
               Nouvelle commande
             </button>
