@@ -257,12 +257,12 @@ module.exports = (db) => {
 
   router.post('/partners', (req, res) => {
     try {
-      const { nom, nom_normalise } = req.body;
+      const { nom, nom_normalise, is_canonical } = req.body;
       db.prepare(`
-        INSERT INTO vf_partners (nom, nom_normalise)
-        VALUES (?, ?)
-        ON CONFLICT(nom) DO UPDATE SET nom_normalise = excluded.nom_normalise
-      `).run(nom, nom_normalise || nom.toLowerCase());
+        INSERT INTO vf_partners (nom, nom_normalise, is_canonical)
+        VALUES (?, ?, ?)
+        ON CONFLICT(nom) DO UPDATE SET nom_normalise = excluded.nom_normalise, is_canonical = COALESCE(excluded.is_canonical, vf_partners.is_canonical)
+      `).run(nom, nom_normalise || nom.toLowerCase(), is_canonical ? 1 : 0);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });

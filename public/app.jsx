@@ -11849,6 +11849,8 @@ const FacturesPartners = ({ showToast }) => {
   const [search, setSearch] = useState("");
   const [addingFor, setAddingFor] = useState(null); // partner nom
   const [saving, setSaving] = useState(false);
+  const [showAddCanonical, setShowAddCanonical] = useState(false);
+  const [newCanonicalName, setNewCanonicalName] = useState('');
 
   // VF search state for inline search
   const [vfQuery, setVfQuery] = useState('');
@@ -11974,6 +11976,22 @@ const FacturesPartners = ({ showToast }) => {
     }
   };
 
+  const addCanonicalPartner = async () => {
+    const nom = newCanonicalName.trim();
+    if (!nom) return;
+    setSaving(true);
+    try {
+      await api.post('/reference/partners', { nom, is_canonical: true });
+      showToast(`Partenaire "${nom}" ajouté`, 'success');
+      setNewCanonicalName('');
+      setShowAddCanonical(false);
+      await charger();
+    } catch (e) {
+      showToast('Erreur ajout partenaire', 'error');
+    }
+    setSaving(false);
+  };
+
   if (loading) {
     return (
       <div className="flex items-center gap-2 text-sm text-slate-400 py-8">
@@ -11985,8 +12003,8 @@ const FacturesPartners = ({ showToast }) => {
 
   return (
     <div className="space-y-6">
-      {/* Search bar */}
-      <div className="flex items-center gap-3">
+      {/* Search bar + add canonical */}
+      <div className="flex items-center gap-3 flex-wrap">
         <input
           value={search}
           onChange={e => setSearch(e.target.value)}
@@ -11994,6 +12012,35 @@ const FacturesPartners = ({ showToast }) => {
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-72 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
         />
         <span className="text-xs text-slate-400">{canonicalPartners.length} partenaires · {mappings.length} mappings</span>
+        <div className="ml-auto flex items-center gap-2">
+          {showAddCanonical ? (
+            <>
+              <input
+                value={newCanonicalName}
+                onChange={e => setNewCanonicalName(e.target.value)}
+                placeholder="Nom du partenaire..."
+                className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-56 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                autoFocus
+                onKeyDown={e => { if (e.key === 'Enter') addCanonicalPartner(); if (e.key === 'Escape') { setShowAddCanonical(false); setNewCanonicalName(''); } }}
+              />
+              <button
+                onClick={addCanonicalPartner}
+                disabled={saving || !newCanonicalName.trim()}
+                className="px-3 py-2 text-sm font-medium bg-slate-900 text-white rounded-lg hover:bg-slate-700 transition-colors disabled:opacity-40"
+              >
+                {saving ? '...' : 'Ajouter'}
+              </button>
+              <button onClick={() => { setShowAddCanonical(false); setNewCanonicalName(''); }} className="text-sm text-slate-400 hover:text-slate-600">Annuler</button>
+            </>
+          ) : (
+            <button
+              onClick={() => setShowAddCanonical(true)}
+              className="px-3 py-2 text-sm font-medium border border-slate-200 text-slate-700 rounded-lg hover:bg-slate-50 transition-colors"
+            >
+              + Partenaire
+            </button>
+          )}
+        </div>
       </div>
 
       {/* Partners table */}
