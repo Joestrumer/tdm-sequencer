@@ -11847,10 +11847,15 @@ const FacturesPartners = ({ showToast }) => {
   const [mappings, setMappings] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
-  const [addingFor, setAddingFor] = useState(null); // partner nom or "__orphan__"
-  const [newVfName, setNewVfName] = useState("");
-  const [newFileName, setNewFileName] = useState("");
+  const [addingFor, setAddingFor] = useState(null); // partner nom
   const [saving, setSaving] = useState(false);
+
+  // VF search state for inline search
+  const [vfQuery, setVfQuery] = useState('');
+  const [vfResults, setVfResults] = useState([]);
+  const [vfSearching, setVfSearching] = useState(false);
+  const vfSearchTimer = useRef(null);
+  const vfAbortRef = useRef(null);
 
   const charger = async () => {
     setLoading(true);
@@ -11869,36 +11874,72 @@ const FacturesPartners = ({ showToast }) => {
 
   useEffect(() => { charger(); }, []);
 
+  // Cleanup VF search on unmount
+  useEffect(() => {
+    return () => { clearTimeout(vfSearchTimer.current); if (vfAbortRef.current) vfAbortRef.current.abort(); };
+  }, []);
+
   // Accent-insensitive filter
   const norm = (s) => (s || '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
-  const partnerMappings = useMemo(() => {
+  // Only show canonical partners (GSheets)
+  const canonicalPartners = useMemo(() => {
     const q = norm(search);
     return partners
+      .filter(p => p.is_canonical === 1)
       .filter(p => !q || norm(p.nom).includes(q))
       .map(p => ({
         ...p,
-        vfNames: mappings.filter(m => m.file_name === p.nom),
+        vfMappings: mappings.filter(m => m.file_name === p.nom),
       }));
   }, [partners, mappings, search]);
 
+  // Orphan mappings: file_name NULL or not matching any canonical partner
   const orphanMappings = useMemo(() => {
-    const partnerNoms = new Set(partners.map(p => p.nom));
+    const canonicalNoms = new Set(partners.filter(p => p.is_canonical === 1).map(p => p.nom));
     const q = norm(search);
     return mappings.filter(m =>
-      !m.file_name || !partnerNoms.has(m.file_name)
+      !m.file_name || !canonicalNoms.has(m.file_name)
     ).filter(m => !q || norm(m.vf_name).includes(q) || norm(m.file_name).includes(q));
   }, [partners, mappings, search]);
 
-  const addMapping = async (vfName, fileName) => {
-    if (!vfName?.trim()) return;
+  // VF client search (debounced)
+  const rechercherVF = (q) => {
+    setVfQuery(q);
+    setVfResults([]);
+    clearTimeout(vfSearchTimer.current);
+    if (vfAbortRef.current) vfAbortRef.current.abort();
+    if (!q || q.length < 2) return;
+    vfSearchTimer.current = setTimeout(async () => {
+      const controller = new AbortController();
+      vfAbortRef.current = controller;
+      setVfSearching(true);
+      try {
+        const res = await fetch(window.location.origin + '/api/factures/clients?q=' + encodeURIComponent(q), {
+          headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('tdm_token') || '') },
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data)) setVfResults(data);
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error('Erreur recherche VF:', e);
+      }
+      setVfSearching(false);
+    }, 400);
+  };
+
+  const selectVfClient = async (client, partnerNom) => {
     setSaving(true);
     try {
-      await api.post('/reference/client-mappings', { vf_name: vfName.trim(), file_name: fileName || null });
+      await api.post('/reference/client-mappings', {
+        vf_name: client.name,
+        file_name: partnerNom,
+        vf_client_id: String(client.id),
+      });
       showToast('Mapping ajouté', 'success');
-      setNewVfName('');
-      setNewFileName('');
       setAddingFor(null);
+      setVfQuery('');
+      setVfResults([]);
       await charger();
     } catch (e) {
       showToast('Erreur ajout mapping', 'error');
@@ -11952,7 +11993,7 @@ const FacturesPartners = ({ showToast }) => {
           placeholder="Rechercher un partenaire..."
           className="border border-slate-200 rounded-lg px-3 py-2 text-sm w-72 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
         />
-        <span className="text-xs text-slate-400">{partnerMappings.length} partenaires · {mappings.length} mappings</span>
+        <span className="text-xs text-slate-400">{canonicalPartners.length} partenaires · {mappings.length} mappings</span>
       </div>
 
       {/* Partners table */}
@@ -11961,53 +12002,92 @@ const FacturesPartners = ({ showToast }) => {
           <thead>
             <tr className="border-b border-slate-100">
               <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Nom canonique</th>
-              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Noms VosFactures</th>
+              <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide">Comptes VosFactures</th>
               <th className="text-left px-4 py-3 text-xs font-medium text-slate-400 uppercase tracking-wide w-32">Actions</th>
             </tr>
           </thead>
           <tbody>
-            {partnerMappings.map((p, i) => (
-              <tr key={p.id} className={`border-b border-slate-50 hover:bg-slate-50/50 transition-colors ${i === partnerMappings.length - 1 ? 'border-0' : ''}`}>
+            {canonicalPartners.map((p, i) => (
+              <tr key={p.id} className={`border-b border-slate-50 hover:bg-slate-50/50 transition-colors ${i === canonicalPartners.length - 1 ? 'border-0' : ''}`}>
                 <td className="px-4 py-3">
                   <div className="font-medium text-slate-800 text-sm">{p.nom}</div>
-                  {p.vf_client_id && <div className="text-xs text-slate-400">VF #{p.vf_client_id}</div>}
                 </td>
                 <td className="px-4 py-3">
                   <div className="flex flex-wrap gap-1.5">
-                    {p.vfNames.length === 0 && <span className="text-xs text-slate-300 italic">Aucun mapping</span>}
-                    {p.vfNames.map(m => (
+                    {p.vfMappings.length === 0 && <span className="text-xs text-slate-300 italic">Aucun mapping</span>}
+                    {p.vfMappings.map(m => (
                       <span key={m.id} className="inline-flex items-center gap-1 text-xs bg-blue-50 text-blue-700 px-2 py-1 rounded-md">
                         {m.vf_name}
-                        <button onClick={() => deleteMapping(m.id)} className="text-blue-400 hover:text-red-500 ml-0.5" title="Supprimer ce mapping">×</button>
+                        {m.vf_client_id && (
+                          <a
+                            href={`https://terredemars.vosfactures.fr/clients/${m.vf_client_id}`}
+                            target="_blank"
+                            rel="noopener noreferrer"
+                            className="text-blue-500 hover:text-blue-700 font-mono"
+                            onClick={e => e.stopPropagation()}
+                          >
+                            #{m.vf_client_id}
+                          </a>
+                        )}
+                        <button onClick={() => deleteMapping(m.id)} className="text-blue-400 hover:text-red-500 ml-0.5" title="Supprimer ce mapping">&times;</button>
                       </span>
                     ))}
                   </div>
-                  {/* Inline add form */}
+                  {/* Inline VF search */}
                   {addingFor === p.nom && (
-                    <div className="flex items-center gap-2 mt-2">
+                    <div className="mt-2 relative">
                       <input
-                        value={newVfName}
-                        onChange={e => setNewVfName(e.target.value)}
-                        placeholder="Nom VosFactures exact..."
-                        className="border border-slate-200 rounded-lg px-2 py-1 text-xs w-48 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                        value={vfQuery}
+                        onChange={e => rechercherVF(e.target.value)}
+                        placeholder="Rechercher un client VosFactures..."
+                        className="border border-slate-200 rounded-lg px-2 py-1.5 text-xs w-72 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
                         autoFocus
-                        onKeyDown={e => e.key === 'Enter' && addMapping(newVfName, p.nom)}
+                        onKeyDown={e => e.key === 'Escape' && (setAddingFor(null), setVfQuery(''), setVfResults([]))}
                       />
-                      <button
-                        onClick={() => addMapping(newVfName, p.nom)}
-                        disabled={saving || !newVfName.trim()}
-                        className="px-2 py-1 text-xs font-medium bg-slate-900 text-white rounded-md hover:bg-slate-700 transition-colors disabled:opacity-40"
-                      >
-                        {saving ? '...' : 'Ajouter'}
-                      </button>
-                      <button onClick={() => { setAddingFor(null); setNewVfName(''); }} className="text-xs text-slate-400 hover:text-slate-600">Annuler</button>
+                      {vfSearching && <span className="absolute right-2 top-2 text-xs text-slate-400">...</span>}
+                      <button onClick={() => { setAddingFor(null); setVfQuery(''); setVfResults([]); }} className="ml-2 text-xs text-slate-400 hover:text-slate-600">Annuler</button>
+                      {/* Dropdown results */}
+                      {vfResults.length > 0 && (
+                        <div className="absolute z-20 left-0 top-full mt-1 w-96 max-h-60 overflow-y-auto bg-white border border-slate-200 rounded-xl shadow-lg">
+                          {vfResults.map(c => (
+                            <button
+                              key={c.id}
+                              onClick={() => selectVfClient(c, p.nom)}
+                              disabled={saving}
+                              className="w-full text-left px-3 py-2 hover:bg-slate-50 border-b border-slate-50 last:border-0 transition-colors disabled:opacity-50"
+                            >
+                              <div className="text-sm font-medium text-slate-800">{c.name}</div>
+                              <div className="flex items-center gap-2 mt-0.5">
+                                {c.email && <span className="text-xs text-slate-500">{c.email}</span>}
+                                {(c.street || c.city) && (
+                                  <span className="text-xs text-slate-400">{[c.street, c.post_code, c.city].filter(Boolean).join(', ')}</span>
+                                )}
+                              </div>
+                              <a
+                                href={`https://terredemars.vosfactures.fr/clients/${c.id}`}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="text-xs text-blue-500 hover:text-blue-700 mt-0.5 inline-block"
+                                onClick={e => e.stopPropagation()}
+                              >
+                                VF #{c.id}
+                              </a>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {vfQuery.length >= 2 && !vfSearching && vfResults.length === 0 && (
+                        <div className="absolute z-20 left-0 top-full mt-1 w-72 bg-white border border-slate-200 rounded-xl shadow-lg px-3 py-2 text-xs text-slate-400">
+                          Aucun client VF trouvé
+                        </div>
+                      )}
                     </div>
                   )}
                 </td>
                 <td className="px-4 py-3">
                   {addingFor !== p.nom && (
                     <button
-                      onClick={() => { setAddingFor(p.nom); setNewVfName(''); }}
+                      onClick={() => { setAddingFor(p.nom); setVfQuery(''); setVfResults([]); }}
                       className="px-2 py-1 text-xs border border-slate-200 text-slate-600 rounded-md hover:bg-slate-50 transition-colors"
                     >
                       + Mapping
@@ -12018,7 +12098,7 @@ const FacturesPartners = ({ showToast }) => {
             ))}
           </tbody>
         </table>
-        {partnerMappings.length === 0 && (
+        {canonicalPartners.length === 0 && (
           <div className="text-center py-8 text-slate-400 text-sm">Aucun partenaire trouvé</div>
         )}
       </div>
@@ -12027,16 +12107,15 @@ const FacturesPartners = ({ showToast }) => {
       {orphanMappings.length > 0 && (
         <div className="space-y-3">
           <h3 className="text-sm font-semibold text-amber-800 flex items-center gap-2">
-            <span>⚠️</span>
             Mappings orphelins ({orphanMappings.length})
-            <span className="text-xs font-normal text-amber-600">— file_name absent ou non résolu</span>
+            <span className="text-xs font-normal text-amber-600">— non rattachés à un partenaire canonique</span>
           </h3>
           <div className="bg-amber-50 border border-amber-200 rounded-2xl overflow-hidden">
             <table className="w-full">
               <thead>
                 <tr className="border-b border-amber-200">
                   <th className="text-left px-4 py-2 text-xs font-medium text-amber-700 uppercase tracking-wide">Nom VF</th>
-                  <th className="text-left px-4 py-2 text-xs font-medium text-amber-700 uppercase tracking-wide">file_name actuel</th>
+                  <th className="text-left px-4 py-2 text-xs font-medium text-amber-700 uppercase tracking-wide">VF ID</th>
                   <th className="text-left px-4 py-2 text-xs font-medium text-amber-700 uppercase tracking-wide">Assigner à</th>
                   <th className="text-left px-4 py-2 text-xs font-medium text-amber-700 uppercase tracking-wide w-24">Actions</th>
                 </tr>
@@ -12045,7 +12124,20 @@ const FacturesPartners = ({ showToast }) => {
                 {orphanMappings.map(m => (
                   <tr key={m.id} className="border-b border-amber-100 last:border-0">
                     <td className="px-4 py-2 text-sm text-slate-800">{m.vf_name}</td>
-                    <td className="px-4 py-2 text-xs text-slate-400 italic">{m.file_name || '(vide)'}</td>
+                    <td className="px-4 py-2 text-xs">
+                      {m.vf_client_id ? (
+                        <a
+                          href={`https://terredemars.vosfactures.fr/clients/${m.vf_client_id}`}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="text-blue-500 hover:text-blue-700 font-mono"
+                        >
+                          #{m.vf_client_id}
+                        </a>
+                      ) : (
+                        <span className="text-slate-400 italic">—</span>
+                      )}
+                    </td>
                     <td className="px-4 py-2">
                       <select
                         defaultValue=""
@@ -12053,7 +12145,7 @@ const FacturesPartners = ({ showToast }) => {
                         className="border border-amber-300 rounded-md px-2 py-1 text-xs bg-white focus:outline-none focus:ring-2 focus:ring-amber-400/30 w-full max-w-[220px]"
                       >
                         <option value="">— choisir —</option>
-                        {partners.map(p => <option key={p.id} value={p.nom}>{p.nom}</option>)}
+                        {partners.filter(p => p.is_canonical === 1).map(p => <option key={p.id} value={p.nom}>{p.nom}</option>)}
                       </select>
                     </td>
                     <td className="px-4 py-2">

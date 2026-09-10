@@ -247,8 +247,8 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name FROM vf_partners ORDER BY nom').all()
-        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -287,6 +287,7 @@ module.exports = (db) => {
       if (req.body.frais_port !== undefined) { updates.push('frais_port = ?'); params.push(req.body.frais_port); }
       if (req.body.frais_exonere !== undefined) { updates.push('frais_exonere = ?'); params.push(req.body.frais_exonere ? 1 : 0); }
       if (req.body.vf_display_name !== undefined) { updates.push('vf_display_name = ?'); params.push(req.body.vf_display_name || null); }
+      if (req.body.is_canonical !== undefined) { updates.push('is_canonical = ?'); params.push(req.body.is_canonical ? 1 : 0); }
 
       if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
 

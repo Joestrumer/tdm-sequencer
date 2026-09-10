@@ -1171,6 +1171,8 @@ const migrations = [
   'ALTER TABLE instagram_scraped_accounts ADD COLUMN phone_number TEXT',
   // Leads — Numéro de téléphone
   'ALTER TABLE leads ADD COLUMN telephone TEXT',
+  // Partenaires — distinction canonical (GSheets) vs auto-créé (VF sync)
+  'ALTER TABLE vf_partners ADD COLUMN is_canonical INTEGER DEFAULT 0',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
@@ -1179,6 +1181,21 @@ for (const sql of migrations) {
       console.error('⚠️  Erreur migration:', sql, '-', e.message);
     }
   }
+}
+
+// ─── Migration : backfill is_canonical pour les partenaires GSheets ──
+try {
+  const canonicalDone = db.prepare("SELECT valeur FROM config WHERE cle = 'migration_is_canonical_v1'").get();
+  if (!canonicalDone) {
+    db.prepare(`
+      UPDATE vf_partners SET is_canonical = 1
+      WHERE nom IN (SELECT DISTINCT file_name FROM vf_client_mappings WHERE file_name IS NOT NULL)
+    `).run();
+    db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('migration_is_canonical_v1', '1')").run();
+    console.log('✅ Migration is_canonical_v1 appliquée');
+  }
+} catch (e) {
+  console.error('⚠️  Erreur migration is_canonical:', e.message);
 }
 
 // ─── Migration : backfill returned_at/failed_at/pickup_at + marquer comme notifiés ──
