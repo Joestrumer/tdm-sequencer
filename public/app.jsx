@@ -12365,7 +12365,7 @@ const FacturesSingle = ({ showToast }) => {
   const [deliveryComment, setDeliveryComment] = useState('');
   const [addressMode, setAddressMode] = useState('facturation');
   const includeShipping = true; // Toujours inclure les frais de port
-  const [sendEmail, setSendEmail] = useState(true);
+  const [sendEmail, setSendEmail] = useState(false);
   const [logGSheets, setLogGSheets] = useState(true);
   const [createHubspotDeal, setCreateHubspotDeal] = useState(true);
   const [useCurrentPrices, setUseCurrentPrices] = useState(false);
@@ -13699,7 +13699,7 @@ const FacturesBatch = ({ showToast }) => {
   const [importInvoiceId, setImportInvoiceId] = useState('');
   const [importLoading, setImportLoading] = useState(false);
   const [documentType, setDocumentType] = useState('vat');
-  const [sendEmail, setSendEmail] = useState(true);
+  const [sendEmail, setSendEmail] = useState(false);
   const [logGSheets, setLogGSheets] = useState(true);
   const [createHubspotDeal, setCreateHubspotDeal] = useState(true);
   const [catalog, setCatalog] = useState([]);
