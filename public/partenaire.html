@@ -220,20 +220,66 @@
     ];
 
     // ─── Section Amenities (produits en chambre) ──────────────────────────────
+    const MAIN_SUFFIXES = ['', '-5000']; // 500ml (base ref) et 5L
+    const isMainFormat = (ref, baseRef) => ref === baseRef || ref === baseRef + '-5000';
+
+    const AmenityProductRow = ({ p, getQty, addCarton, removeCarton }) => {
+      const moq = p.moq || 1;
+      const qty = getQty(p.ref);
+      const cartons = moq > 1 ? Math.floor(qty / moq) : qty;
+      const inCart = qty > 0;
+      return (
+        <div className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 border-l-2 border-l-gold-500' : 'hover:bg-gray-50'}`}>
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
+              <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
+            </div>
+            <div className="flex items-center gap-2 mt-0.5">
+              <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
+              {p.discount_pct > 0 && (
+                <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
+              )}
+              {moq > 1 && (
+                <span className="text-[10px] text-gray-400">carton de {moq}</span>
+              )}
+            </div>
+          </div>
+          <div className="flex items-center gap-1 shrink-0">
+            {qty > 0 && (
+              <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center text-base font-bold transition-colors">-</button>
+            )}
+            {qty > 0 && (
+              <div className="text-center min-w-[32px]">
+                <div className="text-gray-900 font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{qty} u.</div>}
+              </div>
+            )}
+            <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
+          </div>
+        </div>
+      );
+    };
+
     const AmenitiesSection = ({ amenities, catalogue, panier, setPanier }) => {
       if (!amenities || Object.keys(amenities).length === 0) return null;
+      const [showOtherFormats, setShowOtherFormats] = useState(false);
 
       const sections = AMENITY_TYPES
         .filter(type => amenities[type.key])
         .map(type => {
           const baseRef = amenities[type.key];
           const gammeInfo = type.gammes.find(g => g.ref === baseRef);
-          const products = catalogue.filter(p => p.ref === baseRef || p.ref.startsWith(baseRef + '-'));
-          return { type, baseRef, gammeInfo, products };
+          const allProducts = catalogue.filter(p => p.ref === baseRef || p.ref.startsWith(baseRef + '-'));
+          const mainProducts = allProducts.filter(p => isMainFormat(p.ref, baseRef));
+          const otherProducts = allProducts.filter(p => !isMainFormat(p.ref, baseRef));
+          return { type, baseRef, gammeInfo, mainProducts, otherProducts };
         })
-        .filter(s => s.products.length > 0);
+        .filter(s => s.mainProducts.length > 0 || s.otherProducts.length > 0);
 
       if (sections.length === 0) return null;
+
+      const hasOtherFormats = sections.some(s => s.otherProducts.length > 0);
 
       const getQty = (ref) => panier[ref]?.quantite || 0;
 
@@ -255,60 +301,64 @@
       };
 
       return (
-        <div className="mb-8">
-          <div className="flex items-center gap-2 mb-4">
-            <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-gray-900">Vos produits en chambre</h3>
+        <div className="mb-8 space-y-6">
+          {/* Section principale : 500ml et 5L */}
+          <div>
+            <div className="flex items-center gap-2 mb-4">
+              <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
+              <h3 className="text-sm font-semibold text-gray-900">Vos produits en chambre</h3>
+            </div>
+            <div className="space-y-4">
+              {sections.map(({ type, gammeInfo, mainProducts }) => (
+                mainProducts.length > 0 && (
+                  <div key={type.key} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
+                      <span className="text-xs font-semibold text-gray-700">{type.label}</span>
+                      <span className="text-xs text-gold-600 ml-1.5">{gammeInfo?.gamme || ''}</span>
+                    </div>
+                    <div className="divide-y divide-gray-50">
+                      {mainProducts.map(p => (
+                        <AmenityProductRow key={p.ref} p={p} getQty={getQty} addCarton={addCarton} removeCarton={removeCarton} />
+                      ))}
+                    </div>
+                  </div>
+                )
+              ))}
+            </div>
           </div>
-          <div className="space-y-3">
-            {sections.map(({ type, gammeInfo, products }) => (
-              <div key={type.key}>
-                <div className="text-xs text-gray-500 mb-1 px-2">{type.label} — <span className="text-gold-600">{gammeInfo?.gamme || ''}</span></div>
-                <div className="space-y-0.5">
-                  {products.map(p => {
-                    const moq = p.moq || 1;
-                    const qty = getQty(p.ref);
-                    const cartons = moq > 1 ? Math.floor(qty / moq) : qty;
-                    const inCart = qty > 0;
-                    return (
-                      <div
-                        key={p.ref}
-                        className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 border-l-2 border-l-gold-500' : 'hover:bg-gray-50'}`}
-                      >
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2">
-                            <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
-                            <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
-                          </div>
-                          <div className="flex items-center gap-2 mt-0.5">
-                            <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
-                            {p.discount_pct > 0 && (
-                              <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
-                            )}
-                            {moq > 1 && (
-                              <span className="text-[10px] text-gray-400">carton de {moq}</span>
-                            )}
-                          </div>
+
+          {/* Section secondaire : autres formats */}
+          {hasOtherFormats && (
+            <div>
+              <button
+                onClick={() => setShowOtherFormats(!showOtherFormats)}
+                className="flex items-center gap-2 mb-3 group"
+              >
+                <div className="w-1 h-5 bg-gray-300 rounded-full"></div>
+                <h3 className="text-sm font-medium text-gray-500 group-hover:text-gray-700 transition-colors">Autres formats disponibles</h3>
+                <span className="text-gray-400 text-xs group-hover:text-gray-600 transition-colors">{showOtherFormats ? '\u25b2' : '\u25bc'}</span>
+              </button>
+              {showOtherFormats && (
+                <div className="space-y-4 animate-fade-in">
+                  {sections.map(({ type, gammeInfo, otherProducts }) => (
+                    otherProducts.length > 0 && (
+                      <div key={type.key} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
+                        <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
+                          <span className="text-xs font-semibold text-gray-700">{type.label}</span>
+                          <span className="text-xs text-gold-600 ml-1.5">{gammeInfo?.gamme || ''}</span>
                         </div>
-                        <div className="flex items-center gap-1 shrink-0">
-                          {qty > 0 && (
-                            <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center text-base font-bold transition-colors">-</button>
-                          )}
-                          {qty > 0 && (
-                            <div className="text-center min-w-[32px]">
-                              <div className="text-gray-900 font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                              {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{qty} u.</div>}
-                            </div>
-                          )}
-                          <button onClick={() => addCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
+                        <div className="divide-y divide-gray-50">
+                          {otherProducts.map(p => (
+                            <AmenityProductRow key={p.ref} p={p} getQty={getQty} addCarton={addCarton} removeCarton={removeCarton} />
+                          ))}
                         </div>
                       </div>
-                    );
-                  })}
+                    )
+                  ))}
                 </div>
-              </div>
-            ))}
-          </div>
+              )}
+            </div>
+          )}
         </div>
       );
     };
