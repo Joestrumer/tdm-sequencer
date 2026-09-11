@@ -337,6 +337,7 @@
         en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700" },
         validee: { label: "Valid\u00e9e", bg: "bg-green-50", text: "text-green-700" },
         annulee: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
+        annulee_client: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
       };
       const cfg = statutConfig[derniere.statut] || statutConfig.en_attente;
 
@@ -571,7 +572,7 @@
     };
 
     // ─── Panier Panel ───────────────────────────────────────────────────────────
-    const PanierPanel = ({ panier, setPanier, onCommander, loading, partner }) => {
+    const PanierPanel = ({ panier, setPanier, onCommander, loading, partner, modifyingOrderId }) => {
       const [notes, setNotes] = useState("");
       const items = Object.values(panier);
       const subtotalHT = items.reduce((s, i) => s + i.prix_remise * i.quantite, 0);
@@ -709,43 +710,34 @@
             disabled={loading}
             className="w-full bg-gold-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-50"
           >
-            {loading ? "Envoi en cours..." : `Commander (${totalHT.toFixed(2)} \u20ac HT)`}
+            {loading ? "Envoi en cours..." : modifyingOrderId ? `Enregistrer les modifications (${totalHT.toFixed(2)} \u20ac HT)` : `Commander (${totalHT.toFixed(2)} \u20ac HT)`}
           </button>
         </div>
       );
     };
 
     // ─── Historique ─────────────────────────────────────────────────────────────
-    const HistoriqueView = ({ commandes, onRefresh, catalogue, setPanier, setPanierOpen, setVue, showToast }) => {
-      const [deleting, setDeleting] = useState(null);
+    const HistoriqueView = ({ commandes, onRefresh, catalogue, setPanier, setPanierOpen, setVue, setModifyingOrderId, showToast }) => {
+      const [cancelling, setCancelling] = useState(null);
       const statutConfig = {
         en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700" },
         validee: { label: "Valid\u00e9e", bg: "bg-green-50", text: "text-green-700" },
         annulee: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
+        annulee_client: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
       };
 
-      const handleDelete = async (id) => {
-        if (!confirm('Supprimer cette commande ?')) return;
-        setDeleting(id);
+      const handleCancel = async (id) => {
+        if (!confirm('Annuler cette commande ?')) return;
+        setCancelling(id);
         try {
           const res = await api.del(`/commande/${id}`);
           if (res.erreur) { showToast(res.erreur, 'error'); }
-          else { showToast('Commande supprim\u00e9e', 'success'); onRefresh(); }
-        } catch (e) { showToast('Erreur suppression', 'error'); }
-        setDeleting(null);
+          else { showToast('Commande annul\u00e9e', 'success'); onRefresh(); }
+        } catch (e) { showToast('Erreur annulation', 'error'); }
+        setCancelling(null);
       };
 
-      const handleModify = async (c) => {
-        try {
-          const delRes = await api.del(`/commande/${c.id}`);
-          if (delRes.erreur) {
-            showToast(delRes.erreur, 'error');
-            return;
-          }
-        } catch (e) {
-          showToast('Erreur suppression commande', 'error');
-          return;
-        }
+      const handleModify = (c) => {
         const newPanier = {};
         c.products.forEach(p => {
           const prod = catalogue.find(cat => cat.ref === p.ref);
@@ -756,10 +748,10 @@
           }
         });
         setPanier(newPanier);
+        setModifyingOrderId(c.id);
         setPanierOpen(true);
         setVue('catalogue');
-        onRefresh();
-        showToast('Commande charg\u00e9e dans le panier', 'success');
+        showToast('Commande charg\u00e9e dans le panier — validez pour enregistrer les modifications', 'info');
       };
 
       if (commandes.length === 0) {
@@ -800,8 +792,8 @@
                     <button onClick={() => handleModify(c)} className="text-xs px-3 py-1.5 rounded-lg bg-gold-50 text-gold-700 hover:bg-gold-100 transition-colors">
                       Modifier
                     </button>
-                    <button onClick={() => handleDelete(c.id)} disabled={deleting === c.id} className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50">
-                      {deleting === c.id ? 'Suppression...' : 'Supprimer'}
+                    <button onClick={() => handleCancel(c.id)} disabled={cancelling === c.id} className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50">
+                      {cancelling === c.id ? 'Annulation...' : 'Annuler'}
                     </button>
                   </div>
                 )}
@@ -820,6 +812,7 @@
       const [panier, setPanier] = useState({});
       const [commandes, setCommandes] = useState([]);
       const [panierOpen, setPanierOpen] = useState(false);
+      const [modifyingOrderId, setModifyingOrderId] = useState(null);
       const [loading, setLoading] = useState(false);
       const [orderSuccess, setOrderSuccess] = useState(false);
       const [toast, setToast] = useState(null);
@@ -864,16 +857,23 @@
         if (items.length === 0) return;
         setLoading(true);
         try {
-          const res = await api.post('/commande', {
+          const payload = {
             products: items.map(i => ({ ref: i.ref, quantite: i.quantite })),
             notes: notes || undefined,
-          });
+          };
+          let res;
+          if (modifyingOrderId) {
+            res = await api.patch(`/commande/${modifyingOrderId}`, payload);
+          } else {
+            res = await api.post('/commande', payload);
+          }
           if (res.erreur) {
             showToast(res.erreur, "error");
           } else {
             setPanier({});
             setPanierOpen(false);
-            showToast('Commande enregistr\u00e9e !', 'success');
+            showToast(modifyingOrderId ? 'Commande modifi\u00e9e !' : 'Commande enregistr\u00e9e !', 'success');
+            setModifyingOrderId(null);
             refreshCommandes();
             setVue('historique');
           }
@@ -945,7 +945,7 @@
             {panierOpen ? (
               <div className="max-w-lg mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Votre panier</h2>
-                <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={loading} partner={partner} />
+                <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={loading} partner={partner} modifyingOrderId={modifyingOrderId} />
               </div>
             ) : vue === "catalogue" ? (
               <div className="animate-fade-in">
@@ -960,7 +960,7 @@
             ) : (
               <div className="max-w-2xl mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Historique des commandes</h2>
-                <HistoriqueView commandes={commandes} onRefresh={refreshCommandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} setVue={setVue} showToast={showToast} />
+                <HistoriqueView commandes={commandes} onRefresh={refreshCommandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} setVue={setVue} setModifyingOrderId={setModifyingOrderId} showToast={showToast} />
               </div>
             )}
           </main>

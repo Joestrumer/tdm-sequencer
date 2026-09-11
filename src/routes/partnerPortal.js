@@ -13,6 +13,53 @@ const brevoService = require('../services/brevoService');
 
 const DEFAULT_FRANCO_SEUIL = 800;
 
+// Helper : envoyer une notification admin pour une commande partenaire
+function notifierAdminCommande({ partner, orderProducts, totalHT, totalHTWithFrais, totalTTC, fraisRef, fraisNom, fraisMontant, notes, orderId, sujet }) {
+  setImmediate(async () => {
+    try {
+      const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      const adminEmail = process.env.ADMIN_EMAIL || 'hugo@terredemars.com';
+      const productRows = orderProducts.map(p =>
+        `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.ref)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.nom)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center">${p.quantite}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:right">${p.prix_remise.toFixed(2)} &euro;</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:right">${p.total_ht.toFixed(2)} &euro;</td></tr>`
+      ).join('');
+      const emailHtml = `
+        <div style="font-family:'DM Sans',Arial,sans-serif;max-width:600px;margin:0 auto">
+          <h2 style="color:#0f172a">${esc(sujet)}</h2>
+          <p><strong>Partenaire :</strong> ${esc(partner.nom)}</p>
+          ${partner.contact_nom ? `<p><strong>Contact :</strong> ${esc(partner.contact_nom)}</p>` : ''}
+          ${partner.email ? `<p><strong>Email :</strong> ${esc(partner.email)}</p>` : ''}
+          <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+            <thead><tr style="background:#f1f5f9">
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Ref</th>
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Produit</th>
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center">Qt&eacute;</th>
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:right">PU HT</th>
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:right">Total HT</th>
+            </tr></thead>
+            <tbody>${productRows}</tbody>
+          </table>
+          ${totalHT != null ? `<p style="font-size:14px">Sous-total HT : ${totalHT.toFixed(2)} &euro;</p>` : ''}
+          ${fraisRef ? `<p style="font-size:14px">${esc(fraisNom)} (${esc(fraisRef)}) : ${fraisMontant.toFixed(2)} &euro; HT</p>` : '<p style="font-size:14px;color:#16a34a">Exon&eacute;r&eacute; de frais</p>'}
+          <p style="font-size:16px"><strong>Total HT : ${totalHTWithFrais.toFixed(2)} &euro;</strong></p>
+          <p style="font-size:16px"><strong>Total TTC : ${totalTTC.toFixed(2)} &euro;</strong></p>
+          ${notes ? `<p><strong>Notes :</strong> ${esc(notes)}</p>` : ''}
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
+          <p style="color:#94a3b8;font-size:12px">Connectez-vous au back-office pour traiter cette commande.</p>
+        </div>
+      `;
+      await brevoService.brevoSendEmail({
+        sender: { name: 'Terre de Mars', email: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com' },
+        to: [{ email: adminEmail, name: 'Hugo' }],
+        subject: `${sujet} — ${partner.nom}`,
+        htmlContent: emailHtml,
+      });
+      logger.info('Email notification commande envoyé', { orderId, partner: partner.nom, type: sujet });
+    } catch (emailErr) {
+      logger.error('Erreur envoi email notification commande', { error: emailErr.message, stack: emailErr.stack, orderId, partner: partner.nom });
+    }
+  });
+}
+
 module.exports = (db) => {
   const router = express.Router();
 
@@ -211,49 +258,11 @@ module.exports = (db) => {
         frais_montant: fraisMontant,
       });
 
-      // Email notification admin (fire-and-forget, ne bloque pas la réponse)
-      setImmediate(async () => {
-        try {
-          const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
-          const adminEmail = process.env.ADMIN_EMAIL || 'hugo@terredemars.com';
-          const productRows = orderProducts.map(p =>
-            `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.ref)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.nom)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center">${p.quantite}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:right">${p.prix_remise.toFixed(2)} &euro;</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:right">${p.total_ht.toFixed(2)} &euro;</td></tr>`
-          ).join('');
-          const emailHtml = `
-            <div style="font-family:'DM Sans',Arial,sans-serif;max-width:600px;margin:0 auto">
-              <h2 style="color:#0f172a">Nouvelle commande partenaire</h2>
-              <p><strong>Partenaire :</strong> ${esc(partner.nom)}</p>
-              ${partner.contact_nom ? `<p><strong>Contact :</strong> ${esc(partner.contact_nom)}</p>` : ''}
-              ${partner.email ? `<p><strong>Email :</strong> ${esc(partner.email)}</p>` : ''}
-              <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
-                <thead><tr style="background:#f1f5f9">
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Ref</th>
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Produit</th>
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center">Qt&eacute;</th>
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:right">PU HT</th>
-                  <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:right">Total HT</th>
-                </tr></thead>
-                <tbody>${productRows}</tbody>
-              </table>
-              <p style="font-size:14px">Sous-total HT : ${totalHT.toFixed(2)} &euro;</p>
-              ${fraisRef ? `<p style="font-size:14px">${esc(fraisNom)} (${esc(fraisRef)}) : ${fraisMontant.toFixed(2)} &euro; HT</p>` : '<p style="font-size:14px;color:#16a34a">Exon&eacute;r&eacute; de frais</p>'}
-              <p style="font-size:16px"><strong>Total HT : ${totalHTWithFrais.toFixed(2)} &euro;</strong></p>
-              <p style="font-size:16px"><strong>Total TTC : ${totalTTC.toFixed(2)} &euro;</strong></p>
-              ${notes ? `<p><strong>Notes :</strong> ${esc(notes)}</p>` : ''}
-              <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
-              <p style="color:#94a3b8;font-size:12px">Connectez-vous au back-office pour traiter cette commande.</p>
-            </div>
-          `;
-          await brevoService.brevoSendEmail({
-            sender: { name: 'Terre de Mars', email: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com' },
-            to: [{ email: adminEmail, name: 'Hugo' }],
-            subject: `Nouvelle commande — ${partner.nom}`,
-            htmlContent: emailHtml,
-          });
-          logger.info('Email notification commande envoyé', { orderId, partner: partner.nom });
-        } catch (emailErr) {
-          logger.error('Erreur envoi email notification commande', { error: emailErr.message, stack: emailErr.stack, orderId, partner: partner.nom });
-        }
+      // Email notification admin (fire-and-forget)
+      notifierAdminCommande({
+        partner, orderProducts, totalHT, totalHTWithFrais, totalTTC,
+        fraisRef, fraisNom, fraisMontant, notes, orderId,
+        sujet: 'Nouvelle commande',
       });
     } catch (e) {
       logger.error('Erreur création commande partenaire', { error: e.message });
@@ -282,17 +291,32 @@ module.exports = (db) => {
     }
   });
 
-  // ─── Supprimer une commande en attente ────────────────────────────────────
+  // ─── Annuler une commande en attente (côté partenaire) ────────────────────
   router.delete('/commande/:id', (req, res) => {
     try {
       const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.id);
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
-      if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Seules les commandes en attente peuvent être supprimées' });
+      if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Seules les commandes en attente peuvent être annulées' });
 
-      db.prepare('DELETE FROM partner_orders WHERE id = ?').run(req.params.id);
+      db.prepare("UPDATE partner_orders SET statut = 'annulee_client' WHERE id = ?").run(req.params.id);
+
+      // Notification admin
+      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(req.partner.id);
+      const orderProducts = JSON.parse(order.products || '[]');
+      notifierAdminCommande({
+        partner: partner || { nom: 'Inconnu' },
+        orderProducts,
+        totalHT: null,
+        totalHTWithFrais: order.total_ht || 0,
+        totalTTC: order.total_ttc || 0,
+        fraisRef: null, fraisNom: null, fraisMontant: 0,
+        notes: order.notes, orderId: req.params.id,
+        sujet: 'Annulation client',
+      });
+
       res.json({ ok: true });
     } catch (e) {
-      logger.error('Erreur suppression commande', { error: e.message, orderId: req.params.id });
+      logger.error('Erreur annulation commande', { error: e.message, orderId: req.params.id });
       res.status(500).json({ erreur: 'Erreur serveur' });
     }
   });
@@ -335,15 +359,17 @@ module.exports = (db) => {
       totalHT = Math.round(totalHT * 100) / 100;
       const francoSeuil = partner.franco_seuil ?? DEFAULT_FRANCO_SEUIL;
       const exonere = partner.frais_exonere ?? 0;
+      let fraisRef = null;
+      let fraisNom = '';
       let fraisMontant = 0;
       if (!exonere) {
-        const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
+        const fraisRows = db.prepare("SELECT ref, prix_ht, nom FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
         const fraisMap = {};
         for (const r of fraisRows) fraisMap[r.ref] = r;
         if (totalHT >= francoSeuil) {
-          fraisMontant = fraisMap['FP']?.prix_ht || 0;
+          fraisRef = 'FP'; fraisNom = fraisMap['FP']?.nom || 'Frais de préparation'; fraisMontant = fraisMap['FP']?.prix_ht || 0;
         } else {
-          fraisMontant = fraisMap['FE']?.prix_ht || 0;
+          fraisRef = 'FE'; fraisNom = fraisMap['FE']?.nom || "Frais d'expédition"; fraisMontant = fraisMap['FE']?.prix_ht || 0;
         }
       }
       const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
@@ -351,6 +377,13 @@ module.exports = (db) => {
 
       db.prepare('UPDATE partner_orders SET products = ?, notes = ?, total_ht = ?, total_ttc = ? WHERE id = ?')
         .run(JSON.stringify(orderProducts), notes || null, totalHTWithFrais, totalTTC, req.params.id);
+
+      // Notification admin modification
+      notifierAdminCommande({
+        partner, orderProducts, totalHT, totalHTWithFrais, totalTTC,
+        fraisRef, fraisNom, fraisMontant, notes, orderId: req.params.id,
+        sujet: 'Commande modifiée',
+      });
 
       res.json({ ok: true });
     } catch (e) {

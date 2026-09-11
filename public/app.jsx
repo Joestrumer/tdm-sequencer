@@ -20809,7 +20809,7 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
 const VueCommandes = ({ showToast }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [commandes, setCommandes] = useState([]);
-  const [counts, setCounts] = useState({ en_attente: 0, validee: 0, annulee: 0, total: 0 });
+  const [counts, setCounts] = useState({ en_attente: 0, validee: 0, annulee: 0, annulee_client: 0, total: 0 });
   const [filtre, setFiltre] = useState("tous");
   const [loading, setLoading] = useState(true);
   const [expandedId, setExpandedId] = useState(null);
@@ -21086,13 +21086,14 @@ const VueCommandes = ({ showToast }) => {
     en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700", dot: "bg-amber-500" },
     validee: { label: "Validée", bg: "bg-emerald-50", text: "text-emerald-700", dot: "bg-emerald-500" },
     annulee: { label: "Annulée", bg: "bg-red-50", text: "text-red-600", dot: "bg-red-400" },
+    annulee_client: { label: "Annulation client", bg: "bg-orange-50", text: "text-orange-700", dot: "bg-orange-400" },
   };
 
   const filtres = [
     { id: "tous", label: "Tous", count: counts.total },
     { id: "en_attente", label: "En attente", count: counts.en_attente },
     { id: "validee", label: "Validées", count: counts.validee },
-    { id: "annulee", label: "Annulées", count: counts.annulee },
+    { id: "annulee", label: "Annulées", count: counts.annulee + (counts.annulee_client || 0) },
   ];
 
   return (

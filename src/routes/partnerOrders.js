@@ -87,8 +87,12 @@ module.exports = (db) => {
       const params = [];
       const conditions = [];
       if (statut) {
-        conditions.push('po.statut = ?');
-        params.push(statut);
+        if (statut === 'annulee') {
+          conditions.push("po.statut IN ('annulee', 'annulee_client')");
+        } else {
+          conditions.push('po.statut = ?');
+          params.push(statut);
+        }
       }
       if (req.user.role !== 'admin') {
         conditions.push('po.validated_by = ?');
@@ -119,9 +123,9 @@ module.exports = (db) => {
       }
       countSql += ' GROUP BY statut';
       const counts = db.prepare(countSql).all(...countParams);
-      const result = { en_attente: 0, validee: 0, annulee: 0 };
+      const result = { en_attente: 0, validee: 0, annulee: 0, annulee_client: 0 };
       for (const c of counts) result[c.statut] = c.count;
-      result.total = result.en_attente + result.validee + result.annulee;
+      result.total = result.en_attente + result.validee + result.annulee + result.annulee_client;
       res.json(result);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
