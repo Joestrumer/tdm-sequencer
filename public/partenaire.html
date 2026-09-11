@@ -335,7 +335,7 @@
                 className="flex items-center gap-2 mb-3 group"
               >
                 <div className="w-1 h-5 bg-gray-300 rounded-full"></div>
-                <h3 className="text-sm font-medium text-gray-500 group-hover:text-gray-700 transition-colors">Autres formats disponibles <span className="font-normal text-gray-400">(m\u00eames parfums)</span></h3>
+                <h3 className="text-sm font-medium text-gray-500 group-hover:text-gray-700 transition-colors">Autres formats disponibles <span className="font-normal text-gray-400">(mêmes parfums)</span></h3>
                 <span className="text-gray-400 text-xs group-hover:text-gray-600 transition-colors">{showOtherFormats ? '\u25b2' : '\u25bc'}</span>
               </button>
               {showOtherFormats && (
@@ -398,7 +398,7 @@
             className="flex items-center gap-2 mb-3 group"
           >
             <div className="w-1 h-5 bg-gold-400 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-gray-900">Votre derni\u00e8re commande</h3>
+            <h3 className="text-sm font-semibold text-gray-900">Votre dernière commande</h3>
             <span className="text-gray-400 text-xs group-hover:text-gray-600 transition-colors">{open ? '\u25b2' : '\u25bc'}</span>
           </button>
           {open && (
@@ -805,7 +805,7 @@
       };
 
       if (commandes.length === 0) {
-        return <div className="text-center py-12 text-gray-400 text-sm">Aucune commande pass\u00e9e.</div>;
+        return <div className="text-center py-12 text-gray-400 text-sm">Aucune commande passée.</div>;
       }
 
       return (
