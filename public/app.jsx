@@ -50,13 +50,23 @@ async function saveFileWithPicker(blob, fileName) {
     if (window.savedCSVDirHandle) {
       try {
         const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
-        if (permission === 'granted' || await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+        if (permission === 'granted') {
           dirHandle = window.savedCSVDirHandle;
+        } else if (permission === 'prompt') {
+          // Tenter de demander la permission (nécessite un geste utilisateur récent)
+          try {
+            if (await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
+              dirHandle = window.savedCSVDirHandle;
+            }
+          } catch (e) { /* activation utilisateur expirée, on passera au picker */ }
         }
-      } catch (e) { /* handle invalide */ }
+      } catch (e) {
+        // Handle invalide (dossier supprimé/renommé), on le nettoie
+        window.savedCSVDirHandle = null;
+      }
     }
     if (!dirHandle) {
-      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite' });
+      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'csvDir' });
       window.savedCSVDirHandle = dirHandle;
       await _saveHandleIDB('csvDir', dirHandle);
     }
@@ -20912,7 +20922,19 @@ const VueCommandes = ({ showToast }) => {
           window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_self');
         }
 
-        // 2. Télécharger le PDF facture/proforma (délai pour laisser VF générer le PDF)
+        // 2. Mailto partenaire (via <a> click — fiable même sans geste utilisateur récent)
+        if (validateOptions.sendEmailPartner && partnerEmail) {
+          await new Promise(r => setTimeout(r, 400));
+          const partSubject = encodeURIComponent('Confirmation commande — Terre de Mars');
+          const partBody = encodeURIComponent(`Bonjour,\n\nNous vous confirmons la bonne réception de votre commande n°${invoiceNumber}.\n\nVotre commande a été mise en préparation et sera expédiée dans les meilleurs délais.\n\nCordialement,\nTerre de Mars`);
+          const mailLink = document.createElement('a');
+          mailLink.href = `mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`;
+          document.body.appendChild(mailLink);
+          mailLink.click();
+          document.body.removeChild(mailLink);
+        }
+
+        // 3. Télécharger le PDF facture/proforma (délai pour laisser VF générer le PDF)
         if (res.vf_invoice_id) {
           setTimeout(async () => {
             try {
@@ -20933,15 +20955,6 @@ const VueCommandes = ({ showToast }) => {
               showToast('Erreur téléchargement PDF', 'error');
             }
           }, 2000);
-        }
-
-        // 3. Mailto partenaire (après délai pour ne pas interférer avec le PDF)
-        if (validateOptions.sendEmailPartner && partnerEmail) {
-          setTimeout(() => {
-            const partSubject = encodeURIComponent('Confirmation commande — Terre de Mars');
-            const partBody = encodeURIComponent(`Bonjour,\n\nNous vous confirmons la bonne réception de votre commande n°${invoiceNumber}.\n\nVotre commande a été mise en préparation et sera expédiée dans les meilleurs délais.\n\nCordialement,\nTerre de Mars`);
-            window.location.href = `mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`;
-          }, 2500);
         }
 
         showToast(res.message || `Commande validée — ${invoiceNumber}`, "success");
