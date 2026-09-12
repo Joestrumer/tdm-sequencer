@@ -168,7 +168,8 @@ module.exports = (db) => {
                vp.contact_nom as partner_contact, vp.shipping_id as partner_shipping_id,
                vp.adresse as partner_adresse, vp.telephone as partner_telephone,
                vp.franco_seuil as partner_franco_seuil, vp.frais_port as partner_frais_port,
-               vp.frais_exonere as partner_frais_exonere
+               vp.frais_exonere as partner_frais_exonere,
+               vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         WHERE po.id = ?
@@ -342,15 +343,16 @@ module.exports = (db) => {
       if (generateCsv && shippingId) {
         try {
           const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
+          const livraisonNom = [order.livraison_prenom, order.livraison_nom].filter(Boolean).join(' ');
           const client = {
             name: order.partner_nom,
-            recipient_name: order.partner_contact || order.partner_nom,
+            recipient_name: livraisonNom || order.partner_contact || order.partner_nom,
             street: parsedAddr.street,
             city: parsedAddr.city,
             zip: parsedAddr.zip,
             country: parsedAddr.country,
-            email: order.partner_email || '',
-            phone: order.partner_telephone || '',
+            email: order.livraison_email || order.partner_email || '',
+            phone: order.livraison_telephone || order.partner_telephone || '',
           };
           const csvProducts = products.map(p => ({
             ref: p.ref,
@@ -458,7 +460,8 @@ module.exports = (db) => {
       const order = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.email as partner_email,
                vp.contact_nom as partner_contact, vp.adresse as partner_adresse,
-               vp.telephone as partner_telephone
+               vp.telephone as partner_telephone,
+               vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         WHERE po.id = ?
@@ -469,15 +472,16 @@ module.exports = (db) => {
       const products = JSON.parse(order.products || '[]');
       const catalog = getCatalogMap();
       const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
+      const livraisonNom = [order.livraison_prenom, order.livraison_nom].filter(Boolean).join(' ');
       const client = {
         name: order.partner_nom,
-        recipient_name: order.partner_contact || order.partner_nom,
+        recipient_name: livraisonNom || order.partner_contact || order.partner_nom,
         street: parsedAddr.street,
         city: parsedAddr.city,
         zip: parsedAddr.zip,
         country: parsedAddr.country,
-        email: order.partner_email || '',
-        phone: order.partner_telephone || '',
+        email: order.livraison_email || order.partner_email || '',
+        phone: order.livraison_telephone || order.partner_telephone || '',
       };
       const csvProducts = products.map(p => ({
         ref: p.ref,
@@ -516,7 +520,8 @@ module.exports = (db) => {
         const order = db.prepare(`
           SELECT po.*, vp.nom as partner_nom, vp.email as partner_email,
                  vp.contact_nom as partner_contact, vp.adresse as partner_adresse,
-                 vp.telephone as partner_telephone
+                 vp.telephone as partner_telephone,
+                 vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email
           FROM partner_orders po
           JOIN vf_partners vp ON vp.id = po.partner_id
           WHERE po.id = ? AND po.statut = 'validee'
@@ -526,15 +531,16 @@ module.exports = (db) => {
 
         const products = JSON.parse(order.products || '[]');
         const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
+        const livraisonNom = [order.livraison_prenom, order.livraison_nom].filter(Boolean).join(' ');
         const client = {
           name: order.partner_nom,
-          recipient_name: order.partner_contact || order.partner_nom,
+          recipient_name: livraisonNom || order.partner_contact || order.partner_nom,
           street: parsedAddr.street,
           city: parsedAddr.city,
           zip: parsedAddr.zip,
           country: parsedAddr.country,
-          email: order.partner_email || '',
-          phone: order.partner_telephone || '',
+          email: order.livraison_email || order.partner_email || '',
+          phone: order.livraison_telephone || order.partner_telephone || '',
         };
         const csvProducts = products.map(p => ({
           ref: p.ref,
