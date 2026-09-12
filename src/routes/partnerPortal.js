@@ -121,7 +121,7 @@ module.exports = (db) => {
   // ─── Profil ────────────────────────────────────────────────────────────────
   router.get('/profil', (req, res) => {
     try {
-      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere, livraison_prenom, livraison_nom, livraison_telephone, facturation_prenom, facturation_nom, facturation_telephone FROM vf_partners WHERE id = ?').get(req.partner.id);
+      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email FROM vf_partners WHERE id = ?').get(req.partner.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       // Ajouter les prix FP/FE pour le calcul côté portail (1 seule requête)
       const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
@@ -139,7 +139,7 @@ module.exports = (db) => {
   // ─── Mise à jour profil (champs éditables) ─────────────────────────────────
   router.patch('/profil', (req, res) => {
     try {
-      const allowed = ['email', 'contact_nom', 'telephone', 'adresse', 'livraison_prenom', 'livraison_nom', 'livraison_telephone', 'facturation_prenom', 'facturation_nom', 'facturation_telephone'];
+      const allowed = ['email', 'contact_nom', 'telephone', 'adresse', 'livraison_prenom', 'livraison_nom', 'livraison_telephone', 'livraison_email', 'facturation_prenom', 'facturation_nom', 'facturation_telephone', 'facturation_email'];
       const updates = [];
       const values = [];
       for (const key of allowed) {

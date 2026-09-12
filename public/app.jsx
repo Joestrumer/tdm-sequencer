@@ -21583,7 +21583,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     setSelectedId(p.id);
     setEditing(false);
     setShowPwd(false);
-    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, vf_display_name: p.vf_display_name || '' });
+    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, vf_display_name: p.vf_display_name || '', livraison_prenom: p.livraison_prenom || '', livraison_nom: p.livraison_nom || '', livraison_telephone: p.livraison_telephone || '', livraison_email: p.livraison_email || '', facturation_prenom: p.facturation_prenom || '', facturation_nom: p.facturation_nom || '', facturation_telephone: p.facturation_telephone || '', facturation_email: p.facturation_email || '' });
     // Charger amenities depuis le partenaire
     try {
       const am = p.amenities ? JSON.parse(p.amenities) : {};
@@ -21989,6 +21989,28 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                     <div><span className="text-[10px] text-slate-400 block">Franco (seuil HT)</span><span className="text-sm text-slate-700">{(selected.franco_seuil ?? DEFAULT_FRANCO_SEUIL).toFixed(0)} &euro;</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Frais FP/FE</span><span className="text-sm text-slate-700">{selected.frais_exonere ? 'Exonéré' : 'Standard (FP/FE)'}</span></div>
                   </div>
+                  {/* Contact livraison */}
+                  {(selected.livraison_prenom || selected.livraison_nom || selected.livraison_telephone || selected.livraison_email) && (
+                    <div className="mt-4 pt-3 border-t border-slate-100">
+                      <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Contact de livraison</span>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-1">
+                        <div><span className="text-[10px] text-slate-400 block">Prénom / Nom</span><span className="text-sm text-slate-700">{[selected.livraison_prenom, selected.livraison_nom].filter(Boolean).join(' ') || '—'}</span></div>
+                        <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.livraison_telephone || '—'}</span></div>
+                        <div><span className="text-[10px] text-slate-400 block">Email</span><span className="text-sm text-slate-700">{selected.livraison_email || '—'}</span></div>
+                      </div>
+                    </div>
+                  )}
+                  {/* Contact facturation */}
+                  {(selected.facturation_prenom || selected.facturation_nom || selected.facturation_telephone || selected.facturation_email) && (
+                    <div className="mt-4 pt-3 border-t border-slate-100">
+                      <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Contact de facturation</span>
+                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-1">
+                        <div><span className="text-[10px] text-slate-400 block">Prénom / Nom</span><span className="text-sm text-slate-700">{[selected.facturation_prenom, selected.facturation_nom].filter(Boolean).join(' ') || '—'}</span></div>
+                        <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.facturation_telephone || '—'}</span></div>
+                        <div><span className="text-[10px] text-slate-400 block">Email</span><span className="text-sm text-slate-700">{selected.facturation_email || '—'}</span></div>
+                      </div>
+                    </div>
+                  )}
                 </div>
               ) : (
                 <div className="animate-fade-in">
@@ -22027,6 +22049,50 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                     <div className="flex items-center gap-2 pt-4">
                       <input type="checkbox" id="frais_exonere" checked={!!editForm.frais_exonere} onChange={e => setEditForm(f => ({ ...f, frais_exonere: e.target.checked ? 1 : 0 }))} className="rounded border-slate-300" />
                       <label htmlFor="frais_exonere" className="text-[10px] text-slate-400">Exonéré de frais (pas de FP/FE)</label>
+                    </div>
+                  </div>
+                  {/* Contact livraison */}
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Contact de livraison</span>
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Prénom</label>
+                        <input type="text" value={editForm.livraison_prenom || ''} onChange={e => setEditForm(f => ({ ...f, livraison_prenom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Nom</label>
+                        <input type="text" value={editForm.livraison_nom || ''} onChange={e => setEditForm(f => ({ ...f, livraison_nom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Téléphone</label>
+                        <input type="tel" value={editForm.livraison_telephone || ''} onChange={e => setEditForm(f => ({ ...f, livraison_telephone: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Email</label>
+                        <input type="email" value={editForm.livraison_email || ''} onChange={e => setEditForm(f => ({ ...f, livraison_email: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Contact facturation */}
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Contact de facturation</span>
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Prénom</label>
+                        <input type="text" value={editForm.facturation_prenom || ''} onChange={e => setEditForm(f => ({ ...f, facturation_prenom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Nom</label>
+                        <input type="text" value={editForm.facturation_nom || ''} onChange={e => setEditForm(f => ({ ...f, facturation_nom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Téléphone</label>
+                        <input type="tel" value={editForm.facturation_telephone || ''} onChange={e => setEditForm(f => ({ ...f, facturation_telephone: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Email</label>
+                        <input type="email" value={editForm.facturation_email || ''} onChange={e => setEditForm(f => ({ ...f, facturation_email: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
                     </div>
                   </div>
                   <div className="flex gap-2">

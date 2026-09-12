@@ -1180,6 +1180,8 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN facturation_prenom TEXT',
   'ALTER TABLE vf_partners ADD COLUMN facturation_nom TEXT',
   'ALTER TABLE vf_partners ADD COLUMN facturation_telephone TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN livraison_email TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_email TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

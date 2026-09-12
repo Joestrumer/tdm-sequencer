@@ -1120,17 +1120,23 @@
 
     // ─── Profil ──────────────────────────────────────────────────────────────────
     const ProfilView = ({ partner, setPartner, commandes, showToast }) => {
+      // Pré-remplir les contacts avec les infos générales si vides
+      const nameParts = (partner.contact_nom || '').trim().split(/\s+/);
+      const defaultPrenom = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0] || '';
+      const defaultNom = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
       const [form, setForm] = useState({
         contact_nom: partner.contact_nom || '',
         email: partner.email || '',
         telephone: partner.telephone || '',
         adresse: partner.adresse || '',
-        livraison_prenom: partner.livraison_prenom || '',
-        livraison_nom: partner.livraison_nom || '',
-        livraison_telephone: partner.livraison_telephone || '',
-        facturation_prenom: partner.facturation_prenom || '',
-        facturation_nom: partner.facturation_nom || '',
-        facturation_telephone: partner.facturation_telephone || '',
+        livraison_prenom: partner.livraison_prenom || defaultPrenom,
+        livraison_nom: partner.livraison_nom || defaultNom,
+        livraison_telephone: partner.livraison_telephone || partner.telephone || '',
+        livraison_email: partner.livraison_email || partner.email || '',
+        facturation_prenom: partner.facturation_prenom || defaultPrenom,
+        facturation_nom: partner.facturation_nom || defaultNom,
+        facturation_telephone: partner.facturation_telephone || partner.telephone || '',
+        facturation_email: partner.facturation_email || partner.email || '',
       });
       const [saving, setSaving] = useState(false);
 
@@ -1205,6 +1211,10 @@
                 <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
                 <input value={form.livraison_telephone} onChange={e => set('livraison_telephone', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
               </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Email</label>
+                <input value={form.livraison_email} onChange={e => set('livraison_email', e.target.value)} placeholder="email@exemple.com" type="email" className={fieldClass} />
+              </div>
             </div>
 
             {/* Contact facturation */}
@@ -1223,6 +1233,10 @@
               <div>
                 <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
                 <input value={form.facturation_telephone} onChange={e => set('facturation_telephone', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Email</label>
+                <input value={form.facturation_email} onChange={e => set('facturation_email', e.target.value)} placeholder="email@exemple.com" type="email" className={fieldClass} />
               </div>
             </div>
 
