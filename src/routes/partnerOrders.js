@@ -78,7 +78,7 @@ module.exports = (db) => {
   // ─── Liste commandes ──────────────────────────────────────────────────────
   router.get('/', (req, res) => {
     try {
-      const { statut } = req.query;
+      const { statut, limit: qLimit, offset: qOffset } = req.query;
       let sql = `
         SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact
         FROM partner_orders po
@@ -100,6 +100,12 @@ module.exports = (db) => {
       }
       if (conditions.length) sql += ' WHERE ' + conditions.join(' AND ');
       sql += ' ORDER BY po.created_at DESC';
+
+      // Pagination optionnelle
+      const limit = Math.min(parseInt(qLimit) || 200, 500);
+      const offset = parseInt(qOffset) || 0;
+      sql += ' LIMIT ? OFFSET ?';
+      params.push(limit, offset);
 
       const orders = db.prepare(sql).all(...params);
       const result = orders.map(o => ({

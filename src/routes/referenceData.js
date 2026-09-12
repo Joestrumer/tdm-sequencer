@@ -241,6 +241,28 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Stats partenaire ────────────────────────────────────────────────────
+
+  router.get('/partners/:id/stats', (req, res) => {
+    try {
+      const stats = db.prepare(`
+        SELECT
+          COUNT(*) as total_commandes,
+          SUM(CASE WHEN statut = 'validee' THEN 1 ELSE 0 END) as commandes_validees,
+          SUM(CASE WHEN statut = 'en_attente' THEN 1 ELSE 0 END) as commandes_en_attente,
+          ROUND(SUM(CASE WHEN statut = 'validee' THEN total_ht ELSE 0 END), 2) as ca_total_ht,
+          ROUND(SUM(CASE WHEN statut = 'validee' THEN total_ttc ELSE 0 END), 2) as ca_total_ttc,
+          ROUND(AVG(CASE WHEN statut = 'validee' THEN total_ht END), 2) as panier_moyen_ht,
+          MAX(created_at) as derniere_commande,
+          MIN(created_at) as premiere_commande
+        FROM partner_orders WHERE partner_id = ?
+      `).get(req.params.id);
+      res.json(stats || {});
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Partenaires ──────────────────────────────────────────────────────────
 
   router.get('/partners', (req, res) => {

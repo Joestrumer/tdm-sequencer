@@ -21144,7 +21144,7 @@ const VueCommandes = ({ showToast }) => {
 
   const filtres = [
     { id: "tous", label: "Tous", count: counts.total },
-    { id: "en_attente", label: "En attente", count: counts.en_attente },
+    { id: "en_attente", label: "En attente", count: counts.en_attente, stale: counts.stale || 0 },
     { id: "validee", label: "Validées", count: counts.validee },
     { id: "annulee", label: "Annulées", count: counts.annulee + (counts.annulee_client || 0) },
   ];
@@ -21280,6 +21280,7 @@ const VueCommandes = ({ showToast }) => {
           <button key={f.id} onClick={() => setFiltre(f.id)} className={`px-3 py-1.5 rounded-lg text-xs font-medium transition-colors flex items-center gap-1.5 ${filtre === f.id ? "bg-slate-900 text-white" : "bg-white text-slate-600 hover:bg-slate-50 border border-slate-200"}`}>
             {f.label}
             {f.count > 0 && <span className={`px-1.5 py-0.5 rounded-full text-[10px] ${filtre === f.id ? "bg-white/20" : "bg-slate-100"}`}>{f.count}</span>}
+            {f.stale > 0 && <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-red-100 text-red-600 font-bold" title={`${f.stale} commande${f.stale > 1 ? 's' : ''} en attente depuis +3j`}>{f.stale}</span>}
           </button>
         ))}
         {commandes.some(c => c.statut === 'validee' && c.vf_invoice_id) && (
@@ -21521,6 +21522,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
   const [newGlobalDiscount, setNewGlobalDiscount] = useState({ client_name: '', product_code: '', discount_pct: '' });
   const [editingDiscountId, setEditingDiscountId] = useState(null);
   const [editingDiscountPct, setEditingDiscountPct] = useState('');
+  const [partnerStats, setPartnerStats] = useState(null);
 
   const charger = async () => {
     setLoading(true);
@@ -21583,6 +21585,8 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     setSelectedId(p.id);
     setEditing(false);
     setShowPwd(false);
+    setPartnerStats(null);
+    api.get(`/reference/partners/${p.id}/stats`).then(s => setPartnerStats(s)).catch(() => {});
     setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, vf_display_name: p.vf_display_name || '', livraison_prenom: p.livraison_prenom || '', livraison_nom: p.livraison_nom || '', livraison_telephone: p.livraison_telephone || '', livraison_email: p.livraison_email || '', facturation_prenom: p.facturation_prenom || '', facturation_nom: p.facturation_nom || '', facturation_telephone: p.facturation_telephone || '', facturation_email: p.facturation_email || '' });
     // Charger amenities depuis le partenaire
     try {
@@ -21752,10 +21756,14 @@ const VuePartenaires = ({ showToast, readOnly }) => {
             </div>
           ) : (
             <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+              <div className="flex items-center gap-2 p-3 border-b border-slate-100 bg-slate-50/50">
+                <input type="text" value={search} onChange={e => setSearch(e.target.value)} placeholder="Filtrer par partenaire ou produit..." className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                <span className="text-[10px] text-slate-400">{allDiscounts.length} remise{allDiscounts.length > 1 ? 's' : ''}</span>
+              </div>
               <table className="w-full text-xs">
                 <thead>
                   <tr className="border-b border-slate-200 bg-slate-50">
-                    <th className="text-left py-2.5 px-4 text-slate-500 font-medium">Partenaire</th>
+                    <th className="text-left py-2.5 px-4 text-slate-500 font-medium cursor-pointer hover:text-slate-700" onClick={() => { /* tri géré par le groupBy existant */ }}>Partenaire</th>
                     <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Ref</th>
                     <th className="text-left py-2.5 px-3 text-slate-500 font-medium">Produit</th>
                     <th className="text-right py-2.5 px-3 text-slate-500 font-medium">Remise %</th>
@@ -21764,8 +21772,10 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                 </thead>
                 <tbody>
                   {(() => {
+                    const q = search.toLowerCase();
+                    const filteredDiscounts = q ? allDiscounts.filter(d => d.client_name.toLowerCase().includes(q) || d.product_code.toLowerCase().includes(q) || (catalog.find(c => c.ref === d.product_code)?.nom || '').toLowerCase().includes(q)) : allDiscounts;
                     const grouped = {};
-                    allDiscounts.forEach(d => {
+                    filteredDiscounts.forEach(d => {
                       if (!grouped[d.client_name]) grouped[d.client_name] = [];
                       grouped[d.client_name].push(d);
                     });
@@ -21878,6 +21888,15 @@ const VuePartenaires = ({ showToast, readOnly }) => {
           <button onClick={syncVF} disabled={syncing} className="px-3 py-2.5 rounded-xl text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 transition-colors disabled:opacity-50 flex-shrink-0" title="Synchroniser noms et données depuis VosFactures">
             {syncing ? <span className="inline-block w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" /> : 'Sync VF'}
           </button>
+          <button onClick={() => {
+            const headers = ['Nom','Email','Contact','Téléphone','Adresse','Franco HT','Frais exonéré','VF Client ID','Accès portail','Livraison Prénom','Livraison Nom','Livraison Tél','Livraison Email','Facturation Prénom','Facturation Nom','Facturation Tél','Facturation Email'];
+            const rows = filtered.map(p => [p.nom, p.email, p.contact_nom, p.telephone, p.adresse, p.franco_seuil ?? '', p.frais_exonere ? 'Oui' : 'Non', p.vf_client_id, p.has_password ? 'Oui' : 'Non', p.livraison_prenom, p.livraison_nom, p.livraison_telephone, p.livraison_email, p.facturation_prenom, p.facturation_nom, p.facturation_telephone, p.facturation_email]);
+            const csv = '\uFEFF' + [headers, ...rows].map(r => r.map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(';')).join('\n');
+            const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+            const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `partenaires-${new Date().toISOString().slice(0,10)}.csv`; a.click();
+          }} className="px-3 py-2.5 rounded-xl text-xs font-medium bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors flex-shrink-0" title="Exporter la liste filtrée en CSV">
+            CSV
+          </button>
         </div>
         {loading && <div className="text-xs text-slate-400 py-2">Chargement...</div>}
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden max-h-[calc(100vh-220px)] overflow-y-auto">
@@ -21944,6 +21963,31 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                   </button>
                 </div>
               </div>
+
+              {/* KPIs */}
+              {partnerStats && (
+                <div className="grid grid-cols-4 gap-3 mb-4">
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className="text-lg font-bold text-slate-900">{partnerStats.ca_total_ht ? `${partnerStats.ca_total_ht.toFixed(0)}\u00a0\u20ac` : '0\u00a0\u20ac'}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">CA total HT</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className="text-lg font-bold text-slate-900">{partnerStats.commandes_validees || 0}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Commandes valid&eacute;es</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className="text-lg font-bold text-slate-900">{partnerStats.panier_moyen_ht ? `${partnerStats.panier_moyen_ht.toFixed(0)}\u00a0\u20ac` : '\u2014'}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">Panier moyen HT</div>
+                  </div>
+                  <div className="bg-slate-50 rounded-xl p-3 text-center">
+                    <div className={`text-lg font-bold ${partnerStats.commandes_en_attente > 0 ? 'text-amber-600' : 'text-slate-900'}`}>{partnerStats.commandes_en_attente || 0}</div>
+                    <div className="text-[10px] text-slate-400 mt-0.5">En attente</div>
+                  </div>
+                  {partnerStats.derniere_commande && (
+                    <div className="col-span-2 text-[10px] text-slate-400">Derni&egrave;re commande : {new Date(partnerStats.derniere_commande).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</div>
+                  )}
+                </div>
+              )}
 
               {/* Mot de passe */}
               <div className="bg-slate-50 rounded-xl p-4 mb-4">
