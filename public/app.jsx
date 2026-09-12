@@ -20892,6 +20892,27 @@ const VueCommandes = ({ showToast }) => {
     const partnerEmail = validateModal.partner_email || '';
     setValidating(id);
     try {
+      // Pré-valider l'accès au dossier CSV AVANT l'appel API
+      // (le clic utilisateur est encore frais → requestPermission/showDirectoryPicker fonctionnent)
+      if (validateOptions.generateCsv) {
+        try {
+          if (!window.savedCSVDirHandle) {
+            window.savedCSVDirHandle = await _getHandleIDB('csvDir');
+          }
+          if (window.savedCSVDirHandle) {
+            const perm = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
+            if (perm === 'prompt') {
+              try { await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }); } catch (e) {}
+            }
+          }
+          if (!window.savedCSVDirHandle || await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
+            const dh = await window.showDirectoryPicker({ mode: 'readwrite', id: 'csvDir' });
+            window.savedCSVDirHandle = dh;
+            await _saveHandleIDB('csvDir', dh);
+          }
+        } catch (e) { /* pas de support ou annulé */ }
+      }
+
       const res = await api.post(`/partner-orders/${id}/validate`, {
         documentType: validateOptions.documentType,
         shippingId: validateOptions.shippingId,
