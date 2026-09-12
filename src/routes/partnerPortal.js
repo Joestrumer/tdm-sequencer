@@ -13,6 +13,26 @@ const brevoService = require('../services/brevoService');
 
 const DEFAULT_FRANCO_SEUIL = 800;
 
+// Rate limiter simple : max 10 commandes par minute par partenaire
+const orderRateMap = new Map();
+function checkOrderRateLimit(partnerId) {
+  const now = Date.now();
+  const windowMs = 60000; // 1 minute
+  const max = 10;
+  let entries = orderRateMap.get(partnerId) || [];
+  entries = entries.filter(t => t > now - windowMs);
+  if (entries.length >= max) return false;
+  entries.push(now);
+  orderRateMap.set(partnerId, entries);
+  // Nettoyage périodique des anciennes entrées
+  if (orderRateMap.size > 500) {
+    for (const [k, v] of orderRateMap) {
+      if (v.every(t => t < now - windowMs)) orderRateMap.delete(k);
+    }
+  }
+  return true;
+}
+
 // Helper : envoyer une notification admin pour une commande partenaire
 function notifierAdminCommande({ partner, orderProducts, totalHT, totalHTWithFrais, totalTTC, fraisRef, fraisNom, fraisMontant, notes, orderId, sujet }) {
   setImmediate(async () => {
@@ -204,6 +224,19 @@ module.exports = (db) => {
       if (!products || !Array.isArray(products) || products.length === 0) {
         return res.status(400).json({ erreur: 'Au moins un produit requis' });
       }
+      if (products.length > 200) {
+        return res.status(400).json({ erreur: 'Maximum 200 produits par commande' });
+      }
+      // Rate limiting
+      if (!checkOrderRateLimit(req.partner.id)) {
+        return res.status(429).json({ erreur: 'Trop de commandes. Veuillez patienter une minute.' });
+      }
+      // Valider les quantités
+      for (const p of products) {
+        const qty = parseInt(p.quantite);
+        if (!p.ref || typeof p.ref !== 'string') return res.status(400).json({ erreur: 'Référence produit manquante' });
+        if (!qty || qty < 1 || qty > 99999) return res.status(400).json({ erreur: `Quantité invalide pour ${p.ref}: ${p.quantite}` });
+      }
 
       const partnerId = req.partner.id;
       const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(partnerId);
@@ -251,6 +284,7 @@ module.exports = (db) => {
       let fraisRef = null;
       let fraisNom = '';
       let fraisMontant = 0;
+      let fraisTvaRate = 20;
       if (!exonere) {
         const fraisRows = db.prepare("SELECT ref, prix_ht, nom, tva FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
         const fraisMap = {};
@@ -260,17 +294,17 @@ module.exports = (db) => {
         } else {
           fraisRef = 'FE'; fraisNom = fraisMap['FE']?.nom || "Frais d'expédition"; fraisMontant = fraisMap['FE']?.prix_ht || 0;
         }
-        const fraisTva = (fraisRef && fraisMap[fraisRef]?.tva) || 20;
-        totalTVA += fraisMontant * (fraisTva / 100);
+        fraisTvaRate = (fraisRef && fraisMap[fraisRef]?.tva) || 20;
+        totalTVA += fraisMontant * (fraisTvaRate / 100);
       }
       const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
       const totalTTC = Math.round((totalHTWithFrais + totalTVA) * 100) / 100;
 
       const orderId = uuidv4();
       db.prepare(`
-        INSERT INTO partner_orders (id, partner_id, products, notes, total_ht, total_ttc)
-        VALUES (?, ?, ?, ?, ?, ?)
-      `).run(orderId, partnerId, JSON.stringify(orderProducts), notes || null, totalHTWithFrais, totalTTC);
+        INSERT INTO partner_orders (id, partner_id, products, notes, total_ht, total_ttc, subtotal_ht, frais_ref, frais_montant, frais_tva)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      `).run(orderId, partnerId, JSON.stringify(orderProducts), notes || null, totalHTWithFrais, totalTTC, totalHT, fraisRef, fraisMontant, fraisRef ? fraisTvaRate : 0);
 
       // Répondre immédiatement au partenaire
       res.json({
@@ -303,7 +337,7 @@ module.exports = (db) => {
     try {
       const orders = db.prepare(`
         SELECT * FROM partner_orders
-        WHERE partner_id = ?
+        WHERE partner_id = ? AND statut != 'annulee'
         ORDER BY created_at DESC
       `).all(req.partner.id);
 
@@ -393,6 +427,7 @@ module.exports = (db) => {
       let fraisRef = null;
       let fraisNom = '';
       let fraisMontant = 0;
+      let fraisTvaRate = 20;
       if (!exonere) {
         const fraisRows = db.prepare("SELECT ref, prix_ht, nom, tva FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
         const fraisMap = {};
@@ -402,14 +437,14 @@ module.exports = (db) => {
         } else {
           fraisRef = 'FE'; fraisNom = fraisMap['FE']?.nom || "Frais d'expédition"; fraisMontant = fraisMap['FE']?.prix_ht || 0;
         }
-        const fraisTva = (fraisRef && fraisMap[fraisRef]?.tva) || 20;
-        totalTVA += fraisMontant * (fraisTva / 100);
+        fraisTvaRate = (fraisRef && fraisMap[fraisRef]?.tva) || 20;
+        totalTVA += fraisMontant * (fraisTvaRate / 100);
       }
       const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
       const totalTTC = Math.round((totalHTWithFrais + totalTVA) * 100) / 100;
 
-      db.prepare('UPDATE partner_orders SET products = ?, notes = ?, total_ht = ?, total_ttc = ? WHERE id = ?')
-        .run(JSON.stringify(orderProducts), notes || null, totalHTWithFrais, totalTTC, req.params.id);
+      db.prepare('UPDATE partner_orders SET products = ?, notes = ?, total_ht = ?, total_ttc = ?, subtotal_ht = ?, frais_ref = ?, frais_montant = ?, frais_tva = ? WHERE id = ?')
+        .run(JSON.stringify(orderProducts), notes || null, totalHTWithFrais, totalTTC, totalHT, fraisRef, fraisMontant, fraisRef ? fraisTvaRate : 0, req.params.id);
 
       // Notification admin modification
       notifierAdminCommande({

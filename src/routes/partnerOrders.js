@@ -126,6 +126,16 @@ module.exports = (db) => {
       const result = { en_attente: 0, validee: 0, annulee: 0, annulee_client: 0 };
       for (const c of counts) result[c.statut] = c.count;
       result.total = result.en_attente + result.validee + result.annulee + result.annulee_client;
+
+      // Commandes en attente depuis > 3 jours
+      let staleSql = "SELECT COUNT(*) as n FROM partner_orders WHERE statut = 'en_attente' AND created_at < datetime('now', '-3 days')";
+      const staleParams = [];
+      if (req.user.role !== 'admin') {
+        staleSql += ' AND validated_by = ?';
+        staleParams.push(req.user.id);
+      }
+      result.stale = db.prepare(staleSql).get(...staleParams).n;
+
       res.json(result);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -179,6 +189,14 @@ module.exports = (db) => {
       if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Cette commande ne peut plus être validée' });
 
       const products = JSON.parse(order.products || '[]');
+      // Validation des données avant création facture
+      if (!products.length) return res.status(400).json({ erreur: 'Commande sans produits' });
+      for (const p of products) {
+        if (!p.ref) return res.status(400).json({ erreur: 'Produit sans référence' });
+        if (!p.quantite || p.quantite < 1) return res.status(400).json({ erreur: `Quantité invalide pour ${p.ref}` });
+      }
+      if (order.total_ht < 0) return res.status(400).json({ erreur: 'Montant HT négatif' });
+
       const catalog = getCatalogMap();
       const productIdMappings = getCodeMappings('product_id');
       const productNameMappings = getCodeMappings('product_name');
@@ -239,22 +257,31 @@ module.exports = (db) => {
         positions.push(position);
       }
 
-      // Frais de port — règle : >= seuil franco → FP (catalogue), sinon FE (catalogue ou custom partenaire)
+      // Frais de port — utiliser les frais stockés à la création si disponibles, sinon recalculer
       const fraisPort = [];
       if (!order.partner_frais_exonere) {
-        const totalHTProducts = positions.reduce((s, p) => s + parseFloat(p.price_net) * p.quantity, 0);
-        const francoSeuil = order.partner_franco_seuil || DEFAULT_FRANCO_SEUIL;
-        const fpCatalog = catalog['FP'];
-        const feCatalog = catalog['FE'];
-        let fpMontant;
-        if (totalHTProducts >= francoSeuil) {
-          fpMontant = fpCatalog?.prix_ht || 25;
+        let fpRef, fpMontant, fpTax;
+
+        if (order.frais_ref && order.frais_montant > 0) {
+          // Frais stockés à la création de la commande — prix figé
+          fpRef = order.frais_ref;
+          fpMontant = order.frais_montant;
+          fpTax = order.frais_tva || 20;
         } else {
-          fpMontant = (order.partner_frais_port && order.partner_frais_port > 0) ? order.partner_frais_port : (feCatalog?.prix_ht || 80);
+          // Fallback : recalculer (anciennes commandes sans frais stockés)
+          const totalHTProducts = positions.reduce((s, p) => s + parseFloat(p.price_net) * p.quantity, 0);
+          const francoSeuil = order.partner_franco_seuil || DEFAULT_FRANCO_SEUIL;
+          const fpCatalog = catalog['FP'];
+          const feCatalog = catalog['FE'];
+          fpRef = 'FP';
+          fpTax = 20;
+          if (totalHTProducts >= francoSeuil) {
+            fpMontant = fpCatalog?.prix_ht || 25;
+          } else {
+            fpMontant = (order.partner_frais_port && order.partner_frais_port > 0) ? order.partner_frais_port : (feCatalog?.prix_ht || 80);
+          }
         }
 
-        const fpRef = 'FP';
-        const fpTax = 20;
         const fpGross = roundPrice(fpMontant * (1 + fpTax / 100));
         const vfProduct = findVFProduct(fpRef, fpMontant, catalog, codeMappings, productIdMappings, productNameMappings);
 
@@ -305,7 +332,18 @@ module.exports = (db) => {
       }
 
       // Créer la facture VF
-      const result = await req.vfService.creerFacture(invoiceData);
+      let result;
+      try {
+        result = await req.vfService.creerFacture(invoiceData);
+      } catch (vfErr) {
+        logger.error('Échec création facture VF — commande reste en_attente', { orderId: order.id, partnerId: order.partner_id, error: vfErr.message });
+        return res.status(502).json({ erreur: `Erreur VosFactures : ${vfErr.message}. La commande reste en attente.` });
+      }
+
+      if (!result || !result.id) {
+        logger.error('Facture VF créée sans ID — commande reste en_attente', { orderId: order.id, result });
+        return res.status(502).json({ erreur: 'VosFactures n\'a pas retourné d\'ID de facture. La commande reste en attente.' });
+      }
 
       // Logger dans vf_invoice_logs
       db.prepare(`
@@ -318,15 +356,25 @@ module.exports = (db) => {
         'partner_order',
         order.total_ht,
         order.total_ttc,
-        JSON.stringify({ orderId: order.id, canonicalClientName }),
+        JSON.stringify({ orderId: order.id, canonicalClientName, validatedBy: req.user.id }),
       );
 
-      // Mettre à jour la commande
+      // Mettre à jour la commande — seulement si facture VF créée avec succès
       db.prepare(`
         UPDATE partner_orders
         SET statut = 'validee', vf_invoice_id = ?, vf_invoice_number = ?, validated_at = datetime('now'), validated_by = ?
         WHERE id = ?
       `).run(String(result.id || ''), result.number || '', req.user.id, order.id);
+
+      // Audit trail
+      db.prepare('INSERT INTO partner_orders_audit (order_id, user_id, action, after_data) VALUES (?, ?, ?, ?)')
+        .run(order.id, req.user.id, 'validated', JSON.stringify({ vf_invoice_id: result.id, vf_invoice_number: result.number, documentType }));
+
+      logger.info('Commande partenaire validée', {
+        orderId: order.id, partnerId: order.partner_id, partnerNom: order.partner_nom,
+        userId: req.user.id, vfInvoiceNumber: result.number, montantHT: order.total_ht,
+        montantTTC: order.total_ttc, documentType: documentType || 'vat',
+      });
 
       // Email facture au partenaire
       if (sendEmail !== false && result.id && order.partner_email) {
@@ -611,6 +659,9 @@ module.exports = (db) => {
       const { products } = req.body;
       if (!Array.isArray(products)) return res.status(400).json({ erreur: 'products doit être un tableau' });
 
+      // Audit trail — avant modification
+      const beforeData = { products: JSON.parse(order.products || '[]'), total_ht: order.total_ht, total_ttc: order.total_ttc };
+
       // Recalculer les totaux
       let totalHT = 0;
       let totalTTC = 0;
@@ -623,6 +674,10 @@ module.exports = (db) => {
 
       db.prepare('UPDATE partner_orders SET products = ?, total_ht = ?, total_ttc = ? WHERE id = ?')
         .run(JSON.stringify(products), totalHT, totalTTC, req.params.id);
+
+      // Audit trail — après modification
+      db.prepare('INSERT INTO partner_orders_audit (order_id, user_id, action, before_data, after_data) VALUES (?, ?, ?, ?, ?)')
+        .run(req.params.id, req.user?.id || null, 'products_modified', JSON.stringify(beforeData), JSON.stringify({ products, total_ht: totalHT, total_ttc: totalTTC }));
 
       const updated = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact
@@ -645,6 +700,10 @@ module.exports = (db) => {
       if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Cette commande ne peut plus être annulée' });
 
       db.prepare("UPDATE partner_orders SET statut = 'annulee' WHERE id = ?").run(req.params.id);
+
+      // Audit trail
+      db.prepare('INSERT INTO partner_orders_audit (order_id, user_id, action) VALUES (?, ?, ?)')
+        .run(req.params.id, req.user?.id || null, 'cancelled_admin');
 
       res.json({ ok: true, message: 'Commande annulée' });
     } catch (e) {

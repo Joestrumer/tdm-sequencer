@@ -1182,7 +1182,26 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN facturation_telephone TEXT',
   'ALTER TABLE vf_partners ADD COLUMN livraison_email TEXT',
   'ALTER TABLE vf_partners ADD COLUMN facturation_email TEXT',
+  // Commandes partenaires — stocker frais de port à la création + audit
+  'ALTER TABLE partner_orders ADD COLUMN frais_ref TEXT',
+  'ALTER TABLE partner_orders ADD COLUMN frais_montant REAL DEFAULT 0',
+  'ALTER TABLE partner_orders ADD COLUMN frais_tva REAL DEFAULT 20',
+  'ALTER TABLE partner_orders ADD COLUMN subtotal_ht REAL',
 ];
+
+// ─── Table audit commandes partenaires ───────────────────────────────────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS partner_orders_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    order_id TEXT NOT NULL,
+    user_id TEXT,
+    action TEXT NOT NULL,
+    before_data TEXT,
+    after_data TEXT,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+  CREATE INDEX IF NOT EXISTS idx_po_audit_order ON partner_orders_audit(order_id);
+`);
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {
     // Ignorer "duplicate column" qui est attendu, logger les vraies erreurs
