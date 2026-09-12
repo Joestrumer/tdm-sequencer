@@ -1366,6 +1366,7 @@
             <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                 <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-8 sm:h-10" />
+                <span className="text-sm font-semibold text-gray-900 hidden sm:inline">{partner.nom}</span>
               </div>
               <div className="flex items-center gap-0.5 sm:gap-1">
                 <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
