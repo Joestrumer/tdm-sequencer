@@ -1173,6 +1173,13 @@ const migrations = [
   'ALTER TABLE leads ADD COLUMN telephone TEXT',
   // Partenaires — distinction canonical (GSheets) vs auto-créé (VF sync)
   'ALTER TABLE vf_partners ADD COLUMN is_canonical INTEGER DEFAULT 0',
+  // Partenaires — contacts livraison et facturation
+  'ALTER TABLE vf_partners ADD COLUMN livraison_prenom TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN livraison_nom TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN livraison_telephone TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_prenom TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_nom TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_telephone TEXT',
 ];
 for (const sql of migrations) {
   try { db.prepare(sql).run(); } catch (e) {

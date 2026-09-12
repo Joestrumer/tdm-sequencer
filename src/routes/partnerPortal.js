@@ -121,7 +121,7 @@ module.exports = (db) => {
   // ─── Profil ────────────────────────────────────────────────────────────────
   router.get('/profil', (req, res) => {
     try {
-      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere FROM vf_partners WHERE id = ?').get(req.partner.id);
+      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere, livraison_prenom, livraison_nom, livraison_telephone, facturation_prenom, facturation_nom, facturation_telephone FROM vf_partners WHERE id = ?').get(req.partner.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       // Ajouter les prix FP/FE pour le calcul côté portail (1 seule requête)
       const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
@@ -132,6 +132,28 @@ module.exports = (db) => {
       res.json(partner);
     } catch (e) {
       logger.error('Erreur profil partenaire', { error: e.message, partnerId: req.partner?.id });
+      res.status(500).json({ erreur: 'Erreur serveur' });
+    }
+  });
+
+  // ─── Mise à jour profil (champs éditables) ─────────────────────────────────
+  router.patch('/profil', (req, res) => {
+    try {
+      const allowed = ['email', 'contact_nom', 'telephone', 'adresse', 'livraison_prenom', 'livraison_nom', 'livraison_telephone', 'facturation_prenom', 'facturation_nom', 'facturation_telephone'];
+      const updates = [];
+      const values = [];
+      for (const key of allowed) {
+        if (req.body[key] !== undefined) {
+          updates.push(`${key} = ?`);
+          values.push(req.body[key] || null);
+        }
+      }
+      if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
+      values.push(req.partner.id);
+      db.prepare(`UPDATE vf_partners SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      res.json({ ok: true });
+    } catch (e) {
+      logger.error('Erreur mise à jour profil', { error: e.message, partnerId: req.partner?.id });
       res.status(500).json({ erreur: 'Erreur serveur' });
     }
   });
