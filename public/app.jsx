@@ -20834,9 +20834,18 @@ const VueCommandes = ({ showToast }) => {
   const [catalogCmd, setCatalogCmd] = useState([]);
   const [addProductSearchCmd, setAddProductSearchCmd] = useState({});
   const [editableProducts, setEditableProducts] = useState({});
+  const [partnerEmailConfig, setPartnerEmailConfig] = useState({});
 
   useEffect(() => {
     api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalogCmd(data.filter(c => c.actif)); }).catch(e => console.error(e));
+    api.get('/config').then(cfg => {
+      setPartnerEmailConfig({
+        subject: cfg.partner_email_subject || '',
+        body: cfg.partner_email_body || '',
+        cc: cfg.partner_email_cc || '',
+        bcc: cfg.partner_email_bcc || '',
+      });
+    }).catch(e => console.error(e));
   }, []);
 
   const persistProducts = async (orderId, products) => {
@@ -20946,10 +20955,18 @@ const VueCommandes = ({ showToast }) => {
         // 2. Mailto partenaire (via <a> click — fiable même sans geste utilisateur récent)
         if (validateOptions.sendEmailPartner && partnerEmail) {
           await new Promise(r => setTimeout(r, 400));
-          const partSubject = encodeURIComponent('Confirmation commande — Terre de Mars');
-          const partBody = encodeURIComponent(`Bonjour,\n\nNous vous confirmons la bonne réception de votre commande n°${invoiceNumber}.\n\nVotre commande a été mise en préparation et sera expédiée dans les meilleurs délais.\n\nCordialement,\nTerre de Mars`);
+          const datePaiement = new Date(Date.now() + 30 * 86400000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+          const defaultSubject = `Terre de Mars : Confirmation de commande n°{{numero}}`;
+          const defaultBody = `Bonjour,\n\nJe vous confirme la bonne réception de votre commande n°{{numero}} qui a été mise en préparation.\n\nLa facture vous a été transmise via un email automatique pour paiement au {{date_paiement}}.\n\nN'hésitez pas si vous avez des questions.\n\nBonne journée,`;
+          const tplSubject = (partnerEmailConfig.subject || defaultSubject).replace(/\{\{numero\}\}/g, invoiceNumber).replace(/\{\{date_paiement\}\}/g, datePaiement);
+          const tplBody = (partnerEmailConfig.body || defaultBody).replace(/\{\{numero\}\}/g, invoiceNumber).replace(/\{\{date_paiement\}\}/g, datePaiement);
+          const partSubject = encodeURIComponent(tplSubject);
+          const partBody = encodeURIComponent(tplBody);
           const mailLink = document.createElement('a');
-          mailLink.href = `mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`;
+          let mailHref = `mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`;
+          if (partnerEmailConfig.cc) mailHref += `&cc=${encodeURIComponent(partnerEmailConfig.cc)}`;
+          if (partnerEmailConfig.bcc) mailHref += `&bcc=${encodeURIComponent(partnerEmailConfig.bcc)}`;
+          mailLink.href = mailHref;
           document.body.appendChild(mailLink);
           mailLink.click();
           document.body.removeChild(mailLink);
@@ -27314,6 +27331,84 @@ const VueVeille = ({ showToast }) => {
   );
 };
 
+// ─── Paramètres Portail Partenaire ─────────────────────────────────────────
+const VuePortailParams = ({ showToast, readOnly }) => {
+  const [subject, setSubject] = useState('Terre de Mars : Confirmation de commande n°{{numero}}');
+  const [body, setBody] = useState(`Bonjour,\n\nJe vous confirme la bonne réception de votre commande n°{{numero}} qui a été mise en préparation.\n\nLa facture vous a été transmise via un email automatique pour paiement au {{date_paiement}}.\n\nN'hésitez pas si vous avez des questions.\n\nBonne journée,`);
+  const [cc, setCc] = useState('');
+  const [bcc, setBcc] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState('');
+
+  useEffect(() => {
+    api.get('/config').then(cfg => {
+      if (cfg.partner_email_subject) setSubject(cfg.partner_email_subject);
+      if (cfg.partner_email_body) setBody(cfg.partner_email_body);
+      if (cfg.partner_email_cc) setCc(cfg.partner_email_cc);
+      if (cfg.partner_email_bcc) setBcc(cfg.partner_email_bcc);
+    }).catch(e => console.error(e));
+  }, []);
+
+  const sauvegarder = async () => {
+    setSaving(true); setMsg('');
+    try {
+      await api.post('/config', {
+        partner_email_subject: subject,
+        partner_email_body: body,
+        partner_email_cc: cc,
+        partner_email_bcc: bcc,
+      });
+      setMsg('Paramètres email partenaire sauvegardés');
+      if (showToast) showToast('Paramètres sauvegardés', 'success');
+    } catch (e) { setMsg('Erreur: ' + e.message); }
+    setSaving(false);
+  };
+
+  return (
+    <div className="space-y-6">
+      <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+        <h3 className="text-sm font-semibold text-slate-800">Email de confirmation partenaire</h3>
+        <p className="text-xs text-slate-400">Template utilisé lors de la validation d'une commande partenaire. Variables disponibles : <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-600">{'{{numero}}'}</code> <code className="bg-slate-100 px-1 py-0.5 rounded text-slate-600">{'{{date_paiement}}'}</code></p>
+
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Objet</label>
+          <input value={subject} onChange={e => setSubject(e.target.value)} disabled={readOnly}
+            className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 disabled:bg-slate-50" />
+        </div>
+
+        <div>
+          <label className="text-xs font-medium text-slate-500 mb-1 block">Corps</label>
+          <textarea value={body} onChange={e => setBody(e.target.value)} disabled={readOnly}
+            rows={10} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm resize-y focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 disabled:bg-slate-50" />
+        </div>
+
+        <div className="grid grid-cols-2 gap-3">
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">CC</label>
+            <input value={cc} onChange={e => setCc(e.target.value)} disabled={readOnly}
+              placeholder="email1@example.com, email2@example.com"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 disabled:bg-slate-50" />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">BCC</label>
+            <input value={bcc} onChange={e => setBcc(e.target.value)} disabled={readOnly}
+              placeholder="email@example.com"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 disabled:bg-slate-50" />
+          </div>
+        </div>
+
+        {msg && <p className={`text-sm font-medium ${msg.startsWith('Erreur') ? 'text-red-600' : 'text-emerald-600'}`}>{msg}</p>}
+        {!readOnly && (
+          <button onClick={sauvegarder} disabled={saving}
+            className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+            {saving ? 'Sauvegarde...' : 'Enregistrer'}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+};
+
 function App() {
   const initUser = (() => { try { return JSON.parse(sessionStorage.getItem('tdm_user') || 'null'); } catch { return null; } })();
   const [vue, setVue] = useState(getDefaultVue(initUser));
@@ -27475,6 +27570,7 @@ function App() {
       { id: "commandes", label: "Commandes" },
       { id: "partenaires", label: "Partenaires" },
       { id: "account-mgmt", label: "Relation Partenaires" },
+      { id: "portail-params", label: "Paramètres" },
     ]},
     { id: "veille", icon: "🔍", label: "Veille" },
     { id: "config", icon: "⚙️", label: "Configuration", children: [
@@ -27487,7 +27583,7 @@ function App() {
   // Helper permission mapping
   const getPermId = (id) => {
     if (id === 'equipe') return 'config';
-    if (id === 'commandes' || id === 'partenaires' || id === 'account-mgmt') return 'portail';
+    if (id === 'commandes' || id === 'partenaires' || id === 'account-mgmt' || id === 'portail-params') return 'portail';
     if (id === 'sequences' || id === 'templates' || id === 'email-campaigns') return 'campagnes';
     if (id === 'parametres' || id === 'blocklist') return 'config';
     if (id === 'dashboard' || id === 'dashboard-marketing' || id === 'dashboard-ventes') return 'dashboard';
@@ -27639,6 +27735,7 @@ function App() {
               {vue === "parametres" && "Configuration Brevo & envoi"}
               {vue === "veille" && "Scraping et veille hôtelière"}
               {vue === "equipe" && "Gestion des utilisateurs et permissions"}
+              {vue === "portail-params" && "Paramètres du portail partenaire"}
             </p>
           </div>
           <div className="flex items-center gap-3">
@@ -27669,6 +27766,7 @@ function App() {
           {vue === "commandes" && <VueCommandes showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "partenaires" && <VuePartenaires showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "account-mgmt" && <VuePartnerCenter showToast={showToast} readOnly={!canWrite('portail')} />}
+          {vue === "portail-params" && <VuePortailParams showToast={showToast} readOnly={!canWrite('portail')} />}
           {vue === "leads" && <VueLeads leads={leads} sequences={sequencesNorm} onAdd={addLead} onLaunch={launchSequence} onRefresh={charger} showToast={showToast} readOnly={!canWrite('leads')} />}
           {vue === "prospection" && <VueProspection showToast={showToast} readOnly={!canWrite('leads')} sequences={sequencesNorm} onRefreshLeads={charger} />}
           {vue === "maps-prospection" && <VueMapsProspecting showToast={showToast} readOnly={!canWrite('leads')} />}
