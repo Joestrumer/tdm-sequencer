@@ -20893,21 +20893,23 @@ const VueCommandes = ({ showToast }) => {
       if (res.ok) {
         const invoiceNumber = res.vf_invoice_number || '';
 
-        // 1. Télécharger CSV + mailto logisticien
+        // 1. Sauvegarder CSV dans dossier Google Drive + mailto logisticien
         if (res.csv_base64) {
           const blob = new Blob([Uint8Array.from(atob(res.csv_base64), c => c.charCodeAt(0))], { type: 'text/csv;charset=utf-8' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `logisticien-${invoiceNumber || id}.csv`;
-          a.click();
-          URL.revokeObjectURL(url);
+          const fileName = `logisticien-${invoiceNumber || id}.csv`;
+          const dirName = await saveFileWithPicker(blob, fileName);
+          if (dirName) {
+            showToast(`CSV sauvé: ${dirName}/${fileName}`, 'success');
+          } else {
+            downloadFallback(blob, fileName);
+            showToast('CSV téléchargé', 'success');
+          }
 
           // Mailto logisticien (seulement si CSV généré)
           const logSubject = encodeURIComponent(`Commande : ${partnerNom} ${invoiceNumber}`);
           const logBody = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint le CSV pour la commande ${invoiceNumber} (${partnerNom}).\n\nCordialement`);
           const logCc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
-          window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_blank');
+          window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_self');
         }
 
         // 2. Télécharger le PDF facture/proforma (délai pour laisser VF générer le PDF)
@@ -20938,7 +20940,7 @@ const VueCommandes = ({ showToast }) => {
           setTimeout(() => {
             const partSubject = encodeURIComponent('Confirmation commande — Terre de Mars');
             const partBody = encodeURIComponent(`Bonjour,\n\nNous vous confirmons la bonne réception de votre commande n°${invoiceNumber}.\n\nVotre commande a été mise en préparation et sera expédiée dans les meilleurs délais.\n\nCordialement,\nTerre de Mars`);
-            window.open(`mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`, '_blank');
+            window.location.href = `mailto:${partnerEmail}?subject=${partSubject}&body=${partBody}`;
           }, 2500);
         }
 
