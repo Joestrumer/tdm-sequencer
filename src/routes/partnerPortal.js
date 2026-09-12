@@ -394,5 +394,30 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Télécharger facture PDF (côté partenaire) ────────────────────────────
+  router.get('/commande/:id/pdf', async (req, res) => {
+    try {
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.id);
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+      if (!order.vf_invoice_id) return res.status(400).json({ erreur: 'Pas de facture associée' });
+
+      const token = (db.prepare("SELECT valeur FROM config WHERE cle = 'vf_api_token'").get()?.valeur || process.env.VF_API_TOKEN || '').trim();
+      if (!token) return res.status(500).json({ erreur: 'Token VosFactures non configuré' });
+
+      const vfBase = process.env.VF_BASE_URL || 'https://terredemars.vosfactures.fr';
+      const pdfUrl = `${vfBase}/invoices/${order.vf_invoice_id}.pdf?api_token=${token}`;
+      const pdfRes = await fetch(pdfUrl);
+      if (!pdfRes.ok) return res.status(pdfRes.status).json({ erreur: 'Facture indisponible' });
+
+      res.setHeader('Content-Type', 'application/pdf');
+      res.setHeader('Content-Disposition', `inline; filename="facture-${order.vf_invoice_number || order.vf_invoice_id}.pdf"`);
+      const buffer = Buffer.from(await pdfRes.arrayBuffer());
+      res.send(buffer);
+    } catch (e) {
+      logger.error('Erreur PDF partenaire', { error: e.message, orderId: req.params.id });
+      res.status(500).json({ erreur: 'Erreur serveur' });
+    }
+  });
+
   return router;
 };

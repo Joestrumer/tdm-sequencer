@@ -110,10 +110,14 @@
         const token = sessionStorage.getItem('partner_token') || '';
         return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
       },
-      get: (path) => fetch(API_BASE + path, { headers: window.partnerApi._headers() }).then(r => r.json()),
-      post: (path, body) => fetch(API_BASE + path, { method: 'POST', headers: window.partnerApi._headers(), body: JSON.stringify(body) }).then(r => r.json()),
-      patch: (path, body) => fetch(API_BASE + path, { method: 'PATCH', headers: window.partnerApi._headers(), body: JSON.stringify(body) }).then(r => r.json()),
-      del: (path) => fetch(API_BASE + path, { method: 'DELETE', headers: window.partnerApi._headers() }).then(r => r.json()),
+      _handle: (r) => {
+        if (r.status === 401) { sessionStorage.removeItem('partner_token'); window.location.reload(); throw new Error('Session expirée'); }
+        return r.json();
+      },
+      get: (path) => fetch(API_BASE + path, { headers: window.partnerApi._headers() }).then(window.partnerApi._handle),
+      post: (path, body) => fetch(API_BASE + path, { method: 'POST', headers: window.partnerApi._headers(), body: JSON.stringify(body) }).then(window.partnerApi._handle),
+      patch: (path, body) => fetch(API_BASE + path, { method: 'PATCH', headers: window.partnerApi._headers(), body: JSON.stringify(body) }).then(window.partnerApi._handle),
+      del: (path) => fetch(API_BASE + path, { method: 'DELETE', headers: window.partnerApi._headers() }).then(window.partnerApi._handle),
     };
   </script>
 
@@ -452,7 +456,7 @@
       const filtered = useMemo(() => {
         if (!search) return catalogue;
         const q = search.toLowerCase();
-        return catalogue.filter(p => p.ref.toLowerCase().includes(q) || p.nom.toLowerCase().includes(q));
+        return catalogue.filter(p => p.ref.toLowerCase().includes(q) || p.nom.toLowerCase().includes(q) || (p.categorie || '').toLowerCase().includes(q));
       }, [catalogue, search]);
 
       const GAMME_ORDER = ['Insurrection', 'Irreverence', 'Reddition', 'Revelation', 'Radiance', 'Imminence'];
@@ -622,8 +626,9 @@
     };
 
     // ─── Panier Panel ───────────────────────────────────────────────────────────
-    const PanierPanel = ({ panier, setPanier, onCommander, loading, partner, modifyingOrderId }) => {
-      const [notes, setNotes] = useState("");
+    const PanierPanel = ({ panier, setPanier, onCommander, loading, partner, modifyingOrderId, initialNotes }) => {
+      const [notes, setNotes] = useState(initialNotes || "");
+      const [showConfirm, setShowConfirm] = useState(false);
       const items = Object.values(panier);
       const subtotalHT = items.reduce((s, i) => s + i.prix_remise * i.quantite, 0);
       const francoSeuil = partner.franco_seuil ?? 800;
@@ -644,7 +649,9 @@
         }
       }
       const totalHT = subtotalHT + fraisMontant;
-      const totalTTC = totalHT * 1.2;
+      const tvaParProduit = items.reduce((s, i) => s + i.prix_remise * i.quantite * ((i.tva || 20) / 100), 0);
+      const tvaSurFrais = fraisMontant * 0.2;
+      const totalTTC = totalHT + tvaParProduit + tvaSurFrais;
       const manquePourFranco = Math.max(0, francoSeuil - subtotalHT);
 
       if (items.length === 0) {
@@ -755,7 +762,7 @@
               <span>{totalHT.toFixed(2)} &euro;</span>
             </div>
             <div className="flex justify-between text-sm text-gray-400">
-              <span>Total TTC (20%)</span>
+              <span>Total TTC</span>
               <span>{totalTTC.toFixed(2)} &euro;</span>
             </div>
           </div>
@@ -775,20 +782,70 @@
             className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gold-500/50 resize-none"
             rows={3}
           />
-          <button
-            onClick={() => onCommander(notes)}
-            disabled={loading}
-            className="w-full bg-gold-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-50"
-          >
-            {loading ? "Envoi en cours..." : modifyingOrderId ? `Enregistrer les modifications (${totalHT.toFixed(2)} \u20ac HT)` : `Commander (${totalHT.toFixed(2)} \u20ac HT)`}
-          </button>
+
+          {/* Ecran de confirmation (point 6) */}
+          {showConfirm ? (
+            <div className="bg-gold-50 border border-gold-200 rounded-xl p-4 space-y-3 animate-fade-in">
+              <div className="text-sm font-semibold text-gray-900">R&eacute;capitulatif de votre commande</div>
+              <div className="space-y-1 max-h-40 overflow-y-auto">
+                {items.map(i => (
+                  <div key={i.ref} className="flex justify-between text-xs text-gray-700">
+                    <span>{i.quantite}x {i.nom}</span>
+                    <span>{(i.prix_remise * i.quantite).toFixed(2)} &euro;</span>
+                  </div>
+                ))}
+              </div>
+              <div className="border-t border-gold-200 pt-2 space-y-1">
+                {!exonere && fraisMontant > 0 && (
+                  <div className="flex justify-between text-xs text-gray-500">
+                    <span>{fraisLabel}</span>
+                    <span>{fraisMontant.toFixed(2)} &euro;</span>
+                  </div>
+                )}
+                <div className="flex justify-between text-sm font-semibold text-gray-900">
+                  <span>Total HT</span>
+                  <span>{totalHT.toFixed(2)} &euro;</span>
+                </div>
+                <div className="flex justify-between text-xs text-gray-400">
+                  <span>Total TTC</span>
+                  <span>{totalTTC.toFixed(2)} &euro;</span>
+                </div>
+              </div>
+              {notes && <div className="text-xs text-gray-500 italic">Note : "{notes}"</div>}
+              <div className="flex gap-2">
+                <button
+                  onClick={() => setShowConfirm(false)}
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                >
+                  Modifier
+                </button>
+                <button
+                  onClick={() => { setShowConfirm(false); onCommander(notes); }}
+                  disabled={loading}
+                  className="flex-1 bg-gold-500 text-white py-2.5 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-50"
+                >
+                  {loading ? "Envoi..." : "Confirmer"}
+                </button>
+              </div>
+            </div>
+          ) : (
+            <button
+              onClick={() => setShowConfirm(true)}
+              disabled={loading}
+              className="w-full bg-gold-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-50"
+            >
+              {loading ? "Envoi en cours..." : modifyingOrderId ? `Enregistrer les modifications (${totalHT.toFixed(2)} \u20ac HT)` : `Commander (${totalHT.toFixed(2)} \u20ac HT)`}
+            </button>
+          )}
         </div>
       );
     };
 
     // ─── Historique ─────────────────────────────────────────────────────────────
-    const HistoriqueView = ({ commandes, onRefresh, catalogue, setPanier, setPanierOpen, setVue, setModifyingOrderId, showToast }) => {
+    const HistoriqueView = ({ commandes, onRefresh, catalogue, setPanier, setPanierOpen, setVue, setModifyingOrderId, setModifyingNotes, showToast, partner }) => {
       const [cancelling, setCancelling] = useState(null);
+      const [filtre, setFiltre] = useState('tous');
+      const [expandedId, setExpandedId] = useState(null);
       const statutConfig = {
         en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700" },
         validee: { label: "Valid\u00e9e", bg: "bg-green-50", text: "text-green-700" },
@@ -819,52 +876,140 @@
         });
         setPanier(newPanier);
         setModifyingOrderId(c.id);
+        setModifyingNotes(c.notes || "");
         setPanierOpen(true);
         setVue('catalogue');
-        showToast('Commande charg\u00e9e dans le panier — validez pour enregistrer les modifications', 'info');
+        showToast('Commande charg\u00e9e dans le panier \u2014 validez pour enregistrer les modifications', 'info');
+      };
+
+      const filtreOptions = [
+        { key: 'tous', label: 'Toutes' },
+        { key: 'en_attente', label: 'En attente' },
+        { key: 'validee', label: 'Valid\u00e9es' },
+        { key: 'annulee', label: 'Annul\u00e9es' },
+      ];
+
+      const filtered = filtre === 'tous'
+        ? commandes
+        : commandes.filter(c => filtre === 'annulee' ? (c.statut === 'annulee' || c.statut === 'annulee_client') : c.statut === filtre);
+
+      const handleDownloadPdf = async (c) => {
+        try {
+          const token = sessionStorage.getItem('partner_token') || '';
+          const res = await fetch(`${API_BASE}/commande/${c.id}/pdf`, { headers: { 'Authorization': 'Bearer ' + token } });
+          if (!res.ok) { showToast('Facture non disponible', 'error'); return; }
+          const blob = await res.blob();
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `facture-${c.vf_invoice_number || c.id}.pdf`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          setTimeout(() => URL.revokeObjectURL(url), 1000);
+        } catch (e) {
+          showToast('Erreur t\u00e9l\u00e9chargement facture', 'error');
+        }
       };
 
       if (commandes.length === 0) {
-        return <div className="text-center py-12 text-gray-400 text-sm">Aucune commande passée.</div>;
+        return <div className="text-center py-12 text-gray-400 text-sm">Aucune commande pass&eacute;e.</div>;
       }
 
       return (
         <div className="space-y-4">
-          {commandes.map(c => {
+          {/* Filtres par statut */}
+          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+            {filtreOptions.map(f => {
+              const count = f.key === 'tous' ? commandes.length
+                : f.key === 'annulee' ? commandes.filter(c => c.statut === 'annulee' || c.statut === 'annulee_client').length
+                : commandes.filter(c => c.statut === f.key).length;
+              return (
+                <button key={f.key} onClick={() => setFiltre(f.key)}
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${filtre === f.key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+                  {f.label} <span className="text-gray-400 ml-0.5">({count})</span>
+                </button>
+              );
+            })}
+          </div>
+
+          {filtered.length === 0 && (
+            <div className="text-center py-8 text-gray-400 text-sm">Aucune commande dans cette cat&eacute;gorie.</div>
+          )}
+
+          {filtered.map(c => {
             const cfg = statutConfig[c.statut] || statutConfig.en_attente;
+            const isExpanded = expandedId === c.id;
             return (
-              <div key={c.id} className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm">
-                <div className="flex items-center justify-between mb-3">
-                  <div className="text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
-                  <span className={`px-2.5 py-1 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
-                </div>
-                <div className="space-y-1 mb-3">
-                  {c.products.map((p, i) => (
-                    <div key={i} className="flex justify-between text-sm">
-                      <span className="text-gray-600">
-                        {p.quantite}x {p.nom}
-                        {p.discount_pct > 0 && <span className="text-gold-600/70 ml-1 text-xs">(-{p.discount_pct}%)</span>}
-                      </span>
-                      <span className="text-gray-900">{p.total_ht.toFixed(2)} &euro;</span>
+              <div key={c.id} className="bg-white border border-gray-200 rounded-2xl shadow-sm overflow-hidden">
+                {/* En-tête cliquable */}
+                <button onClick={() => setExpandedId(isExpanded ? null : c.id)} className="w-full flex items-center justify-between p-5 text-left hover:bg-gray-50/50 transition-colors">
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 mb-1">
+                      <span className="text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                      <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
                     </div>
-                  ))}
-                </div>
-                <div className="flex justify-between text-sm font-medium border-t border-gray-100 pt-2">
-                  <span className="text-gray-900">Total HT</span>
-                  <span className="text-gray-900">{c.total_ht.toFixed(2)} &euro;</span>
-                </div>
-                {c.vf_invoice_number && (
-                  <div className="text-xs text-green-600 mt-2">Facture n&deg;{c.vf_invoice_number}</div>
-                )}
-                {c.notes && <div className="text-xs text-gray-400 mt-2 italic">"{c.notes}"</div>}
-                {c.statut === 'en_attente' && (
-                  <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
-                    <button onClick={() => handleModify(c)} className="text-xs px-3 py-1.5 rounded-lg bg-gold-50 text-gold-700 hover:bg-gold-100 transition-colors">
-                      Modifier
-                    </button>
-                    <button onClick={() => handleCancel(c.id)} disabled={cancelling === c.id} className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50">
-                      {cancelling === c.id ? 'Annulation...' : 'Annuler'}
-                    </button>
+                    <div className="flex items-center gap-3">
+                      <span className="text-sm font-semibold text-gray-900">{c.total_ht.toFixed(2)} &euro; HT</span>
+                      <span className="text-xs text-gray-400">{c.products.length} produit{c.products.length > 1 ? 's' : ''}</span>
+                      {c.vf_invoice_number && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 font-medium">Facture n&deg;{c.vf_invoice_number}</span>}
+                    </div>
+                  </div>
+                  <span className={`text-gray-400 text-xs transition-transform ${isExpanded ? 'rotate-180' : ''}`}>&#9660;</span>
+                </button>
+
+                {/* Détail déplié */}
+                {isExpanded && (
+                  <div className="px-5 pb-5 border-t border-gray-100 animate-fade-in">
+                    <div className="space-y-1.5 py-3">
+                      {c.products.map((p, i) => (
+                        <div key={i} className="flex items-center justify-between text-sm">
+                          <div className="flex items-center gap-2 min-w-0">
+                            <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
+                            <span className="text-gray-700 truncate">{p.nom}</span>
+                            {p.discount_pct > 0 && <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium shrink-0">-{p.discount_pct}%</span>}
+                          </div>
+                          <div className="flex items-center gap-3 shrink-0 ml-2">
+                            <span className="text-xs text-gray-400">{p.quantite} u. &times; {p.prix_remise.toFixed(2)} &euro;</span>
+                            <span className="text-gray-900 font-medium w-20 text-right">{p.total_ht.toFixed(2)} &euro;</span>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                    <div className="border-t border-gray-100 pt-2 space-y-1">
+                      {c.frais_montant > 0 && (
+                        <div className="flex justify-between text-xs text-gray-500">
+                          <span>{c.frais_ref === 'FP' ? 'Frais de pr\u00e9paration' : "Frais d'exp\u00e9dition"}</span>
+                          <span>{c.frais_montant.toFixed(2)} &euro;</span>
+                        </div>
+                      )}
+                      <div className="flex justify-between text-sm font-semibold text-gray-900">
+                        <span>Total HT</span>
+                        <span>{c.total_ht.toFixed(2)} &euro;</span>
+                      </div>
+                      <div className="flex justify-between text-xs text-gray-400">
+                        <span>Total TTC</span>
+                        <span>{c.total_ttc.toFixed(2)} &euro;</span>
+                      </div>
+                    </div>
+                    {c.notes && <div className="text-xs text-gray-400 mt-3 italic border-t border-gray-50 pt-2">Note : "{c.notes}"</div>}
+                    <div className="flex gap-2 mt-3 pt-2 border-t border-gray-100">
+                      {c.statut === 'en_attente' && (
+                        <>
+                          <button onClick={() => handleModify(c)} className="text-xs px-3 py-1.5 rounded-lg bg-gold-50 text-gold-700 hover:bg-gold-100 transition-colors">
+                            Modifier
+                          </button>
+                          <button onClick={() => handleCancel(c.id)} disabled={cancelling === c.id} className="text-xs px-3 py-1.5 rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50">
+                            {cancelling === c.id ? 'Annulation...' : 'Annuler'}
+                          </button>
+                        </>
+                      )}
+                      {c.vf_invoice_number && (
+                        <button onClick={() => handleDownloadPdf(c)} className="text-xs px-3 py-1.5 rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors flex items-center gap-1">
+                          &#128196; T&eacute;l&eacute;charger la facture
+                        </button>
+                      )}
+                    </div>
                   </div>
                 )}
               </div>
@@ -879,11 +1024,20 @@
       const [partner, setPartner] = useState(null);
       const [vue, setVue] = useState("catalogue");
       const [catalogue, setCatalogue] = useState([]);
-      const [panier, setPanier] = useState({});
+      const [panier, setPanierRaw] = useState(() => {
+        try { return JSON.parse(localStorage.getItem('tdm_panier') || '{}'); } catch { return {}; }
+      });
+      const setPanier = (v) => setPanierRaw(prev => {
+        const next = typeof v === 'function' ? v(prev) : v;
+        localStorage.setItem('tdm_panier', JSON.stringify(next));
+        return next;
+      });
       const [commandes, setCommandes] = useState([]);
       const [panierOpen, setPanierOpen] = useState(false);
       const [modifyingOrderId, setModifyingOrderId] = useState(null);
+      const [modifyingNotes, setModifyingNotes] = useState("");
       const [loading, setLoading] = useState(false);
+      const [submitting, setSubmitting] = useState(false);
       const [orderSuccess, setOrderSuccess] = useState(false);
       const [toast, setToast] = useState(null);
       const [amenities, setAmenities] = useState(null);
@@ -924,7 +1078,8 @@
 
       const handleCommander = async (notes) => {
         const items = Object.values(panier);
-        if (items.length === 0) return;
+        if (items.length === 0 || submitting) return;
+        setSubmitting(true);
         setLoading(true);
         try {
           const payload = {
@@ -941,9 +1096,11 @@
             showToast(res.erreur, "error");
           } else {
             setPanier({});
+            localStorage.removeItem('tdm_panier');
             setPanierOpen(false);
             showToast(modifyingOrderId ? 'Commande modifi\u00e9e !' : 'Commande enregistr\u00e9e !', 'success');
             setModifyingOrderId(null);
+            setModifyingNotes("");
             refreshCommandes();
             setVue('historique');
           }
@@ -951,13 +1108,15 @@
           showToast("Erreur lors de la commande", "error");
         }
         setLoading(false);
+        setSubmitting(false);
       };
 
       const handleLogout = () => {
         sessionStorage.removeItem('partner_token');
+        localStorage.removeItem('tdm_panier');
         setPartner(null);
         setCatalogue([]);
-        setPanier({});
+        setPanierRaw({});
         setCommandes([]);
       };
 
@@ -1015,7 +1174,7 @@
             {panierOpen ? (
               <div className="max-w-lg mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Votre panier</h2>
-                <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={loading} partner={partner} modifyingOrderId={modifyingOrderId} />
+                <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={submitting} partner={partner} modifyingOrderId={modifyingOrderId} initialNotes={modifyingNotes} />
               </div>
             ) : vue === "catalogue" ? (
               <div className="animate-fade-in">
@@ -1030,7 +1189,7 @@
             ) : (
               <div className="max-w-2xl mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Historique des commandes</h2>
-                <HistoriqueView commandes={commandes} onRefresh={refreshCommandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} setVue={setVue} setModifyingOrderId={setModifyingOrderId} showToast={showToast} />
+                <HistoriqueView commandes={commandes} onRefresh={refreshCommandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} setVue={setVue} setModifyingOrderId={setModifyingOrderId} setModifyingNotes={setModifyingNotes} showToast={showToast} partner={partner} />
               </div>
             )}
           </main>
