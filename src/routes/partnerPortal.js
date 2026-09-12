@@ -197,6 +197,7 @@ module.exports = (db) => {
 
       // Calculer les produits avec prix remisés
       let totalHT = 0;
+      let totalTVA = 0;
       const orderProducts = products.map(item => {
         const catEntry = catalog[item.ref];
         if (!catEntry) throw new Error(`Produit inconnu: ${item.ref}`);
@@ -205,7 +206,9 @@ module.exports = (db) => {
         const discount_pct = discount ? discount.discount_pct : 0;
         const prix_remise = catEntry.prix_ht * (1 - discount_pct / 100);
         const lineHT = Math.round(prix_remise * qty * 100) / 100;
+        const tva = catEntry.tva || 20;
         totalHT += lineHT;
+        totalTVA += lineHT * (tva / 100);
         return {
           ref: item.ref,
           nom: catEntry.nom,
@@ -213,6 +216,7 @@ module.exports = (db) => {
           prix_ht: catEntry.prix_ht,
           prix_remise: Math.round(prix_remise * 100) / 100,
           discount_pct,
+          tva,
           total_ht: lineHT,
         };
       });
@@ -226,7 +230,7 @@ module.exports = (db) => {
       let fraisNom = '';
       let fraisMontant = 0;
       if (!exonere) {
-        const fraisRows = db.prepare("SELECT ref, prix_ht, nom FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
+        const fraisRows = db.prepare("SELECT ref, prix_ht, nom, tva FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
         const fraisMap = {};
         for (const r of fraisRows) fraisMap[r.ref] = r;
         if (totalHT >= francoSeuil) {
@@ -234,9 +238,11 @@ module.exports = (db) => {
         } else {
           fraisRef = 'FE'; fraisNom = fraisMap['FE']?.nom || "Frais d'expédition"; fraisMontant = fraisMap['FE']?.prix_ht || 0;
         }
+        const fraisTva = (fraisRef && fraisMap[fraisRef]?.tva) || 20;
+        totalTVA += fraisMontant * (fraisTva / 100);
       }
       const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
-      const totalTTC = Math.round(totalHTWithFrais * 1.2 * 100) / 100;
+      const totalTTC = Math.round((totalHTWithFrais + totalTVA) * 100) / 100;
 
       const orderId = uuidv4();
       db.prepare(`
@@ -344,6 +350,7 @@ module.exports = (db) => {
       if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
 
       let totalHT = 0;
+      let totalTVA = 0;
       const orderProducts = products.map(item => {
         const catEntry = catalog[item.ref];
         if (!catEntry) throw new Error(`Produit inconnu: ${item.ref}`);
@@ -352,8 +359,10 @@ module.exports = (db) => {
         const discount_pct = discount ? discount.discount_pct : 0;
         const prix_remise = catEntry.prix_ht * (1 - discount_pct / 100);
         const lineHT = Math.round(prix_remise * qty * 100) / 100;
+        const tva = catEntry.tva || 20;
         totalHT += lineHT;
-        return { ref: item.ref, nom: catEntry.nom, quantite: qty, prix_ht: catEntry.prix_ht, prix_remise: Math.round(prix_remise * 100) / 100, discount_pct, total_ht: lineHT };
+        totalTVA += lineHT * (tva / 100);
+        return { ref: item.ref, nom: catEntry.nom, quantite: qty, prix_ht: catEntry.prix_ht, prix_remise: Math.round(prix_remise * 100) / 100, discount_pct, tva, total_ht: lineHT };
       });
 
       totalHT = Math.round(totalHT * 100) / 100;
@@ -363,7 +372,7 @@ module.exports = (db) => {
       let fraisNom = '';
       let fraisMontant = 0;
       if (!exonere) {
-        const fraisRows = db.prepare("SELECT ref, prix_ht, nom FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
+        const fraisRows = db.prepare("SELECT ref, prix_ht, nom, tva FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
         const fraisMap = {};
         for (const r of fraisRows) fraisMap[r.ref] = r;
         if (totalHT >= francoSeuil) {
@@ -371,9 +380,11 @@ module.exports = (db) => {
         } else {
           fraisRef = 'FE'; fraisNom = fraisMap['FE']?.nom || "Frais d'expédition"; fraisMontant = fraisMap['FE']?.prix_ht || 0;
         }
+        const fraisTva = (fraisRef && fraisMap[fraisRef]?.tva) || 20;
+        totalTVA += fraisMontant * (fraisTva / 100);
       }
       const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
-      const totalTTC = Math.round(totalHTWithFrais * 1.2 * 100) / 100;
+      const totalTTC = Math.round((totalHTWithFrais + totalTVA) * 100) / 100;
 
       db.prepare('UPDATE partner_orders SET products = ?, notes = ?, total_ht = ?, total_ttc = ? WHERE id = ?')
         .run(JSON.stringify(orderProducts), notes || null, totalHTWithFrais, totalTTC, req.params.id);
