@@ -649,8 +649,19 @@
 
       if (items.length === 0) {
         return (
-          <div className="text-center py-8 text-gray-400 text-sm">
-            Votre panier est vide.<br />Ajoutez des produits depuis le catalogue.
+          <div className="space-y-4">
+            <div className="text-center py-8 text-gray-400 text-sm">
+              Votre panier est vide.<br />Ajoutez des produits depuis le catalogue.
+            </div>
+            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 space-y-1">
+              <div className="font-semibold text-amber-900 mb-1">Conditions :</div>
+              <ul className="list-disc list-inside space-y-0.5">
+                <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger (FE)</li>
+                <li>Frais de pr&eacute;paration (FP) de commande = {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>
+                <li>Si Franco pas atteint, frais de port = {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>
+                <li>Conditionnement : bidons par cartons de 4, flacons par cartons de 6.</li>
+              </ul>
+            </div>
           </div>
         );
       }
