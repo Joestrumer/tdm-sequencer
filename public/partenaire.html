@@ -629,6 +629,7 @@
     const PanierPanel = ({ panier, setPanier, onCommander, loading, partner, modifyingOrderId, initialNotes }) => {
       const [notes, setNotes] = useState(initialNotes || "");
       const [showConfirm, setShowConfirm] = useState(false);
+      const confirmRef = useRef(null);
       const items = Object.values(panier);
       const subtotalHT = items.reduce((s, i) => s + i.prix_remise * i.quantite, 0);
       const francoSeuil = partner.franco_seuil ?? 800;
@@ -785,7 +786,7 @@
 
           {/* Ecran de confirmation (point 6) */}
           {showConfirm ? (
-            <div className="bg-gold-50 border border-gold-200 rounded-xl p-4 space-y-3 animate-fade-in">
+            <div ref={confirmRef} className="bg-gold-50 border border-gold-200 rounded-xl p-4 space-y-3 animate-fade-in">
               <div className="text-sm font-semibold text-gray-900">R&eacute;capitulatif de votre commande</div>
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {items.map(i => (
@@ -830,7 +831,7 @@
             </div>
           ) : (
             <button
-              onClick={() => setShowConfirm(true)}
+              onClick={() => { setShowConfirm(true); setTimeout(() => confirmRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }), 50); }}
               disabled={loading}
               className="w-full bg-gold-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-50"
             >
