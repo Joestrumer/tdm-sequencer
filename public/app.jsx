@@ -21460,39 +21460,32 @@ const VueCommandes = ({ showToast }) => {
 
                   {/* Suivi expédition (commandes validées) */}
                   {c.statut === 'validee' && (
-                    <div className="mb-3 p-3 bg-white border border-slate-200 rounded-xl">
-                      <div className="flex items-center gap-2 mb-2">
-                        <span className="text-xs font-semibold text-slate-700">Suivi expédition</span>
-                        {c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">Livrée le {parseUTC(c.delivered_at).toLocaleDateString('fr-FR')}</span>}
-                        {c.tracking_number && !c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Expédiée{c.shipped_at ? ` le ${parseUTC(c.shipped_at).toLocaleDateString('fr-FR')}` : ''}</span>}
-                        {!c.tracking_number && !c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-500">En préparation</span>}
-                      </div>
-                      <div className="flex items-center gap-2">
-                        <input type="text" defaultValue={c.tracking_number || ''} placeholder="N° de suivi"
-                          onBlur={async (e) => {
-                            const val = e.target.value.trim();
-                            if (val === (c.tracking_number || '')) return;
-                            try {
-                              const res = await api.patch(`/partner-orders/${c.id}/tracking`, { tracking_number: val });
-                              if (res.ok) {
-                                setCommandes(prev => prev.map(o => o.id === c.id ? { ...o, tracking_number: val || null, carrier_name: res.order?.carrier_name || o.carrier_name, shipped_at: res.order?.shipped_at || o.shipped_at } : o));
-                                showToast(val ? 'Tracking enregistré' : 'Tracking supprimé', 'success');
-                              } else {
-                                showToast(res.erreur || 'Erreur', 'error');
-                              }
-                            } catch (err) { showToast('Erreur réseau', 'error'); }
-                          }}
-                          onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
-                          className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-                        {c.tracking_number && (
-                          <a href={/^1Z/i.test(c.tracking_number) ? `https://www.ups.com/track?tracknum=${encodeURIComponent(c.tracking_number)}` : `https://www.laposte.fr/outils/suivre-vos-envois?code=${encodeURIComponent(c.tracking_number)}`}
-                            target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-                            className="px-2 py-1.5 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap">
-                            Suivre
-                          </a>
-                        )}
-                      </div>
-                      {c.carrier_name && <div className="text-[10px] text-slate-400 mt-1">Transporteur : {c.carrier_name}</div>}
+                    <div className="mb-3 flex items-center gap-2">
+                      <span className="text-xs text-slate-400 shrink-0">Tracking :</span>
+                      <input type="text" defaultValue={c.tracking_number || ''} placeholder="N° de suivi (optionnel)"
+                        onBlur={async (e) => {
+                          const val = e.target.value.trim();
+                          if (val === (c.tracking_number || '')) return;
+                          try {
+                            const res = await api.patch(`/partner-orders/${c.id}/tracking`, { tracking_number: val });
+                            if (res.ok) {
+                              setCommandes(prev => prev.map(o => o.id === c.id ? { ...o, tracking_number: val || null, carrier_name: res.order?.carrier_name || o.carrier_name, shipped_at: res.order?.shipped_at || o.shipped_at, delivered_at: res.order?.delivered_at || o.delivered_at } : o));
+                              showToast(val ? 'Tracking enregistré' : 'Tracking supprimé', 'success');
+                            } else {
+                              showToast(res.erreur || 'Erreur', 'error');
+                            }
+                          } catch (err) { showToast('Erreur réseau', 'error'); }
+                        }}
+                        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); }}
+                        className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-xs font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 max-w-xs" />
+                      {c.tracking_number && (
+                        <a href={/^1Z/i.test(c.tracking_number) ? `https://www.ups.com/track?tracknum=${encodeURIComponent(c.tracking_number)}` : `https://www.laposte.fr/outils/suivre-vos-envois?code=${encodeURIComponent(c.tracking_number)}`}
+                          target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                          className="px-2 py-1.5 text-xs border border-blue-200 text-blue-600 rounded-lg hover:bg-blue-50 transition-colors whitespace-nowrap">
+                          Suivre
+                        </a>
+                      )}
+                      {c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700 shrink-0">Livrée</span>}
                     </div>
                   )}
 
