@@ -1473,7 +1473,7 @@ const VueDashboard = ({ showToast }) => {
   const [calendarMonth, setCalendarMonth] = useState(0); // offset from current month
 
   const loadDashboard = async () => {
-    setLoading(true);
+    if (!data) setLoading(true);
     try {
       const res = await api.get('/dashboard');
       setData(res);
@@ -2089,7 +2089,7 @@ const VueDashboardMarketing = ({ showToast }) => {
   const [loading, setLoading] = useState(true);
 
   const loadData = async () => {
-    setLoading(true);
+    if (!data) setLoading(true);
     try {
       const res = await api.get('/dashboard/marketing');
       setData(res);
@@ -19670,7 +19670,7 @@ const VueCampagnes = ({ showToast, readOnly }) => {
   const [recipientSearch, setRecipientSearch] = useState('');
 
   const charger = async () => {
-    setLoading(true);
+    if (campaigns.length === 0) setLoading(true);
     try {
       const data = await api.get('/campaigns' + (filtreStatut !== 'tous' ? `?statut=${filtreStatut}` : ''));
       setCampaigns(Array.isArray(data) ? data : []);
@@ -27791,6 +27791,7 @@ function App() {
 
   // Charger les données au démarrage (résilient aux permissions)
   const chargerRetries = useRef(0);
+  const initialLoadDone = useRef(false);
   const charger = async () => {
     // Attendre que le token soit disponible (Babel charge async)
     const token = sessionStorage.getItem('tdm_token') || window.AUTH_TOKEN || '';
@@ -27802,7 +27803,8 @@ function App() {
       return;
     }
     chargerRetries.current = 0;
-    setLoading(true);
+    // Loading visible uniquement au premier chargement
+    if (!initialLoadDone.current) setLoading(true);
 
     // Helper : appel API silencieux (retourne null si 403/erreur)
     const safeFetch = (path) => api.get(path).catch(() => null);
@@ -27825,6 +27827,7 @@ function App() {
         if (statsData?.activitesRecentes) setActivites(statsData.activitesRecentes);
       }
     } catch(e) { console.error("Erreur chargement:", e); }
+    initialLoadDone.current = true;
     setLoading(false);
   };
 
