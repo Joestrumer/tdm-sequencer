@@ -154,6 +154,56 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Promotions : liste ─────────────────────────────────────────────────────
+  router.get('/promotions', (req, res) => {
+    try {
+      const promos = db.prepare('SELECT * FROM partner_promotions').all();
+      res.json(promos);
+    } catch (e) {
+      logger.error('Erreur liste promotions', { error: e.message });
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Promotions : remplacement complet ────────────────────────────────────────
+  router.post('/promotions', (req, res) => {
+    try {
+      const { items } = req.body;
+      if (!Array.isArray(items)) return res.status(400).json({ erreur: 'items doit être un tableau' });
+
+      // Validation
+      const catalogMap = getCatalogMap();
+      for (const item of items) {
+        if (!item.ref || typeof item.ref !== 'string') {
+          return res.status(400).json({ erreur: 'Chaque item doit avoir une ref' });
+        }
+        if (!catalogMap[item.ref]) {
+          return res.status(400).json({ erreur: `Produit inconnu: ${item.ref}` });
+        }
+        const pct = parseFloat(item.discount_pct);
+        if (isNaN(pct) || pct < 1 || pct > 99) {
+          return res.status(400).json({ erreur: `discount_pct doit être entre 1 et 99 pour ${item.ref}` });
+        }
+      }
+
+      // Remplacement complet dans une transaction
+      const upsert = db.prepare('INSERT INTO partner_promotions (ref, discount_pct) VALUES (?, ?) ON CONFLICT(ref) DO UPDATE SET discount_pct = excluded.discount_pct');
+      const deleteAll = db.prepare('DELETE FROM partner_promotions');
+
+      db.transaction(() => {
+        deleteAll.run();
+        for (const item of items) {
+          upsert.run(item.ref, parseFloat(item.discount_pct));
+        }
+      })();
+
+      res.json({ ok: true, count: items.length });
+    } catch (e) {
+      logger.error('Erreur sauvegarde promotions', { error: e.message });
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Détail commande ──────────────────────────────────────────────────────
   router.get('/:id', (req, res) => {
     try {
@@ -761,56 +811,6 @@ module.exports = (db) => {
 
       res.json({ ok: true, message: 'Commande annulée' });
     } catch (e) {
-      res.status(500).json({ erreur: e.message });
-    }
-  });
-
-  // ─── Promotions : liste ─────────────────────────────────────────────────────
-  router.get('/promotions', (req, res) => {
-    try {
-      const promos = db.prepare('SELECT * FROM partner_promotions').all();
-      res.json(promos);
-    } catch (e) {
-      logger.error('Erreur liste promotions', { error: e.message });
-      res.status(500).json({ erreur: e.message });
-    }
-  });
-
-  // ─── Promotions : remplacement complet ────────────────────────────────────────
-  router.post('/promotions', (req, res) => {
-    try {
-      const { items } = req.body;
-      if (!Array.isArray(items)) return res.status(400).json({ erreur: 'items doit être un tableau' });
-
-      // Validation
-      const catalogMap = getCatalogMap();
-      for (const item of items) {
-        if (!item.ref || typeof item.ref !== 'string') {
-          return res.status(400).json({ erreur: 'Chaque item doit avoir une ref' });
-        }
-        if (!catalogMap[item.ref]) {
-          return res.status(400).json({ erreur: `Produit inconnu: ${item.ref}` });
-        }
-        const pct = parseFloat(item.discount_pct);
-        if (isNaN(pct) || pct < 1 || pct > 99) {
-          return res.status(400).json({ erreur: `discount_pct doit être entre 1 et 99 pour ${item.ref}` });
-        }
-      }
-
-      // Remplacement complet dans une transaction
-      const upsert = db.prepare('INSERT INTO partner_promotions (ref, discount_pct) VALUES (?, ?) ON CONFLICT(ref) DO UPDATE SET discount_pct = excluded.discount_pct');
-      const deleteAll = db.prepare('DELETE FROM partner_promotions');
-
-      db.transaction(() => {
-        deleteAll.run();
-        for (const item of items) {
-          upsert.run(item.ref, parseFloat(item.discount_pct));
-        }
-      })();
-
-      res.json({ ok: true, count: items.length });
-    } catch (e) {
-      logger.error('Erreur sauvegarde promotions', { error: e.message });
       res.status(500).json({ erreur: e.message });
     }
   });
