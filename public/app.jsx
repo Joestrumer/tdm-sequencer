@@ -27548,6 +27548,186 @@ const VuePortailParams = ({ showToast, readOnly }) => {
           </button>
         )}
       </div>
+
+      <VuePortailPromos showToast={showToast} readOnly={readOnly} />
+    </div>
+  );
+};
+
+// ─── Section Promotions (dans VuePortailParams) ──────────────────────────────
+const VuePortailPromos = ({ showToast, readOnly }) => {
+  const [promoActive, setPromoActive] = useState(false);
+  const [promoTitle, setPromoTitle] = useState('Promotions du moment');
+  const [promoItems, setPromoItems] = useState([]);
+  const [catalog, setCatalog] = useState([]);
+  const [saving, setSaving] = useState(false);
+  const [searchTerm, setSearchTerm] = useState('');
+  const [newPct, setNewPct] = useState(10);
+  const [showDropdown, setShowDropdown] = useState(false);
+
+  useEffect(() => {
+    // Charger config
+    api.get('/config').then(cfg => {
+      setPromoActive(cfg.promo_active === '1');
+      if (cfg.promo_title) setPromoTitle(cfg.promo_title);
+    }).catch(e => console.error(e));
+    // Charger promos existantes
+    api.get('/partner-orders/promotions').then(items => {
+      setPromoItems(Array.isArray(items) ? items : []);
+    }).catch(e => console.error(e));
+    // Charger catalogue pour le picker
+    api.get('/reference/catalog').then(data => {
+      const items = Array.isArray(data) ? data : (data?.products || []);
+      setCatalog(items.filter(p => p.actif !== 0 && p.ref !== 'FP' && p.ref !== 'FE'));
+    }).catch(e => console.error('Erreur chargement catalogue', e));
+  }, []);
+
+  const searchResults = useMemo(() => {
+    if (!searchTerm || searchTerm.length < 2) return [];
+    const term = searchTerm.toLowerCase();
+    return catalog
+      .filter(p => !promoItems.some(pi => pi.ref === p.ref))
+      .filter(p => (p.ref || '').toLowerCase().includes(term) || (p.nom || '').toLowerCase().includes(term))
+      .slice(0, 8);
+  }, [searchTerm, catalog, promoItems]);
+
+  const addProduct = (product) => {
+    setPromoItems(prev => [...prev, { ref: product.ref, discount_pct: newPct, nom: product.nom, prix_ht: product.prix_ht }]);
+    setSearchTerm('');
+    setShowDropdown(false);
+  };
+
+  const removeProduct = (ref) => {
+    setPromoItems(prev => prev.filter(p => p.ref !== ref));
+  };
+
+  const updatePct = (ref, pct) => {
+    setPromoItems(prev => prev.map(p => p.ref === ref ? { ...p, discount_pct: Math.max(1, Math.min(99, parseFloat(pct) || 0)) } : p));
+  };
+
+  const sauvegarder = async () => {
+    setSaving(true);
+    try {
+      await api.post('/partner-orders/promotions', {
+        items: promoItems.map(p => ({ ref: p.ref, discount_pct: p.discount_pct }))
+      });
+      await api.post('/config', {
+        promo_active: promoActive ? '1' : '0',
+        promo_title: promoTitle,
+      });
+      if (showToast) showToast('Promotions sauvegardées', 'success');
+    } catch (e) {
+      if (showToast) showToast('Erreur: ' + e.message, 'error');
+    }
+    setSaving(false);
+  };
+
+  // Enrichir promoItems avec les infos catalogue
+  const enrichedItems = promoItems.map(pi => {
+    const cat = catalog.find(c => c.ref === pi.ref);
+    return {
+      ...pi,
+      nom: pi.nom || cat?.nom || pi.ref,
+      prix_ht: pi.prix_ht ?? cat?.prix_ht ?? 0,
+    };
+  });
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-slate-800">Promotions flash</h3>
+      <p className="text-xs text-slate-400">Promotions cumulables avec les remises partenaires. Les prix finaux = prix remisé x (1 - promo%).</p>
+
+      <div className="flex items-center gap-3">
+        <label className="flex items-center gap-2 cursor-pointer">
+          <input type="checkbox" checked={promoActive} onChange={e => setPromoActive(e.target.checked)} disabled={readOnly}
+            className="rounded border-slate-300 text-blue-600 focus:ring-blue-500/20" />
+          <span className="text-sm text-slate-700">Activer les promotions</span>
+        </label>
+      </div>
+
+      <div>
+        <label className="text-xs font-medium text-slate-500 mb-1 block">Titre bannière</label>
+        <input value={promoTitle} onChange={e => setPromoTitle(e.target.value)} disabled={readOnly}
+          placeholder="Promotions du moment"
+          className="w-full max-w-md border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50 disabled:bg-slate-50" />
+      </div>
+
+      {/* Tableau produits en promo */}
+      {enrichedItems.length > 0 && (
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="border-b border-slate-100 text-left">
+                <th className="pb-2 text-xs font-medium text-slate-400">Ref</th>
+                <th className="pb-2 text-xs font-medium text-slate-400">Produit</th>
+                <th className="pb-2 text-xs font-medium text-slate-400 text-right">Prix HT</th>
+                <th className="pb-2 text-xs font-medium text-slate-400 text-center">% Réduction</th>
+                <th className="pb-2 text-xs font-medium text-slate-400 text-right">Prix promo</th>
+                <th className="pb-2 text-xs font-medium text-slate-400"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {enrichedItems.map(item => (
+                <tr key={item.ref} className="border-b border-slate-50">
+                  <td className="py-2 text-slate-600 font-mono text-xs">{item.ref}</td>
+                  <td className="py-2 text-slate-700">{item.nom}</td>
+                  <td className="py-2 text-right text-slate-600">{(item.prix_ht || 0).toFixed(2)} €</td>
+                  <td className="py-2 text-center">
+                    <input type="number" min="1" max="99" value={item.discount_pct}
+                      onChange={e => updatePct(item.ref, e.target.value)} disabled={readOnly}
+                      className="w-16 border border-slate-200 rounded px-2 py-1 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500/20 disabled:opacity-50" />
+                    <span className="text-slate-400 ml-1">%</span>
+                  </td>
+                  <td className="py-2 text-right font-medium text-emerald-600">
+                    {((item.prix_ht || 0) * (1 - (item.discount_pct || 0) / 100)).toFixed(2)} €
+                  </td>
+                  <td className="py-2 text-right">
+                    {!readOnly && (
+                      <button onClick={() => removeProduct(item.ref)} className="text-red-400 hover:text-red-600 text-xs">Supprimer</button>
+                    )}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {/* Ajout produit */}
+      {!readOnly && (
+        <div className="flex items-end gap-3 relative">
+          <div className="flex-1 relative">
+            <label className="text-xs font-medium text-slate-500 mb-1 block">Ajouter un produit</label>
+            <input value={searchTerm} onChange={e => { setSearchTerm(e.target.value); setShowDropdown(true); }}
+              onFocus={() => setShowDropdown(true)}
+              placeholder="Rechercher par ref ou nom..."
+              className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+            {showDropdown && searchResults.length > 0 && (
+              <div className="absolute z-50 top-full left-0 right-0 mt-1 bg-white border border-slate-200 rounded-lg shadow-lg max-h-48 overflow-y-auto">
+                {searchResults.map(p => (
+                  <button key={p.ref} onClick={() => addProduct(p)}
+                    className="w-full text-left px-3 py-2 hover:bg-slate-50 text-sm flex justify-between items-center border-b border-slate-50 last:border-0">
+                    <span><span className="font-mono text-xs text-slate-400 mr-2">{p.ref}</span>{p.nom}</span>
+                    <span className="text-slate-400 text-xs">{(p.prix_ht || 0).toFixed(2)} €</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
+          <div>
+            <label className="text-xs font-medium text-slate-500 mb-1 block">% Réduction</label>
+            <input type="number" min="1" max="99" value={newPct} onChange={e => setNewPct(parseInt(e.target.value) || 10)}
+              className="w-20 border border-slate-200 rounded-lg px-3 py-2 text-sm text-center focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          </div>
+        </div>
+      )}
+
+      {!readOnly && (
+        <button onClick={sauvegarder} disabled={saving}
+          className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
+          {saving ? 'Sauvegarde...' : 'Enregistrer les promotions'}
+        </button>
+      )}
     </div>
   );
 };

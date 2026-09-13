@@ -241,9 +241,19 @@
               <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
-              <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
-              {p.discount_pct > 0 && (
-                <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
+              {p.promo_pct > 0 ? (
+                <>
+                  <span className="text-xs text-gray-400 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
+                  <span className="text-xs font-bold text-red-600">{p.prix_promo.toFixed(2)} &euro; HT</span>
+                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">-{p.promo_pct}%</span>
+                </>
+              ) : (
+                <>
+                  <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
+                  {p.discount_pct > 0 && (
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
+                  )}
+                </>
               )}
               {moq > 1 && (
                 <span className="text-[10px] text-gray-400">carton de {moq}</span>
@@ -450,6 +460,85 @@
       'Autres',
     ];
 
+    // ─── Section Promotions (portail partenaire) ────────────────────────────────
+    const PromotionsSection = ({ catalogue, panier, setPanier, promoActive, promoTitle }) => {
+      const promoProducts = useMemo(() => catalogue.filter(p => p.promo_pct > 0), [catalogue]);
+
+      if (!promoActive || promoProducts.length === 0) return null;
+
+      const getQty = (ref) => panier[ref]?.quantite || 0;
+
+      const addCarton = (ref) => {
+        const prod = catalogue.find(c => c.ref === ref);
+        const moq = prod.moq || 1;
+        const current = getQty(ref);
+        setPanier(p => ({ ...p, [ref]: { ...prod, quantite: current + moq } }));
+      };
+
+      const removeCarton = (ref) => {
+        const prod = catalogue.find(c => c.ref === ref);
+        const moq = prod.moq || 1;
+        const current = getQty(ref);
+        const next = current - moq;
+        if (next <= 0) {
+          setPanier(p => { const n = { ...p }; delete n[ref]; return n; });
+        } else {
+          setPanier(p => ({ ...p, [ref]: { ...prod, quantite: next } }));
+        }
+      };
+
+      return (
+        <div className="mb-8">
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-2xl p-4 sm:p-5">
+            <div className="flex items-center gap-2 mb-4">
+              <span className="text-lg">&#128293;</span>
+              <h2 className="text-base sm:text-lg font-bold text-red-700">{promoTitle || 'Promotions du moment'}</h2>
+            </div>
+            <div className="space-y-1">
+              {promoProducts.map(p => {
+                const moq = p.moq || 1;
+                const qty = getQty(p.ref);
+                const cartons = moq > 1 ? Math.floor(qty / moq) : qty;
+                const inCart = qty > 0;
+                return (
+                  <div key={p.ref}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-white/80 border-l-2 border-l-red-400' : 'bg-white/50 hover:bg-white/70'}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
+                        <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
+                        <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold shrink-0">-{p.promo_pct}%</span>
+                      </div>
+                      <div className="flex items-center gap-2 mt-0.5">
+                        <span className="text-xs text-gray-400 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
+                        <span className="text-xs font-bold text-red-600">{p.prix_promo.toFixed(2)} &euro; HT</span>
+                        {moq > 1 && (
+                          <span className="text-[10px] text-gray-400">carton de {moq}</span>
+                        )}
+                      </div>
+                    </div>
+                    <div className="flex items-center gap-1 shrink-0">
+                      {qty > 0 && (
+                        <button onClick={() => removeCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center text-base font-bold transition-colors">-</button>
+                      )}
+                      {qty > 0 && (
+                        <div className="text-center min-w-[32px]">
+                          <div className="text-gray-900 font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                          {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{qty} u.</div>}
+                        </div>
+                      )}
+                      <button onClick={() => addCarton(p.ref)} className="w-9 h-9 rounded-lg bg-red-500 text-white hover:bg-red-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
     const CatalogueView = ({ catalogue, panier, setPanier }) => {
       const [search, setSearch] = useState("");
       const [openCats, setOpenCats] = useState({});
@@ -590,9 +679,19 @@
                               <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
-                              <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
-                              {p.discount_pct > 0 && (
-                                <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
+                              {p.promo_pct > 0 ? (
+                                <>
+                                  <span className="text-xs text-gray-400 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
+                                  <span className="text-xs font-bold text-red-600">{p.prix_promo.toFixed(2)} &euro; HT</span>
+                                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">PROMO -{p.promo_pct}%</span>
+                                </>
+                              ) : (
+                                <>
+                                  <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
+                                  {p.discount_pct > 0 && (
+                                    <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
+                                  )}
+                                </>
                               )}
                               {moq > 1 && (
                                 <span className="text-[10px] text-gray-400">carton de {moq}</span>
@@ -632,7 +731,7 @@
       const [showConfirm, setShowConfirm] = useState(false);
       const confirmRef = useRef(null);
       const items = Object.values(panier);
-      const subtotalHT = items.reduce((s, i) => s + i.prix_remise * i.quantite, 0);
+      const subtotalHT = items.reduce((s, i) => s + (i.prix_promo ?? i.prix_remise) * i.quantite, 0);
       const francoSeuil = partner.franco_seuil ?? 800;
       const exonere = partner.frais_exonere ?? 0;
       const fpPrix = partner.fp_prix ?? 0;
@@ -651,7 +750,7 @@
         }
       }
       const totalHT = subtotalHT + fraisMontant;
-      const tvaParProduit = items.reduce((s, i) => s + i.prix_remise * i.quantite * ((i.tva || 20) / 100), 0);
+      const tvaParProduit = items.reduce((s, i) => s + (i.prix_promo ?? i.prix_remise) * i.quantite * ((i.tva || 20) / 100), 0);
       const tvaSurFrais = fraisMontant * 0.2;
       const totalTTC = totalHT + tvaParProduit + tvaSurFrais;
       const manquePourFranco = Math.max(0, francoSeuil - subtotalHT);
@@ -687,7 +786,13 @@
                     <div className="text-xs text-gray-400 font-mono">{i.ref}</div>
                     <div className="text-sm text-gray-900 truncate">{i.nom}</div>
                     <div className="flex items-center gap-2 mt-0.5">
-                      {i.discount_pct > 0 ? (
+                      {i.promo_pct > 0 ? (
+                        <>
+                          <span className="text-xs text-gray-400 line-through">{i.prix_remise.toFixed(2)} &euro;</span>
+                          <span className="text-xs font-bold text-red-600">{i.prix_promo.toFixed(2)} &euro; HT/u</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">-{i.promo_pct}%</span>
+                        </>
+                      ) : i.discount_pct > 0 ? (
                         <>
                           <span className="text-xs text-gray-400 line-through">{i.prix_ht.toFixed(2)} &euro;</span>
                           <span className="text-xs text-gold-600">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
@@ -711,7 +816,7 @@
                       </div>
                       <button onClick={() => setPanier(p => ({ ...p, [i.ref]: { ...i, quantite: i.quantite + moq } }))} className="w-8 h-8 rounded-lg bg-gray-200 text-gray-600 text-sm hover:bg-gray-300 flex items-center justify-center">+</button>
                     </div>
-                    <div className="text-sm text-gray-900 font-medium w-20 text-right">{(i.prix_remise * i.quantite).toFixed(2)} &euro;</div>
+                    <div className="text-sm text-gray-900 font-medium w-20 text-right">{((i.prix_promo ?? i.prix_remise) * i.quantite).toFixed(2)} &euro;</div>
                   </div>
                 </div>
               </div>
@@ -793,7 +898,7 @@
                 {items.map(i => (
                   <div key={i.ref} className="flex justify-between text-xs text-gray-700">
                     <span>{i.quantite}x {i.nom}</span>
-                    <span>{(i.prix_remise * i.quantite).toFixed(2)} &euro;</span>
+                    <span>{((i.prix_promo ?? i.prix_remise) * i.quantite).toFixed(2)} &euro;</span>
                   </div>
                 ))}
               </div>
@@ -1054,7 +1159,8 @@
                           <div className="flex items-center gap-2 min-w-0">
                             <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
                             <span className="text-gray-700 truncate">{p.nom}</span>
-                            {p.discount_pct > 0 && <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium shrink-0">-{p.discount_pct}%</span>}
+                            {p.promo_pct > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold shrink-0">PROMO -{p.promo_pct}%</span>}
+                            {p.discount_pct > 0 && !p.promo_pct && <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium shrink-0">-{p.discount_pct}%</span>}
                           </div>
                           <div className="flex items-center gap-3 shrink-0 ml-2">
                             <span className="text-xs text-gray-400">{p.quantite} u. &times; {p.prix_remise.toFixed(2)} &euro;</span>
@@ -1284,6 +1390,8 @@
       const [partner, setPartner] = useState(null);
       const [vue, setVue] = useState("catalogue");
       const [catalogue, setCatalogue] = useState([]);
+      const [promoActive, setPromoActive] = useState(false);
+      const [promoTitle, setPromoTitle] = useState('');
       const [panier, setPanierRaw] = useState(() => {
         try { return JSON.parse(localStorage.getItem('tdm_panier') || '{}'); } catch { return {}; }
       });
@@ -1323,7 +1431,15 @@
 
       useEffect(() => {
         if (!partner) return;
-        api.get('/catalogue').then(data => { if (Array.isArray(data)) setCatalogue(data); });
+        api.get('/catalogue').then(data => {
+          if (Array.isArray(data)) {
+            setCatalogue(data);
+          } else if (data && data.catalogue) {
+            setCatalogue(data.catalogue);
+            setPromoActive(!!data.promo_active);
+            setPromoTitle(data.promo_title || '');
+          }
+        });
         api.get('/commandes').then(data => { if (Array.isArray(data)) setCommandes(data); });
       }, [partner]);
 
@@ -1441,6 +1557,7 @@
               <div className="animate-fade-in">
                 <DerniereCommandeSection commandes={commandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} showToast={showToast} />
                 <AmenitiesSection amenities={amenities} catalogue={catalogue} panier={panier} setPanier={setPanier} />
+                <PromotionsSection catalogue={catalogue} panier={panier} setPanier={setPanier} promoActive={promoActive} promoTitle={promoTitle} />
                 <div className="flex items-center justify-between mb-4">
                   <h2 className="text-lg font-semibold text-gray-900">Catalogue</h2>
                   <span className="text-xs text-gray-400">{catalogue.length} produit{catalogue.length > 1 ? 's' : ''}</span>
@@ -1460,7 +1577,7 @@
           {/* Barre flottante total + franco */}
           {panierCount > 0 && !panierOpen && vue === "catalogue" && (() => {
             const items = Object.values(panier);
-            const subtotalHT = items.reduce((s, i) => s + i.prix_remise * i.quantite, 0);
+            const subtotalHT = items.reduce((s, i) => s + (i.prix_promo ?? i.prix_remise) * i.quantite, 0);
             const francoSeuil = partner.franco_seuil ?? 800;
             const exonere = partner.frais_exonere ?? 0;
             const francoAtteint = subtotalHT >= francoSeuil;

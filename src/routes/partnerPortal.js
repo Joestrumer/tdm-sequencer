@@ -194,11 +194,21 @@ module.exports = (db) => {
         discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
       }
 
+      // Promotions flash
+      const promoActiveRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_active'").get();
+      const promoActive = promoActiveRow?.valeur === '1';
+      const promoTitleRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_title'").get();
+      const promoTitle = promoTitleRow?.valeur || 'Promotions du moment';
+      let promos = [];
+      if (promoActive) {
+        promos = db.prepare('SELECT * FROM partner_promotions').all();
+      }
+
       const catalogue = products.map(p => {
         const discount = discounts.find(d => normalizeRef(d.product_code) === normalizeRef(p.ref));
         const discount_pct = discount ? discount.discount_pct : 0;
         const prix_remise = p.prix_ht * (1 - discount_pct / 100);
-        return {
+        const entry = {
           ref: p.ref,
           nom: p.nom,
           prix_ht: p.prix_ht,
@@ -208,9 +218,18 @@ module.exports = (db) => {
           moq: p.moq || 1,
           categorie: p.categorie || null,
         };
+        // Ajouter info promo si active
+        if (promoActive) {
+          const promo = promos.find(pr => normalizeRef(pr.ref) === normalizeRef(p.ref));
+          if (promo) {
+            entry.promo_pct = promo.discount_pct;
+            entry.prix_promo = Math.round(entry.prix_remise * (1 - promo.discount_pct / 100) * 100) / 100;
+          }
+        }
+        return entry;
       });
 
-      res.json(catalogue);
+      res.json({ catalogue, promo_active: promoActive, promo_title: promoTitle });
     } catch (e) {
       logger.error('Erreur catalogue partenaire', { error: e.message, partnerId: req.partner?.id });
       res.status(500).json({ erreur: 'Erreur serveur' });
@@ -250,7 +269,15 @@ module.exports = (db) => {
       let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
       if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
 
-      // Calculer les produits avec prix remisés
+      // Promotions flash (cumulables)
+      const promoActiveRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_active'").get();
+      const promoActive = promoActiveRow?.valeur === '1';
+      let promos = [];
+      if (promoActive) {
+        promos = db.prepare('SELECT * FROM partner_promotions').all();
+      }
+
+      // Calculer les produits avec prix remisés + promo
       let totalHT = 0;
       let totalTVA = 0;
       const orderProducts = products.map(item => {
@@ -260,20 +287,26 @@ module.exports = (db) => {
         const discount = discounts.find(d => normalizeRef(d.product_code) === normalizeRef(item.ref));
         const discount_pct = discount ? discount.discount_pct : 0;
         const prix_remise = catEntry.prix_ht * (1 - discount_pct / 100);
-        const lineHT = Math.round(prix_remise * qty * 100) / 100;
+        // Promo flash cumulée
+        const promo = promos.find(pr => normalizeRef(pr.ref) === normalizeRef(item.ref));
+        const promo_pct = promo ? promo.discount_pct : 0;
+        const prix_final = promo_pct > 0 ? prix_remise * (1 - promo_pct / 100) : prix_remise;
+        const lineHT = Math.round(prix_final * qty * 100) / 100;
         const tva = catEntry.tva || 20;
         totalHT += lineHT;
         totalTVA += lineHT * (tva / 100);
-        return {
+        const result = {
           ref: item.ref,
           nom: catEntry.nom,
           quantite: qty,
           prix_ht: catEntry.prix_ht,
-          prix_remise: Math.round(prix_remise * 100) / 100,
+          prix_remise: Math.round(prix_final * 100) / 100,
           discount_pct,
           tva,
           total_ht: lineHT,
         };
+        if (promo_pct > 0) result.promo_pct = promo_pct;
+        return result;
       });
 
       totalHT = Math.round(totalHT * 100) / 100;
@@ -417,6 +450,14 @@ module.exports = (db) => {
       let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
       if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
 
+      // Promotions flash (cumulables)
+      const promoActiveRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_active'").get();
+      const promoActive = promoActiveRow?.valeur === '1';
+      let promos = [];
+      if (promoActive) {
+        promos = db.prepare('SELECT * FROM partner_promotions').all();
+      }
+
       let totalHT = 0;
       let totalTVA = 0;
       const orderProducts = products.map(item => {
@@ -426,11 +467,17 @@ module.exports = (db) => {
         const discount = discounts.find(d => normalizeRef(d.product_code) === normalizeRef(item.ref));
         const discount_pct = discount ? discount.discount_pct : 0;
         const prix_remise = catEntry.prix_ht * (1 - discount_pct / 100);
-        const lineHT = Math.round(prix_remise * qty * 100) / 100;
+        // Promo flash cumulée
+        const promo = promos.find(pr => normalizeRef(pr.ref) === normalizeRef(item.ref));
+        const promo_pct = promo ? promo.discount_pct : 0;
+        const prix_final = promo_pct > 0 ? prix_remise * (1 - promo_pct / 100) : prix_remise;
+        const lineHT = Math.round(prix_final * qty * 100) / 100;
         const tva = catEntry.tva || 20;
         totalHT += lineHT;
         totalTVA += lineHT * (tva / 100);
-        return { ref: item.ref, nom: catEntry.nom, quantite: qty, prix_ht: catEntry.prix_ht, prix_remise: Math.round(prix_remise * 100) / 100, discount_pct, tva, total_ht: lineHT };
+        const result = { ref: item.ref, nom: catEntry.nom, quantite: qty, prix_ht: catEntry.prix_ht, prix_remise: Math.round(prix_final * 100) / 100, discount_pct, tva, total_ht: lineHT };
+        if (promo_pct > 0) result.promo_pct = promo_pct;
+        return result;
       });
 
       totalHT = Math.round(totalHT * 100) / 100;

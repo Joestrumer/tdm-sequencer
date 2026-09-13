@@ -1017,6 +1017,15 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_ig_accounts_business_type ON instagram_scraped_accounts(business_type);
 `);
 
+// ─── Table promotions partenaires (promos flash cumulables avec remises) ────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS partner_promotions (
+    ref TEXT PRIMARY KEY REFERENCES vf_catalog(ref),
+    discount_pct REAL NOT NULL DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
 // ─── Table de suivi détaillé des appels Brave API (par jour et par source) ──
 db.exec(`
   CREATE TABLE IF NOT EXISTS api_brave_daily (
