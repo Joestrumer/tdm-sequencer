@@ -1429,8 +1429,7 @@
         }
       }, []);
 
-      useEffect(() => {
-        if (!partner) return;
+      const refreshCatalogue = useCallback(() => {
         api.get('/catalogue').then(data => {
           if (Array.isArray(data)) {
             setCatalogue(data);
@@ -1439,9 +1438,23 @@
             setPromoActive(!!data.promo_active);
             setPromoTitle(data.promo_title || '');
           }
-        });
+        }).catch(() => {});
+      }, []);
+
+      useEffect(() => {
+        if (!partner) return;
+        refreshCatalogue();
         api.get('/commandes').then(data => { if (Array.isArray(data)) setCommandes(data); });
       }, [partner]);
+
+      // Polling catalogue toutes les 60s pour refléter les changements promos
+      useEffect(() => {
+        if (!partner) return;
+        const interval = setInterval(() => {
+          if (!document.hidden) refreshCatalogue();
+        }, 60000);
+        return () => clearInterval(interval);
+      }, [partner, refreshCatalogue]);
 
       const handleLogin = (p) => {
         setPartner(p);
