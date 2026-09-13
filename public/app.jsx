@@ -27611,10 +27611,8 @@ const VuePortailPromos = ({ showToast, readOnly }) => {
     setSaved(false);
     try {
       await api.post('/partner-orders/promotions', {
-        items: promoItems.map(p => ({ ref: p.ref, discount_pct: p.discount_pct }))
-      });
-      await api.post('/config', {
-        promo_active: promoActive ? '1' : '0',
+        items: promoItems.map(p => ({ ref: p.ref, discount_pct: p.discount_pct })),
+        promo_active: promoActive,
         promo_title: promoTitle,
       });
       setSaved(true);

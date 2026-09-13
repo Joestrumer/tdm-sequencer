@@ -168,7 +168,7 @@ module.exports = (db) => {
   // ─── Promotions : remplacement complet ────────────────────────────────────────
   router.post('/promotions', (req, res) => {
     try {
-      const { items } = req.body;
+      const { items, promo_active, promo_title } = req.body;
       if (!Array.isArray(items)) return res.status(400).json({ erreur: 'items doit être un tableau' });
 
       // Validation
@@ -186,14 +186,22 @@ module.exports = (db) => {
         }
       }
 
-      // Remplacement complet dans une transaction
+      // Remplacement complet dans une transaction (items + config)
       const upsert = db.prepare('INSERT INTO partner_promotions (ref, discount_pct) VALUES (?, ?) ON CONFLICT(ref) DO UPDATE SET discount_pct = excluded.discount_pct');
       const deleteAll = db.prepare('DELETE FROM partner_promotions');
+      const upsertConfig = db.prepare("INSERT INTO config (cle, valeur, updated_at) VALUES (?, ?, datetime('now')) ON CONFLICT(cle) DO UPDATE SET valeur = excluded.valeur, updated_at = excluded.updated_at");
 
       db.transaction(() => {
         deleteAll.run();
         for (const item of items) {
           upsert.run(item.ref, parseFloat(item.discount_pct));
+        }
+        // Sauvegarder config promo dans la même transaction
+        if (promo_active !== undefined) {
+          upsertConfig.run('promo_active', promo_active ? '1' : '0');
+        }
+        if (promo_title !== undefined) {
+          upsertConfig.run('promo_title', String(promo_title));
         }
       })();
 
