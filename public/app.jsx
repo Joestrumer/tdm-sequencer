@@ -21600,9 +21600,12 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     setAllDiscountsLoading(false);
   };
 
+  const promoOffCount = useMemo(() => partners.filter(p => p.vf_client_id && (p.promo_enabled ?? 1) === 0).length, [partners]);
+
   const filtered = useMemo(() => {
     let list = partners.filter(p => p.vf_client_id);
     if (tab === "portail") list = list.filter(p => p.has_password);
+    if (tab === "promos_off") list = list.filter(p => (p.promo_enabled ?? 1) === 0);
     if (search) {
       const q = search.toLowerCase();
       list = list.filter(p => p.nom.toLowerCase().includes(q) || (p.contact_nom || '').toLowerCase().includes(q) || (p.email || '').toLowerCase().includes(q));
@@ -21620,7 +21623,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     setShowPwd(false);
     setPartnerStats(null);
     api.get(`/reference/partners/${p.id}/stats`).then(s => setPartnerStats(s)).catch(() => {});
-    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, vf_display_name: p.vf_display_name || '', livraison_prenom: p.livraison_prenom || '', livraison_nom: p.livraison_nom || '', livraison_telephone: p.livraison_telephone || '', livraison_email: p.livraison_email || '', facturation_prenom: p.facturation_prenom || '', facturation_nom: p.facturation_nom || '', facturation_telephone: p.facturation_telephone || '', facturation_email: p.facturation_email || '' });
+    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, promo_enabled: p.promo_enabled ?? 1, vf_display_name: p.vf_display_name || '', livraison_prenom: p.livraison_prenom || '', livraison_nom: p.livraison_nom || '', livraison_telephone: p.livraison_telephone || '', livraison_email: p.livraison_email || '', facturation_prenom: p.facturation_prenom || '', facturation_nom: p.facturation_nom || '', facturation_telephone: p.facturation_telephone || '', facturation_email: p.facturation_email || '' });
     // Charger amenities depuis le partenaire
     try {
       const am = p.amenities ? JSON.parse(p.amenities) : {};
@@ -21700,7 +21703,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     if (selectedId && partners.length) {
       const p = partners.find(x => x.id === selectedId);
       if (p) {
-        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, vf_display_name: p.vf_display_name || '' });
+        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, promo_enabled: p.promo_enabled ?? 1, vf_display_name: p.vf_display_name || '' });
         try { setAmenities(p.amenities ? JSON.parse(p.amenities) : {}); } catch (e) { setAmenities({}); }
       }
     }
@@ -21709,7 +21712,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
   return (
     <div className="max-w-5xl space-y-3">
       {/* Tabs */}
-      <div className="flex gap-1 bg-slate-100 rounded-xl p-0.5" style={{ maxWidth: tab === 'remises' ? '100%' : '288px' }}>
+      <div className="flex gap-1 bg-slate-100 rounded-xl p-0.5" style={{ maxWidth: tab === 'remises' ? '100%' : '420px' }}>
         <button onClick={() => { setTab("tous"); setSelectedId(null); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "tous" ? 'bg-white text-slate-900 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
           Tous ({partners.length})
         </button>
@@ -21718,6 +21721,9 @@ const VuePartenaires = ({ showToast, readOnly }) => {
         </button>
         <button onClick={() => { setTab("remises"); setSelectedId(null); loadAllDiscounts(); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "remises" ? 'bg-white text-amber-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
           Remises ({allDiscounts.length})
+        </button>
+        <button onClick={() => { setTab("promos_off"); setSelectedId(null); }} className={`flex-1 text-xs font-medium py-2 rounded-lg transition-colors ${tab === "promos_off" ? 'bg-white text-red-700 shadow-sm' : 'text-slate-500 hover:text-slate-700'}`}>
+          Promos off ({promoOffCount})
         </button>
       </div>
 
@@ -22065,6 +22071,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                     <div><span className="text-[10px] text-slate-400 block">Shipping ID</span><span className="text-sm text-slate-700 font-mono">{selected.shipping_id || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Franco (seuil HT)</span><span className="text-sm text-slate-700">{(selected.franco_seuil ?? DEFAULT_FRANCO_SEUIL).toFixed(0)} &euro;</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Frais FP/FE</span><span className="text-sm text-slate-700">{selected.frais_exonere ? 'Exonéré' : 'Standard (FP/FE)'}</span></div>
+                    <div><span className="text-[10px] text-slate-400 block">Bons plans</span><span className={`text-sm ${(selected.promo_enabled ?? 1) ? 'text-emerald-600' : 'text-red-500'}`}>{(selected.promo_enabled ?? 1) ? 'Activés' : 'Désactivés'}</span></div>
                   </div>
                   {/* Contact livraison */}
                   {(selected.livraison_prenom || selected.livraison_nom || selected.livraison_telephone || selected.livraison_email) && (
@@ -22126,6 +22133,10 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                     <div className="flex items-center gap-2 pt-4">
                       <input type="checkbox" id="frais_exonere" checked={!!editForm.frais_exonere} onChange={e => setEditForm(f => ({ ...f, frais_exonere: e.target.checked ? 1 : 0 }))} className="rounded border-slate-300" />
                       <label htmlFor="frais_exonere" className="text-[10px] text-slate-400">Exonéré de frais (pas de FP/FE)</label>
+                    </div>
+                    <div className="flex items-center gap-2 pt-4">
+                      <input type="checkbox" id="promo_enabled" checked={!!(editForm.promo_enabled ?? 1)} onChange={e => setEditForm(f => ({ ...f, promo_enabled: e.target.checked ? 1 : 0 }))} className="rounded border-slate-300" />
+                      <label htmlFor="promo_enabled" className="text-[10px] text-slate-400">Activer les bons plans</label>
                     </div>
                   </div>
                   {/* Contact livraison */}

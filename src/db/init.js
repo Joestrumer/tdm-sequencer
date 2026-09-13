@@ -1191,6 +1191,7 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN facturation_telephone TEXT',
   'ALTER TABLE vf_partners ADD COLUMN livraison_email TEXT',
   'ALTER TABLE vf_partners ADD COLUMN facturation_email TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN promo_enabled INTEGER DEFAULT 1',
   // Commandes partenaires — stocker frais de port à la création + audit
   'ALTER TABLE partner_orders ADD COLUMN frais_ref TEXT',
   'ALTER TABLE partner_orders ADD COLUMN frais_montant REAL DEFAULT 0',

@@ -182,7 +182,7 @@ module.exports = (db) => {
   router.get('/catalogue', (req, res) => {
     try {
       const partnerId = req.partner.id;
-      const partner = db.prepare('SELECT nom, nom_normalise FROM vf_partners WHERE id = ?').get(partnerId);
+      const partner = db.prepare('SELECT nom, nom_normalise, promo_enabled FROM vf_partners WHERE id = ?').get(partnerId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
       // Produits actifs (exclure FP et FE)
@@ -194,9 +194,10 @@ module.exports = (db) => {
         discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
       }
 
-      // Promotions flash
+      // Promotions flash (désactivées si promo_enabled = 0 sur le partenaire)
+      const partnerPromoEnabled = partner.promo_enabled ?? 1;
       const promoActiveRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_active'").get();
-      const promoActive = promoActiveRow?.valeur === '1';
+      const promoActive = promoActiveRow?.valeur === '1' && partnerPromoEnabled === 1;
       const promoTitleRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_title'").get();
       const promoTitle = promoTitleRow?.valeur || 'Promotions du moment';
       let promos = [];
@@ -269,9 +270,10 @@ module.exports = (db) => {
       let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
       if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
 
-      // Promotions flash (cumulables)
+      // Promotions flash (cumulables, désactivées si promo_enabled = 0)
+      const partnerPromoEnabled = partner.promo_enabled ?? 1;
       const promoActiveRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_active'").get();
-      const promoActive = promoActiveRow?.valeur === '1';
+      const promoActive = promoActiveRow?.valeur === '1' && partnerPromoEnabled === 1;
       let promos = [];
       if (promoActive) {
         promos = db.prepare('SELECT * FROM partner_promotions').all();
@@ -450,9 +452,10 @@ module.exports = (db) => {
       let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
       if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
 
-      // Promotions flash (cumulables)
+      // Promotions flash (cumulables, désactivées si promo_enabled = 0)
+      const partnerPromoEnabled = partner.promo_enabled ?? 1;
       const promoActiveRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_active'").get();
-      const promoActive = promoActiveRow?.valeur === '1';
+      const promoActive = promoActiveRow?.valeur === '1' && partnerPromoEnabled === 1;
       let promos = [];
       if (promoActive) {
         promos = db.prepare('SELECT * FROM partner_promotions').all();
