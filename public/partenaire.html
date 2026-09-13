@@ -1517,6 +1517,11 @@
                 <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
                   Catalogue
                 </button>
+                {promoActive && catalogue.some(p => p.promo_pct > 0) && (
+                  <button onClick={() => { setVue("bonsplans"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "bonsplans" ? "bg-red-50 text-red-700 font-medium" : "text-red-500 hover:text-red-700"}`}>
+                    <span className="hidden sm:inline">Bons plans</span><span className="sm:hidden">Promos</span>
+                  </button>
+                )}
                 <button onClick={() => { setVue("historique"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "historique" ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
                   Commandes
                 </button>
@@ -1547,7 +1552,7 @@
           )}
 
           {/* Main content */}
-          <main className={`max-w-6xl mx-auto px-4 py-6 relative z-10 ${panierCount > 0 && !panierOpen && vue === "catalogue" ? 'pb-24' : ''}`}>
+          <main className={`max-w-6xl mx-auto px-4 py-6 relative z-10 ${panierCount > 0 && !panierOpen && (vue === "catalogue" || vue === "bonsplans") ? 'pb-24' : ''}`}>
             {panierOpen ? (
               <div className="max-w-lg mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold text-gray-900 mb-4">Votre panier</h2>
@@ -1564,6 +1569,10 @@
                 </div>
                 <CatalogueView catalogue={catalogue} panier={panier} setPanier={setPanier} />
               </div>
+            ) : vue === "bonsplans" ? (
+              <div className="animate-fade-in">
+                <PromotionsSection catalogue={catalogue} panier={panier} setPanier={setPanier} promoActive={promoActive} promoTitle={promoTitle} />
+              </div>
             ) : vue === "profil" ? (
               <ProfilView partner={partner} setPartner={setPartner} commandes={commandes} showToast={showToast} />
             ) : (
@@ -1575,7 +1584,7 @@
           </main>
 
           {/* Barre flottante total + franco */}
-          {panierCount > 0 && !panierOpen && vue === "catalogue" && (() => {
+          {panierCount > 0 && !panierOpen && (vue === "catalogue" || vue === "bonsplans") && (() => {
             const items = Object.values(panier);
             const subtotalHT = items.reduce((s, i) => s + (i.prix_promo ?? i.prix_remise) * i.quantite, 0);
             const francoSeuil = partner.franco_seuil ?? 800;
