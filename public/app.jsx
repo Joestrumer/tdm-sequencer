@@ -27561,6 +27561,7 @@ const VuePortailPromos = ({ showToast, readOnly }) => {
   const [promoItems, setPromoItems] = useState([]);
   const [catalog, setCatalog] = useState([]);
   const [saving, setSaving] = useState(false);
+  const [saved, setSaved] = useState(false);
   const [searchTerm, setSearchTerm] = useState('');
   const [newPct, setNewPct] = useState(10);
   const [showDropdown, setShowDropdown] = useState(false);
@@ -27607,6 +27608,7 @@ const VuePortailPromos = ({ showToast, readOnly }) => {
 
   const sauvegarder = async () => {
     setSaving(true);
+    setSaved(false);
     try {
       await api.post('/partner-orders/promotions', {
         items: promoItems.map(p => ({ ref: p.ref, discount_pct: p.discount_pct }))
@@ -27615,7 +27617,9 @@ const VuePortailPromos = ({ showToast, readOnly }) => {
         promo_active: promoActive ? '1' : '0',
         promo_title: promoTitle,
       });
+      setSaved(true);
       if (showToast) showToast('Promotions sauvegardées', 'success');
+      setTimeout(() => setSaved(false), 3000);
     } catch (e) {
       if (showToast) showToast('Erreur: ' + e.message, 'error');
     }
@@ -27723,9 +27727,9 @@ const VuePortailPromos = ({ showToast, readOnly }) => {
       )}
 
       {!readOnly && (
-        <button onClick={sauvegarder} disabled={saving}
-          className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50">
-          {saving ? 'Sauvegarde...' : 'Enregistrer les promotions'}
+        <button onClick={sauvegarder} disabled={saving || saved}
+          className={`px-4 py-2 text-white text-sm font-medium rounded-lg disabled:opacity-80 transition-colors ${saved ? 'bg-emerald-600' : 'bg-slate-900 hover:bg-slate-700'}`}>
+          {saving ? 'Sauvegarde...' : saved ? '\u2713 Sauvegardé' : 'Enregistrer les promotions'}
         </button>
       )}
     </div>
