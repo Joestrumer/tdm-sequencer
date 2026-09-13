@@ -1187,6 +1187,11 @@ const migrations = [
   'ALTER TABLE partner_orders ADD COLUMN frais_montant REAL DEFAULT 0',
   'ALTER TABLE partner_orders ADD COLUMN frais_tva REAL DEFAULT 20',
   'ALTER TABLE partner_orders ADD COLUMN subtotal_ht REAL',
+  // Suivi expédition partenaire
+  'ALTER TABLE partner_orders ADD COLUMN tracking_number TEXT',
+  'ALTER TABLE partner_orders ADD COLUMN carrier_name TEXT',
+  'ALTER TABLE partner_orders ADD COLUMN shipped_at TEXT',
+  'ALTER TABLE partner_orders ADD COLUMN delivered_at TEXT',
 ];
 
 // ─── Table audit commandes partenaires ───────────────────────────────────────

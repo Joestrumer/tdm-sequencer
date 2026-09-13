@@ -157,15 +157,58 @@ async function checkDeliveries() {
   return delivered;
 }
 
+// ─── Phase 3 : Check livraison des commandes partenaires ─────────────────────
+async function checkPartnerOrderDeliveries() {
+  let tableExists;
+  try {
+    tableExists = db.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='partner_orders'").get();
+  } catch (_) {}
+  if (!tableExists) return 0;
+
+  const orders = db.prepare(`
+    SELECT id, tracking_number, carrier_name FROM partner_orders
+    WHERE tracking_number IS NOT NULL
+      AND delivered_at IS NULL
+      AND statut = 'validee'
+    ORDER BY shipped_at DESC
+    LIMIT 20
+  `).all();
+
+  if (orders.length === 0) return 0;
+
+  logger.info(`[Partner Tracking] ${orders.length} commande(s) partenaire à vérifier`);
+
+  let delivered = 0;
+  for (const order of orders) {
+    try {
+      const result = await carrierTracking.checkDelivery(db, order.tracking_number);
+      if (!result) continue;
+
+      if (result.delivered) {
+        db.prepare(`UPDATE partner_orders SET delivered_at = ?, carrier_name = COALESCE(carrier_name, ?) WHERE id = ?`)
+          .run(result.deliveryDate || result.date || new Date().toISOString(), result.product, order.id);
+        delivered++;
+        logger.info(`[Partner Tracking] Commande ${order.id} → Livrée`);
+      }
+    } catch (e) {
+      logger.warn(`[Partner Tracking] Erreur commande ${order.id}: ${e.message}`);
+    }
+    await new Promise(r => setTimeout(r, 300));
+  }
+
+  return delivered;
+}
+
 // ─── Job principal ───────────────────────────────────────────────────────────
 async function refreshPending() {
   try {
     const wmsUpdated = await refreshWMS();
     const deliveredCount = await checkDeliveries();
+    const partnerDelivered = await checkPartnerOrderDeliveries();
     const notified = await notifyPendingAll(db);
 
-    if (wmsUpdated > 0 || deliveredCount > 0 || notified > 0) {
-      logger.info(`[WMS Refresh] Bilan: ${wmsUpdated} WMS, ${deliveredCount} livraison(s), ${notified} notif(s) envoyée(s)`);
+    if (wmsUpdated > 0 || deliveredCount > 0 || partnerDelivered > 0 || notified > 0) {
+      logger.info(`[WMS Refresh] Bilan: ${wmsUpdated} WMS, ${deliveredCount} livraison(s), ${partnerDelivered} partenaire(s), ${notified} notif(s) envoyée(s)`);
     }
   } catch (e) {
     logger.error('[WMS Refresh] Erreur globale:', e.message);

@@ -341,10 +341,22 @@ module.exports = (db) => {
         ORDER BY created_at DESC
       `).all(req.partner.id);
 
-      const result = orders.map(o => ({
-        ...o,
-        products: JSON.parse(o.products || '[]'),
-      }));
+      const result = orders.map(o => {
+        let tracking_url = null;
+        if (o.tracking_number) {
+          const t = o.tracking_number.trim();
+          if (/^1Z/i.test(t)) {
+            tracking_url = `https://www.ups.com/track?tracknum=${encodeURIComponent(t)}`;
+          } else {
+            tracking_url = `https://www.laposte.fr/outils/suivre-vos-envois?code=${encodeURIComponent(t)}`;
+          }
+        }
+        return {
+          ...o,
+          products: JSON.parse(o.products || '[]'),
+          tracking_url,
+        };
+      });
 
       res.json(result);
     } catch (e) {

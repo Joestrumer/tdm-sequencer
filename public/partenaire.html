@@ -946,12 +946,17 @@
         { key: 'tous', label: 'Toutes' },
         { key: 'en_attente', label: 'En attente' },
         { key: 'validee', label: 'Valid\u00e9es' },
+        { key: 'expediee', label: 'Exp\u00e9di\u00e9es' },
+        { key: 'livree', label: 'Livr\u00e9es' },
         { key: 'annulee', label: 'Annul\u00e9es' },
       ];
 
       const filtered = filtre === 'tous'
         ? commandes
-        : commandes.filter(c => filtre === 'annulee' ? (c.statut === 'annulee' || c.statut === 'annulee_client') : c.statut === filtre);
+        : filtre === 'annulee' ? commandes.filter(c => c.statut === 'annulee' || c.statut === 'annulee_client')
+        : filtre === 'expediee' ? commandes.filter(c => c.statut === 'validee' && c.tracking_number && !c.delivered_at)
+        : filtre === 'livree' ? commandes.filter(c => c.statut === 'validee' && c.delivered_at)
+        : commandes.filter(c => c.statut === filtre);
 
       const handleDownloadPdf = async (c) => {
         try {
@@ -1029,9 +1034,12 @@
                   </label>
                 <button onClick={() => setExpandedId(isExpanded ? null : c.id)} className="flex-1 flex items-center justify-between p-4 pl-0 text-left hover:bg-gray-50/50 transition-colors">
                   <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 mb-1">
+                    <div className="flex items-center gap-2 mb-1 flex-wrap">
                       <span className="text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                      {c.statut === 'validee' && c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">Livr&eacute;e</span>}
+                      {c.statut === 'validee' && c.tracking_number && !c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">Exp&eacute;di&eacute;e</span>}
+                      {c.statut === 'validee' && !c.tracking_number && !c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-50 text-purple-600">En pr&eacute;paration</span>}
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-sm font-semibold text-gray-900">{c.total_ht.toFixed(2)} &euro; HT</span>
@@ -1078,6 +1086,38 @@
                       </div>
                     </div>
                     {c.notes && <div className="text-xs text-gray-400 mt-3 italic border-t border-gray-50 pt-2">Note : "{c.notes}"</div>}
+
+                    {/* Suivi exp&eacute;dition */}
+                    {c.statut === 'validee' && (
+                      <div className="mt-3 pt-3 border-t border-gray-100">
+                        <div className="flex items-center gap-2 mb-2">
+                          <span className="text-xs font-semibold text-gray-700">Suivi exp&eacute;dition</span>
+                        </div>
+                        {c.delivered_at ? (
+                          <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2">
+                            <span>&#9989;</span>
+                            <span>Livr&eacute;e le {new Date(c.delivered_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                          </div>
+                        ) : c.tracking_number ? (
+                          <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 rounded-xl px-3 py-2">
+                            <span>&#128230;</span>
+                            <span>Exp&eacute;di&eacute;e{c.shipped_at ? ` le ${new Date(c.shipped_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</span>
+                            {c.tracking_url && (
+                              <a href={c.tracking_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
+                                className="ml-auto text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg transition-colors font-medium">
+                                Suivre mon colis
+                              </a>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="flex items-center gap-2 text-sm text-purple-600 bg-purple-50 rounded-xl px-3 py-2">
+                            <span>&#128230;</span>
+                            <span>En pr&eacute;paration chez le logisticien</span>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
                     <div className="flex flex-wrap gap-2 mt-3 pt-2 border-t border-gray-100">
                       {c.statut === 'en_attente' && (
                         <>

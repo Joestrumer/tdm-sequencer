@@ -142,6 +142,12 @@ module.exports = (db) => {
       }
       result.stale = db.prepare(staleSql).get(...staleParams).n;
 
+      // Suivi expédition
+      const roleFilter = req.user.role !== 'admin' ? ' AND validated_by = ?' : '';
+      const roleParams = req.user.role !== 'admin' ? [req.user.id] : [];
+      result.expedie = db.prepare(`SELECT COUNT(*) as n FROM partner_orders WHERE statut = 'validee' AND tracking_number IS NOT NULL AND delivered_at IS NULL${roleFilter}`).get(...roleParams).n;
+      result.livre = db.prepare(`SELECT COUNT(*) as n FROM partner_orders WHERE statut = 'validee' AND delivered_at IS NOT NULL${roleFilter}`).get(...roleParams).n;
+
       res.json(result);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -694,6 +700,48 @@ module.exports = (db) => {
 
       res.json({ ...updated, products: JSON.parse(updated.products || '[]') });
     } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Mettre à jour le suivi expédition ────────────────────────────────────
+  router.patch('/:id/tracking', (req, res) => {
+    try {
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ?').get(req.params.id);
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+      if (order.statut !== 'validee') return res.status(400).json({ erreur: 'Seules les commandes validées peuvent avoir un suivi' });
+
+      const { tracking_number, carrier_name } = req.body;
+      const trackingClean = (tracking_number || '').trim() || null;
+      const carrierClean = (carrier_name || '').trim() || null;
+
+      // Auto-détecter le transporteur si non fourni
+      let carrier = carrierClean;
+      if (trackingClean && !carrier) {
+        const carrierTracking = require('../services/carrierTrackingService');
+        if (carrierTracking.detectCarrier) {
+          carrier = carrierTracking.detectCarrier(trackingClean);
+        }
+      }
+
+      const shippedAt = trackingClean && !order.shipped_at ? new Date().toISOString() : order.shipped_at;
+
+      db.prepare(`
+        UPDATE partner_orders
+        SET tracking_number = ?, carrier_name = ?, shipped_at = COALESCE(?, shipped_at)
+        WHERE id = ?
+      `).run(trackingClean, carrier, shippedAt, req.params.id);
+
+      // Audit trail
+      db.prepare('INSERT INTO partner_orders_audit (order_id, user_id, action, before_data, after_data) VALUES (?, ?, ?, ?, ?)')
+        .run(req.params.id, req.user?.id || null, 'tracking_updated',
+          JSON.stringify({ tracking_number: order.tracking_number, carrier_name: order.carrier_name }),
+          JSON.stringify({ tracking_number: trackingClean, carrier_name: carrier }));
+
+      const updated = db.prepare('SELECT * FROM partner_orders WHERE id = ?').get(req.params.id);
+      res.json({ ok: true, order: { ...updated, products: JSON.parse(updated.products || '[]') } });
+    } catch (e) {
+      logger.error('Erreur mise à jour tracking', { error: e.message, orderId: req.params.id });
       res.status(500).json({ erreur: e.message });
     }
   });
