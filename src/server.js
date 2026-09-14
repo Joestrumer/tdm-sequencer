@@ -284,6 +284,17 @@ app.post('/api/backup/restore', requireAdmin, (req, res) => {
 // Frontend statique
 const publicPath = path.join(__dirname, '..', 'public');
 if (fs.existsSync(publicPath)) {
+  // Sur le sous-domaine partenaire, bloquer l'accès aux fichiers admin
+  app.use((req, res, next) => {
+    const host = req.hostname || '';
+    if (host.startsWith('partenaire.')) {
+      const p = req.path.toLowerCase();
+      if (p === '/index.html' || p === '/app.jsx') {
+        return res.redirect('/');
+      }
+    }
+    next();
+  });
   app.use(express.static(publicPath));
   // Page portail partenaire (avant le catch-all)
   app.get('/partenaire', (req, res) => {
