@@ -127,6 +127,13 @@ module.exports = (db, userToken = null) => ({
     return vfFetch(`/clients/${id}.json`, {}, db, userToken);
   },
 
+  async updateClient(id, data) {
+    return vfFetch(`/clients/${id}.json`, {
+      method: 'PUT',
+      body: { client: data },
+    }, db, userToken);
+  },
+
   async getAllProducts(forceRefresh = false) {
     const cache = getCache(userToken, db);
     if (!forceRefresh && cache.products && Date.now() - cache.productsTime < CACHE_TTL) {

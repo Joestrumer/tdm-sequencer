@@ -1037,6 +1037,20 @@ db.exec(`
   );
 `);
 
+// ─── Demandes de modification de profil partenaire (validation admin) ────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS partner_profile_changes (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    partner_id INTEGER NOT NULL REFERENCES vf_partners(id),
+    changes TEXT NOT NULL,
+    statut TEXT DEFAULT 'en_attente',
+    created_at TEXT DEFAULT (datetime('now')),
+    reviewed_at TEXT,
+    reviewed_by TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_profile_changes_partner ON partner_profile_changes(partner_id, statut);
+`);
+
 // ─── Table de suivi détaillé des appels Brave API (par jour et par source) ──
 db.exec(`
   CREATE TABLE IF NOT EXISTS api_brave_daily (

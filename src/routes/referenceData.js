@@ -829,5 +829,79 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Demandes de modification profil partenaire (validation admin) ────────
+
+  router.get('/partners/:id/profile-changes', (req, res) => {
+    try {
+      const row = db.prepare("SELECT * FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente' ORDER BY created_at DESC LIMIT 1").get(req.params.id);
+      res.json(row || null);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.post('/partners/:id/validate-profile-change', async (req, res) => {
+    try {
+      const partnerId = req.params.id;
+      const row = db.prepare("SELECT * FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente' ORDER BY created_at DESC LIMIT 1").get(partnerId);
+      if (!row) return res.status(404).json({ erreur: 'Aucune demande en attente' });
+
+      const changes = JSON.parse(row.changes);
+      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(partnerId);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+
+      // Appliquer les changements en DB
+      const updates = [];
+      const values = [];
+      for (const [key, { nouveau }] of Object.entries(changes)) {
+        updates.push(`${key} = ?`);
+        values.push(nouveau || null);
+      }
+      if (updates.length > 0) {
+        values.push(partnerId);
+        db.prepare(`UPDATE vf_partners SET ${updates.join(', ')} WHERE id = ?`).run(...values);
+      }
+
+      // Sync VosFactures si le partenaire a un vf_client_id
+      if (partner.vf_client_id) {
+        const vfData = {};
+        if (changes.email) vfData.email = changes.email.nouveau || '';
+        if (changes.telephone) vfData.phone = changes.telephone.nouveau || '';
+        if (changes.facturation_email) vfData.email_for_reminders = changes.facturation_email.nouveau || '';
+
+        if (Object.keys(vfData).length > 0) {
+          try {
+            const vfService = require('../services/vosfacturesService')(db);
+            await vfService.updateClient(partner.vf_client_id, vfData);
+          } catch (vfErr) {
+            const logger = require('../config/logger');
+            logger.error('Erreur sync VF lors validation profil', { error: vfErr.message, partnerId, vfData });
+          }
+        }
+      }
+
+      // Marquer la demande comme validée
+      db.prepare("UPDATE partner_profile_changes SET statut = 'validee', reviewed_at = datetime('now'), reviewed_by = ? WHERE id = ?").run(req.user?.email || 'admin', row.id);
+
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.post('/partners/:id/reject-profile-change', (req, res) => {
+    try {
+      const partnerId = req.params.id;
+      const row = db.prepare("SELECT * FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente' ORDER BY created_at DESC LIMIT 1").get(partnerId);
+      if (!row) return res.status(404).json({ erreur: 'Aucune demande en attente' });
+
+      db.prepare("UPDATE partner_profile_changes SET statut = 'refusee', reviewed_at = datetime('now'), reviewed_by = ? WHERE id = ?").run(req.user?.email || 'admin', row.id);
+
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   return router;
 };

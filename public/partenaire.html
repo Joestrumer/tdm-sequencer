@@ -1274,6 +1274,11 @@
         facturation_email: partner.facturation_email || partner.email || '',
       });
       const [saving, setSaving] = useState(false);
+      const [pendingChange, setPendingChange] = useState(null);
+
+      useEffect(() => {
+        api.get('/profil/pending').then(data => setPendingChange(data)).catch(() => {});
+      }, []);
 
       const set = (key, val) => setForm(f => ({ ...f, [key]: val }));
 
@@ -1282,9 +1287,11 @@
         try {
           const res = await api.patch('/profil', form);
           if (res.erreur) { showToast(res.erreur, 'error'); }
-          else {
-            setPartner(p => ({ ...p, ...form }));
-            showToast('Profil mis \u00e0 jour', 'success');
+          else if (res.pending) {
+            showToast(res.message || 'Modifications soumises pour validation', 'success');
+            api.get('/profil/pending').then(data => setPendingChange(data)).catch(() => {});
+          } else {
+            showToast(res.message || 'Aucune modification', 'info');
           }
         } catch (e) { showToast('Erreur sauvegarde', 'error'); }
         setSaving(false);
@@ -1295,6 +1302,13 @@
       return (
         <div className="max-w-lg mx-auto animate-fade-in">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Mon compte</h2>
+
+          {pendingChange && (
+            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mb-4 text-sm text-amber-800">
+              <span className="font-semibold">Vos modifications sont en attente de validation par l'administrateur.</span>
+              <span className="block text-xs text-amber-600 mt-1">Vous pouvez re-soumettre le formulaire pour remplacer la demande en cours.</span>
+            </div>
+          )}
 
           <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-5">
             {/* En-tête */}

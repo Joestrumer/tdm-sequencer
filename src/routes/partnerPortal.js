@@ -80,6 +80,54 @@ function notifierAdminCommande({ partner, orderProducts, totalHT, totalHTWithFra
   });
 }
 
+// Helper : notifier l'admin d'une demande de modification de profil partenaire
+function notifierAdminModificationProfil({ partner, changes, db }) {
+  setImmediate(async () => {
+    try {
+      const esc = s => String(s || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+      const adminEmail = process.env.ADMIN_EMAIL || 'hugo@terredemars.com';
+
+      const labelMap = {
+        email: 'Email', contact_nom: 'Nom du contact', telephone: 'Téléphone', adresse: 'Adresse',
+        livraison_prenom: 'Livraison — Prénom', livraison_nom: 'Livraison — Nom',
+        livraison_telephone: 'Livraison — Téléphone', livraison_email: 'Livraison — Email',
+        facturation_prenom: 'Facturation — Prénom', facturation_nom: 'Facturation — Nom',
+        facturation_telephone: 'Facturation — Téléphone', facturation_email: 'Facturation — Email',
+      };
+
+      const rows = Object.entries(changes).map(([key, { ancien, nouveau }]) =>
+        `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(labelMap[key] || key)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(ancien || '—')}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;font-weight:600">${esc(nouveau || '—')}</td></tr>`
+      ).join('');
+
+      const emailHtml = `
+        <div style="font-family:'DM Sans',Arial,sans-serif;max-width:600px;margin:0 auto">
+          <h2 style="color:#0f172a">Modification profil — ${esc(partner.nom)}</h2>
+          <p>Le partenaire <strong>${esc(partner.nom)}</strong> a demandé une modification de son profil.</p>
+          <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+            <thead><tr style="background:#f1f5f9">
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Champ</th>
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Ancienne valeur</th>
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Nouvelle valeur</th>
+            </tr></thead>
+            <tbody>${rows}</tbody>
+          </table>
+          <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
+          <p style="color:#94a3b8;font-size:12px">Connectez-vous au back-office pour valider ou refuser cette demande.</p>
+        </div>
+      `;
+      await brevoService.brevoSendEmail({
+        sender: { name: 'Terre de Mars', email: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com' },
+        to: [{ email: adminEmail, name: 'Hugo' }],
+        subject: `Modification profil — ${partner.nom}`,
+        htmlContent: emailHtml,
+      });
+      logger.info('Email notification modification profil envoyé', { partner: partner.nom });
+    } catch (emailErr) {
+      logger.error('Erreur envoi email notification modification profil', { error: emailErr.message, stack: emailErr.stack, partner: partner.nom });
+    }
+  });
+}
+
 module.exports = (db) => {
   const router = express.Router();
 
@@ -156,24 +204,52 @@ module.exports = (db) => {
     }
   });
 
-  // ─── Mise à jour profil (champs éditables) ─────────────────────────────────
+  // ─── Mise à jour profil (crée une demande de validation au lieu de modifier directement) ──
   router.patch('/profil', (req, res) => {
     try {
       const allowed = ['email', 'contact_nom', 'telephone', 'adresse', 'livraison_prenom', 'livraison_nom', 'livraison_telephone', 'livraison_email', 'facturation_prenom', 'facturation_nom', 'facturation_telephone', 'facturation_email'];
-      const updates = [];
-      const values = [];
+      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(req.partner.id);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+
+      // Comparer chaque champ soumis avec la valeur actuelle
+      const changes = {};
       for (const key of allowed) {
         if (req.body[key] !== undefined) {
-          updates.push(`${key} = ?`);
-          values.push(req.body[key] || null);
+          const ancien = partner[key] || '';
+          const nouveau = req.body[key] || '';
+          if (ancien !== nouveau) {
+            changes[key] = { ancien, nouveau };
+          }
         }
       }
-      if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
-      values.push(req.partner.id);
-      db.prepare(`UPDATE vf_partners SET ${updates.join(', ')} WHERE id = ?`).run(...values);
-      res.json({ ok: true });
+
+      if (Object.keys(changes).length === 0) {
+        return res.json({ ok: true, message: 'Aucune modification' });
+      }
+
+      // Supprimer toute demande en_attente existante (remplacée par la nouvelle)
+      db.prepare("DELETE FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente'").run(req.partner.id);
+
+      // Insérer la nouvelle demande
+      db.prepare('INSERT INTO partner_profile_changes (partner_id, changes) VALUES (?, ?)').run(req.partner.id, JSON.stringify(changes));
+
+      // Notification admin (fire-and-forget)
+      notifierAdminModificationProfil({ partner, changes, db });
+
+      res.json({ ok: true, pending: true, message: 'Modifications soumises pour validation' });
     } catch (e) {
       logger.error('Erreur mise à jour profil', { error: e.message, partnerId: req.partner?.id });
+      res.status(500).json({ erreur: 'Erreur serveur' });
+    }
+  });
+
+  // ─── Demande de modification en attente ────────────────────────────────────
+  router.get('/profil/pending', (req, res) => {
+    try {
+      const row = db.prepare("SELECT * FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente' ORDER BY created_at DESC LIMIT 1").get(req.partner.id);
+      res.json(row || null);
+    } catch (e) {
+      logger.error('Erreur profil pending', { error: e.message, partnerId: req.partner?.id });
       res.status(500).json({ erreur: 'Erreur serveur' });
     }
   });

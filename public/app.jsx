@@ -21556,6 +21556,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
   const [editingDiscountId, setEditingDiscountId] = useState(null);
   const [editingDiscountPct, setEditingDiscountPct] = useState('');
   const [partnerStats, setPartnerStats] = useState(null);
+  const [pendingChange, setPendingChange] = useState(null);
 
   const charger = async () => {
     setLoading(true);
@@ -21622,7 +21623,9 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     setEditing(false);
     setShowPwd(false);
     setPartnerStats(null);
+    setPendingChange(null);
     api.get(`/reference/partners/${p.id}/stats`).then(s => setPartnerStats(s)).catch(() => {});
+    api.get(`/reference/partners/${p.id}/profile-changes`).then(c => setPendingChange(c)).catch(() => {});
     setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, promo_enabled: p.promo_enabled ?? 1, vf_display_name: p.vf_display_name || '', livraison_prenom: p.livraison_prenom || '', livraison_nom: p.livraison_nom || '', livraison_telephone: p.livraison_telephone || '', livraison_email: p.livraison_email || '', facturation_prenom: p.facturation_prenom || '', facturation_nom: p.facturation_nom || '', facturation_telephone: p.facturation_telephone || '', facturation_email: p.facturation_email || '' });
     // Charger amenities depuis le partenaire
     try {
@@ -22054,6 +22057,62 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                   <div className="text-xs text-slate-400">Aucun mot de passe défini. Cliquez "Générer" pour créer un accès.</div>
                 )}
               </div>
+
+              {/* Bandeau modification profil en attente */}
+              {pendingChange && (() => {
+                const changes = JSON.parse(pendingChange.changes);
+                const labelMap = {
+                  email: 'Email', contact_nom: 'Nom du contact', telephone: 'Téléphone', adresse: 'Adresse',
+                  livraison_prenom: 'Livraison — Prénom', livraison_nom: 'Livraison — Nom',
+                  livraison_telephone: 'Livraison — Téléphone', livraison_email: 'Livraison — Email',
+                  facturation_prenom: 'Facturation — Prénom', facturation_nom: 'Facturation — Nom',
+                  facturation_telephone: 'Facturation — Téléphone', facturation_email: 'Facturation — Email',
+                };
+                const handleValidate = async () => {
+                  try {
+                    await api.post(`/reference/partners/${selected.id}/validate-profile-change`);
+                    showToast('Modifications validées et appliquées', 'success');
+                    setPendingChange(null);
+                    charger();
+                  } catch (e) { showToast('Erreur validation', 'error'); }
+                };
+                const handleReject = async () => {
+                  try {
+                    await api.post(`/reference/partners/${selected.id}/reject-profile-change`);
+                    showToast('Modifications refusées', 'success');
+                    setPendingChange(null);
+                  } catch (e) { showToast('Erreur refus', 'error'); }
+                };
+                return (
+                  <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 mb-4">
+                    <div className="flex items-center gap-2 mb-2">
+                      <span className="text-amber-600 text-sm">&#9888;</span>
+                      <span className="text-xs font-semibold text-amber-800">Le partenaire a demandé une modification de son profil</span>
+                      <span className="text-[10px] text-amber-500 ml-auto">{new Date(pendingChange.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <table className="w-full text-xs border-collapse mb-3">
+                      <thead><tr className="bg-amber-100/50">
+                        <th className="text-left px-2 py-1.5 text-amber-700 font-medium border border-amber-200">Champ</th>
+                        <th className="text-left px-2 py-1.5 text-amber-700 font-medium border border-amber-200">Valeur actuelle</th>
+                        <th className="text-left px-2 py-1.5 text-amber-700 font-medium border border-amber-200">Valeur demandée</th>
+                      </tr></thead>
+                      <tbody>
+                        {Object.entries(changes).map(([key, { ancien, nouveau }]) => (
+                          <tr key={key}>
+                            <td className="px-2 py-1.5 border border-amber-200 text-slate-600">{labelMap[key] || key}</td>
+                            <td className="px-2 py-1.5 border border-amber-200 text-slate-500">{ancien || '—'}</td>
+                            <td className="px-2 py-1.5 border border-amber-200 text-slate-900 font-medium">{nouveau || '—'}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                    <div className="flex gap-2">
+                      <button onClick={handleValidate} className="px-3 py-1.5 text-xs font-medium bg-emerald-600 text-white rounded-lg hover:bg-emerald-700 transition-colors">Valider</button>
+                      <button onClick={handleReject} className="px-3 py-1.5 text-xs font-medium bg-red-500 text-white rounded-lg hover:bg-red-600 transition-colors">Refuser</button>
+                    </div>
+                  </div>
+                );
+              })()}
 
               {/* Infos partenaire */}
               {!editing ? (
