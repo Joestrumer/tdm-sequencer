@@ -1227,6 +1227,19 @@ const migrations = [
   'ALTER TABLE partner_orders ADD COLUMN carrier_name TEXT',
   'ALTER TABLE partner_orders ADD COLUMN shipped_at TEXT',
   'ALTER TABLE partner_orders ADD COLUMN delivered_at TEXT',
+  // Champs structurés facturation / livraison (Mon compte V2)
+  'ALTER TABLE vf_partners ADD COLUMN facturation_rue TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_code_postal TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_ville TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_pays TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_tva TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_entite_publique INTEGER DEFAULT 0',
+  'ALTER TABLE vf_partners ADD COLUMN facturation_portable TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN livraison_rue TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN livraison_code_postal TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN livraison_ville TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN livraison_pays TEXT',
+  'ALTER TABLE vf_partners ADD COLUMN livraison_portable TEXT',
 ];
 
 // ─── Table audit commandes partenaires ───────────────────────────────────────

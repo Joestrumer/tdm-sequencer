@@ -1255,23 +1255,33 @@
 
     // ─── Profil ──────────────────────────────────────────────────────────────────
     const ProfilView = ({ partner, setPartner, commandes, showToast }) => {
-      // Pré-remplir les contacts avec les infos générales si vides
+      // Pré-remplir les champs livraison depuis facturation si vides
       const nameParts = (partner.contact_nom || '').trim().split(/\s+/);
       const defaultPrenom = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0] || '';
       const defaultNom = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
       const [form, setForm] = useState({
+        // Facturation
         contact_nom: partner.contact_nom || '',
-        email: partner.email || '',
+        facturation_tva: partner.facturation_tva || '',
+        facturation_entite_publique: partner.facturation_entite_publique || 0,
+        facturation_rue: partner.facturation_rue || '',
+        facturation_code_postal: partner.facturation_code_postal || '',
+        facturation_ville: partner.facturation_ville || '',
+        facturation_pays: partner.facturation_pays || '',
         telephone: partner.telephone || '',
-        adresse: partner.adresse || '',
+        facturation_portable: partner.facturation_portable || '',
+        email: partner.email || '',
+        facturation_email: partner.facturation_email || '',
+        // Livraison (pré-rempli depuis facturation si vide)
         livraison_prenom: partner.livraison_prenom || defaultPrenom,
         livraison_nom: partner.livraison_nom || defaultNom,
+        livraison_rue: partner.livraison_rue || partner.facturation_rue || '',
+        livraison_code_postal: partner.livraison_code_postal || partner.facturation_code_postal || '',
+        livraison_ville: partner.livraison_ville || partner.facturation_ville || '',
+        livraison_pays: partner.livraison_pays || partner.facturation_pays || '',
         livraison_telephone: partner.livraison_telephone || partner.telephone || '',
+        livraison_portable: partner.livraison_portable || partner.facturation_portable || '',
         livraison_email: partner.livraison_email || partner.email || '',
-        facturation_prenom: partner.facturation_prenom || defaultPrenom,
-        facturation_nom: partner.facturation_nom || defaultNom,
-        facturation_telephone: partner.facturation_telephone || partner.telephone || '',
-        facturation_email: partner.facturation_email || partner.email || '',
       });
       const [saving, setSaving] = useState(false);
       const [pendingChange, setPendingChange] = useState(null);
@@ -1300,7 +1310,7 @@
       const fieldClass = "w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/40";
 
       return (
-        <div className="max-w-lg mx-auto animate-fade-in">
+        <div className="max-w-4xl mx-auto animate-fade-in">
           <h2 className="text-lg font-semibold text-gray-900 mb-4">Mon compte</h2>
 
           {pendingChange && (
@@ -1310,42 +1320,79 @@
             </div>
           )}
 
-          <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-5">
-            {/* En-tête */}
-            <div className="flex items-center gap-3 pb-4 border-b border-gray-100">
-              <div className="w-12 h-12 rounded-full bg-gold-100 flex items-center justify-center text-gold-700 font-semibold text-lg">
-                {(partner.nom || '?')[0]}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* ── Bloc Facturation ── */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+                <span className="text-base">&#128196;</span>
+                <span className="text-sm font-semibold text-gray-900">Facturation</span>
               </div>
-              <div>
-                <div className="text-sm font-semibold text-gray-900">{partner.nom}</div>
-                <div className="text-xs text-gray-400">{commandes.length} commande{commandes.length > 1 ? 's' : ''}</div>
-              </div>
-            </div>
 
-            {/* Informations générales */}
-            <div className="space-y-3">
-              <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Informations générales</div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Nom du contact</label>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Nom de la compagnie</label>
+                <div className="px-3 py-2.5 text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-xl">{partner.nom || '—'}</div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Contact</label>
                 <input value={form.contact_nom} onChange={e => set('contact_nom', e.target.value)} placeholder="Prénom Nom" className={fieldClass} />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Email</label>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">N° TVA</label>
+                <input value={form.facturation_tva} onChange={e => set('facturation_tva', e.target.value)} placeholder="FR00000000000" className={fieldClass} />
+              </div>
+              <div className="flex items-center gap-2">
+                <input type="checkbox" id="facturation_entite_publique" checked={!!form.facturation_entite_publique} onChange={e => set('facturation_entite_publique', e.target.checked ? 1 : 0)} className="rounded border-gray-300" />
+                <label htmlFor="facturation_entite_publique" className="text-xs font-medium text-gray-500">Entité publique</label>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">N° et nom de rue</label>
+                <input value={form.facturation_rue} onChange={e => set('facturation_rue', e.target.value)} placeholder="123 rue de la Paix" className={fieldClass} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Code postal</label>
+                  <input value={form.facturation_code_postal} onChange={e => set('facturation_code_postal', e.target.value)} placeholder="75001" className={fieldClass} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Ville</label>
+                  <input value={form.facturation_ville} onChange={e => set('facturation_ville', e.target.value)} placeholder="Paris" className={fieldClass} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Pays</label>
+                <input value={form.facturation_pays} onChange={e => set('facturation_pays', e.target.value)} placeholder="France" className={fieldClass} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
+                  <input value={form.telephone} onChange={e => set('telephone', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Tel. portable</label>
+                  <input value={form.facturation_portable} onChange={e => set('facturation_portable', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">E-mail(s)</label>
                 <input value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemple.com" type="email" className={fieldClass} />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
-                <input value={form.telephone} onChange={e => set('telephone', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Adresse</label>
-                <input value={form.adresse} onChange={e => set('adresse', e.target.value)} placeholder="Adresse complète" className={fieldClass} />
+                <label className="text-xs font-medium text-gray-500 mb-1 block">E-mail(s) relances</label>
+                <input value={form.facturation_email} onChange={e => set('facturation_email', e.target.value)} placeholder="relances@exemple.com" type="email" className={fieldClass} />
               </div>
             </div>
 
-            {/* Contact livraison */}
-            <div className="space-y-3 pt-4 border-t border-gray-100">
-              <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Contact de livraison</div>
+            {/* ── Bloc Livraison ── */}
+            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+                <span className="text-base">&#128666;</span>
+                <span className="text-sm font-semibold text-gray-900">Livraison</span>
+              </div>
+
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Nom de la compagnie</label>
+                <div className="px-3 py-2.5 text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-xl">{partner.nom || '—'}</div>
+              </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-medium text-gray-500 mb-1 block">Prénom</label>
@@ -1357,44 +1404,45 @@
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
-                <input value={form.livraison_telephone} onChange={e => set('livraison_telephone', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
+                <label className="text-xs font-medium text-gray-500 mb-1 block">N° et nom de rue</label>
+                <input value={form.livraison_rue} onChange={e => set('livraison_rue', e.target.value)} placeholder="123 rue de la Paix" className={fieldClass} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Code postal</label>
+                  <input value={form.livraison_code_postal} onChange={e => set('livraison_code_postal', e.target.value)} placeholder="75001" className={fieldClass} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Ville</label>
+                  <input value={form.livraison_ville} onChange={e => set('livraison_ville', e.target.value)} placeholder="Paris" className={fieldClass} />
+                </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Email</label>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">Pays</label>
+                <input value={form.livraison_pays} onChange={e => set('livraison_pays', e.target.value)} placeholder="France" className={fieldClass} />
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
+                  <input value={form.livraison_telephone} onChange={e => set('livraison_telephone', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
+                </div>
+                <div>
+                  <label className="text-xs font-medium text-gray-500 mb-1 block">Tel. portable</label>
+                  <input value={form.livraison_portable} onChange={e => set('livraison_portable', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
+                </div>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-gray-500 mb-1 block">E-mail(s)</label>
                 <input value={form.livraison_email} onChange={e => set('livraison_email', e.target.value)} placeholder="email@exemple.com" type="email" className={fieldClass} />
               </div>
             </div>
-
-            {/* Contact facturation */}
-            <div className="space-y-3 pt-4 border-t border-gray-100">
-              <div className="text-xs font-semibold text-gray-700 uppercase tracking-wide">Contact de facturation</div>
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Prénom</label>
-                  <input value={form.facturation_prenom} onChange={e => set('facturation_prenom', e.target.value)} placeholder="Prénom" className={fieldClass} />
-                </div>
-                <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Nom</label>
-                  <input value={form.facturation_nom} onChange={e => set('facturation_nom', e.target.value)} placeholder="Nom" className={fieldClass} />
-                </div>
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
-                <input value={form.facturation_telephone} onChange={e => set('facturation_telephone', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
-              </div>
-              <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Email</label>
-                <input value={form.facturation_email} onChange={e => set('facturation_email', e.target.value)} placeholder="email@exemple.com" type="email" className={fieldClass} />
-              </div>
-            </div>
-
-            {/* Bouton sauvegarder */}
-            <button onClick={handleSave} disabled={saving}
-              className="w-full bg-gold-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-50">
-              {saving ? 'Sauvegarde...' : 'Enregistrer'}
-            </button>
           </div>
+
+          {/* Bouton sauvegarder — pleine largeur sous les 2 blocs */}
+          <button onClick={handleSave} disabled={saving}
+            className="w-full mt-6 bg-gold-500 text-white py-3 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors disabled:opacity-50">
+            {saving ? 'Sauvegarde...' : 'Enregistrer'}
+          </button>
         </div>
       );
     };

@@ -269,8 +269,8 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled FROM vf_partners ORDER BY nom').all()
-        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -311,7 +311,7 @@ module.exports = (db) => {
       if (req.body.promo_enabled !== undefined) { updates.push('promo_enabled = ?'); params.push(req.body.promo_enabled ? 1 : 0); }
       if (req.body.vf_display_name !== undefined) { updates.push('vf_display_name = ?'); params.push(req.body.vf_display_name || null); }
       if (req.body.is_canonical !== undefined) { updates.push('is_canonical = ?'); params.push(req.body.is_canonical ? 1 : 0); }
-      for (const f of ['livraison_prenom','livraison_nom','livraison_telephone','livraison_email','facturation_prenom','facturation_nom','facturation_telephone','facturation_email']) {
+      for (const f of ['livraison_prenom','livraison_nom','livraison_telephone','livraison_email','facturation_prenom','facturation_nom','facturation_telephone','facturation_email','facturation_rue','facturation_code_postal','facturation_ville','facturation_pays','facturation_tva','facturation_entite_publique','facturation_portable','livraison_rue','livraison_code_postal','livraison_ville','livraison_pays','livraison_portable']) {
         if (req.body[f] !== undefined) { updates.push(`${f} = ?`); params.push(req.body[f] || null); }
       }
 
@@ -491,20 +491,36 @@ module.exports = (db) => {
           telephone = COALESCE(?, telephone),
           adresse = COALESCE(?, adresse),
           vf_client_id = ?,
-          vf_display_name = COALESCE(?, vf_display_name)
+          vf_display_name = COALESCE(?, vf_display_name),
+          facturation_rue = COALESCE(?, facturation_rue),
+          facturation_code_postal = COALESCE(?, facturation_code_postal),
+          facturation_ville = COALESCE(?, facturation_ville),
+          facturation_pays = COALESCE(?, facturation_pays),
+          facturation_tva = COALESCE(?, facturation_tva),
+          facturation_entite_publique = COALESCE(?, facturation_entite_publique),
+          facturation_portable = COALESCE(?, facturation_portable),
+          facturation_email = COALESCE(?, facturation_email)
         WHERE id = ?
       `);
 
       const insertStmt = db.prepare(`
-        INSERT INTO vf_partners (nom, nom_normalise, email, contact_nom, telephone, adresse, vf_client_id, actif)
-        VALUES (?, ?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO vf_partners (nom, nom_normalise, email, contact_nom, telephone, adresse, vf_client_id, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, facturation_email, actif)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         ON CONFLICT(nom) DO UPDATE SET
           nom_normalise = excluded.nom_normalise,
           email = COALESCE(excluded.email, vf_partners.email),
           contact_nom = COALESCE(excluded.contact_nom, vf_partners.contact_nom),
           telephone = COALESCE(excluded.telephone, vf_partners.telephone),
           adresse = COALESCE(excluded.adresse, vf_partners.adresse),
-          vf_client_id = COALESCE(excluded.vf_client_id, vf_partners.vf_client_id)
+          vf_client_id = COALESCE(excluded.vf_client_id, vf_partners.vf_client_id),
+          facturation_rue = COALESCE(excluded.facturation_rue, vf_partners.facturation_rue),
+          facturation_code_postal = COALESCE(excluded.facturation_code_postal, vf_partners.facturation_code_postal),
+          facturation_ville = COALESCE(excluded.facturation_ville, vf_partners.facturation_ville),
+          facturation_pays = COALESCE(excluded.facturation_pays, vf_partners.facturation_pays),
+          facturation_tva = COALESCE(excluded.facturation_tva, vf_partners.facturation_tva),
+          facturation_entite_publique = COALESCE(excluded.facturation_entite_publique, vf_partners.facturation_entite_publique),
+          facturation_portable = COALESCE(excluded.facturation_portable, vf_partners.facturation_portable),
+          facturation_email = COALESCE(excluded.facturation_email, vf_partners.facturation_email)
       `);
 
       // Aussi mettre à jour vf_client_id dans vf_client_mappings si manquant
@@ -523,6 +539,11 @@ module.exports = (db) => {
         const street = vfClient.street || '';
         const city = vfClient.city || '';
         const postCode = vfClient.post_code || '';
+        const country = vfClient.country || '';
+        const taxNo = vfClient.tax_no || '';
+        const mobile = vfClient.mobile_phone || '';
+        const buyer = vfClient.buyer ? 1 : 0;
+        const emailReminders = vfClient.email_for_reminders || '';
         const adresse = [street, postCode, city].filter(Boolean).join(', ') || null;
 
         // Mettre à jour le vf_client_id dans les mappings
@@ -551,6 +572,14 @@ module.exports = (db) => {
             adresse || null,
             vfId,
             vfName,
+            street || null,
+            postCode || null,
+            city || null,
+            country || null,
+            taxNo || null,
+            buyer,
+            mobile || null,
+            emailReminders || null,
             partner.id
           );
           // Auto-sync vf_client_mappings : vf_name (nom VF brut) → file_name (nom canonique du partenaire)
@@ -566,7 +595,7 @@ module.exports = (db) => {
         } else {
           // Créer un nouveau partenaire
           const nomNormalise = vfName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
-          insertStmt.run(vfName, nomNormalise, email, contactName, phone, adresse, vfId);
+          insertStmt.run(vfName, nomNormalise, email, contactName, phone, adresse, vfId, street || null, postCode || null, city || null, country || null, taxNo || null, buyer, mobile || null, emailReminders || null);
           created++;
         }
       }
@@ -868,6 +897,12 @@ module.exports = (db) => {
         if (changes.email) vfData.email = changes.email.nouveau || '';
         if (changes.telephone) vfData.phone = changes.telephone.nouveau || '';
         if (changes.facturation_email) vfData.email_for_reminders = changes.facturation_email.nouveau || '';
+        if (changes.facturation_rue) vfData.street = changes.facturation_rue.nouveau || '';
+        if (changes.facturation_code_postal) vfData.post_code = changes.facturation_code_postal.nouveau || '';
+        if (changes.facturation_ville) vfData.city = changes.facturation_ville.nouveau || '';
+        if (changes.facturation_pays) vfData.country = changes.facturation_pays.nouveau || '';
+        if (changes.facturation_tva) vfData.tax_no = changes.facturation_tva.nouveau || '';
+        if (changes.facturation_portable) vfData.mobile_phone = changes.facturation_portable.nouveau || '';
 
         if (Object.keys(vfData).length > 0) {
           try {

@@ -21626,7 +21626,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     setPendingChange(null);
     api.get(`/reference/partners/${p.id}/stats`).then(s => setPartnerStats(s)).catch(() => {});
     api.get(`/reference/partners/${p.id}/profile-changes`).then(c => setPendingChange(c)).catch(() => {});
-    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, promo_enabled: p.promo_enabled ?? 1, vf_display_name: p.vf_display_name || '', livraison_prenom: p.livraison_prenom || '', livraison_nom: p.livraison_nom || '', livraison_telephone: p.livraison_telephone || '', livraison_email: p.livraison_email || '', facturation_prenom: p.facturation_prenom || '', facturation_nom: p.facturation_nom || '', facturation_telephone: p.facturation_telephone || '', facturation_email: p.facturation_email || '' });
+    setEditForm({ email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, promo_enabled: p.promo_enabled ?? 1, vf_display_name: p.vf_display_name || '', livraison_prenom: p.livraison_prenom || '', livraison_nom: p.livraison_nom || '', livraison_telephone: p.livraison_telephone || '', livraison_email: p.livraison_email || '', facturation_prenom: p.facturation_prenom || '', facturation_nom: p.facturation_nom || '', facturation_telephone: p.facturation_telephone || '', facturation_email: p.facturation_email || '', facturation_rue: p.facturation_rue || '', facturation_code_postal: p.facturation_code_postal || '', facturation_ville: p.facturation_ville || '', facturation_pays: p.facturation_pays || '', facturation_tva: p.facturation_tva || '', facturation_entite_publique: p.facturation_entite_publique || 0, facturation_portable: p.facturation_portable || '', livraison_rue: p.livraison_rue || '', livraison_code_postal: p.livraison_code_postal || '', livraison_ville: p.livraison_ville || '', livraison_pays: p.livraison_pays || '', livraison_portable: p.livraison_portable || '' });
     // Charger amenities depuis le partenaire
     try {
       const am = p.amenities ? JSON.parse(p.amenities) : {};
@@ -21706,7 +21706,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     if (selectedId && partners.length) {
       const p = partners.find(x => x.id === selectedId);
       if (p) {
-        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, promo_enabled: p.promo_enabled ?? 1, vf_display_name: p.vf_display_name || '' });
+        setEditForm(f => editing ? f : { email: p.email || '', contact_nom: p.contact_nom || '', telephone: p.telephone || '', adresse: p.adresse || '', shipping_id: p.shipping_id || '', franco_seuil: p.franco_seuil ?? DEFAULT_FRANCO_SEUIL, frais_exonere: p.frais_exonere ?? 0, promo_enabled: p.promo_enabled ?? 1, vf_display_name: p.vf_display_name || '', livraison_prenom: p.livraison_prenom || '', livraison_nom: p.livraison_nom || '', livraison_telephone: p.livraison_telephone || '', livraison_email: p.livraison_email || '', facturation_prenom: p.facturation_prenom || '', facturation_nom: p.facturation_nom || '', facturation_telephone: p.facturation_telephone || '', facturation_email: p.facturation_email || '', facturation_rue: p.facturation_rue || '', facturation_code_postal: p.facturation_code_postal || '', facturation_ville: p.facturation_ville || '', facturation_pays: p.facturation_pays || '', facturation_tva: p.facturation_tva || '', facturation_entite_publique: p.facturation_entite_publique || 0, facturation_portable: p.facturation_portable || '', livraison_rue: p.livraison_rue || '', livraison_code_postal: p.livraison_code_postal || '', livraison_ville: p.livraison_ville || '', livraison_pays: p.livraison_pays || '', livraison_portable: p.livraison_portable || '' });
         try { setAmenities(p.amenities ? JSON.parse(p.amenities) : {}); } catch (e) { setAmenities({}); }
       }
     }
@@ -22066,7 +22066,14 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                   livraison_prenom: 'Livraison — Prénom', livraison_nom: 'Livraison — Nom',
                   livraison_telephone: 'Livraison — Téléphone', livraison_email: 'Livraison — Email',
                   facturation_prenom: 'Facturation — Prénom', facturation_nom: 'Facturation — Nom',
-                  facturation_telephone: 'Facturation — Téléphone', facturation_email: 'Facturation — Email',
+                  facturation_telephone: 'Facturation — Téléphone', facturation_email: 'Facturation — Email relances',
+                  facturation_rue: 'Facturation — Rue', facturation_code_postal: 'Facturation — Code postal',
+                  facturation_ville: 'Facturation — Ville', facturation_pays: 'Facturation — Pays',
+                  facturation_tva: 'Facturation — N° TVA', facturation_entite_publique: 'Facturation — Entité publique',
+                  facturation_portable: 'Facturation — Tel. portable',
+                  livraison_rue: 'Livraison — Rue', livraison_code_postal: 'Livraison — Code postal',
+                  livraison_ville: 'Livraison — Ville', livraison_pays: 'Livraison — Pays',
+                  livraison_portable: 'Livraison — Tel. portable',
                 };
                 const handleValidate = async () => {
                   try {
@@ -22125,35 +22132,38 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                     <div><span className="text-[10px] text-slate-400 block">Email</span><span className="text-sm text-slate-700">{selected.email || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Contact</span><span className="text-sm text-slate-700">{selected.contact_nom || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.telephone || '—'}</span></div>
-                    <div><span className="text-[10px] text-slate-400 block">Adresse</span><span className="text-sm text-slate-700">{selected.adresse || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Nom VosFactures</span><span className="text-sm text-slate-700">{selected.vf_display_name || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Shipping ID</span><span className="text-sm text-slate-700 font-mono">{selected.shipping_id || '—'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Franco (seuil HT)</span><span className="text-sm text-slate-700">{(selected.franco_seuil ?? DEFAULT_FRANCO_SEUIL).toFixed(0)} &euro;</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Frais FP/FE</span><span className="text-sm text-slate-700">{selected.frais_exonere ? 'Exonéré' : 'Standard (FP/FE)'}</span></div>
                     <div><span className="text-[10px] text-slate-400 block">Bons plans</span><span className={`text-sm ${(selected.promo_enabled ?? 1) ? 'text-emerald-600' : 'text-red-500'}`}>{(selected.promo_enabled ?? 1) ? 'Activés' : 'Désactivés'}</span></div>
                   </div>
-                  {/* Contact livraison */}
-                  {(selected.livraison_prenom || selected.livraison_nom || selected.livraison_telephone || selected.livraison_email) && (
-                    <div className="mt-4 pt-3 border-t border-slate-100">
-                      <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Contact de livraison</span>
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-1">
-                        <div><span className="text-[10px] text-slate-400 block">Prénom / Nom</span><span className="text-sm text-slate-700">{[selected.livraison_prenom, selected.livraison_nom].filter(Boolean).join(' ') || '—'}</span></div>
-                        <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.livraison_telephone || '—'}</span></div>
-                        <div><span className="text-[10px] text-slate-400 block">Email</span><span className="text-sm text-slate-700">{selected.livraison_email || '—'}</span></div>
-                      </div>
+                  {/* Facturation */}
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Facturation</span>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-1">
+                      <div><span className="text-[10px] text-slate-400 block">Rue</span><span className="text-sm text-slate-700">{selected.facturation_rue || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">CP / Ville</span><span className="text-sm text-slate-700">{[selected.facturation_code_postal, selected.facturation_ville].filter(Boolean).join(' ') || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">Pays</span><span className="text-sm text-slate-700">{selected.facturation_pays || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">N° TVA</span><span className="text-sm text-slate-700">{selected.facturation_tva || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">Entité publique</span><span className="text-sm text-slate-700">{selected.facturation_entite_publique ? 'Oui' : 'Non'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">Tel. portable</span><span className="text-sm text-slate-700">{selected.facturation_portable || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">Email relances</span><span className="text-sm text-slate-700">{selected.facturation_email || '—'}</span></div>
                     </div>
-                  )}
-                  {/* Contact facturation */}
-                  {(selected.facturation_prenom || selected.facturation_nom || selected.facturation_telephone || selected.facturation_email) && (
-                    <div className="mt-4 pt-3 border-t border-slate-100">
-                      <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Contact de facturation</span>
-                      <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-1">
-                        <div><span className="text-[10px] text-slate-400 block">Prénom / Nom</span><span className="text-sm text-slate-700">{[selected.facturation_prenom, selected.facturation_nom].filter(Boolean).join(' ') || '—'}</span></div>
-                        <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.facturation_telephone || '—'}</span></div>
-                        <div><span className="text-[10px] text-slate-400 block">Email</span><span className="text-sm text-slate-700">{selected.facturation_email || '—'}</span></div>
-                      </div>
+                  </div>
+                  {/* Livraison */}
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Livraison</span>
+                    <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-1">
+                      <div><span className="text-[10px] text-slate-400 block">Contact</span><span className="text-sm text-slate-700">{[selected.livraison_prenom, selected.livraison_nom].filter(Boolean).join(' ') || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">Rue</span><span className="text-sm text-slate-700">{selected.livraison_rue || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">CP / Ville</span><span className="text-sm text-slate-700">{[selected.livraison_code_postal, selected.livraison_ville].filter(Boolean).join(' ') || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">Pays</span><span className="text-sm text-slate-700">{selected.livraison_pays || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">Téléphone</span><span className="text-sm text-slate-700">{selected.livraison_telephone || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">Tel. portable</span><span className="text-sm text-slate-700">{selected.livraison_portable || '—'}</span></div>
+                      <div><span className="text-[10px] text-slate-400 block">Email</span><span className="text-sm text-slate-700">{selected.livraison_email || '—'}</span></div>
                     </div>
-                  )}
+                  </div>
                 </div>
               ) : (
                 <div className="animate-fade-in">
@@ -22198,9 +22208,47 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                       <label htmlFor="promo_enabled" className="text-[10px] text-slate-400">Activer les bons plans</label>
                     </div>
                   </div>
-                  {/* Contact livraison */}
+                  {/* Facturation */}
                   <div className="mt-4 pt-3 border-t border-slate-100">
-                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Contact de livraison</span>
+                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Facturation</span>
+                    <div className="grid grid-cols-2 gap-3 mt-2">
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">N° TVA</label>
+                        <input type="text" value={editForm.facturation_tva || ''} onChange={e => setEditForm(f => ({ ...f, facturation_tva: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div className="flex items-center gap-2 pt-4">
+                        <input type="checkbox" id="edit_facturation_entite_publique" checked={!!editForm.facturation_entite_publique} onChange={e => setEditForm(f => ({ ...f, facturation_entite_publique: e.target.checked ? 1 : 0 }))} className="rounded border-slate-300" />
+                        <label htmlFor="edit_facturation_entite_publique" className="text-[10px] text-slate-400">Entité publique</label>
+                      </div>
+                      <div className="col-span-2">
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Rue</label>
+                        <input type="text" value={editForm.facturation_rue || ''} onChange={e => setEditForm(f => ({ ...f, facturation_rue: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Code postal</label>
+                        <input type="text" value={editForm.facturation_code_postal || ''} onChange={e => setEditForm(f => ({ ...f, facturation_code_postal: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Ville</label>
+                        <input type="text" value={editForm.facturation_ville || ''} onChange={e => setEditForm(f => ({ ...f, facturation_ville: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Pays</label>
+                        <input type="text" value={editForm.facturation_pays || ''} onChange={e => setEditForm(f => ({ ...f, facturation_pays: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Tel. portable</label>
+                        <input type="tel" value={editForm.facturation_portable || ''} onChange={e => setEditForm(f => ({ ...f, facturation_portable: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Email relances</label>
+                        <input type="email" value={editForm.facturation_email || ''} onChange={e => setEditForm(f => ({ ...f, facturation_email: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                    </div>
+                  </div>
+                  {/* Livraison */}
+                  <div className="mt-4 pt-3 border-t border-slate-100">
+                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Livraison</span>
                     <div className="grid grid-cols-2 gap-3 mt-2">
                       <div>
                         <label className="text-[10px] text-slate-400 block mb-0.5">Prénom</label>
@@ -22210,35 +22258,33 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                         <label className="text-[10px] text-slate-400 block mb-0.5">Nom</label>
                         <input type="text" value={editForm.livraison_nom || ''} onChange={e => setEditForm(f => ({ ...f, livraison_nom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
                       </div>
+                      <div className="col-span-2">
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Rue</label>
+                        <input type="text" value={editForm.livraison_rue || ''} onChange={e => setEditForm(f => ({ ...f, livraison_rue: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Code postal</label>
+                        <input type="text" value={editForm.livraison_code_postal || ''} onChange={e => setEditForm(f => ({ ...f, livraison_code_postal: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Ville</label>
+                        <input type="text" value={editForm.livraison_ville || ''} onChange={e => setEditForm(f => ({ ...f, livraison_ville: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Pays</label>
+                        <input type="text" value={editForm.livraison_pays || ''} onChange={e => setEditForm(f => ({ ...f, livraison_pays: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
                       <div>
                         <label className="text-[10px] text-slate-400 block mb-0.5">Téléphone</label>
                         <input type="tel" value={editForm.livraison_telephone || ''} onChange={e => setEditForm(f => ({ ...f, livraison_telephone: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
                       </div>
                       <div>
+                        <label className="text-[10px] text-slate-400 block mb-0.5">Tel. portable</label>
+                        <input type="tel" value={editForm.livraison_portable || ''} onChange={e => setEditForm(f => ({ ...f, livraison_portable: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+                      </div>
+                      <div>
                         <label className="text-[10px] text-slate-400 block mb-0.5">Email</label>
                         <input type="email" value={editForm.livraison_email || ''} onChange={e => setEditForm(f => ({ ...f, livraison_email: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                      </div>
-                    </div>
-                  </div>
-                  {/* Contact facturation */}
-                  <div className="mt-4 pt-3 border-t border-slate-100">
-                    <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Contact de facturation</span>
-                    <div className="grid grid-cols-2 gap-3 mt-2">
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-0.5">Prénom</label>
-                        <input type="text" value={editForm.facturation_prenom || ''} onChange={e => setEditForm(f => ({ ...f, facturation_prenom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-0.5">Nom</label>
-                        <input type="text" value={editForm.facturation_nom || ''} onChange={e => setEditForm(f => ({ ...f, facturation_nom: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-0.5">Téléphone</label>
-                        <input type="tel" value={editForm.facturation_telephone || ''} onChange={e => setEditForm(f => ({ ...f, facturation_telephone: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
-                      </div>
-                      <div>
-                        <label className="text-[10px] text-slate-400 block mb-0.5">Email</label>
-                        <input type="email" value={editForm.facturation_email || ''} onChange={e => setEditForm(f => ({ ...f, facturation_email: e.target.value }))} className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
                       </div>
                     </div>
                   </div>
