@@ -1259,15 +1259,27 @@
       const nameParts = (partner.contact_nom || '').trim().split(/\s+/);
       const defaultPrenom = nameParts.length > 1 ? nameParts.slice(0, -1).join(' ') : nameParts[0] || '';
       const defaultNom = nameParts.length > 1 ? nameParts[nameParts.length - 1] : '';
+      // Fallback : si les champs structurés sont tous vides, parser l'ancien champ adresse concaténé
+      let fbRue = '', fbCp = '', fbVille = '';
+      if (!partner.facturation_rue && !partner.facturation_code_postal && !partner.facturation_ville && partner.adresse) {
+        const parts = partner.adresse.split(',').map(s => s.trim());
+        if (parts.length >= 3) { fbRue = parts[0]; fbCp = parts[1]; fbVille = parts[2]; }
+        else if (parts.length === 2) { fbRue = parts[0]; fbVille = parts[1]; }
+        else { fbRue = parts[0]; }
+      }
+      const fRue = partner.facturation_rue || fbRue;
+      const fCp = partner.facturation_code_postal || fbCp;
+      const fVille = partner.facturation_ville || fbVille;
+      const fPays = partner.facturation_pays || '';
       const [form, setForm] = useState({
         // Facturation
         contact_nom: partner.contact_nom || '',
         facturation_tva: partner.facturation_tva || '',
         facturation_entite_publique: partner.facturation_entite_publique || 0,
-        facturation_rue: partner.facturation_rue || '',
-        facturation_code_postal: partner.facturation_code_postal || '',
-        facturation_ville: partner.facturation_ville || '',
-        facturation_pays: partner.facturation_pays || '',
+        facturation_rue: fRue,
+        facturation_code_postal: fCp,
+        facturation_ville: fVille,
+        facturation_pays: fPays,
         telephone: partner.telephone || '',
         facturation_portable: partner.facturation_portable || '',
         email: partner.email || '',
@@ -1275,10 +1287,10 @@
         // Livraison (pré-rempli depuis facturation si vide)
         livraison_prenom: partner.livraison_prenom || defaultPrenom,
         livraison_nom: partner.livraison_nom || defaultNom,
-        livraison_rue: partner.livraison_rue || partner.facturation_rue || '',
-        livraison_code_postal: partner.livraison_code_postal || partner.facturation_code_postal || '',
-        livraison_ville: partner.livraison_ville || partner.facturation_ville || '',
-        livraison_pays: partner.livraison_pays || partner.facturation_pays || '',
+        livraison_rue: partner.livraison_rue || fRue,
+        livraison_code_postal: partner.livraison_code_postal || fCp,
+        livraison_ville: partner.livraison_ville || fVille,
+        livraison_pays: partner.livraison_pays || fPays,
         livraison_telephone: partner.livraison_telephone || partner.telephone || '',
         livraison_portable: partner.livraison_portable || partner.facturation_portable || '',
         livraison_email: partner.livraison_email || partner.email || '',

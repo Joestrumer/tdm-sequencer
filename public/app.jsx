@@ -21990,7 +21990,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                 <div>
                   <h2 className="text-lg font-semibold text-slate-900">{selected.nom}</h2>
                   <div className="flex items-center gap-2 mt-0.5">
-                    {selected.vf_client_id && <span className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 font-mono">VF #{selected.vf_client_id}</span>}
+                    {selected.vf_client_id && <a href={`https://terredemars.vosfactures.fr/clients/${selected.vf_client_id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 hover:bg-blue-100 hover:text-blue-700 font-mono transition-colors">VF #{selected.vf_client_id} &rarr;</a>}
                     <span className="text-xs text-slate-400">{selected.nom_normalise}</span>
                   </div>
                 </div>
@@ -22142,9 +22142,13 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                   <div className="mt-4 pt-3 border-t border-slate-100">
                     <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Facturation</span>
                     <div className="grid grid-cols-2 gap-x-6 gap-y-1 mt-1">
-                      <div><span className="text-[10px] text-slate-400 block">Rue</span><span className="text-sm text-slate-700">{selected.facturation_rue || '—'}</span></div>
-                      <div><span className="text-[10px] text-slate-400 block">CP / Ville</span><span className="text-sm text-slate-700">{[selected.facturation_code_postal, selected.facturation_ville].filter(Boolean).join(' ') || '—'}</span></div>
-                      <div><span className="text-[10px] text-slate-400 block">Pays</span><span className="text-sm text-slate-700">{selected.facturation_pays || '—'}</span></div>
+                      {(selected.facturation_rue || selected.facturation_code_postal || selected.facturation_ville) ? (<>
+                        <div><span className="text-[10px] text-slate-400 block">Rue</span><span className="text-sm text-slate-700">{selected.facturation_rue || '—'}</span></div>
+                        <div><span className="text-[10px] text-slate-400 block">CP / Ville</span><span className="text-sm text-slate-700">{[selected.facturation_code_postal, selected.facturation_ville].filter(Boolean).join(' ') || '—'}</span></div>
+                        <div><span className="text-[10px] text-slate-400 block">Pays</span><span className="text-sm text-slate-700">{selected.facturation_pays || '—'}</span></div>
+                      </>) : (
+                        <div className="col-span-2"><span className="text-[10px] text-slate-400 block">Adresse</span><span className="text-sm text-slate-700">{selected.adresse || '—'}</span></div>
+                      )}
                       <div><span className="text-[10px] text-slate-400 block">N° TVA</span><span className="text-sm text-slate-700">{selected.facturation_tva || '—'}</span></div>
                       <div><span className="text-[10px] text-slate-400 block">Entité publique</span><span className="text-sm text-slate-700">{selected.facturation_entite_publique ? 'Oui' : 'Non'}</span></div>
                       <div><span className="text-[10px] text-slate-400 block">Tel. portable</span><span className="text-sm text-slate-700">{selected.facturation_portable || '—'}</span></div>
