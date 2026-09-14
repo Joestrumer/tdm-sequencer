@@ -290,6 +290,11 @@ if (fs.existsSync(publicPath)) {
     res.sendFile(path.join(publicPath, 'partenaire.html'));
   });
   app.get('*', (req, res) => {
+    // Sur le sous-domaine partenaire, servir le portail par défaut
+    const host = req.hostname || '';
+    if (host.startsWith('partenaire.')) {
+      return res.sendFile(path.join(publicPath, 'partenaire.html'));
+    }
     res.sendFile(path.join(publicPath, 'index.html'));
   });
 } else {
