@@ -1026,6 +1026,17 @@ db.exec(`
   );
 `);
 
+// ─── Documents partenaires (liens externes visibles sur le portail) ─────────
+db.exec(`
+  CREATE TABLE IF NOT EXISTS partner_documents (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    titre TEXT NOT NULL,
+    url TEXT NOT NULL,
+    ordre INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT (datetime('now'))
+  );
+`);
+
 // ─── Table de suivi détaillé des appels Brave API (par jour et par source) ──
 db.exec(`
   CREATE TABLE IF NOT EXISTS api_brave_daily (

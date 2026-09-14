@@ -549,5 +549,15 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Documents partenaires (lecture) ────────────────────────────────────
+  router.get('/documents', partnerAuth, (req, res) => {
+    try {
+      const rows = db.prepare('SELECT id, titre, url FROM partner_documents ORDER BY ordre, id').all();
+      res.json(rows);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   return router;
 };

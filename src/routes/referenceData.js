@@ -782,5 +782,52 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Documents partenaires (CRUD admin) ──────────────────────────────────
+
+  router.get('/partner-documents', (req, res) => {
+    try {
+      const rows = db.prepare('SELECT * FROM partner_documents ORDER BY ordre, id').all();
+      res.json(rows);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.post('/partner-documents', (req, res) => {
+    try {
+      const { titre, url } = req.body;
+      if (!titre || !url) return res.status(400).json({ erreur: 'titre et url requis' });
+      const maxOrdre = db.prepare('SELECT COALESCE(MAX(ordre), -1) AS m FROM partner_documents').get().m;
+      const info = db.prepare('INSERT INTO partner_documents (titre, url, ordre) VALUES (?, ?, ?)').run(titre, url, maxOrdre + 1);
+      res.json({ ok: true, id: info.lastInsertRowid });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.patch('/partner-documents/reorder', (req, res) => {
+    try {
+      const { order } = req.body;
+      if (!Array.isArray(order)) return res.status(400).json({ erreur: 'order doit être un tableau d\'ids' });
+      const update = db.prepare('UPDATE partner_documents SET ordre = ? WHERE id = ?');
+      db.transaction(() => {
+        order.forEach((id, idx) => update.run(idx, id));
+      })();
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.delete('/partner-documents/:id', (req, res) => {
+    try {
+      const info = db.prepare('DELETE FROM partner_documents WHERE id = ?').run(req.params.id);
+      if (info.changes === 0) return res.status(404).json({ erreur: 'Document introuvable' });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   return router;
 };

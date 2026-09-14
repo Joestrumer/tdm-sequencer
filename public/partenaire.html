@@ -1385,6 +1385,53 @@
       );
     };
 
+    // ─── Vue Documents ─────────────────────────────────────────────────────────
+    const DocumentsView = () => {
+      const [docs, setDocs] = useState([]);
+      const [loading, setLoading] = useState(true);
+
+      useEffect(() => {
+        api.get('/documents').then(data => {
+          if (Array.isArray(data)) setDocs(data);
+        }).catch(e => console.error(e)).finally(() => setLoading(false));
+      }, []);
+
+      if (loading) return (
+        <div className="flex justify-center py-12">
+          <div className="w-6 h-6 border-2 border-gold-500 border-t-transparent rounded-full animate-spin"></div>
+        </div>
+      );
+
+      if (docs.length === 0) return (
+        <div className="text-center py-12">
+          <div className="text-4xl mb-3">&#128196;</div>
+          <p className="text-gray-500 text-sm">Aucun document disponible pour le moment.</p>
+        </div>
+      );
+
+      return (
+        <div className="space-y-3">
+          {docs.map(doc => (
+            <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer"
+              className="block bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-gold-300 transition-all group">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-gold-50 flex items-center justify-center text-gold-600 text-lg shrink-0 group-hover:bg-gold-100 transition-colors">
+                  &#128196;
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-semibold text-gray-900 group-hover:text-gold-700 transition-colors">{doc.titre}</div>
+                  <div className="text-xs text-gray-400 truncate">{doc.url}</div>
+                </div>
+                <div className="text-gray-300 group-hover:text-gold-500 transition-colors shrink-0">
+                  &#8599;
+                </div>
+              </div>
+            </a>
+          ))}
+        </div>
+      );
+    };
+
     // ─── App Principale ─────────────────────────────────────────────────────────
     const App = () => {
       const [partner, setPartner] = useState(null);
@@ -1538,6 +1585,9 @@
                 <button onClick={() => { setVue("historique"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "historique" ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
                   Commandes
                 </button>
+                <button onClick={() => { setVue("documents"); setPanierOpen(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "documents" ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
+                  <span className="hidden sm:inline">Documents</span><span className="sm:hidden">Docs</span>
+                </button>
                 <button onClick={() => { setVue("profil"); setPanierOpen(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "profil" ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
                   <span className="hidden sm:inline">Mon compte</span><span className="sm:hidden">Compte</span>
                 </button>
@@ -1585,6 +1635,11 @@
             ) : vue === "bonsplans" ? (
               <div className="animate-fade-in">
                 <PromotionsSection catalogue={catalogue} panier={panier} setPanier={setPanier} promoActive={promoActive} promoTitle={promoTitle} />
+              </div>
+            ) : vue === "documents" ? (
+              <div className="max-w-2xl mx-auto animate-fade-in">
+                <h2 className="text-lg font-semibold text-gray-900 mb-4">Documents</h2>
+                <DocumentsView />
               </div>
             ) : vue === "profil" ? (
               <ProfilView partner={partner} setPartner={setPartner} commandes={commandes} showToast={showToast} />

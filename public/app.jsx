@@ -27560,7 +27560,107 @@ const VuePortailParams = ({ showToast, readOnly }) => {
         )}
       </div>
 
+      <VuePortailDocuments showToast={showToast} readOnly={readOnly} />
       <VuePortailPromos showToast={showToast} readOnly={readOnly} />
+    </div>
+  );
+};
+
+// ─── Section Documents partenaires (dans VuePortailParams) ──────────────────
+const VuePortailDocuments = ({ showToast, readOnly }) => {
+  const [docs, setDocs] = useState([]);
+  const [titre, setTitre] = useState('');
+  const [url, setUrl] = useState('');
+  const [adding, setAdding] = useState(false);
+
+  const charger = () => {
+    api.get('/reference/partner-documents').then(data => {
+      if (Array.isArray(data)) setDocs(data);
+    }).catch(e => console.error(e));
+  };
+
+  useEffect(() => { charger(); }, []);
+
+  const ajouter = async () => {
+    if (!titre.trim() || !url.trim()) return;
+    setAdding(true);
+    try {
+      await api.post('/reference/partner-documents', { titre: titre.trim(), url: url.trim() });
+      setTitre(''); setUrl('');
+      charger();
+      if (showToast) showToast('Document ajouté', 'success');
+    } catch (e) {
+      if (showToast) showToast('Erreur: ' + e.message, 'error');
+    }
+    setAdding(false);
+  };
+
+  const supprimer = async (id) => {
+    try {
+      await api.delete('/reference/partner-documents/' + id);
+      charger();
+      if (showToast) showToast('Document supprimé', 'success');
+    } catch (e) {
+      if (showToast) showToast('Erreur: ' + e.message, 'error');
+    }
+  };
+
+  const deplacer = async (index, direction) => {
+    const newDocs = [...docs];
+    const target = index + direction;
+    if (target < 0 || target >= newDocs.length) return;
+    [newDocs[index], newDocs[target]] = [newDocs[target], newDocs[index]];
+    setDocs(newDocs);
+    try {
+      await api.patch('/reference/partner-documents/reorder', { order: newDocs.map(d => d.id) });
+    } catch (e) {
+      charger();
+      if (showToast) showToast('Erreur réordonnement', 'error');
+    }
+  };
+
+  return (
+    <div className="bg-white rounded-2xl border border-slate-100 p-5 space-y-4">
+      <h3 className="text-sm font-semibold text-slate-800">Documents partenaires</h3>
+      <p className="text-xs text-slate-400">Liens externes (Google Drive, etc.) visibles par tous les partenaires dans l'onglet "Documents" du portail.</p>
+
+      {docs.length > 0 ? (
+        <div className="space-y-2">
+          {docs.map((doc, i) => (
+            <div key={doc.id} className="flex items-center gap-2 bg-slate-50 rounded-lg px-3 py-2">
+              <div className="flex flex-col gap-0.5">
+                <button onClick={() => deplacer(i, -1)} disabled={i === 0 || readOnly}
+                  className="text-xs text-slate-400 hover:text-slate-700 disabled:opacity-30">&uarr;</button>
+                <button onClick={() => deplacer(i, 1)} disabled={i === docs.length - 1 || readOnly}
+                  className="text-xs text-slate-400 hover:text-slate-700 disabled:opacity-30">&darr;</button>
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="text-sm font-medium text-slate-700 truncate">{doc.titre}</div>
+                <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline truncate block">{doc.url}</a>
+              </div>
+              {!readOnly && (
+                <button onClick={() => supprimer(doc.id)}
+                  className="text-xs text-red-400 hover:text-red-600 shrink-0">Supprimer</button>
+              )}
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p className="text-xs text-slate-400 italic">Aucun document configuré.</p>
+      )}
+
+      {!readOnly && (
+        <div className="flex flex-col sm:flex-row gap-2 pt-2 border-t border-slate-100">
+          <input value={titre} onChange={e => setTitre(e.target.value)} placeholder="Titre du document"
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <input value={url} onChange={e => setUrl(e.target.value)} placeholder="https://..."
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+          <button onClick={ajouter} disabled={adding || !titre.trim() || !url.trim()}
+            className="px-4 py-2 bg-slate-900 text-white text-sm font-medium rounded-lg hover:bg-slate-700 disabled:opacity-50 shrink-0">
+            {adding ? 'Ajout...' : 'Ajouter'}
+          </button>
+        </div>
+      )}
     </div>
   );
 };
