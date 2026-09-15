@@ -292,7 +292,7 @@ module.exports = (db) => {
   });
 
   // Mettre à jour les champs d'un partenaire
-  router.patch('/partners/:id', (req, res) => {
+  router.patch('/partners/:id', async (req, res) => {
     try {
       const { email, contact_nom, telephone, adresse, shipping_id, actif } = req.body;
       const updates = [];
@@ -334,7 +334,54 @@ module.exports = (db) => {
         }
       }
 
-      res.json({ ok: true });
+      // Sync VosFactures si le partenaire a un vf_client_id et que des champs VF ont changé
+      let vfSynced = false;
+      const partnerForVf = db.prepare('SELECT vf_client_id FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (partnerForVf?.vf_client_id) {
+        const vfData = {};
+        if (email !== undefined) vfData.email = email || '';
+        if (telephone !== undefined) vfData.phone = telephone || '';
+        if (req.body.facturation_email !== undefined) vfData.email_for_reminders = req.body.facturation_email || '';
+        if (req.body.facturation_rue !== undefined) vfData.street = req.body.facturation_rue || '';
+        if (req.body.facturation_code_postal !== undefined) vfData.post_code = req.body.facturation_code_postal || '';
+        if (req.body.facturation_ville !== undefined) vfData.city = req.body.facturation_ville || '';
+        if (req.body.facturation_pays !== undefined) vfData.country = req.body.facturation_pays || '';
+        if (req.body.facturation_tva !== undefined) vfData.tax_no = req.body.facturation_tva || '';
+        if (req.body.facturation_portable !== undefined) vfData.mobile_phone = req.body.facturation_portable || '';
+
+        // Sync adresse de livraison VF si des champs livraison changent
+        const livFields = ['livraison_rue', 'livraison_code_postal', 'livraison_ville', 'livraison_pays'];
+        if (livFields.some(f => req.body[f] !== undefined)) {
+          const p = db.prepare('SELECT livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays FROM vf_partners WHERE id = ?').get(req.params.id);
+          if (p) {
+            const isDiff = p.livraison_rue !== p.facturation_rue || p.livraison_code_postal !== p.facturation_code_postal || p.livraison_ville !== p.facturation_ville || p.livraison_pays !== p.facturation_pays;
+            if (isDiff && (p.livraison_rue || p.livraison_code_postal || p.livraison_ville)) {
+              const lines = [];
+              if (p.livraison_rue) lines.push(p.livraison_rue);
+              if (p.livraison_code_postal || p.livraison_ville) lines.push([p.livraison_code_postal, p.livraison_ville].filter(Boolean).join(' '));
+              if (p.livraison_pays) lines.push(p.livraison_pays);
+              vfData.use_delivery_address = true;
+              vfData.delivery_address = lines.join('\n');
+            } else {
+              vfData.use_delivery_address = false;
+              vfData.delivery_address = '';
+            }
+          }
+        }
+
+        if (Object.keys(vfData).length > 0) {
+          try {
+            const vfService = require('../services/vosfacturesService')(db);
+            await vfService.updateClient(partnerForVf.vf_client_id, vfData);
+            vfSynced = true;
+          } catch (vfErr) {
+            const logger = require('../config/logger');
+            logger.error('Erreur sync VF lors mise à jour partenaire', { error: vfErr.message, partnerId: req.params.id, vfData });
+          }
+        }
+      }
+
+      res.json({ ok: true, vfSynced });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }

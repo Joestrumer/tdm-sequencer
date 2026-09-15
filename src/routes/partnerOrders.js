@@ -249,7 +249,8 @@ module.exports = (db) => {
                vp.adresse as partner_adresse, vp.telephone as partner_telephone,
                vp.franco_seuil as partner_franco_seuil, vp.frais_port as partner_frais_port,
                vp.frais_exonere as partner_frais_exonere,
-               vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email
+               vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email,
+               vp.vf_client_id as partner_vf_client_id
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         WHERE po.id = ?
@@ -397,8 +398,10 @@ module.exports = (db) => {
         positions,
       };
 
-      if (clientMapping?.vf_client_id) {
-        invoiceData.client_id = clientMapping.vf_client_id;
+      // Prioriser vf_partners.vf_client_id (source de vérité admin) sur vf_client_mappings
+      const resolvedVfClientId = order.partner_vf_client_id || clientMapping?.vf_client_id;
+      if (resolvedVfClientId) {
+        invoiceData.client_id = resolvedVfClientId;
       }
 
       // Créer la facture VF
