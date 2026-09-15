@@ -573,9 +573,11 @@ module.exports = (db) => {
       // Charger les partenaires existants
       const existingPartners = db.prepare('SELECT * FROM vf_partners').all();
       const partnerByNom = {};
+      const partnerByVfClientId = {};
       for (const p of existingPartners) {
         partnerByNom[p.nom.toLowerCase()] = p;
         if (p.nom_normalise) partnerByNom[p.nom_normalise.toLowerCase()] = p;
+        if (p.vf_client_id) partnerByVfClientId[String(p.vf_client_id)] = p;
       }
 
       let updated = 0;
@@ -672,10 +674,15 @@ module.exports = (db) => {
         }
 
         // Trouver le partenaire local correspondant
-        // 1. Match direct par nom
-        let partner = partnerByNom[vfName.toLowerCase()];
+        // 1. Match par vf_client_id (le plus fiable)
+        let partner = vfId ? partnerByVfClientId[vfId] : null;
 
-        // 2. Match via vf_client_mappings (vf_name → file_name → partner.nom)
+        // 2. Match direct par nom
+        if (!partner) {
+          partner = partnerByNom[vfName.toLowerCase()];
+        }
+
+        // 3. Match via vf_client_mappings (vf_name → file_name → partner.nom)
         if (!partner) {
           const mapping = mappingByVfName[vfName.toLowerCase()];
           if (mapping && mapping.file_name) {

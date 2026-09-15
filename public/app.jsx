@@ -21552,7 +21552,7 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
   const toggleMaster = async () => {
     try {
       await api.patch(`/reference/partners/${partner.id}`, { is_master: partner.is_master ? 0 : 1 });
-      showToast(partner.is_master ? 'Compte ma\u00eetre d\u00e9sactiv\u00e9' : 'Compte ma\u00eetre activ\u00e9', 'success');
+      showToast(partner.is_master ? 'Compte maître désactivé' : 'Compte maître activé', 'success');
       onUpdate();
     } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
   };
@@ -21562,7 +21562,7 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
     try {
       const res = await api.post(`/reference/partners/${partner.id}/sub-accounts`, { subAccountId: parseInt(addSubId) });
       if (res.erreur) { showToast(res.erreur, 'error'); return; }
-      showToast(res.message || 'Sous-compte rattach\u00e9', 'success');
+      showToast(res.message || 'Sous-compte rattaché', 'success');
       setAddSubId('');
       const data = await api.get(`/reference/partners/${partner.id}/sub-accounts`);
       if (Array.isArray(data)) setSubAccounts(data);
@@ -21573,7 +21573,7 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
     try {
       const res = await api.del(`/reference/partners/${partner.id}/sub-accounts/${subId}`);
       if (res.erreur) { showToast(res.erreur, 'error'); return; }
-      showToast(res.message || 'Sous-compte d\u00e9tach\u00e9', 'success');
+      showToast(res.message || 'Sous-compte détaché', 'success');
       setSubAccounts(prev => prev.filter(s => s.id !== subId));
     } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
   };
@@ -21591,7 +21591,7 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
         <div className="flex items-center gap-2">
           <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Sous-compte</span>
           <span className="text-xs text-slate-500">
-            Rattach\u00e9 au compte ma\u00eetre : <strong className="text-slate-700">{masterPartner?.nom || `#${partner.master_id}`}</strong>
+            Rattaché au compte maître : <strong className="text-slate-700">{masterPartner?.nom || `#${partner.master_id}`}</strong>
           </span>
         </div>
       </div>
@@ -21601,9 +21601,9 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
   return (
     <div className="mt-4 pt-3 border-t border-slate-100">
       <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Compte ma\u00eetre</span>
+        <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Compte maître</span>
         <label className="flex items-center gap-2 cursor-pointer">
-          <span className="text-xs text-slate-500">Ce partenaire est un compte ma\u00eetre</span>
+          <span className="text-xs text-slate-500">Ce partenaire est un compte maître</span>
           <input type="checkbox" checked={!!partner.is_master} onChange={toggleMaster}
             className="w-4 h-4 text-violet-600 border-slate-300 rounded focus:ring-violet-500" />
         </label>
@@ -21622,17 +21622,17 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
                         <span className="text-sm text-slate-800 font-medium">{sub.nom}</span>
                         {sub.contact_nom && <span className="text-xs text-slate-400 ml-2">{sub.contact_nom}</span>}
                       </div>
-                      <button onClick={() => detacher(sub.id)} className="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100">D\u00e9tacher</button>
+                      <button onClick={() => detacher(sub.id)} className="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100">Détacher</button>
                     </div>
                   ))}
                 </div>
               ) : (
-                <div className="text-xs text-slate-400 mb-3">Aucun \u00e9tablissement rattach\u00e9.</div>
+                <div className="text-xs text-slate-400 mb-3">Aucun établissement rattaché.</div>
               )}
               <div className="flex items-center gap-2">
                 <select value={addSubId} onChange={e => setAddSubId(e.target.value)}
                   className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400">
-                  <option value="">Rattacher un \u00e9tablissement...</option>
+                  <option value="">Rattacher un établissement...</option>
                   {availablePartners.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}
                 </select>
                 <button onClick={rattacher} disabled={!addSubId}
@@ -22066,7 +22066,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
               <div className="flex items-center justify-between">
                 <span className={`text-sm font-medium truncate ${selectedId === p.id ? 'text-white' : 'text-slate-900'}`}>{p.nom}</span>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
-                  {p.is_master ? <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${selectedId === p.id ? 'bg-violet-400/30 text-violet-200' : 'bg-violet-100 text-violet-700'}`}>Ma\u00eetre</span> : null}
+                  {p.is_master ? <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${selectedId === p.id ? 'bg-violet-400/30 text-violet-200' : 'bg-violet-100 text-violet-700'}`}>Maître</span> : null}
                   {p.master_id ? <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${selectedId === p.id ? 'bg-amber-400/30 text-amber-200' : 'bg-amber-100 text-amber-700'}`}>Sous-compte</span> : null}
                   {p.vf_client_id && <span className={`text-[9px] ${selectedId === p.id ? 'text-white/40' : 'text-slate-300'}`}>VF</span>}
                   {p.has_password ? (
