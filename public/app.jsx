@@ -21629,14 +21629,14 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
               ) : (
                 <div className="text-xs text-slate-400 mb-3">Aucun établissement rattaché.</div>
               )}
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 max-w-full">
                 <select value={addSubId} onChange={e => setAddSubId(e.target.value)}
-                  className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400">
+                  className="flex-1 min-w-0 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400">
                   <option value="">Rattacher un établissement...</option>
                   {availablePartners.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}
                 </select>
                 <button onClick={rattacher} disabled={!addSubId}
-                  className="px-3 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-40 transition-colors">Rattacher</button>
+                  className="shrink-0 px-3 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-40 transition-colors">Rattacher</button>
               </div>
             </>
           )}
