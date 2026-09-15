@@ -1240,6 +1240,9 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN livraison_ville TEXT',
   'ALTER TABLE vf_partners ADD COLUMN livraison_pays TEXT',
   'ALTER TABLE vf_partners ADD COLUMN livraison_portable TEXT',
+  // Compte maître multi-établissements
+  'ALTER TABLE vf_partners ADD COLUMN is_master INTEGER DEFAULT 0',
+  'ALTER TABLE vf_partners ADD COLUMN master_id INTEGER',
 ];
 
 // ─── Table audit commandes partenaires ───────────────────────────────────────
@@ -1261,6 +1264,15 @@ for (const sql of migrations) {
     if (!e.message.includes('duplicate column') && !e.message.includes('already exists')) {
       console.error('⚠️  Erreur migration:', sql, '-', e.message);
     }
+  }
+}
+
+// ─── Index pour comptes maîtres multi-établissements ──
+try {
+  db.exec('CREATE INDEX IF NOT EXISTS idx_vf_partners_master ON vf_partners(master_id)');
+} catch (e) {
+  if (!e.message.includes('already exists')) {
+    console.error('⚠️  Erreur index master_id:', e.message);
   }
 }
 

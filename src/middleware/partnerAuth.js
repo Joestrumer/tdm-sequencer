@@ -21,6 +21,26 @@ function partnerAuth(req, res, next) {
   try {
     const decoded = jwt.verify(token, JWT_SECRET);
     req.partner = { id: decoded.partnerId, nom: decoded.partnerNom };
+
+    // Support compte maître multi-établissements
+    if (decoded.isMaster) {
+      req.partner.isMaster = true;
+      req.partner.subAccountIds = decoded.subAccountIds || [];
+
+      const actingAsHeader = req.headers['x-acting-partner-id'];
+      if (actingAsHeader) {
+        const actingAsId = parseInt(actingAsHeader, 10);
+        if (!req.partner.subAccountIds.includes(actingAsId)) {
+          return res.status(403).json({ erreur: 'Accès non autorisé à cet établissement' });
+        }
+        req.partner.effectiveId = actingAsId;
+      } else {
+        req.partner.effectiveId = decoded.partnerId;
+      }
+    } else {
+      req.partner.effectiveId = decoded.partnerId;
+    }
+
     next();
   } catch (e) {
     return res.status(401).json({ erreur: 'Token partenaire invalide ou expiré' });

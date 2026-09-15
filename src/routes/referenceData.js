@@ -269,8 +269,8 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable FROM vf_partners ORDER BY nom').all()
-        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable, is_master, master_id FROM vf_partners ORDER BY nom').all()
+        : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable, is_master, master_id FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -311,6 +311,7 @@ module.exports = (db) => {
       if (req.body.promo_enabled !== undefined) { updates.push('promo_enabled = ?'); params.push(req.body.promo_enabled ? 1 : 0); }
       if (req.body.vf_display_name !== undefined) { updates.push('vf_display_name = ?'); params.push(req.body.vf_display_name || null); }
       if (req.body.is_canonical !== undefined) { updates.push('is_canonical = ?'); params.push(req.body.is_canonical ? 1 : 0); }
+      if (req.body.is_master !== undefined) { updates.push('is_master = ?'); params.push(req.body.is_master ? 1 : 0); }
       for (const f of ['livraison_prenom','livraison_nom','livraison_telephone','livraison_email','facturation_prenom','facturation_nom','facturation_telephone','facturation_email','facturation_rue','facturation_code_postal','facturation_ville','facturation_pays','facturation_tva','facturation_entite_publique','facturation_portable','livraison_rue','livraison_code_postal','livraison_ville','livraison_pays','livraison_portable']) {
         if (req.body[f] !== undefined) { updates.push(`${f} = ?`); params.push(req.body[f] || null); }
       }
@@ -411,6 +412,56 @@ module.exports = (db) => {
     try {
       db.prepare('DELETE FROM vf_partners WHERE id = ?').run(req.params.id);
       res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Sous-comptes (comptes maîtres multi-établissements) ───────────────
+
+  router.get('/partners/:id/sub-accounts', (req, res) => {
+    try {
+      const master = db.prepare('SELECT id, is_master FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (!master) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+      if (!master.is_master) return res.status(400).json({ erreur: 'Ce partenaire n\'est pas un compte maître' });
+      const rows = db.prepare('SELECT id, nom, email, contact_nom, actif FROM vf_partners WHERE master_id = ?').all(req.params.id);
+      res.json(rows);
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.post('/partners/:id/sub-accounts', (req, res) => {
+    try {
+      const { subAccountId } = req.body;
+      if (!subAccountId) return res.status(400).json({ erreur: 'subAccountId requis' });
+
+      const master = db.prepare('SELECT id, is_master FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (!master) return res.status(404).json({ erreur: 'Compte maître introuvable' });
+      if (!master.is_master) return res.status(400).json({ erreur: 'Ce partenaire n\'est pas un compte maître' });
+
+      if (parseInt(subAccountId) === parseInt(req.params.id)) {
+        return res.status(400).json({ erreur: 'Un compte ne peut pas être son propre sous-compte' });
+      }
+
+      const sub = db.prepare('SELECT id, nom, master_id FROM vf_partners WHERE id = ?').get(subAccountId);
+      if (!sub) return res.status(404).json({ erreur: 'Sous-compte introuvable' });
+      if (sub.master_id) return res.status(400).json({ erreur: `Ce partenaire est déjà rattaché à un autre compte maître (id=${sub.master_id})` });
+
+      db.prepare('UPDATE vf_partners SET master_id = ? WHERE id = ?').run(req.params.id, subAccountId);
+      res.json({ ok: true, message: `${sub.nom} rattaché au compte maître` });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  router.delete('/partners/:masterId/sub-accounts/:subId', (req, res) => {
+    try {
+      const sub = db.prepare('SELECT id, nom, master_id FROM vf_partners WHERE id = ? AND master_id = ?').get(req.params.subId, req.params.masterId);
+      if (!sub) return res.status(404).json({ erreur: 'Sous-compte introuvable ou non rattaché à ce maître' });
+
+      db.prepare('UPDATE vf_partners SET master_id = NULL WHERE id = ?').run(req.params.subId);
+      res.json({ ok: true, message: `${sub.nom} détaché du compte maître` });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }

@@ -152,16 +152,45 @@ module.exports = (db) => {
         return res.status(401).json({ erreur: 'Mot de passe incorrect' });
       }
 
+      // Récupérer les prix FP/FE pour le calcul côté portail
+      const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
+      const fraisMap = {};
+      for (const r of fraisRows) fraisMap[r.ref] = r.prix_ht;
+
+      // Compte maître : charger les sous-comptes et encoder dans le JWT
+      if (matched.is_master === 1) {
+        const subAccounts = db.prepare('SELECT id, nom, email, contact_nom FROM vf_partners WHERE master_id = ? AND actif = 1').all(matched.id);
+        const subAccountIds = subAccounts.map(s => s.id);
+
+        const token = jwt.sign(
+          { partnerId: matched.id, partnerNom: matched.nom, isMaster: true, subAccountIds },
+          partnerAuth.JWT_SECRET,
+          { expiresIn: '7d' }
+        );
+
+        return res.json({
+          token,
+          isMaster: true,
+          partenaire: {
+            id: matched.id,
+            nom: matched.nom,
+            email: matched.email,
+            contact_nom: matched.contact_nom,
+            amenities: matched.amenities || null,
+            franco_seuil: matched.franco_seuil ?? DEFAULT_FRANCO_SEUIL,
+            frais_exonere: matched.frais_exonere ?? 0,
+            fp_prix: fraisMap['FP'] || 0,
+            fe_prix: fraisMap['FE'] || 0,
+          },
+          etablissements: subAccounts,
+        });
+      }
+
       const token = jwt.sign(
         { partnerId: matched.id, partnerNom: matched.nom },
         partnerAuth.JWT_SECRET,
         { expiresIn: '7d' }
       );
-
-      // Récupérer les prix FP/FE pour le calcul côté portail
-      const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
-      const fraisMap = {};
-      for (const r of fraisRows) fraisMap[r.ref] = r.prix_ht;
 
       res.json({
         token,
@@ -186,10 +215,32 @@ module.exports = (db) => {
   // ─── Routes protégées ─────────────────────────────────────────────────────
   router.use(partnerAuth);
 
-  // ─── Profil ────────────────────────────────────────────────────────────────
-  router.get('/profil', (req, res) => {
+  // ─── Guard : un master doit avoir sélectionné un établissement ──────────
+  function requireEffectiveId(req, res, next) {
+    if (req.partner.isMaster && !req.headers['x-acting-partner-id']) {
+      return res.status(400).json({ erreur: 'Veuillez sélectionner un établissement' });
+    }
+    next();
+  }
+
+  // ─── Liste des établissements (master only) ─────────────────────────────
+  router.get('/etablissements', (req, res) => {
     try {
-      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable FROM vf_partners WHERE id = ?').get(req.partner.id);
+      if (!req.partner.isMaster) {
+        return res.status(403).json({ erreur: 'Réservé aux comptes maîtres' });
+      }
+      const subAccounts = db.prepare('SELECT id, nom, email, contact_nom FROM vf_partners WHERE master_id = ? AND actif = 1').all(req.partner.id);
+      res.json(subAccounts);
+    } catch (e) {
+      logger.error('Erreur liste établissements', { error: e.message, partnerId: req.partner?.id });
+      res.status(500).json({ erreur: 'Erreur serveur' });
+    }
+  });
+
+  // ─── Profil ────────────────────────────────────────────────────────────────
+  router.get('/profil', requireEffectiveId, (req, res) => {
+    try {
+      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       // Ajouter les prix FP/FE pour le calcul côté portail (1 seule requête)
       const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
@@ -205,10 +256,10 @@ module.exports = (db) => {
   });
 
   // ─── Mise à jour profil (crée une demande de validation au lieu de modifier directement) ──
-  router.patch('/profil', (req, res) => {
+  router.patch('/profil', requireEffectiveId, (req, res) => {
     try {
       const allowed = ['email', 'contact_nom', 'telephone', 'adresse', 'livraison_prenom', 'livraison_nom', 'livraison_telephone', 'livraison_email', 'facturation_prenom', 'facturation_nom', 'facturation_telephone', 'facturation_email', 'facturation_rue', 'facturation_code_postal', 'facturation_ville', 'facturation_pays', 'facturation_tva', 'facturation_entite_publique', 'facturation_portable', 'livraison_rue', 'livraison_code_postal', 'livraison_ville', 'livraison_pays', 'livraison_portable'];
-      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(req.partner.id);
+      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
       // Comparer chaque champ soumis avec la valeur actuelle
@@ -228,10 +279,10 @@ module.exports = (db) => {
       }
 
       // Supprimer toute demande en_attente existante (remplacée par la nouvelle)
-      db.prepare("DELETE FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente'").run(req.partner.id);
+      db.prepare("DELETE FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente'").run(req.partner.effectiveId);
 
       // Insérer la nouvelle demande
-      db.prepare('INSERT INTO partner_profile_changes (partner_id, changes) VALUES (?, ?)').run(req.partner.id, JSON.stringify(changes));
+      db.prepare('INSERT INTO partner_profile_changes (partner_id, changes) VALUES (?, ?)').run(req.partner.effectiveId, JSON.stringify(changes));
 
       // Notification admin (fire-and-forget)
       notifierAdminModificationProfil({ partner, changes, db });
@@ -244,9 +295,9 @@ module.exports = (db) => {
   });
 
   // ─── Demande de modification en attente ────────────────────────────────────
-  router.get('/profil/pending', (req, res) => {
+  router.get('/profil/pending', requireEffectiveId, (req, res) => {
     try {
-      const row = db.prepare("SELECT * FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente' ORDER BY created_at DESC LIMIT 1").get(req.partner.id);
+      const row = db.prepare("SELECT * FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente' ORDER BY created_at DESC LIMIT 1").get(req.partner.effectiveId);
       res.json(row || null);
     } catch (e) {
       logger.error('Erreur profil pending', { error: e.message, partnerId: req.partner?.id });
@@ -255,9 +306,9 @@ module.exports = (db) => {
   });
 
   // ─── Catalogue ─────────────────────────────────────────────────────────────
-  router.get('/catalogue', (req, res) => {
+  router.get('/catalogue', requireEffectiveId, (req, res) => {
     try {
-      const partnerId = req.partner.id;
+      const partnerId = req.partner.effectiveId;
       const partner = db.prepare('SELECT nom, nom_normalise, promo_enabled FROM vf_partners WHERE id = ?').get(partnerId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
@@ -314,7 +365,7 @@ module.exports = (db) => {
   });
 
   // ─── Créer commande ────────────────────────────────────────────────────────
-  router.post('/commande', async (req, res) => {
+  router.post('/commande', requireEffectiveId, async (req, res) => {
     try {
       const { products, notes } = req.body;
       if (!products || !Array.isArray(products) || products.length === 0) {
@@ -324,7 +375,7 @@ module.exports = (db) => {
         return res.status(400).json({ erreur: 'Maximum 200 produits par commande' });
       }
       // Rate limiting
-      if (!checkOrderRateLimit(req.partner.id)) {
+      if (!checkOrderRateLimit(req.partner.effectiveId)) {
         return res.status(429).json({ erreur: 'Trop de commandes. Veuillez patienter une minute.' });
       }
       // Valider les quantités
@@ -334,7 +385,7 @@ module.exports = (db) => {
         if (!qty || qty < 1 || qty > 99999) return res.status(400).json({ erreur: `Quantité invalide pour ${p.ref}: ${p.quantite}` });
       }
 
-      const partnerId = req.partner.id;
+      const partnerId = req.partner.effectiveId;
       const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(partnerId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
@@ -444,13 +495,13 @@ module.exports = (db) => {
   });
 
   // ─── Historique commandes ──────────────────────────────────────────────────
-  router.get('/commandes', (req, res) => {
+  router.get('/commandes', requireEffectiveId, (req, res) => {
     try {
       const orders = db.prepare(`
         SELECT * FROM partner_orders
         WHERE partner_id = ? AND statut != 'annulee'
         ORDER BY created_at DESC
-      `).all(req.partner.id);
+      `).all(req.partner.effectiveId);
 
       const result = orders.map(o => {
         let tracking_url = null;
@@ -477,16 +528,16 @@ module.exports = (db) => {
   });
 
   // ─── Annuler une commande en attente (côté partenaire) ────────────────────
-  router.delete('/commande/:id', (req, res) => {
+  router.delete('/commande/:id', requireEffectiveId, (req, res) => {
     try {
-      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.id);
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.effectiveId);
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
       if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Seules les commandes en attente peuvent être annulées' });
 
       db.prepare("UPDATE partner_orders SET statut = 'annulee_client' WHERE id = ?").run(req.params.id);
 
       // Notification admin
-      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(req.partner.id);
+      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
       const orderProducts = JSON.parse(order.products || '[]');
       notifierAdminCommande({
         partner: partner || { nom: 'Inconnu' },
@@ -507,9 +558,9 @@ module.exports = (db) => {
   });
 
   // ─── Modifier une commande en attente ───────────────────────────────────────
-  router.patch('/commande/:id', (req, res) => {
+  router.patch('/commande/:id', requireEffectiveId, (req, res) => {
     try {
-      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.id);
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.effectiveId);
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
       if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Seules les commandes en attente peuvent être modifiées' });
 
@@ -518,7 +569,7 @@ module.exports = (db) => {
         return res.status(400).json({ erreur: 'Au moins un produit requis' });
       }
 
-      const partnerId = req.partner.id;
+      const partnerId = req.partner.effectiveId;
       const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(partnerId);
 
       const catalog = {};
@@ -601,9 +652,9 @@ module.exports = (db) => {
   });
 
   // ─── Télécharger facture PDF (côté partenaire) ────────────────────────────
-  router.get('/commande/:id/pdf', async (req, res) => {
+  router.get('/commande/:id/pdf', requireEffectiveId, async (req, res) => {
     try {
-      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.id);
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.effectiveId);
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
       if (!order.vf_invoice_id) return res.status(400).json({ erreur: 'Pas de facture associée' });
 

@@ -21533,6 +21533,121 @@ const VueCommandes = ({ showToast }) => {
   );
 };
 
+// ─── Section compte maître (dans la fiche partenaire) ────────────────────────
+const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
+  const [subAccounts, setSubAccounts] = useState([]);
+  const [loadingSubs, setLoadingSubs] = useState(false);
+  const [addSubId, setAddSubId] = useState('');
+
+  useEffect(() => {
+    if (partner.is_master) {
+      setLoadingSubs(true);
+      api.get(`/reference/partners/${partner.id}/sub-accounts`)
+        .then(data => { if (Array.isArray(data)) setSubAccounts(data); })
+        .catch(() => {})
+        .finally(() => setLoadingSubs(false));
+    }
+  }, [partner.id, partner.is_master]);
+
+  const toggleMaster = async () => {
+    try {
+      await api.patch(`/reference/partners/${partner.id}`, { is_master: partner.is_master ? 0 : 1 });
+      showToast(partner.is_master ? 'Compte ma\u00eetre d\u00e9sactiv\u00e9' : 'Compte ma\u00eetre activ\u00e9', 'success');
+      onUpdate();
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const rattacher = async () => {
+    if (!addSubId) return;
+    try {
+      const res = await api.post(`/reference/partners/${partner.id}/sub-accounts`, { subAccountId: parseInt(addSubId) });
+      if (res.erreur) { showToast(res.erreur, 'error'); return; }
+      showToast(res.message || 'Sous-compte rattach\u00e9', 'success');
+      setAddSubId('');
+      const data = await api.get(`/reference/partners/${partner.id}/sub-accounts`);
+      if (Array.isArray(data)) setSubAccounts(data);
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  const detacher = async (subId) => {
+    try {
+      const res = await api.del(`/reference/partners/${partner.id}/sub-accounts/${subId}`);
+      if (res.erreur) { showToast(res.erreur, 'error'); return; }
+      showToast(res.message || 'Sous-compte d\u00e9tach\u00e9', 'success');
+      setSubAccounts(prev => prev.filter(s => s.id !== subId));
+    } catch (e) { showToast('Erreur: ' + e.message, 'error'); }
+  };
+
+  // Partenaires disponibles pour rattachement (actifs, pas déjà rattachés, pas master, pas soi-même)
+  const availablePartners = partners.filter(p =>
+    p.actif && p.id !== partner.id && !p.master_id && !p.is_master
+  );
+
+  // Si c'est un sous-compte, afficher l'info
+  if (partner.master_id) {
+    const masterPartner = partners.find(p => p.id === partner.master_id);
+    return (
+      <div className="mt-4 pt-3 border-t border-slate-100">
+        <div className="flex items-center gap-2">
+          <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 font-medium">Sous-compte</span>
+          <span className="text-xs text-slate-500">
+            Rattach\u00e9 au compte ma\u00eetre : <strong className="text-slate-700">{masterPartner?.nom || `#${partner.master_id}`}</strong>
+          </span>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="mt-4 pt-3 border-t border-slate-100">
+      <div className="flex items-center justify-between mb-2">
+        <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Compte ma\u00eetre</span>
+        <label className="flex items-center gap-2 cursor-pointer">
+          <span className="text-xs text-slate-500">Ce partenaire est un compte ma\u00eetre</span>
+          <input type="checkbox" checked={!!partner.is_master} onChange={toggleMaster}
+            className="w-4 h-4 text-violet-600 border-slate-300 rounded focus:ring-violet-500" />
+        </label>
+      </div>
+      {partner.is_master ? (
+        <div>
+          {loadingSubs ? (
+            <div className="text-xs text-slate-400 py-2">Chargement...</div>
+          ) : (
+            <>
+              {subAccounts.length > 0 ? (
+                <div className="space-y-1.5 mb-3">
+                  {subAccounts.map(sub => (
+                    <div key={sub.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
+                      <div>
+                        <span className="text-sm text-slate-800 font-medium">{sub.nom}</span>
+                        {sub.contact_nom && <span className="text-xs text-slate-400 ml-2">{sub.contact_nom}</span>}
+                      </div>
+                      <button onClick={() => detacher(sub.id)} className="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100">D\u00e9tacher</button>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <div className="text-xs text-slate-400 mb-3">Aucun \u00e9tablissement rattach\u00e9.</div>
+              )}
+              <div className="flex items-center gap-2">
+                <select value={addSubId} onChange={e => setAddSubId(e.target.value)}
+                  className="flex-1 border border-slate-200 rounded-lg px-3 py-1.5 text-sm text-slate-700 focus:outline-none focus:ring-1 focus:ring-violet-400">
+                  <option value="">Rattacher un \u00e9tablissement...</option>
+                  {availablePartners.map(p => <option key={p.id} value={p.id}>{p.nom}</option>)}
+                </select>
+                <button onClick={rattacher} disabled={!addSubId}
+                  className="px-3 py-1.5 text-xs font-medium bg-violet-600 text-white rounded-lg hover:bg-violet-700 disabled:opacity-40 transition-colors">Rattacher</button>
+              </div>
+            </>
+          )}
+        </div>
+      ) : (
+        <div className="text-xs text-slate-400">Activez pour gérer plusieurs établissements depuis ce compte.</div>
+      )}
+    </div>
+  );
+};
+
 // ─── VUE PARTENAIRES (onglet dédié) ──────────────────────────────────────────
 const VuePartenaires = ({ showToast, readOnly }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
@@ -21951,11 +22066,13 @@ const VuePartenaires = ({ showToast, readOnly }) => {
               <div className="flex items-center justify-between">
                 <span className={`text-sm font-medium truncate ${selectedId === p.id ? 'text-white' : 'text-slate-900'}`}>{p.nom}</span>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {p.is_master ? <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${selectedId === p.id ? 'bg-violet-400/30 text-violet-200' : 'bg-violet-100 text-violet-700'}`}>Ma\u00eetre</span> : null}
+                  {p.master_id ? <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${selectedId === p.id ? 'bg-amber-400/30 text-amber-200' : 'bg-amber-100 text-amber-700'}`}>Sous-compte</span> : null}
                   {p.vf_client_id && <span className={`text-[9px] ${selectedId === p.id ? 'text-white/40' : 'text-slate-300'}`}>VF</span>}
                   {p.has_password ? (
-                    <span className={`w-2 h-2 rounded-full ${selectedId === p.id ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Accès portail actif" />
+                    <span className={`w-2 h-2 rounded-full ${selectedId === p.id ? 'bg-emerald-400' : 'bg-emerald-500'}`} title="Acc\u00e8s portail actif" />
                   ) : (
-                    <span className="w-2 h-2 rounded-full bg-slate-300" title="Pas d'accès" />
+                    <span className="w-2 h-2 rounded-full bg-slate-300" title="Pas d'acc\u00e8s" />
                   )}
                 </div>
               </div>
@@ -22168,6 +22285,9 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                       <div><span className="text-[10px] text-slate-400 block">Email</span><span className="text-sm text-slate-700">{selected.livraison_email || '—'}</span></div>
                     </div>
                   </div>
+
+                  {/* Compte maître multi-établissements */}
+                  <MasterAccountSection partner={selected} partners={partners} onUpdate={charger} showToast={showToast} />
                 </div>
               ) : (
                 <div className="animate-fade-in">

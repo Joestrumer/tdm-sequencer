@@ -114,7 +114,10 @@
     window.partnerApi = {
       _headers: () => {
         const token = sessionStorage.getItem('partner_token') || '';
-        return { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+        const h = { 'Authorization': 'Bearer ' + token, 'Content-Type': 'application/json' };
+        const actingAs = sessionStorage.getItem('partner_acting_as');
+        if (actingAs) h['X-Acting-Partner-Id'] = actingAs;
+        return h;
       },
       _handle: (r) => {
         if (r.status === 401) { sessionStorage.removeItem('partner_token'); window.location.reload(); throw new Error('Session expirée'); }
@@ -158,7 +161,7 @@
             setError(res.erreur);
           } else if (res.token) {
             sessionStorage.setItem('partner_token', res.token);
-            onLogin(res.partenaire);
+            onLogin(res);
           }
         } catch (e) {
           setError("Impossible de contacter le serveur");
@@ -1545,6 +1548,35 @@
     };
 
     // ─── App Principale ─────────────────────────────────────────────────────────
+    // ─── S\u00e9lecteur d'\u00e9tablissement (comptes ma\u00eetres) ────────────────────────
+    const EtablissementSelector = ({ etablissements, onSelect }) => {
+      return (
+        <div className="min-h-screen flex items-center justify-center p-4 relative overflow-hidden">
+          <div className="tache tache-login-1"></div>
+          <div className="tache tache-login-2"></div>
+          <div className="relative z-10 w-full max-w-md animate-fade-in text-center">
+            <div className="mb-8">
+              <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-24 mx-auto mb-4" />
+              <h2 className="text-lg font-semibold text-gray-900 dark:text-white">S\u00e9lectionnez un \u00e9tablissement</h2>
+              <p className="text-sm text-gray-500 dark:text-slate-400 mt-1">Choisissez l'\u00e9tablissement pour lequel vous souhaitez commander.</p>
+            </div>
+            <div className="space-y-3">
+              {etablissements.map(e => (
+                <button
+                  key={e.id}
+                  onClick={() => onSelect(e)}
+                  className="w-full bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl p-4 text-left hover:border-gold-400 dark:hover:border-gold-500 hover:bg-gold-50 dark:hover:bg-gold-900/20 transition-all group"
+                >
+                  <div className="font-semibold text-gray-900 dark:text-white group-hover:text-gold-700 dark:group-hover:text-gold-400 transition-colors">{e.nom}</div>
+                  {e.contact_nom && <div className="text-xs text-gray-500 dark:text-slate-400 mt-0.5">{e.contact_nom}</div>}
+                </button>
+              ))}
+            </div>
+          </div>
+        </div>
+      );
+    };
+
     const App = () => {
       const [darkMode, setDarkMode] = useState(() => localStorage.getItem('tdm_dark_mode') === 'true');
       const toggleDarkMode = () => {
@@ -1577,6 +1609,9 @@
       const [orderSuccess, setOrderSuccess] = useState(false);
       const [toast, setToast] = useState(null);
       const [amenities, setAmenities] = useState(null);
+      const [isMaster, setIsMaster] = useState(() => sessionStorage.getItem('partner_is_master') === '1');
+      const [etablissements, setEtablissements] = useState([]);
+      const [selectedEtablissement, setSelectedEtablissement] = useState(null);
 
       const showToast = (message, type = "info") => {
         setToast({ message, type, visible: true });
@@ -1585,7 +1620,38 @@
 
       useEffect(() => {
         const token = sessionStorage.getItem('partner_token');
-        if (token) {
+        if (!token) return;
+
+        const wasMaster = sessionStorage.getItem('partner_is_master') === '1';
+        if (wasMaster) {
+          // Restaurer session maître : charger les établissements
+          api.get('/etablissements').then(res => {
+            if (res.erreur) {
+              sessionStorage.removeItem('partner_token');
+              sessionStorage.removeItem('partner_is_master');
+              sessionStorage.removeItem('partner_acting_as');
+              return;
+            }
+            setIsMaster(true);
+            setEtablissements(res);
+            // Si un établissement était déjà sélectionné, restaurer
+            const actingAs = sessionStorage.getItem('partner_acting_as');
+            if (actingAs && res.some(e => String(e.id) === actingAs)) {
+              const selected = res.find(e => String(e.id) === actingAs);
+              setSelectedEtablissement(selected);
+              api.get('/profil').then(profil => {
+                if (!profil.erreur) {
+                  setPartner(profil);
+                  try { setAmenities(profil.amenities ? JSON.parse(profil.amenities) : null); } catch (e) { setAmenities(null); }
+                }
+              });
+            }
+          }).catch(() => {
+            sessionStorage.removeItem('partner_token');
+            sessionStorage.removeItem('partner_is_master');
+            sessionStorage.removeItem('partner_acting_as');
+          });
+        } else {
           api.get('/profil').then(res => {
             if (res.erreur) {
               sessionStorage.removeItem('partner_token');
@@ -1624,9 +1690,53 @@
         return () => clearInterval(interval);
       }, [partner, refreshCatalogue]);
 
-      const handleLogin = (p) => {
-        setPartner(p);
-        try { setAmenities(p.amenities ? JSON.parse(p.amenities) : null); } catch (e) { setAmenities(null); }
+      const handleLogin = (res) => {
+        if (res.isMaster) {
+          sessionStorage.setItem('partner_is_master', '1');
+          setIsMaster(true);
+          setEtablissements(res.etablissements || []);
+          // Ne pas encore charger le profil — attendre la sélection
+        } else {
+          const p = res.partenaire;
+          setPartner(p);
+          try { setAmenities(p.amenities ? JSON.parse(p.amenities) : null); } catch (e) { setAmenities(null); }
+        }
+      };
+
+      const handleSelectEtablissement = async (etab) => {
+        sessionStorage.setItem('partner_acting_as', String(etab.id));
+        setSelectedEtablissement(etab);
+        try {
+          const profil = await api.get('/profil');
+          if (!profil.erreur) {
+            setPartner(profil);
+            try { setAmenities(profil.amenities ? JSON.parse(profil.amenities) : null); } catch (e) { setAmenities(null); }
+          }
+        } catch (e) {
+          showToast('Erreur chargement profil', 'error');
+        }
+      };
+
+      const handleSwitchEtablissement = async (etabId) => {
+        const etab = etablissements.find(e => String(e.id) === String(etabId));
+        if (!etab) return;
+        sessionStorage.setItem('partner_acting_as', String(etab.id));
+        setSelectedEtablissement(etab);
+        setPanier({});
+        localStorage.removeItem('tdm_panier');
+        setCommandes([]);
+        setCatalogue([]);
+        setVue('catalogue');
+        setPanierOpen(false);
+        try {
+          const profil = await api.get('/profil');
+          if (!profil.erreur) {
+            setPartner(profil);
+            try { setAmenities(profil.amenities ? JSON.parse(profil.amenities) : null); } catch (e) { setAmenities(null); }
+          }
+        } catch (e) {
+          showToast('Erreur chargement profil', 'error');
+        }
       };
 
       const refreshCommandes = () => {
@@ -1670,16 +1780,22 @@
 
       const handleLogout = () => {
         sessionStorage.removeItem('partner_token');
+        sessionStorage.removeItem('partner_is_master');
+        sessionStorage.removeItem('partner_acting_as');
         localStorage.removeItem('tdm_panier');
         setPartner(null);
         setCatalogue([]);
         setPanierRaw({});
         setCommandes([]);
+        setIsMaster(false);
+        setEtablissements([]);
+        setSelectedEtablissement(null);
       };
 
       const panierCount = Object.values(panier).reduce((s, i) => s + i.quantite, 0);
 
-      if (!partner) return <LoginScreen onLogin={handleLogin} />;
+      if (!partner && !isMaster) return <LoginScreen onLogin={handleLogin} />;
+      if (isMaster && !partner) return <EtablissementSelector etablissements={etablissements} onSelect={handleSelectEtablissement} />;
 
       return (
         <div className="min-h-screen bg-white dark:bg-slate-800 text-gray-900 dark:text-white relative">
@@ -1692,7 +1808,19 @@
             <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                 <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-8 sm:h-10" />
-                <span className="text-sm font-semibold text-gray-900 dark:text-white hidden sm:inline">{partner.nom}</span>
+                {isMaster && selectedEtablissement ? (
+                  <select
+                    value={selectedEtablissement.id}
+                    onChange={e => handleSwitchEtablissement(e.target.value)}
+                    className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white bg-transparent border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gold-500/50 hidden sm:block max-w-[200px] truncate"
+                  >
+                    {etablissements.map(e => (
+                      <option key={e.id} value={e.id}>{e.nom}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white hidden sm:inline">{partner.nom}</span>
+                )}
               </div>
               <div className="flex items-center gap-0.5 sm:gap-1">
                 <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`}>
