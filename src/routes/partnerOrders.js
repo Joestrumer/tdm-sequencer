@@ -519,12 +519,14 @@ module.exports = (db) => {
           }
 
           // Utiliser le nom canonique du partenaire (vf_partners.nom) directement pour GSheets
+          // On passe partnerName en 4e argument pour court-circuiter la résolution de nom
+          // qui peut tronquer les noms contenant " - " (ex: "Eklo Hotels Nantes Centre - Île de Nantes")
           const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
             clientName: order.partner_nom,
             invoiceNumber: result.number || '',
             invoiceDate: today,
             products: gsProducts,
-          });
+          }, order.partner_nom);
 
           if (gsResult.ok) {
             db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));
