@@ -237,11 +237,25 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Helper : résoudre remises et amenities depuis le master si applicable ──
+  function getMasterDiscountsPartner(req) {
+    if (req.partner.isMaster && req.headers['x-acting-partner-id']) {
+      // Le master agit pour un sous-compte → utiliser les remises/amenities du master
+      return db.prepare('SELECT nom, nom_normalise, promo_enabled, amenities FROM vf_partners WHERE id = ?').get(req.partner.id);
+    }
+    return null;
+  }
+
   // ─── Profil ────────────────────────────────────────────────────────────────
   router.get('/profil', requireEffectiveId, (req, res) => {
     try {
       const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+      // Si master agit pour un sous-compte, utiliser les amenities du master
+      const masterPartner = getMasterDiscountsPartner(req);
+      if (masterPartner && masterPartner.amenities) {
+        partner.amenities = masterPartner.amenities;
+      }
       // Ajouter les prix FP/FE pour le calcul côté portail (1 seule requête)
       const fraisRows = db.prepare("SELECT ref, prix_ht FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
       const fraisMap = {};
@@ -312,17 +326,21 @@ module.exports = (db) => {
       const partner = db.prepare('SELECT nom, nom_normalise, promo_enabled FROM vf_partners WHERE id = ?').get(partnerId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
+      // Si master agit pour un sous-compte, utiliser les remises/promos du master
+      const masterPartner = getMasterDiscountsPartner(req);
+      const discountSource = masterPartner || partner;
+
       // Produits actifs (exclure FP et FE)
       const products = db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all();
 
-      // Remises du partenaire (cherche par nom exact puis par nom_normalise en fallback)
-      let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
+      // Remises du partenaire (ou du master si applicable)
+      let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(discountSource.nom);
       if (discounts.length === 0) {
-        discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
+        discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(discountSource.nom_normalise);
       }
 
-      // Promotions flash (désactivées si promo_enabled = 0 sur le partenaire)
-      const partnerPromoEnabled = partner.promo_enabled ?? 1;
+      // Promotions flash (désactivées si promo_enabled = 0 sur le partenaire/master)
+      const partnerPromoEnabled = discountSource.promo_enabled ?? 1;
       const promoActiveRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_active'").get();
       const promoActive = promoActiveRow?.valeur === '1' && partnerPromoEnabled === 1;
       const promoTitleRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_title'").get();
@@ -389,16 +407,20 @@ module.exports = (db) => {
       const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(partnerId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
+      // Si master agit pour un sous-compte, utiliser les remises/promos du master
+      const masterPartner = getMasterDiscountsPartner(req);
+      const discountSource = masterPartner || partner;
+
       // Récupérer catalogue et remises (exclure FP/FE)
       const catalog = {};
       for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all()) {
         catalog[p.ref] = p;
       }
-      let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
-      if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
+      let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(discountSource.nom);
+      if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(discountSource.nom_normalise);
 
-      // Promotions flash (cumulables, désactivées si promo_enabled = 0)
-      const partnerPromoEnabled = partner.promo_enabled ?? 1;
+      // Promotions flash (cumulables, désactivées si promo_enabled = 0 sur le master/partenaire)
+      const partnerPromoEnabled = discountSource.promo_enabled ?? 1;
       const promoActiveRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_active'").get();
       const promoActive = promoActiveRow?.valeur === '1' && partnerPromoEnabled === 1;
       let promos = [];
@@ -572,15 +594,19 @@ module.exports = (db) => {
       const partnerId = req.partner.effectiveId;
       const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(partnerId);
 
+      // Si master agit pour un sous-compte, utiliser les remises/promos du master
+      const masterPartner = getMasterDiscountsPartner(req);
+      const discountSource = masterPartner || partner;
+
       const catalog = {};
       for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all()) {
         catalog[p.ref] = p;
       }
-      let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(partner.nom);
-      if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(partner.nom_normalise);
+      let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(discountSource.nom);
+      if (discounts.length === 0) discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ? COLLATE NOCASE').all(discountSource.nom_normalise);
 
-      // Promotions flash (cumulables, désactivées si promo_enabled = 0)
-      const partnerPromoEnabled = partner.promo_enabled ?? 1;
+      // Promotions flash (cumulables, désactivées si promo_enabled = 0 sur le master/partenaire)
+      const partnerPromoEnabled = discountSource.promo_enabled ?? 1;
       const promoActiveRow = db.prepare("SELECT valeur FROM config WHERE cle = 'promo_active'").get();
       const promoActive = promoActiveRow?.valeur === '1' && partnerPromoEnabled === 1;
       let promos = [];
