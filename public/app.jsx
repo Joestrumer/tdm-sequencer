@@ -27681,6 +27681,9 @@ const VuePortailDocuments = ({ showToast, readOnly }) => {
   const [titre, setTitre] = useState('');
   const [url, setUrl] = useState('');
   const [adding, setAdding] = useState(false);
+  const [editId, setEditId] = useState(null);
+  const [editTitre, setEditTitre] = useState('');
+  const [editUrl, setEditUrl] = useState('');
 
   const charger = () => {
     api.get('/reference/partner-documents').then(data => {
@@ -27709,6 +27712,30 @@ const VuePortailDocuments = ({ showToast, readOnly }) => {
       await api.delete('/reference/partner-documents/' + id);
       charger();
       if (showToast) showToast('Document supprimé', 'success');
+    } catch (e) {
+      if (showToast) showToast('Erreur: ' + e.message, 'error');
+    }
+  };
+
+  const startEdit = (doc) => {
+    setEditId(doc.id);
+    setEditTitre(doc.titre);
+    setEditUrl(doc.url);
+  };
+
+  const cancelEdit = () => {
+    setEditId(null);
+    setEditTitre('');
+    setEditUrl('');
+  };
+
+  const saveEdit = async () => {
+    if (!editTitre.trim() || !editUrl.trim()) return;
+    try {
+      await api.patch('/reference/partner-documents/' + editId, { titre: editTitre.trim(), url: editUrl.trim() });
+      cancelEdit();
+      charger();
+      if (showToast) showToast('Document modifié', 'success');
     } catch (e) {
       if (showToast) showToast('Erreur: ' + e.message, 'error');
     }
@@ -27743,13 +27770,32 @@ const VuePortailDocuments = ({ showToast, readOnly }) => {
                 <button onClick={() => deplacer(i, 1)} disabled={i === docs.length - 1 || readOnly}
                   className="text-xs text-slate-400 hover:text-slate-700 disabled:opacity-30">&darr;</button>
               </div>
-              <div className="flex-1 min-w-0">
-                <div className="text-sm font-medium text-slate-700 truncate">{doc.titre}</div>
-                <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline truncate block">{doc.url}</a>
-              </div>
-              {!readOnly && (
-                <button onClick={() => supprimer(doc.id)}
-                  className="text-xs text-red-400 hover:text-red-600 shrink-0">Supprimer</button>
+              {editId === doc.id ? (
+                <div className="flex-1 min-w-0 space-y-1.5">
+                  <input value={editTitre} onChange={e => setEditTitre(e.target.value)} placeholder="Titre"
+                    className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                  <input value={editUrl} onChange={e => setEditUrl(e.target.value)} placeholder="https://..."
+                    className="w-full border border-slate-200 rounded-lg px-2.5 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20" />
+                  <div className="flex gap-1.5">
+                    <button onClick={saveEdit} disabled={!editTitre.trim() || !editUrl.trim()}
+                      className="text-xs px-2.5 py-1 bg-slate-900 text-white rounded-md hover:bg-slate-700 disabled:opacity-50">Enregistrer</button>
+                    <button onClick={cancelEdit}
+                      className="text-xs px-2.5 py-1 text-slate-500 hover:text-slate-700">Annuler</button>
+                  </div>
+                </div>
+              ) : (
+                <div className="flex-1 min-w-0">
+                  <div className="text-sm font-medium text-slate-700 truncate">{doc.titre}</div>
+                  <a href={doc.url} target="_blank" rel="noopener noreferrer" className="text-xs text-blue-500 hover:underline truncate block">{doc.url}</a>
+                </div>
+              )}
+              {!readOnly && editId !== doc.id && (
+                <div className="flex items-center gap-2 shrink-0">
+                  <button onClick={() => startEdit(doc)}
+                    className="text-xs text-slate-400 hover:text-slate-700">Modifier</button>
+                  <button onClick={() => supprimer(doc.id)}
+                    className="text-xs text-red-400 hover:text-red-600">Supprimer</button>
+                </div>
               )}
             </div>
           ))}

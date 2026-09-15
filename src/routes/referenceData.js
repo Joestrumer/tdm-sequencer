@@ -874,6 +874,18 @@ module.exports = (db) => {
     }
   });
 
+  router.patch('/partner-documents/:id', (req, res) => {
+    try {
+      const { titre, url } = req.body;
+      if (!titre || !url) return res.status(400).json({ erreur: 'titre et url requis' });
+      const info = db.prepare('UPDATE partner_documents SET titre = ?, url = ? WHERE id = ?').run(titre, url, req.params.id);
+      if (info.changes === 0) return res.status(404).json({ erreur: 'Document introuvable' });
+      res.json({ ok: true });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   router.delete('/partner-documents/:id', (req, res) => {
     try {
       const info = db.prepare('DELETE FROM partner_documents WHERE id = ?').run(req.params.id);
