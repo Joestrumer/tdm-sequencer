@@ -8,6 +8,7 @@
   <script src="https://cdn.tailwindcss.com"></script>
   <script>
     tailwind.config = {
+      darkMode: 'class',
       theme: {
         extend: {
           colors: {
@@ -98,9 +99,13 @@
       border-radius: 55% 45% 48% 52% / 52% 55% 45% 48%;
       transform: rotate(20deg);
     }
+    html.dark body { background: #0f172a; }
+    .dark .tache-1, .dark .tache-2, .dark .tache-3 { opacity: 0.3; }
+    .dark .tache-login-1, .dark .tache-login-2 { opacity: 0.3; }
   </style>
 </head>
 <body>
+  <script>if (localStorage.getItem('tdm_dark_mode') === 'true') document.documentElement.classList.add('dark');</script>
   <div id="root"></div>
 
   <script>
@@ -169,16 +174,16 @@
             <div className="mb-10">
               <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-24 mx-auto mb-6" />
             </div>
-            <div className="bg-white border border-gray-200 rounded-2xl p-8 shadow-sm">
-              <h2 className="text-sm font-medium text-gray-700 mb-1">Espace Partenaire</h2>
-              <p className="text-xs text-gray-400 mb-6">Entrez votre mot de passe pour acc&eacute;der au catalogue.</p>
+            <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-8 shadow-sm dark:shadow-none">
+              <h2 className="text-sm font-medium text-gray-700 dark:text-slate-200 mb-1">Espace Partenaire</h2>
+              <p className="text-xs text-gray-400 dark:text-slate-500 mb-6">Entrez votre mot de passe pour acc&eacute;der au catalogue.</p>
               <input
                 type="password"
                 value={password}
                 onChange={e => setPassword(e.target.value)}
                 onKeyDown={e => e.key === 'Enter' && handleLogin()}
                 placeholder="Mot de passe..."
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/40"
+                className="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/40"
                 autoFocus
               />
               {error && <p className="text-red-500 text-xs mt-2">{error}</p>}
@@ -234,40 +239,40 @@
       const cartons = moq > 1 ? Math.floor(qty / moq) : qty;
       const inCart = qty > 0;
       return (
-        <div className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 border-l-2 border-l-gold-500' : 'hover:bg-gray-50'}`}>
+        <div className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 dark:bg-gold-900/30 border-l-2 border-l-gold-500' : 'hover:bg-gray-50 dark:hover:bg-slate-700'}`}>
           <div className="flex-1 min-w-0">
             <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
-              <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
+              <span className="font-mono text-[10px] text-gray-400 dark:text-slate-500 shrink-0">{p.ref}</span>
+              <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{p.nom}</span>
             </div>
             <div className="flex items-center gap-2 mt-0.5">
               {p.promo_pct > 0 ? (
                 <>
-                  <span className="text-xs text-gray-400 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
-                  <span className="text-xs font-bold text-red-600">{p.prix_promo.toFixed(2)} &euro; HT</span>
+                  <span className="text-xs text-gray-400 dark:text-slate-500 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
+                  <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">-{p.promo_pct}%</span>
                 </>
               ) : (
                 <>
                   <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
                   {p.discount_pct > 0 && (
-                    <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
+                    <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">-{p.discount_pct}%</span>
                   )}
                 </>
               )}
               {moq > 1 && (
-                <span className="text-[10px] text-gray-400">carton de {moq}</span>
+                <span className="text-[10px] text-gray-400 dark:text-slate-500">carton de {moq}</span>
               )}
             </div>
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {qty > 0 && (
-              <button onClick={() => removeCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center text-base font-bold transition-colors">-</button>
+              <button onClick={() => removeCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-base font-bold transition-colors">-</button>
             )}
             {qty > 0 && (
               <div className="text-center min-w-[32px]">
-                <div className="text-gray-900 font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{qty} u.</div>}
+                <div className="text-gray-900 dark:text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                {moq > 1 && <div className="text-[9px] text-gray-400 dark:text-slate-500 leading-none">{qty} u.</div>}
               </div>
             )}
             <button onClick={() => addCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
@@ -321,17 +326,17 @@
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
-              <h3 className="text-sm font-semibold text-gray-900">Vos produits en chambre</h3>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Vos produits en chambre</h3>
             </div>
             <div className="space-y-4">
               {sections.map(({ type, gammeInfo, mainProducts }) => (
                 mainProducts.length > 0 && (
-                  <div key={type.key} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-                    <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
-                      <span className="text-xs font-semibold text-gray-700">{type.label}</span>
+                  <div key={type.key} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden">
+                    <div className="px-3 py-2 bg-gray-50 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-700">
+                      <span className="text-xs font-semibold text-gray-700 dark:text-slate-200">{type.label}</span>
                       <span className="text-xs text-gold-600 ml-1.5">{gammeInfo?.gamme || ''}</span>
                     </div>
-                    <div className="divide-y divide-gray-50">
+                    <div className="divide-y divide-gray-50 dark:divide-slate-700">
                       {mainProducts.map(p => (
                         <AmenityProductRow key={p.ref} p={p} getQty={getQty} addCarton={addCarton} removeCarton={removeCarton} />
                       ))}
@@ -349,20 +354,20 @@
                 onClick={() => setShowOtherFormats(!showOtherFormats)}
                 className="flex items-center gap-2 mb-3 group"
               >
-                <div className="w-1 h-5 bg-gray-300 rounded-full"></div>
-                <h3 className="text-sm font-medium text-gray-500 group-hover:text-gray-700 transition-colors">Autres formats disponibles <span className="font-normal text-gray-400">(mêmes parfums)</span></h3>
-                <span className="text-gray-400 text-xs group-hover:text-gray-600 transition-colors">{showOtherFormats ? '\u25b2' : '\u25bc'}</span>
+                <div className="w-1 h-5 bg-gray-300 dark:bg-slate-500 rounded-full"></div>
+                <h3 className="text-sm font-medium text-gray-500 dark:text-slate-400 group-hover:text-gray-700 dark:group-hover:text-slate-200 transition-colors">Autres formats disponibles <span className="font-normal text-gray-400 dark:text-slate-500">(mêmes parfums)</span></h3>
+                <span className="text-gray-400 dark:text-slate-500 text-xs group-hover:text-gray-600 dark:group-hover:text-slate-300 transition-colors">{showOtherFormats ? '\u25b2' : '\u25bc'}</span>
               </button>
               {showOtherFormats && (
                 <div className="space-y-4 animate-fade-in">
                   {sections.map(({ type, gammeInfo, otherProducts }) => (
                     otherProducts.length > 0 && (
-                      <div key={type.key} className="bg-white border border-gray-100 rounded-xl overflow-hidden">
-                        <div className="px-3 py-2 bg-gray-50 border-b border-gray-100">
-                          <span className="text-xs font-semibold text-gray-700">{type.label}</span>
+                      <div key={type.key} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden">
+                        <div className="px-3 py-2 bg-gray-50 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-700">
+                          <span className="text-xs font-semibold text-gray-700 dark:text-slate-200">{type.label}</span>
                           <span className="text-xs text-gold-600 ml-1.5">{gammeInfo?.gamme || ''}</span>
                         </div>
-                        <div className="divide-y divide-gray-50">
+                        <div className="divide-y divide-gray-50 dark:divide-slate-700">
                           {otherProducts.map(p => (
                             <AmenityProductRow key={p.ref} p={p} getQty={getQty} addCarton={addCarton} removeCarton={removeCarton} />
                           ))}
@@ -399,10 +404,10 @@
       };
 
       const statutConfig = {
-        en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700" },
-        validee: { label: "Valid\u00e9e", bg: "bg-green-50", text: "text-green-700" },
-        annulee: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
-        annulee_client: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
+        en_attente: { label: "En attente", bg: "bg-amber-50 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-300" },
+        validee: { label: "Valid\u00e9e", bg: "bg-green-50 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400" },
+        annulee: { label: "Annul\u00e9e", bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400" },
+        annulee_client: { label: "Annul\u00e9e", bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400" },
       };
       const cfg = statutConfig[derniere.statut] || statutConfig.en_attente;
 
@@ -413,13 +418,13 @@
             className="flex items-center gap-2 mb-3 group"
           >
             <div className="w-1 h-5 bg-gold-400 rounded-full"></div>
-            <h3 className="text-sm font-semibold text-gray-900">Votre dernière commande</h3>
-            <span className="text-gray-400 text-xs group-hover:text-gray-600 transition-colors">{open ? '\u25b2' : '\u25bc'}</span>
+            <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Votre dernière commande</h3>
+            <span className="text-gray-400 dark:text-slate-500 text-xs group-hover:text-gray-600 dark:group-hover:text-slate-300 transition-colors">{open ? '\u25b2' : '\u25bc'}</span>
           </button>
           {open && (
-            <div className="bg-white border border-gray-200 rounded-xl p-4 animate-fade-in shadow-sm">
+            <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl p-4 animate-fade-in shadow-sm dark:shadow-none">
               <div className="flex items-center justify-between mb-3">
-                <div className="text-xs text-gray-500">
+                <div className="text-xs text-gray-500 dark:text-slate-400">
                   {new Date(derniere.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}
                 </div>
                 <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
@@ -427,13 +432,13 @@
               <div className="space-y-1 mb-3">
                 {derniere.products.map((p, i) => (
                   <div key={i} className="flex justify-between text-sm">
-                    <span className="text-gray-600">{p.quantite}x {p.nom || p.ref}</span>
-                    <span className="text-gray-900">{p.total_ht.toFixed(2)} &euro;</span>
+                    <span className="text-gray-600 dark:text-slate-300">{p.quantite}x {p.nom || p.ref}</span>
+                    <span className="text-gray-900 dark:text-white">{p.total_ht.toFixed(2)} &euro;</span>
                   </div>
                 ))}
               </div>
-              <div className="flex items-center justify-between border-t border-gray-100 pt-3">
-                <div className="text-sm font-medium text-gray-900">Total: {derniere.total_ht.toFixed(2)} &euro; HT</div>
+              <div className="flex items-center justify-between border-t border-gray-100 dark:border-slate-700 pt-3">
+                <div className="text-sm font-medium text-gray-900 dark:text-white">Total: {derniere.total_ht.toFixed(2)} &euro; HT</div>
                 <button
                   onClick={handleRecommander}
                   className="px-4 py-2 bg-gold-500 text-white text-xs font-medium rounded-lg hover:bg-gold-600 transition-colors"
@@ -489,10 +494,10 @@
 
       return (
         <div className="mb-8">
-          <div className="bg-gradient-to-r from-red-50 to-orange-50 border border-red-200 rounded-2xl p-4 sm:p-5">
+          <div className="bg-gradient-to-r from-red-50 to-orange-50 dark:from-red-900/30 dark:to-orange-900/30 border border-red-200 dark:border-red-800 rounded-2xl p-4 sm:p-5">
             <div className="flex items-center gap-2 mb-4">
               <span className="text-lg">&#128293;</span>
-              <h2 className="text-base sm:text-lg font-bold text-red-700">{promoTitle || 'Promotions du moment'}</h2>
+              <h2 className="text-base sm:text-lg font-bold text-red-700 dark:text-red-400">{promoTitle || 'Promotions du moment'}</h2>
             </div>
             <div className="space-y-1">
               {promoProducts.map(p => {
@@ -502,30 +507,30 @@
                 const inCart = qty > 0;
                 return (
                   <div key={p.ref}
-                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-white/80 border-l-2 border-l-red-400' : 'bg-white/50 hover:bg-white/70'}`}
+                    className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-white/80 dark:bg-slate-700/80 border-l-2 border-l-red-400' : 'bg-white/50 dark:bg-slate-700/50 hover:bg-white/70 dark:hover:bg-slate-600/70'}`}
                   >
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2">
-                        <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
-                        <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
+                        <span className="font-mono text-[10px] text-gray-400 dark:text-slate-500 shrink-0">{p.ref}</span>
+                        <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{p.nom}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold shrink-0">-{p.promo_pct}%</span>
                       </div>
                       <div className="flex items-center gap-2 mt-0.5">
-                        <span className="text-xs text-gray-400 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
-                        <span className="text-xs font-bold text-red-600">{p.prix_promo.toFixed(2)} &euro; HT</span>
+                        <span className="text-xs text-gray-400 dark:text-slate-500 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
+                        <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT</span>
                         {moq > 1 && (
-                          <span className="text-[10px] text-gray-400">carton de {moq}</span>
+                          <span className="text-[10px] text-gray-400 dark:text-slate-500">carton de {moq}</span>
                         )}
                       </div>
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {qty > 0 && (
-                        <button onClick={() => removeCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center text-base font-bold transition-colors">-</button>
+                        <button onClick={() => removeCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-base font-bold transition-colors">-</button>
                       )}
                       {qty > 0 && (
                         <div className="text-center min-w-[32px]">
-                          <div className="text-gray-900 font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                          {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{qty} u.</div>}
+                          <div className="text-gray-900 dark:text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                          {moq > 1 && <div className="text-[9px] text-gray-400 dark:text-slate-500 leading-none">{qty} u.</div>}
                         </div>
                       )}
                       <button onClick={() => addCarton(p.ref)} className="w-9 h-9 rounded-lg bg-red-500 text-white hover:bg-red-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
@@ -635,10 +640,10 @@
                 value={search}
                 onChange={e => setSearch(e.target.value)}
                 placeholder="Rechercher un produit..."
-                className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/40"
+                className="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/40"
               />
               {search && (
-                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 hover:text-gray-600 text-lg px-1">&times;</button>
+                <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 text-lg px-1">&times;</button>
               )}
             </div>
           </div>
@@ -651,13 +656,13 @@
               <div key={categorie} className="mb-3">
                 <button
                   onClick={() => toggleCat(categorie)}
-                  className="w-full flex items-center gap-2 px-3 py-3 rounded-xl bg-gray-50 hover:bg-gray-100 transition-colors"
+                  className="w-full flex items-center gap-2 px-3 py-3 rounded-xl bg-gray-50 dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
                 >
-                  <span className={`text-gray-400 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`} style={{display:'inline-block'}}>&#9654;</span>
-                  <span className="text-sm font-semibold text-gray-900 flex-1 text-left">{categorie}</span>
-                  <span className="text-xs text-gray-400">{products.length}</span>
+                  <span className={`text-gray-400 dark:text-slate-500 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`} style={{display:'inline-block'}}>&#9654;</span>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white flex-1 text-left">{categorie}</span>
+                  <span className="text-xs text-gray-400 dark:text-slate-500">{products.length}</span>
                   {catPanierCount > 0 && (
-                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-100 text-gold-700 font-medium">{catPanierCount} au panier</span>
+                    <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">{catPanierCount} au panier</span>
                   )}
                 </button>
 
@@ -671,41 +676,41 @@
                       return (
                         <div
                           key={p.ref}
-                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 border-l-2 border-l-gold-500' : 'hover:bg-gray-50'}`}
+                          className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 dark:bg-gold-900/30 border-l-2 border-l-gold-500' : 'hover:bg-gray-50 dark:hover:bg-slate-700'}`}
                         >
                           <div className="flex-1 min-w-0">
                             <div className="flex items-center gap-2">
-                              <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
-                              <span className="text-xs sm:text-sm text-gray-900 truncate">{p.nom}</span>
+                              <span className="font-mono text-[10px] text-gray-400 dark:text-slate-500 shrink-0">{p.ref}</span>
+                              <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{p.nom}</span>
                             </div>
                             <div className="flex items-center gap-2 mt-0.5">
                               {p.promo_pct > 0 ? (
                                 <>
-                                  <span className="text-xs text-gray-400 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
-                                  <span className="text-xs font-bold text-red-600">{p.prix_promo.toFixed(2)} &euro; HT</span>
+                                  <span className="text-xs text-gray-400 dark:text-slate-500 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
+                                  <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT</span>
                                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">PROMO -{p.promo_pct}%</span>
                                 </>
                               ) : (
                                 <>
                                   <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
                                   {p.discount_pct > 0 && (
-                                    <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{p.discount_pct}%</span>
+                                    <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">-{p.discount_pct}%</span>
                                   )}
                                 </>
                               )}
                               {moq > 1 && (
-                                <span className="text-[10px] text-gray-400">carton de {moq}</span>
+                                <span className="text-[10px] text-gray-400 dark:text-slate-500">carton de {moq}</span>
                               )}
                             </div>
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             {qty > 0 && (
-                              <button onClick={() => removeCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gray-100 text-gray-600 hover:bg-gray-200 flex items-center justify-center text-base font-bold transition-colors">-</button>
+                              <button onClick={() => removeCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-base font-bold transition-colors">-</button>
                             )}
                             {qty > 0 && (
                               <div className="text-center min-w-[32px]">
-                                <div className="text-gray-900 font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                                {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{qty} u.</div>}
+                                <div className="text-gray-900 dark:text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
+                                {moq > 1 && <div className="text-[9px] text-gray-400 dark:text-slate-500 leading-none">{qty} u.</div>}
                               </div>
                             )}
                             <button onClick={() => addCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
@@ -719,7 +724,7 @@
             );
           })}
           {filtered.length === 0 && (
-            <div className="text-center py-12 text-gray-400 text-sm">Aucun produit trouv&eacute;</div>
+            <div className="text-center py-12 text-gray-400 dark:text-slate-500 text-sm">Aucun produit trouv&eacute;</div>
           )}
         </div>
       );
@@ -758,11 +763,11 @@
       if (items.length === 0) {
         return (
           <div className="space-y-4">
-            <div className="text-center py-8 text-gray-400 text-sm">
+            <div className="text-center py-8 text-gray-400 dark:text-slate-500 text-sm">
               Votre panier est vide.<br />Ajoutez des produits depuis le catalogue.
             </div>
-            <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 space-y-1">
-              <div className="font-semibold text-amber-900 mb-1">Conditions :</div>
+            <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+              <div className="font-semibold text-amber-900 dark:text-amber-400 mb-1">Conditions :</div>
               <ul className="list-disc list-inside space-y-0.5">
                 <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger (FE)</li>
                 <li>Frais de pr&eacute;paration (FP) de commande = {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>
@@ -780,26 +785,26 @@
             const moq = i.moq || 1;
             const cartons = moq > 1 ? Math.floor(i.quantite / moq) : i.quantite;
             return (
-              <div key={i.ref} className="bg-gray-50 rounded-xl p-3">
+              <div key={i.ref} className="bg-gray-50 dark:bg-slate-700 rounded-xl p-3">
                 <div className="flex items-center justify-between">
                   <div className="min-w-0 flex-1">
-                    <div className="text-xs text-gray-400 font-mono">{i.ref}</div>
-                    <div className="text-sm text-gray-900 truncate">{i.nom}</div>
+                    <div className="text-xs text-gray-400 dark:text-slate-500 font-mono">{i.ref}</div>
+                    <div className="text-sm text-gray-900 dark:text-white truncate">{i.nom}</div>
                     <div className="flex items-center gap-2 mt-0.5">
                       {i.promo_pct > 0 ? (
                         <>
-                          <span className="text-xs text-gray-400 line-through">{i.prix_remise.toFixed(2)} &euro;</span>
-                          <span className="text-xs font-bold text-red-600">{i.prix_promo.toFixed(2)} &euro; HT/u</span>
+                          <span className="text-xs text-gray-400 dark:text-slate-500 line-through">{i.prix_remise.toFixed(2)} &euro;</span>
+                          <span className="text-xs font-bold text-red-600 dark:text-red-400">{i.prix_promo.toFixed(2)} &euro; HT/u</span>
                           <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">-{i.promo_pct}%</span>
                         </>
                       ) : i.discount_pct > 0 ? (
                         <>
-                          <span className="text-xs text-gray-400 line-through">{i.prix_ht.toFixed(2)} &euro;</span>
+                          <span className="text-xs text-gray-400 dark:text-slate-500 line-through">{i.prix_ht.toFixed(2)} &euro;</span>
                           <span className="text-xs text-gold-600">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
-                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-100 text-gold-700 font-medium">-{i.discount_pct}%</span>
+                          <span className="text-[10px] px-1.5 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">-{i.discount_pct}%</span>
                         </>
                       ) : (
-                        <span className="text-xs text-gray-500">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
+                        <span className="text-xs text-gray-500 dark:text-slate-400">{i.prix_remise.toFixed(2)} &euro; HT/u</span>
                       )}
                     </div>
                   </div>
@@ -809,14 +814,14 @@
                         const next = i.quantite - moq;
                         if (next <= 0) { const n = { ...p }; delete n[i.ref]; return n; }
                         return { ...p, [i.ref]: { ...i, quantite: next } };
-                      })} className="w-8 h-8 rounded-lg bg-gray-200 text-gray-600 text-sm hover:bg-gray-300 flex items-center justify-center">-</button>
+                      })} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-300 text-sm hover:bg-gray-300 dark:hover:bg-slate-500 flex items-center justify-center">-</button>
                       <div className="text-center min-w-[32px]">
-                        <div className="text-gray-900 text-sm font-semibold">{moq > 1 ? cartons : i.quantite}</div>
-                        {moq > 1 && <div className="text-[9px] text-gray-400 leading-none">{i.quantite} u.</div>}
+                        <div className="text-gray-900 dark:text-white text-sm font-semibold">{moq > 1 ? cartons : i.quantite}</div>
+                        {moq > 1 && <div className="text-[9px] text-gray-400 dark:text-slate-500 leading-none">{i.quantite} u.</div>}
                       </div>
-                      <button onClick={() => setPanier(p => ({ ...p, [i.ref]: { ...i, quantite: i.quantite + moq } }))} className="w-8 h-8 rounded-lg bg-gray-200 text-gray-600 text-sm hover:bg-gray-300 flex items-center justify-center">+</button>
+                      <button onClick={() => setPanier(p => ({ ...p, [i.ref]: { ...i, quantite: i.quantite + moq } }))} className="w-8 h-8 rounded-lg bg-gray-200 dark:bg-slate-600 text-gray-600 dark:text-slate-300 text-sm hover:bg-gray-300 dark:hover:bg-slate-500 flex items-center justify-center">+</button>
                     </div>
-                    <div className="text-sm text-gray-900 font-medium w-20 text-right">{((i.prix_promo ?? i.prix_remise) * i.quantite).toFixed(2)} &euro;</div>
+                    <div className="text-sm text-gray-900 dark:text-white font-medium w-20 text-right">{((i.prix_promo ?? i.prix_remise) * i.quantite).toFixed(2)} &euro;</div>
                   </div>
                 </div>
               </div>
@@ -825,20 +830,20 @@
 
           {/* Barre de progression franco */}
           {!exonere && (
-            <div className="bg-gray-50 rounded-xl p-3">
+            <div className="bg-gray-50 dark:bg-slate-700 rounded-xl p-3">
               <div className="flex justify-between text-[11px] mb-1.5">
-                <span className={francoAtteint ? "text-gold-600 font-medium" : "text-gray-500"}>
+                <span className={francoAtteint ? "text-gold-600 font-medium" : "text-gray-500 dark:text-slate-400"}>
                   {francoAtteint ? 'Franco atteint !' : `Encore ${manquePourFranco.toFixed(2)} \u20ac pour le franco`}
                 </span>
-                <span className="text-gray-400">{subtotalHT.toFixed(0)} / {francoSeuil.toFixed(0)} &euro; HT</span>
+                <span className="text-gray-400 dark:text-slate-500">{subtotalHT.toFixed(0)} / {francoSeuil.toFixed(0)} &euro; HT</span>
               </div>
-              <div className="w-full bg-gray-200 rounded-full h-1.5">
+              <div className="w-full bg-gray-200 dark:bg-slate-600 rounded-full h-1.5">
                 <div
                   className={`h-1.5 rounded-full transition-all ${francoAtteint ? 'bg-gold-500' : 'bg-amber-500'}`}
                   style={{ width: `${Math.min(100, (subtotalHT / francoSeuil) * 100)}%` }}
                 />
               </div>
-              <div className="text-[10px] mt-1 text-gray-400">
+              <div className="text-[10px] mt-1 text-gray-400 dark:text-slate-500">
                 {francoAtteint
                   ? `Frais de pr\u00e9paration : ${fpPrix.toFixed(2)} \u20ac HT (au lieu de ${fePrix.toFixed(2)} \u20ac d'exp\u00e9dition)`
                   : `Frais d'exp\u00e9dition : ${fePrix.toFixed(2)} \u20ac HT`
@@ -847,8 +852,8 @@
             </div>
           )}
 
-          <div className="border-t border-gray-200 pt-4 space-y-2">
-            <div className="flex justify-between text-sm text-gray-500">
+          <div className="border-t border-gray-200 dark:border-slate-600 pt-4 space-y-2">
+            <div className="flex justify-between text-sm text-gray-500 dark:text-slate-400">
               <span>Sous-total HT</span>
               <span>{subtotalHT.toFixed(2)} &euro;</span>
             </div>
@@ -864,17 +869,17 @@
                 <span>Exon&eacute;r&eacute;</span>
               </div>
             )}
-            <div className="flex justify-between text-sm text-gray-900 font-semibold">
+            <div className="flex justify-between text-sm text-gray-900 dark:text-white font-semibold">
               <span>Total HT</span>
               <span>{totalHT.toFixed(2)} &euro;</span>
             </div>
-            <div className="flex justify-between text-sm text-gray-400">
+            <div className="flex justify-between text-sm text-gray-400 dark:text-slate-500">
               <span>Total TTC</span>
               <span>{totalTTC.toFixed(2)} &euro;</span>
             </div>
           </div>
-          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs text-amber-800 space-y-1">
-            <div className="font-semibold text-amber-900 mb-1">Conditions :</div>
+          <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300 space-y-1">
+            <div className="font-semibold text-amber-900 dark:text-amber-400 mb-1">Conditions :</div>
             <ul className="list-disc list-inside space-y-0.5">
               <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger (FE)</li>
               <li>Frais de pr&eacute;paration (FP) de commande = {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>
@@ -886,43 +891,43 @@
             value={notes}
             onChange={e => setNotes(e.target.value)}
             placeholder="Notes ou instructions (optionnel)..."
-            className="w-full bg-gray-50 border border-gray-200 rounded-xl px-4 py-3 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gold-500/50 resize-none"
+            className="w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl px-4 py-3 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-gold-500/50 resize-none"
             rows={3}
           />
 
           {/* Ecran de confirmation (point 6) */}
           {showConfirm ? (
-            <div ref={confirmRef} className="bg-gold-50 border border-gold-200 rounded-xl p-4 space-y-3 animate-fade-in">
-              <div className="text-sm font-semibold text-gray-900">R&eacute;capitulatif de votre commande</div>
+            <div ref={confirmRef} className="bg-gold-50 dark:bg-gold-900/30 border border-gold-200 dark:border-gold-800 rounded-xl p-4 space-y-3 animate-fade-in">
+              <div className="text-sm font-semibold text-gray-900 dark:text-white">R&eacute;capitulatif de votre commande</div>
               <div className="space-y-1 max-h-40 overflow-y-auto">
                 {items.map(i => (
-                  <div key={i.ref} className="flex justify-between text-xs text-gray-700">
+                  <div key={i.ref} className="flex justify-between text-xs text-gray-700 dark:text-slate-200">
                     <span>{i.quantite}x {i.nom}</span>
                     <span>{((i.prix_promo ?? i.prix_remise) * i.quantite).toFixed(2)} &euro;</span>
                   </div>
                 ))}
               </div>
-              <div className="border-t border-gold-200 pt-2 space-y-1">
+              <div className="border-t border-gold-200 dark:border-gold-800 pt-2 space-y-1">
                 {!exonere && fraisMontant > 0 && (
-                  <div className="flex justify-between text-xs text-gray-500">
+                  <div className="flex justify-between text-xs text-gray-500 dark:text-slate-400">
                     <span>{fraisLabel}</span>
                     <span>{fraisMontant.toFixed(2)} &euro;</span>
                   </div>
                 )}
-                <div className="flex justify-between text-sm font-semibold text-gray-900">
+                <div className="flex justify-between text-sm font-semibold text-gray-900 dark:text-white">
                   <span>Total HT</span>
                   <span>{totalHT.toFixed(2)} &euro;</span>
                 </div>
-                <div className="flex justify-between text-xs text-gray-400">
+                <div className="flex justify-between text-xs text-gray-400 dark:text-slate-500">
                   <span>Total TTC</span>
                   <span>{totalTTC.toFixed(2)} &euro;</span>
                 </div>
               </div>
-              {notes && <div className="text-xs text-gray-500 italic">Note : "{notes}"</div>}
+              {notes && <div className="text-xs text-gray-500 dark:text-slate-400 italic">Note : "{notes}"</div>}
               <div className="flex gap-2">
                 <button
                   onClick={() => setShowConfirm(false)}
-                  className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors"
+                  className="flex-1 py-2.5 rounded-xl text-sm font-medium border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
                 >
                   Modifier
                 </button>
@@ -962,10 +967,10 @@
         return next;
       });
       const statutConfig = {
-        en_attente: { label: "En attente", bg: "bg-amber-50", text: "text-amber-700" },
-        validee: { label: "Valid\u00e9e", bg: "bg-green-50", text: "text-green-700" },
-        annulee: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
-        annulee_client: { label: "Annul\u00e9e", bg: "bg-red-50", text: "text-red-700" },
+        en_attente: { label: "En attente", bg: "bg-amber-50 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-300" },
+        validee: { label: "Valid\u00e9e", bg: "bg-green-50 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400" },
+        annulee: { label: "Annul\u00e9e", bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400" },
+        annulee_client: { label: "Annul\u00e9e", bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400" },
       };
 
       const handleCancel = async (id) => {
@@ -1078,21 +1083,21 @@
       };
 
       if (commandes.length === 0) {
-        return <div className="text-center py-12 text-gray-400 text-sm">Aucune commande pass&eacute;e.</div>;
+        return <div className="text-center py-12 text-gray-400 dark:text-slate-500 text-sm">Aucune commande pass&eacute;e.</div>;
       }
 
       return (
         <div className="space-y-4">
           {/* Filtres par statut */}
-          <div className="flex gap-1 bg-gray-100 rounded-xl p-1">
+          <div className="flex gap-1 bg-gray-100 dark:bg-slate-600 rounded-xl p-1">
             {filtreOptions.map(f => {
               const count = f.key === 'tous' ? commandes.length
                 : f.key === 'annulee' ? commandes.filter(c => c.statut === 'annulee' || c.statut === 'annulee_client').length
                 : commandes.filter(c => c.statut === f.key).length;
               return (
                 <button key={f.key} onClick={() => setFiltre(f.key)}
-                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${filtre === f.key ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
-                  {f.label} <span className="text-gray-400 ml-0.5">({count})</span>
+                  className={`flex-1 px-3 py-2 rounded-lg text-xs font-medium transition-colors ${filtre === f.key ? 'bg-white dark:bg-slate-800 shadow-sm dark:shadow-none text-gray-900 dark:text-white' : 'text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200'}`}>
+                  {f.label} <span className="text-gray-400 dark:text-slate-500 ml-0.5">({count})</span>
                 </button>
               );
             })}
@@ -1100,24 +1105,24 @@
 
           {/* Barre d'actions export */}
           <div className="flex items-center justify-between">
-            <div className="text-xs text-gray-400">
+            <div className="text-xs text-gray-400 dark:text-slate-500">
               {selectedIds.size > 0 && `${selectedIds.size} s\u00e9lectionn\u00e9e${selectedIds.size > 1 ? 's' : ''}`}
             </div>
             <div className="flex items-center gap-2">
               {selectedIds.size > 0 && (
-                <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 hover:text-gray-600 transition-colors">
+                <button onClick={() => setSelectedIds(new Set())} className="text-xs text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 transition-colors">
                   D&eacute;s&eacute;lectionner
                 </button>
               )}
               <button onClick={exportCsv}
-                className="text-xs px-3 py-2 rounded-lg border border-gray-200 text-gray-600 hover:bg-gray-50 transition-colors flex items-center gap-1">
+                className="text-xs px-3 py-2 rounded-lg border border-gray-200 dark:border-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors flex items-center gap-1">
                 &#128196; Exporter {selectedIds.size > 0 ? `(${selectedIds.size})` : 'tout'} en CSV
               </button>
             </div>
           </div>
 
           {filtered.length === 0 && (
-            <div className="text-center py-8 text-gray-400 text-sm">Aucune commande dans cette cat&eacute;gorie.</div>
+            <div className="text-center py-8 text-gray-400 dark:text-slate-500 text-sm">Aucune commande dans cette cat&eacute;gorie.</div>
           )}
 
           {filtered.slice(0, visibleCount).map(c => {
@@ -1125,86 +1130,86 @@
             const isExpanded = expandedId === c.id;
             const isSelected = selectedIds.has(c.id);
             return (
-              <div key={c.id} className={`bg-white border rounded-2xl shadow-sm overflow-hidden transition-colors ${isSelected ? 'border-gold-400 ring-1 ring-gold-200' : 'border-gray-200'}`}>
+              <div key={c.id} className={`bg-white dark:bg-slate-800 border rounded-2xl shadow-sm dark:shadow-none overflow-hidden transition-colors ${isSelected ? 'border-gold-400 dark:border-gold-700 ring-1 ring-gold-200 dark:ring-gold-800' : 'border-gray-200 dark:border-slate-600'}`}>
                 {/* En-tête cliquable */}
                 <div className="flex items-center">
                   <label className="flex items-center justify-center w-10 shrink-0 cursor-pointer" onClick={e => e.stopPropagation()}>
                     <input type="checkbox" checked={isSelected} onChange={() => toggleSelect(c.id)}
-                      className="w-4 h-4 rounded border-gray-300 text-gold-500 focus:ring-gold-500/30 cursor-pointer" />
+                      className="w-4 h-4 rounded border-gray-300 dark:border-slate-600 text-gold-500 focus:ring-gold-500/30 cursor-pointer" />
                   </label>
-                <button onClick={() => setExpandedId(isExpanded ? null : c.id)} className="flex-1 flex items-center justify-between p-4 pl-0 text-left hover:bg-gray-50/50 transition-colors">
+                <button onClick={() => setExpandedId(isExpanded ? null : c.id)} className="flex-1 flex items-center justify-between p-4 pl-0 text-left hover:bg-gray-50/50 dark:hover:bg-slate-700/50 transition-colors">
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 mb-1 flex-wrap">
-                      <span className="text-xs text-gray-500">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
+                      <span className="text-xs text-gray-500 dark:text-slate-400">{new Date(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                       <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
-                      {c.statut === 'validee' && c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">Livr&eacute;e</span>}
-                      {c.statut === 'validee' && c.tracking_number && !c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 text-blue-700">Exp&eacute;di&eacute;e</span>}
+                      {c.statut === 'validee' && c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-400">Livr&eacute;e</span>}
+                      {c.statut === 'validee' && c.tracking_number && !c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400">Exp&eacute;di&eacute;e</span>}
                     </div>
                     <div className="flex items-center gap-3">
-                      <span className="text-sm font-semibold text-gray-900">{c.total_ht.toFixed(2)} &euro; HT</span>
-                      <span className="text-xs text-gray-400">{c.products.length} produit{c.products.length > 1 ? 's' : ''}</span>
-                      {c.vf_invoice_number && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 text-green-700 font-medium">Facture n&deg;{c.vf_invoice_number}</span>}
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white">{c.total_ht.toFixed(2)} &euro; HT</span>
+                      <span className="text-xs text-gray-400 dark:text-slate-500">{c.products.length} produit{c.products.length > 1 ? 's' : ''}</span>
+                      {c.vf_invoice_number && <span className="text-[10px] px-1.5 py-0.5 rounded bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 font-medium">Facture n&deg;{c.vf_invoice_number}</span>}
                     </div>
                   </div>
-                  <span className={`text-gray-400 text-xs transition-transform ${isExpanded ? 'rotate-180' : ''}`}>&#9660;</span>
+                  <span className={`text-gray-400 dark:text-slate-500 text-xs transition-transform ${isExpanded ? 'rotate-180' : ''}`}>&#9660;</span>
                 </button>
                 </div>
 
                 {/* Détail déplié */}
                 {isExpanded && (
-                  <div className="px-5 pb-5 border-t border-gray-100 animate-fade-in">
+                  <div className="px-5 pb-5 border-t border-gray-100 dark:border-slate-700 animate-fade-in">
                     <div className="space-y-1.5 py-3">
                       {c.products.map((p, i) => (
                         <div key={i} className="flex items-center justify-between text-sm">
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="font-mono text-[10px] text-gray-400 shrink-0">{p.ref}</span>
-                            <span className="text-gray-700 truncate">{p.nom}</span>
+                            <span className="font-mono text-[10px] text-gray-400 dark:text-slate-500 shrink-0">{p.ref}</span>
+                            <span className="text-gray-700 dark:text-slate-200 truncate">{p.nom}</span>
                             {p.promo_pct > 0 && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold shrink-0">PROMO -{p.promo_pct}%</span>}
-                            {p.discount_pct > 0 && !p.promo_pct && <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 text-gold-700 font-medium shrink-0">-{p.discount_pct}%</span>}
+                            {p.discount_pct > 0 && !p.promo_pct && <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium shrink-0">-{p.discount_pct}%</span>}
                           </div>
                           <div className="flex items-center gap-3 shrink-0 ml-2">
-                            <span className="text-xs text-gray-400">{p.quantite} u. &times; {p.prix_remise.toFixed(2)} &euro;</span>
-                            <span className="text-gray-900 font-medium w-20 text-right">{p.total_ht.toFixed(2)} &euro;</span>
+                            <span className="text-xs text-gray-400 dark:text-slate-500">{p.quantite} u. &times; {p.prix_remise.toFixed(2)} &euro;</span>
+                            <span className="text-gray-900 dark:text-white font-medium w-20 text-right">{p.total_ht.toFixed(2)} &euro;</span>
                           </div>
                         </div>
                       ))}
                     </div>
-                    <div className="border-t border-gray-100 pt-2 space-y-1">
+                    <div className="border-t border-gray-100 dark:border-slate-700 pt-2 space-y-1">
                       {c.frais_montant > 0 && (
-                        <div className="flex justify-between text-xs text-gray-500">
+                        <div className="flex justify-between text-xs text-gray-500 dark:text-slate-400">
                           <span>{c.frais_ref === 'FP' ? 'Frais de pr\u00e9paration' : "Frais d'exp\u00e9dition"}</span>
                           <span>{c.frais_montant.toFixed(2)} &euro;</span>
                         </div>
                       )}
-                      <div className="flex justify-between text-sm font-semibold text-gray-900">
+                      <div className="flex justify-between text-sm font-semibold text-gray-900 dark:text-white">
                         <span>Total HT</span>
                         <span>{c.total_ht.toFixed(2)} &euro;</span>
                       </div>
-                      <div className="flex justify-between text-xs text-gray-400">
+                      <div className="flex justify-between text-xs text-gray-400 dark:text-slate-500">
                         <span>Total TTC</span>
                         <span>{c.total_ttc.toFixed(2)} &euro;</span>
                       </div>
                     </div>
-                    {c.notes && <div className="text-xs text-gray-400 mt-3 italic border-t border-gray-50 pt-2">Note : "{c.notes}"</div>}
+                    {c.notes && <div className="text-xs text-gray-400 dark:text-slate-500 mt-3 italic border-t border-gray-50 dark:border-slate-700 pt-2">Note : "{c.notes}"</div>}
 
                     {/* Suivi exp&eacute;dition — uniquement si tracking renseign&eacute; */}
                     {c.statut === 'validee' && (c.tracking_number || c.delivered_at) && (
-                      <div className="mt-3 pt-3 border-t border-gray-100">
+                      <div className="mt-3 pt-3 border-t border-gray-100 dark:border-slate-700">
                         <div className="flex items-center gap-2 mb-2">
-                          <span className="text-xs font-semibold text-gray-700">Suivi exp&eacute;dition</span>
+                          <span className="text-xs font-semibold text-gray-700 dark:text-slate-200">Suivi exp&eacute;dition</span>
                         </div>
                         {c.delivered_at ? (
-                          <div className="flex items-center gap-2 text-sm text-emerald-700 bg-emerald-50 rounded-xl px-3 py-2">
+                          <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl px-3 py-2">
                             <span>&#9989;</span>
                             <span>Livr&eacute;e le {new Date(c.delivered_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}</span>
                           </div>
                         ) : (
-                          <div className="flex items-center gap-2 text-sm text-blue-700 bg-blue-50 rounded-xl px-3 py-2">
+                          <div className="flex items-center gap-2 text-sm text-blue-700 dark:text-blue-400 bg-blue-50 dark:bg-blue-900/30 rounded-xl px-3 py-2">
                             <span>&#128230;</span>
                             <span>Exp&eacute;di&eacute;e{c.shipped_at ? ` le ${new Date(c.shipped_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })}` : ''}</span>
                             {c.tracking_url && (
                               <a href={c.tracking_url} target="_blank" rel="noopener noreferrer" onClick={e => e.stopPropagation()}
-                                className="ml-auto text-xs px-2 py-1 bg-blue-100 hover:bg-blue-200 text-blue-800 rounded-lg transition-colors font-medium">
+                                className="ml-auto text-xs px-2 py-1 bg-blue-100 dark:bg-blue-900/40 hover:bg-blue-200 dark:hover:bg-blue-900/50 text-blue-800 dark:text-blue-300 rounded-lg transition-colors font-medium">
                                 Suivre mon colis
                               </a>
                             )}
@@ -1213,22 +1218,22 @@
                       </div>
                     )}
 
-                    <div className="flex flex-wrap gap-2 mt-3 pt-2 border-t border-gray-100">
+                    <div className="flex flex-wrap gap-2 mt-3 pt-2 border-t border-gray-100 dark:border-slate-700">
                       {c.statut === 'en_attente' && (
                         <>
-                          <button onClick={() => handleModify(c)} className="text-xs px-3 py-2 min-h-[36px] rounded-lg bg-gold-50 text-gold-700 hover:bg-gold-100 transition-colors">
+                          <button onClick={() => handleModify(c)} className="text-xs px-3 py-2 min-h-[36px] rounded-lg bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 hover:bg-gold-100 dark:hover:bg-gold-900/50 transition-colors">
                             Modifier
                           </button>
-                          <button onClick={() => handleCancel(c.id)} disabled={cancelling === c.id} className="text-xs px-3 py-2 min-h-[36px] rounded-lg bg-red-50 text-red-600 hover:bg-red-100 transition-colors disabled:opacity-50">
+                          <button onClick={() => handleCancel(c.id)} disabled={cancelling === c.id} className="text-xs px-3 py-2 min-h-[36px] rounded-lg bg-red-50 dark:bg-red-900/30 text-red-600 dark:text-red-400 hover:bg-red-100 dark:hover:bg-red-900/40 transition-colors disabled:opacity-50">
                             {cancelling === c.id ? 'Annulation...' : 'Annuler'}
                           </button>
                         </>
                       )}
-                      <button onClick={() => handleReorder(c)} className="text-xs px-3 py-2 min-h-[36px] rounded-lg bg-blue-50 text-blue-700 hover:bg-blue-100 transition-colors">
+                      <button onClick={() => handleReorder(c)} className="text-xs px-3 py-2 min-h-[36px] rounded-lg bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-400 hover:bg-blue-100 dark:hover:bg-blue-900/40 transition-colors">
                         Commander de nouveau
                       </button>
                       {c.vf_invoice_number && (
-                        <button onClick={() => handleDownloadPdf(c)} className="text-xs px-3 py-2 min-h-[36px] rounded-lg bg-green-50 text-green-700 hover:bg-green-100 transition-colors flex items-center gap-1">
+                        <button onClick={() => handleDownloadPdf(c)} className="text-xs px-3 py-2 min-h-[36px] rounded-lg bg-green-50 dark:bg-green-900/30 text-green-700 dark:text-green-400 hover:bg-green-100 dark:hover:bg-green-900/40 transition-colors flex items-center gap-1">
                           &#128196; Facture
                         </button>
                       )}
@@ -1243,7 +1248,7 @@
           {filtered.length > visibleCount && (
             <div className="text-center py-3">
               <button onClick={() => setVisibleCount(v => v + pageSize)}
-                className="text-xs px-6 py-2.5 rounded-xl border border-gray-200 hover:bg-gray-50 text-gray-600 transition-colors">
+                className="text-xs px-6 py-2.5 rounded-xl border border-gray-200 dark:border-slate-600 hover:bg-gray-50 dark:hover:bg-slate-700 text-gray-600 dark:text-slate-300 transition-colors">
                 Charger plus ({filtered.length - visibleCount} restante{filtered.length - visibleCount > 1 ? 's' : ''})
               </button>
             </div>
@@ -1352,132 +1357,132 @@
         setSaving(false);
       };
 
-      const fieldClass = "w-full bg-gray-50 border border-gray-200 rounded-xl px-3 py-2.5 text-sm text-gray-900 placeholder-gray-400 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/40";
+      const fieldClass = "w-full bg-gray-50 dark:bg-slate-700 border border-gray-200 dark:border-slate-600 rounded-xl px-3 py-2.5 text-sm text-gray-900 dark:text-white placeholder-gray-400 dark:placeholder-slate-500 focus:outline-none focus:ring-1 focus:ring-gold-500/50 focus:border-gold-500/40";
 
       return (
         <div className="max-w-4xl mx-auto animate-fade-in">
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Mon compte</h2>
+          <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Mon compte</h2>
 
           {pendingChange && (
-            <div className="bg-amber-50 border border-amber-300 rounded-2xl p-4 mb-4 text-sm text-amber-800">
+            <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-2xl p-4 mb-4 text-sm text-amber-800 dark:text-amber-300">
               <span className="font-semibold">Vos modifications sont en attente de validation par l'administrateur.</span>
-              <span className="block text-xs text-amber-600 mt-1">Vous pouvez re-soumettre le formulaire pour remplacer la demande en cours.</span>
+              <span className="block text-xs text-amber-600 dark:text-amber-400 mt-1">Vous pouvez re-soumettre le formulaire pour remplacer la demande en cours.</span>
             </div>
           )}
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
             {/* ── Bloc Facturation ── */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+            <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-5 shadow-sm dark:shadow-none space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-slate-700">
                 <span className="text-base">&#128196;</span>
-                <span className="text-sm font-semibold text-gray-900">Facturation</span>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">Facturation</span>
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Nom de la compagnie</label>
-                <div className="px-3 py-2.5 text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-xl">{partner.nom || '—'}</div>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Nom de la compagnie</label>
+                <div className="px-3 py-2.5 text-sm text-gray-700 dark:text-slate-200 bg-gray-100 dark:bg-slate-600 border border-gray-200 dark:border-slate-600 rounded-xl">{partner.nom || '—'}</div>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Contact</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Contact</label>
                 <input value={form.contact_nom} onChange={e => set('contact_nom', e.target.value)} placeholder="Prénom Nom" className={fieldClass} />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">N° TVA</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">N° TVA</label>
                 <input value={form.facturation_tva} onChange={e => set('facturation_tva', e.target.value)} placeholder="FR00000000000" className={fieldClass} />
               </div>
               <div className="flex items-center gap-2">
-                <input type="checkbox" id="facturation_entite_publique" checked={!!form.facturation_entite_publique} onChange={e => set('facturation_entite_publique', e.target.checked ? 1 : 0)} className="rounded border-gray-300" />
-                <label htmlFor="facturation_entite_publique" className="text-xs font-medium text-gray-500">Entité publique</label>
+                <input type="checkbox" id="facturation_entite_publique" checked={!!form.facturation_entite_publique} onChange={e => set('facturation_entite_publique', e.target.checked ? 1 : 0)} className="rounded border-gray-300 dark:border-slate-600" />
+                <label htmlFor="facturation_entite_publique" className="text-xs font-medium text-gray-500 dark:text-slate-400">Entité publique</label>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">N° et nom de rue</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">N° et nom de rue</label>
                 <input value={form.facturation_rue} onChange={e => set('facturation_rue', e.target.value)} placeholder="123 rue de la Paix" className={fieldClass} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Code postal</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Code postal</label>
                   <input value={form.facturation_code_postal} onChange={e => set('facturation_code_postal', e.target.value)} placeholder="75001" className={fieldClass} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Ville</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Ville</label>
                   <input value={form.facturation_ville} onChange={e => set('facturation_ville', e.target.value)} placeholder="Paris" className={fieldClass} />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Pays</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Pays</label>
                 <input value={form.facturation_pays} onChange={e => set('facturation_pays', e.target.value)} placeholder="France" className={fieldClass} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Téléphone</label>
                   <input value={form.telephone} onChange={e => set('telephone', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Tel. portable</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Tel. portable</label>
                   <input value={form.facturation_portable} onChange={e => set('facturation_portable', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">E-mail(s)</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">E-mail(s)</label>
                 <input value={form.email} onChange={e => set('email', e.target.value)} placeholder="email@exemple.com" type="email" className={fieldClass} />
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">E-mail(s) relances</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">E-mail(s) relances</label>
                 <input value={form.facturation_email} onChange={e => set('facturation_email', e.target.value)} placeholder="relances@exemple.com" type="email" className={fieldClass} />
               </div>
             </div>
 
             {/* ── Bloc Livraison ── */}
-            <div className="bg-white border border-gray-200 rounded-2xl p-5 shadow-sm space-y-4">
-              <div className="flex items-center gap-2 pb-3 border-b border-gray-100">
+            <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-5 shadow-sm dark:shadow-none space-y-4">
+              <div className="flex items-center gap-2 pb-3 border-b border-gray-100 dark:border-slate-700">
                 <span className="text-base">&#128666;</span>
-                <span className="text-sm font-semibold text-gray-900">Livraison</span>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white">Livraison</span>
               </div>
 
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Nom de la compagnie</label>
-                <div className="px-3 py-2.5 text-sm text-gray-700 bg-gray-100 border border-gray-200 rounded-xl">{partner.nom || '—'}</div>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Nom de la compagnie</label>
+                <div className="px-3 py-2.5 text-sm text-gray-700 dark:text-slate-200 bg-gray-100 dark:bg-slate-600 border border-gray-200 dark:border-slate-600 rounded-xl">{partner.nom || '—'}</div>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Prénom</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Prénom</label>
                   <input value={form.livraison_prenom} onChange={e => set('livraison_prenom', e.target.value)} placeholder="Prénom" className={fieldClass} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Nom</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Nom</label>
                   <input value={form.livraison_nom} onChange={e => set('livraison_nom', e.target.value)} placeholder="Nom" className={fieldClass} />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">N° et nom de rue</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">N° et nom de rue</label>
                 <input value={form.livraison_rue} onChange={e => set('livraison_rue', e.target.value)} placeholder="123 rue de la Paix" className={fieldClass} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Code postal</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Code postal</label>
                   <input value={form.livraison_code_postal} onChange={e => set('livraison_code_postal', e.target.value)} placeholder="75001" className={fieldClass} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Ville</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Ville</label>
                   <input value={form.livraison_ville} onChange={e => set('livraison_ville', e.target.value)} placeholder="Paris" className={fieldClass} />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">Pays</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Pays</label>
                 <input value={form.livraison_pays} onChange={e => set('livraison_pays', e.target.value)} placeholder="France" className={fieldClass} />
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Téléphone</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Téléphone</label>
                   <input value={form.livraison_telephone} onChange={e => set('livraison_telephone', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
                 </div>
                 <div>
-                  <label className="text-xs font-medium text-gray-500 mb-1 block">Tel. portable</label>
+                  <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">Tel. portable</label>
                   <input value={form.livraison_portable} onChange={e => set('livraison_portable', e.target.value)} placeholder="+33..." type="tel" className={fieldClass} />
                 </div>
               </div>
               <div>
-                <label className="text-xs font-medium text-gray-500 mb-1 block">E-mail(s)</label>
+                <label className="text-xs font-medium text-gray-500 dark:text-slate-400 mb-1 block">E-mail(s)</label>
                 <input value={form.livraison_email} onChange={e => set('livraison_email', e.target.value)} placeholder="email@exemple.com" type="email" className={fieldClass} />
               </div>
             </div>
@@ -1512,7 +1517,7 @@
       if (docs.length === 0) return (
         <div className="text-center py-12">
           <div className="text-4xl mb-3">&#128196;</div>
-          <p className="text-gray-500 text-sm">Aucun document disponible pour le moment.</p>
+          <p className="text-gray-500 dark:text-slate-400 text-sm">Aucun document disponible pour le moment.</p>
         </div>
       );
 
@@ -1520,16 +1525,16 @@
         <div className="space-y-3">
           {docs.map(doc => (
             <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer"
-              className="block bg-white border border-gray-200 rounded-2xl p-5 shadow-sm hover:shadow-md hover:border-gold-300 transition-all group">
+              className="block bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-5 shadow-sm dark:shadow-none hover:shadow-md dark:hover:shadow-none hover:border-gold-300 transition-all group">
               <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gold-50 flex items-center justify-center text-gold-600 text-lg shrink-0 group-hover:bg-gold-100 transition-colors">
+                <div className="w-10 h-10 rounded-xl bg-gold-50 dark:bg-gold-900/30 flex items-center justify-center text-gold-600 text-lg shrink-0 group-hover:bg-gold-100 dark:group-hover:bg-gold-900/50 transition-colors">
                   &#128196;
                 </div>
                 <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 group-hover:text-gold-700 transition-colors">{doc.titre}</div>
-                  <div className="text-xs text-gray-400 truncate">{doc.url}</div>
+                  <div className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-gold-700 dark:group-hover:text-gold-400 transition-colors">{doc.titre}</div>
+                  <div className="text-xs text-gray-400 dark:text-slate-500 truncate">{doc.url}</div>
                 </div>
-                <div className="text-gray-300 group-hover:text-gold-500 transition-colors shrink-0">
+                <div className="text-gray-300 dark:text-slate-500 group-hover:text-gold-500 transition-colors shrink-0">
                   &#8599;
                 </div>
               </div>
@@ -1541,6 +1546,15 @@
 
     // ─── App Principale ─────────────────────────────────────────────────────────
     const App = () => {
+      const [darkMode, setDarkMode] = useState(() => localStorage.getItem('tdm_dark_mode') === 'true');
+      const toggleDarkMode = () => {
+        setDarkMode(prev => {
+          const next = !prev;
+          if (next) { document.documentElement.classList.add('dark'); } else { document.documentElement.classList.remove('dark'); }
+          localStorage.setItem('tdm_dark_mode', String(next));
+          return next;
+        });
+      };
       const [partner, setPartner] = useState(null);
       const [vue, setVue] = useState("catalogue");
       const [catalogue, setCatalogue] = useState([]);
@@ -1668,43 +1682,46 @@
       if (!partner) return <LoginScreen onLogin={handleLogin} />;
 
       return (
-        <div className="min-h-screen bg-white text-gray-900 relative">
+        <div className="min-h-screen bg-white dark:bg-slate-800 text-gray-900 dark:text-white relative">
           <div className="tache tache-1"></div>
           <div className="tache tache-2"></div>
           <Toast toast={toast} />
 
           {/* Header */}
-          <header className="sticky top-0 z-30 bg-white/95 backdrop-blur border-b border-gray-200">
+          <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-gray-200 dark:border-slate-600">
             <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-3 shrink-0">
                 <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-8 sm:h-10" />
-                <span className="text-sm font-semibold text-gray-900 hidden sm:inline">{partner.nom}</span>
+                <span className="text-sm font-semibold text-gray-900 dark:text-white hidden sm:inline">{partner.nom}</span>
               </div>
               <div className="flex items-center gap-0.5 sm:gap-1">
-                <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
+                <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`}>
                   Catalogue
                 </button>
                 {promoActive && catalogue.some(p => p.promo_pct > 0) && (
-                  <button onClick={() => { setVue("bonsplans"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "bonsplans" ? "bg-red-50 text-red-700 font-medium" : "text-red-500 hover:text-red-700"}`}>
+                  <button onClick={() => { setVue("bonsplans"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "bonsplans" ? "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-400 font-medium" : "text-red-500 hover:text-red-700 dark:hover:text-red-400"}`}>
                     <span className="hidden sm:inline">Bons plans</span><span className="sm:hidden">Promos</span>
                   </button>
                 )}
-                <button onClick={() => { setVue("historique"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "historique" ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
+                <button onClick={() => { setVue("historique"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "historique" ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`}>
                   Commandes
                 </button>
-                <button onClick={() => { setVue("documents"); setPanierOpen(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "documents" ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
+                <button onClick={() => { setVue("documents"); setPanierOpen(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "documents" ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`}>
                   <span className="hidden sm:inline">Documents</span><span className="sm:hidden">Docs</span>
                 </button>
-                <button onClick={() => { setVue("profil"); setPanierOpen(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "profil" ? "bg-gold-50 text-gold-700 font-medium" : "text-gray-500 hover:text-gray-900"}`}>
+                <button onClick={() => { setVue("profil"); setPanierOpen(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "profil" ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`}>
                   <span className="hidden sm:inline">Mon compte</span><span className="sm:hidden">Compte</span>
                 </button>
-                <button onClick={() => { setPanierOpen(!panierOpen); setVue("catalogue"); }} className="relative px-2 sm:px-3 py-2 rounded-lg text-sm text-gray-500 hover:text-gray-900 transition-colors">
+                <button onClick={() => { setPanierOpen(!panierOpen); setVue("catalogue"); }} className="relative px-2 sm:px-3 py-2 rounded-lg text-sm text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white transition-colors">
                   <span className="text-lg">&#128722;</span>
                   {panierCount > 0 && (
                     <span className="absolute -top-1 -right-1 bg-gold-500 text-white text-[10px] font-bold w-5 h-5 rounded-full flex items-center justify-center">{panierCount}</span>
                   )}
                 </button>
-                <button onClick={handleLogout} className="text-gray-400 hover:text-gray-600 text-sm sm:text-xs ml-1 sm:ml-2 p-1" title="D&eacute;connexion">
+                <button onClick={toggleDarkMode} className="text-gray-400 dark:text-slate-400 hover:text-gray-600 dark:hover:text-slate-200 text-sm sm:text-base ml-1 p-1 transition-colors" title={darkMode ? 'Mode jour' : 'Mode nuit'}>
+                  {darkMode ? '\u2600' : '\u263E'}
+                </button>
+                <button onClick={handleLogout} className="text-gray-400 dark:text-slate-400 hover:text-gray-600 dark:hover:text-slate-200 text-sm sm:text-xs ml-1 sm:ml-2 p-1" title="D&eacute;connexion">
                   &#x2192;
                 </button>
               </div>
@@ -1713,10 +1730,10 @@
 
           {/* Order success banner */}
           {orderSuccess && (
-            <div className="bg-gold-50 border-b border-gold-200 animate-fade-in">
+            <div className="bg-gold-50 dark:bg-gold-900/30 border-b border-gold-200 dark:border-gold-800 animate-fade-in">
               <div className="max-w-6xl mx-auto px-4 py-4 text-center">
-                <div className="text-gold-700 font-semibold mb-1">Commande enregistr&eacute;e !</div>
-                <div className="text-sm text-gray-600">Nous vous recontactons sous 24h pour confirmer votre commande.</div>
+                <div className="text-gold-700 dark:text-gold-400 font-semibold mb-1">Commande enregistr&eacute;e !</div>
+                <div className="text-sm text-gray-600 dark:text-slate-300">Nous vous recontactons sous 24h pour confirmer votre commande.</div>
               </div>
             </div>
           )}
@@ -1725,7 +1742,7 @@
           <main className={`max-w-6xl mx-auto px-4 py-6 relative z-10 ${panierCount > 0 && !panierOpen && (vue === "catalogue" || vue === "bonsplans") ? 'pb-24' : ''}`}>
             {panierOpen ? (
               <div className="max-w-lg mx-auto animate-fade-in">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Votre panier</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Votre panier</h2>
                 <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={submitting} partner={partner} modifyingOrderId={modifyingOrderId} initialNotes={modifyingNotes} />
               </div>
             ) : vue === "catalogue" ? (
@@ -1734,8 +1751,8 @@
                 <AmenitiesSection amenities={amenities} catalogue={catalogue} panier={panier} setPanier={setPanier} />
                 <PromotionsSection catalogue={catalogue} panier={panier} setPanier={setPanier} promoActive={promoActive} promoTitle={promoTitle} />
                 <div className="flex items-center justify-between mb-4">
-                  <h2 className="text-lg font-semibold text-gray-900">Catalogue</h2>
-                  <span className="text-xs text-gray-400">{catalogue.length} produit{catalogue.length > 1 ? 's' : ''}</span>
+                  <h2 className="text-lg font-semibold text-gray-900 dark:text-white">Catalogue</h2>
+                  <span className="text-xs text-gray-400 dark:text-slate-500">{catalogue.length} produit{catalogue.length > 1 ? 's' : ''}</span>
                 </div>
                 <CatalogueView catalogue={catalogue} panier={panier} setPanier={setPanier} />
               </div>
@@ -1745,14 +1762,14 @@
               </div>
             ) : vue === "documents" ? (
               <div className="max-w-2xl mx-auto animate-fade-in">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Documents</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Documents</h2>
                 <DocumentsView />
               </div>
             ) : vue === "profil" ? (
               <ProfilView partner={partner} setPartner={setPartner} commandes={commandes} showToast={showToast} />
             ) : (
               <div className="max-w-2xl mx-auto animate-fade-in">
-                <h2 className="text-lg font-semibold text-gray-900 mb-4">Historique des commandes</h2>
+                <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Historique des commandes</h2>
                 <HistoriqueView commandes={commandes} onRefresh={refreshCommandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} setVue={setVue} setModifyingOrderId={setModifyingOrderId} setModifyingNotes={setModifyingNotes} showToast={showToast} partner={partner} />
               </div>
             )}
@@ -1767,11 +1784,11 @@
             const francoAtteint = subtotalHT >= francoSeuil;
             const manque = Math.max(0, francoSeuil - subtotalHT);
             return (
-              <div className="fixed bottom-0 left-0 right-0 z-20 bg-white/95 backdrop-blur border-t border-gray-200 shadow-lg safe-area-bottom">
+              <div className="fixed bottom-0 left-0 right-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-gray-200 dark:border-slate-600 shadow-lg dark:shadow-none safe-area-bottom">
                 <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
                   {!exonere && (
                     <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
-                      <div className="flex-1 bg-gray-200 rounded-full h-1.5 sm:h-2">
+                      <div className="flex-1 bg-gray-200 dark:bg-slate-600 rounded-full h-1.5 sm:h-2">
                         <div
                           className={`h-1.5 sm:h-2 rounded-full transition-all ${francoAtteint ? 'bg-gold-500' : 'bg-amber-500'}`}
                           style={{ width: `${Math.min(100, (subtotalHT / francoSeuil) * 100)}%` }}
@@ -1784,8 +1801,8 @@
                   )}
                   <div className="flex items-center justify-between">
                     <div>
-                      <span className="text-gray-900 font-semibold text-sm">{subtotalHT.toFixed(2)} &euro; HT</span>
-                      <span className="text-gray-400 text-[10px] sm:text-xs ml-1 sm:ml-2">{panierCount} art.</span>
+                      <span className="text-gray-900 dark:text-white font-semibold text-sm">{subtotalHT.toFixed(2)} &euro; HT</span>
+                      <span className="text-gray-400 dark:text-slate-500 text-[10px] sm:text-xs ml-1 sm:ml-2">{panierCount} art.</span>
                     </div>
                     <button
                       onClick={() => setPanierOpen(true)}
