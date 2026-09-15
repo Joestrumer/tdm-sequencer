@@ -21571,7 +21571,7 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
 
   const detacher = async (subId) => {
     try {
-      const res = await api.del(`/reference/partners/${partner.id}/sub-accounts/${subId}`);
+      const res = await api.delete(`/reference/partners/${partner.id}/sub-accounts/${subId}`);
       if (res.erreur) { showToast(res.erreur, 'error'); return; }
       showToast(res.message || 'Sous-compte détaché', 'success');
       setSubAccounts(prev => prev.filter(s => s.id !== subId));
