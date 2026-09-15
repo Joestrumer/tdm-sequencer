@@ -21618,11 +21618,17 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
                 <div className="space-y-1.5 mb-3">
                   {subAccounts.map(sub => (
                     <div key={sub.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                      <div>
+                      <div className="min-w-0 flex-1">
                         <span className="text-sm text-slate-800 font-medium">{sub.nom}</span>
                         {sub.contact_nom && <span className="text-xs text-slate-400 ml-2">{sub.contact_nom}</span>}
+                        {sub.vf_client_id && (
+                          <div className="mt-0.5">
+                            <a href={`https://terredemars.vosfactures.fr/clients/${sub.vf_client_id}`} target="_blank" rel="noopener noreferrer"
+                              className="text-[10px] text-blue-500 hover:text-blue-700 hover:underline font-mono">VF #{sub.vf_client_id}</a>
+                          </div>
+                        )}
                       </div>
-                      <button onClick={() => detacher(sub.id)} className="text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100">Détacher</button>
+                      <button onClick={() => detacher(sub.id)} className="shrink-0 text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 ml-2">Détacher</button>
                     </div>
                   ))}
                 </div>

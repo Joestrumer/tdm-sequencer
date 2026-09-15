@@ -471,7 +471,7 @@ module.exports = (db) => {
       const master = db.prepare('SELECT id, is_master FROM vf_partners WHERE id = ?').get(req.params.id);
       if (!master) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       if (!master.is_master) return res.status(400).json({ erreur: 'Ce partenaire n\'est pas un compte maître' });
-      const rows = db.prepare('SELECT id, nom, email, contact_nom, actif FROM vf_partners WHERE master_id = ?').all(req.params.id);
+      const rows = db.prepare('SELECT id, nom, email, contact_nom, actif, vf_client_id FROM vf_partners WHERE master_id = ?').all(req.params.id);
       res.json(rows);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
