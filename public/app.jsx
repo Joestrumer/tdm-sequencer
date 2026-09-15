@@ -21600,14 +21600,11 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
 
   return (
     <div className="mt-4 pt-3 border-t border-slate-100">
-      <div className="flex items-center justify-between mb-2">
-        <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Compte maître</span>
-        <label className="flex items-center gap-2 cursor-pointer">
-          <span className="text-xs text-slate-500">Ce partenaire est un compte maître</span>
-          <input type="checkbox" checked={!!partner.is_master} onChange={toggleMaster}
-            className="w-4 h-4 text-violet-600 border-slate-300 rounded focus:ring-violet-500" />
-        </label>
-      </div>
+      <label className="flex items-center gap-2 mb-2 cursor-pointer">
+        <input type="checkbox" checked={!!partner.is_master} onChange={toggleMaster}
+          className="w-4 h-4 text-violet-600 border-slate-300 rounded focus:ring-violet-500" />
+        <span className="text-xs text-slate-500">Compte maître</span>
+      </label>
       {partner.is_master ? (
         <div>
           {loadingSubs ? (
@@ -21617,18 +21614,14 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
               {subAccounts.length > 0 ? (
                 <div className="space-y-1.5 mb-3">
                   {subAccounts.map(sub => (
-                    <div key={sub.id} className="flex items-center justify-between bg-slate-50 rounded-lg px-3 py-2">
-                      <div className="min-w-0 flex-1">
-                        <span className="text-sm text-slate-800 font-medium">{sub.nom}</span>
-                        {sub.contact_nom && <span className="text-xs text-slate-400 ml-2">{sub.contact_nom}</span>}
-                        {sub.vf_client_id && (
-                          <div className="mt-0.5">
-                            <a href={`https://terredemars.vosfactures.fr/clients/${sub.vf_client_id}`} target="_blank" rel="noopener noreferrer"
-                              className="text-[10px] text-blue-500 hover:text-blue-700 hover:underline font-mono">VF #{sub.vf_client_id}</a>
-                          </div>
-                        )}
-                      </div>
-                      <button onClick={() => detacher(sub.id)} className="shrink-0 text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 ml-2">Détacher</button>
+                    <div key={sub.id} className="flex items-center bg-slate-50 rounded-lg px-3 py-2 gap-2">
+                      <span className="text-sm text-slate-800 font-medium truncate">{sub.nom}</span>
+                      {sub.contact_nom && <span className="text-xs text-slate-400 truncate shrink-0">{sub.contact_nom}</span>}
+                      {sub.vf_client_id && (
+                        <a href={`https://terredemars.vosfactures.fr/clients/${sub.vf_client_id}`} target="_blank" rel="noopener noreferrer"
+                          className="text-[10px] text-blue-500 hover:text-blue-700 hover:underline font-mono shrink-0">#{sub.vf_client_id}</a>
+                      )}
+                      <button onClick={() => detacher(sub.id)} className="shrink-0 text-[10px] px-2 py-1 rounded bg-red-50 text-red-600 hover:bg-red-100 ml-auto">Détacher</button>
                     </div>
                   ))}
                 </div>
