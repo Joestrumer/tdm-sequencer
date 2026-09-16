@@ -427,7 +427,7 @@ module.exports = (db) => {
 <table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;">
 
 <tr><td align="center" style="padding:8px 24px 28px;">
-<img src="${logoUrl}" width="166" alt="Terre de Mars" style="display:block;width:166px;max-width:100%;height:auto;border:0;">
+<img src="${logoUrl}" width="498" alt="Terre de Mars" style="display:block;width:498px;max-width:100%;height:auto;border:0;">
 <div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:10px;line-height:16px;letter-spacing:3.4px;text-transform:uppercase;color:#9B863C;font-weight:700;margin-top:16px;">Espace partenaire priv\u00e9</div>
 </td></tr>
 
