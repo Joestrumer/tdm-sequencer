@@ -141,6 +141,7 @@
   <script type="text/babel" data-presets="react">
     const { useState, useEffect, useRef, useMemo, useCallback } = React;
     const api = window.partnerApi;
+    const normalizeText = (str) => str.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
 
     // ─── Toast ──────────────────────────────────────────────────────────────────
     const Toast = ({ toast }) => {
@@ -256,25 +257,25 @@
               <span className="font-mono text-[10px] text-gray-400 dark:text-slate-500 shrink-0">{p.ref}</span>
               <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{p.nom}</span>
             </div>
-            <div className="flex items-center gap-2 mt-0.5">
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
               {p.promo_pct > 0 ? (
                 <>
                   <span className="text-xs text-gray-400 dark:text-slate-500 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
-                  <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT</span>
+                  <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT/u</span>
                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">-{p.promo_pct}%</span>
                 </>
               ) : (
                 <>
-                  <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
+                  <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT/u</span>
                   {p.discount_pct > 0 && (
                     <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">-{p.discount_pct}%</span>
                   )}
                 </>
               )}
-              {moq > 1 && (
-                <span className="text-[10px] text-gray-400 dark:text-slate-500">carton de {moq}</span>
-              )}
             </div>
+            {moq > 1 && (
+              <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-0.5">Carton de {moq} &middot; {((p.prix_promo ?? p.prix_remise) * moq).toFixed(2)} &euro; HT</div>
+            )}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {qty > 0 && (
@@ -286,7 +287,7 @@
                 {moq > 1 && <div className="text-[9px] text-gray-400 dark:text-slate-500 leading-none">{qty} u.</div>}
               </div>
             )}
-            <button onClick={() => addCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
+            <button onClick={() => addCarton(p.ref)} title={moq > 1 ? `Ajouter 1 carton (${moq} u. \u00b7 ${((p.prix_promo ?? p.prix_remise) * moq).toFixed(2)} \u20ac HT)` : 'Ajouter 1 unit\u00e9'} className="w-9 h-9 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
           </div>
         </div>
       );
@@ -464,6 +465,9 @@
     };
 
     // ─── Catalogue ──────────────────────────────────────────────────────────────
+    const CATEGORY_ALIASES = { 'Produits Spa & VIP': 'Cadeaux VIP & Spa' };
+    const resolveCategory = (cat) => CATEGORY_ALIASES[cat] || cat || 'Autres';
+
     const CATEGORIES_ORDER = [
       'Cadeaux VIP & Spa',
       'Produits Spa',
@@ -526,13 +530,13 @@
                         <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{p.nom}</span>
                         <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold shrink-0">-{p.promo_pct}%</span>
                       </div>
-                      <div className="flex items-center gap-2 mt-0.5">
+                      <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                         <span className="text-xs text-gray-400 dark:text-slate-500 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
-                        <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT</span>
-                        {moq > 1 && (
-                          <span className="text-[10px] text-gray-400 dark:text-slate-500">carton de {moq}</span>
-                        )}
+                        <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT/u</span>
                       </div>
+                      {moq > 1 && (
+                        <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-0.5">Carton de {moq} &middot; {(p.prix_promo * moq).toFixed(2)} &euro; HT</div>
+                      )}
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       {qty > 0 && (
@@ -544,7 +548,7 @@
                           {moq > 1 && <div className="text-[9px] text-gray-400 dark:text-slate-500 leading-none">{qty} u.</div>}
                         </div>
                       )}
-                      <button onClick={() => addCarton(p.ref)} className="w-9 h-9 rounded-lg bg-red-500 text-white hover:bg-red-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
+                      <button onClick={() => addCarton(p.ref)} title={moq > 1 ? `Ajouter 1 carton (${moq} u. \u00b7 ${(p.prix_promo * moq).toFixed(2)} \u20ac HT)` : 'Ajouter 1 unit\u00e9'} className="w-9 h-9 rounded-lg bg-red-500 text-white hover:bg-red-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
                     </div>
                   </div>
                 );
@@ -555,20 +559,28 @@
       );
     };
 
+    const QUICK_ACCESS_CATS = [
+      { label: 'R\u00e9assort 5L', match: 'Recharges 5 litres' },
+      { label: 'Cadeaux VIP', match: 'Cadeaux VIP & Spa' },
+      { label: 'Formats voyage', match: 'Produits hygi\u00e8ne format voyage' },
+      { label: 'Parfums', match: 'Parfums & gel hydroalcoolique' },
+    ];
+
     const CatalogueView = ({ catalogue, panier, setPanier }) => {
       const [search, setSearch] = useState("");
       const [openCats, setOpenCats] = useState({});
+      const catRefs = useRef({});
 
       const filtered = useMemo(() => {
         if (!search) return catalogue;
-        const q = search.toLowerCase();
-        return catalogue.filter(p => p.ref.toLowerCase().includes(q) || p.nom.toLowerCase().includes(q) || (p.categorie || '').toLowerCase().includes(q));
+        const q = normalizeText(search);
+        return catalogue.filter(p => normalizeText(p.ref).includes(q) || normalizeText(p.nom).includes(q) || normalizeText(p.categorie || '').includes(q));
       }, [catalogue, search]);
 
       const grouped = useMemo(() => {
         const groups = {};
         for (const p of filtered) {
-          const cat = p.categorie || 'Autres';
+          const cat = resolveCategory(p.categorie);
           if (!groups[cat]) groups[cat] = [];
           groups[cat].push(p);
         }
@@ -620,7 +632,7 @@
         for (const ref of Object.keys(panier)) {
           const prod = catalogue.find(c => c.ref === ref);
           if (prod) {
-            const cat = prod.categorie || 'Autres';
+            const cat = resolveCategory(prod.categorie);
             counts[cat] = (counts[cat] || 0) + 1;
           }
         }
@@ -645,12 +657,27 @@
             </div>
           </div>
 
+          {/* Raccourcis rapides */}
+          {!search && (
+            <div className="flex flex-wrap gap-2 mb-4">
+              {QUICK_ACCESS_CATS.filter(c => grouped.some(g => g.categorie === c.match)).map(c => (
+                <button key={c.match} onClick={() => {
+                  setOpenCats(prev => ({ ...prev, [c.match]: true }));
+                  setTimeout(() => catRefs.current[c.match]?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 50);
+                }}
+                  className="px-3 py-1.5 rounded-full text-xs font-medium bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 border border-gold-200 dark:border-gold-800 hover:bg-gold-100 dark:hover:bg-gold-900/50 transition-colors">
+                  {c.label}
+                </button>
+              ))}
+            </div>
+          )}
+
           {/* Cat\u00e9gories */}
           {grouped.map(({ categorie, products }) => {
             const isOpen = !!openCats[categorie];
             const catPanierCount = panierCountByCat[categorie] || 0;
             return (
-              <div key={categorie} className="mb-3">
+              <div key={categorie} ref={el => catRefs.current[categorie] = el} className="mb-3">
                 <button
                   onClick={() => toggleCat(categorie)}
                   className="w-full flex items-center gap-2 px-3 py-3 rounded-xl bg-gray-50 dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
@@ -680,25 +707,25 @@
                               <span className="font-mono text-[10px] text-gray-400 dark:text-slate-500 shrink-0">{p.ref}</span>
                               <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{p.nom}</span>
                             </div>
-                            <div className="flex items-center gap-2 mt-0.5">
+                            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
                               {p.promo_pct > 0 ? (
                                 <>
                                   <span className="text-xs text-gray-400 dark:text-slate-500 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
-                                  <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT</span>
+                                  <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT/u</span>
                                   <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">PROMO -{p.promo_pct}%</span>
                                 </>
                               ) : (
                                 <>
-                                  <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT</span>
+                                  <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT/u</span>
                                   {p.discount_pct > 0 && (
                                     <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">-{p.discount_pct}%</span>
                                   )}
                                 </>
                               )}
-                              {moq > 1 && (
-                                <span className="text-[10px] text-gray-400 dark:text-slate-500">carton de {moq}</span>
-                              )}
                             </div>
+                            {moq > 1 && (
+                              <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-0.5">Carton de {moq} &middot; {((p.prix_promo ?? p.prix_remise) * moq).toFixed(2)} &euro; HT</div>
+                            )}
                           </div>
                           <div className="flex items-center gap-1 shrink-0">
                             {qty > 0 && (
@@ -710,7 +737,7 @@
                                 {moq > 1 && <div className="text-[9px] text-gray-400 dark:text-slate-500 leading-none">{qty} u.</div>}
                               </div>
                             )}
-                            <button onClick={() => addCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
+                            <button onClick={() => addCarton(p.ref)} title={moq > 1 ? `Ajouter 1 carton (${moq} u. \u00b7 ${((p.prix_promo ?? p.prix_remise) * moq).toFixed(2)} \u20ac HT)` : 'Ajouter 1 unit\u00e9'} className="w-9 h-9 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
                           </div>
                         </div>
                       );
@@ -766,9 +793,9 @@
             <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300 space-y-1">
               <div className="font-semibold text-amber-900 dark:text-amber-400 mb-1">Conditions :</div>
               <ul className="list-disc list-inside space-y-0.5">
-                <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger (FE)</li>
-                <li>Frais de pr&eacute;paration (FP) de commande = {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>
-                <li>Si Franco pas atteint, frais de port = {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>
+                <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger</li>
+                <li>Sous le franco : frais d'exp&eacute;dition {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>
+                <li>Au-dessus du franco : frais de pr&eacute;paration r&eacute;duits &agrave; {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>
                 <li>Conditionnement : bidons par cartons de 4, flacons par cartons de 6.</li>
               </ul>
             </div>
@@ -830,7 +857,7 @@
             <div className="bg-gray-50 dark:bg-slate-700 rounded-xl p-3">
               <div className="flex justify-between text-[11px] mb-1.5">
                 <span className={francoAtteint ? "text-gold-600 font-medium" : "text-gray-500 dark:text-slate-400"}>
-                  {francoAtteint ? 'Franco atteint !' : `Encore ${manquePourFranco.toFixed(2)} \u20ac pour le franco`}
+                  {francoAtteint ? `Franco atteint \u2014 frais r\u00e9duits \u00e0 ${fpPrix.toFixed(0)} \u20ac HT` : `Encore ${manquePourFranco.toFixed(2)} \u20ac pour le franco`}
                 </span>
                 <span className="text-gray-400 dark:text-slate-500">{subtotalHT.toFixed(0)} / {francoSeuil.toFixed(0)} &euro; HT</span>
               </div>
@@ -841,10 +868,7 @@
                 />
               </div>
               <div className="text-[10px] mt-1 text-gray-400 dark:text-slate-500">
-                {francoAtteint
-                  ? `Frais de pr\u00e9paration : ${fpPrix.toFixed(2)} \u20ac HT (au lieu de ${fePrix.toFixed(2)} \u20ac d'exp\u00e9dition)`
-                  : `Frais d'exp\u00e9dition : ${fePrix.toFixed(2)} \u20ac HT`
-                }
+                Sous {francoSeuil.toFixed(0)} &euro; : exp&eacute;dition {fePrix.toFixed(0)} &euro; HT &middot; Au-dessus : r&eacute;duits &agrave; {fpPrix.toFixed(0)} &euro; HT
               </div>
             </div>
           )}
@@ -878,9 +902,9 @@
           <div className="bg-amber-50 dark:bg-amber-900/30 border border-amber-200 dark:border-amber-700 rounded-xl p-3 text-xs text-amber-800 dark:text-amber-300 space-y-1">
             <div className="font-semibold text-amber-900 dark:text-amber-400 mb-1">Conditions :</div>
             <ul className="list-disc list-inside space-y-0.5">
-              <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger (FE)</li>
-              <li>Frais de pr&eacute;paration (FP) de commande = {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>
-              <li>Si Franco pas atteint, frais de port = {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>
+              <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger</li>
+              <li>Sous le franco : frais d'exp&eacute;dition {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>
+              <li>Au-dessus du franco : frais de pr&eacute;paration r&eacute;duits &agrave; {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>
               <li>Conditionnement : bidons par cartons de 4, flacons par cartons de 6.</li>
             </ul>
           </div>
@@ -1523,25 +1547,45 @@
         </div>
       );
 
+      const getFileFormat = (url) => {
+        try {
+          const path = new URL(url, window.location.origin).pathname;
+          const ext = path.split('.').pop().toLowerCase();
+          const formats = { pdf: 'PDF', doc: 'Word', docx: 'Word', pages: 'Pages', xls: 'Excel', xlsx: 'Excel', ppt: 'PowerPoint', pptx: 'PowerPoint', jpg: 'Image', jpeg: 'Image', png: 'Image', gif: 'Image', zip: 'ZIP', csv: 'CSV', txt: 'Texte' };
+          return formats[ext] || null;
+        } catch { return null; }
+      };
+      const getFormatIcon = (format) => {
+        const icons = { PDF: '\uD83D\uDCD5', Word: '\uD83D\uDCD8', Pages: '\uD83D\uDCD3', Excel: '\uD83D\uDCCA', PowerPoint: '\uD83D\uDCCA', Image: '\uD83D\uDDBC\uFE0F', ZIP: '\uD83D\uDCE6', CSV: '\uD83D\uDCCB', Texte: '\uD83D\uDCC4' };
+        return icons[format] || '\uD83D\uDCC4';
+      };
+
       return (
         <div className="space-y-3">
-          {docs.map(doc => (
-            <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer"
-              className="block bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-5 shadow-sm dark:shadow-none hover:shadow-md dark:hover:shadow-none hover:border-gold-300 transition-all group">
-              <div className="flex items-center gap-3">
-                <div className="w-10 h-10 rounded-xl bg-gold-50 dark:bg-gold-900/30 flex items-center justify-center text-gold-600 text-lg shrink-0 group-hover:bg-gold-100 dark:group-hover:bg-gold-900/50 transition-colors">
-                  &#128196;
+          {docs.map(doc => {
+            const format = getFileFormat(doc.url);
+            const icon = getFormatIcon(format);
+            return (
+              <a key={doc.id} href={doc.url} target="_blank" rel="noopener noreferrer"
+                className="block bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-2xl p-5 shadow-sm dark:shadow-none hover:shadow-md dark:hover:shadow-none hover:border-gold-300 transition-all group">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-xl bg-gold-50 dark:bg-gold-900/30 flex items-center justify-center text-gold-600 text-lg shrink-0 group-hover:bg-gold-100 dark:group-hover:bg-gold-900/50 transition-colors">
+                    {icon}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2">
+                      <span className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-gold-700 dark:group-hover:text-gold-400 transition-colors">{doc.titre}</span>
+                      {format && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gray-100 dark:bg-slate-600 text-gray-500 dark:text-slate-400 font-medium shrink-0">{format}</span>}
+                    </div>
+                    {doc.description && <div className="text-xs text-gray-400 dark:text-slate-500 mt-0.5 truncate">{doc.description}</div>}
+                  </div>
+                  <div className="text-gray-300 dark:text-slate-500 group-hover:text-gold-500 transition-colors shrink-0">
+                    &#8599;
+                  </div>
                 </div>
-                <div className="flex-1 min-w-0">
-                  <div className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-gold-700 dark:group-hover:text-gold-400 transition-colors">{doc.titre}</div>
-                  <div className="text-xs text-gray-400 dark:text-slate-500 truncate">{doc.url}</div>
-                </div>
-                <div className="text-gray-300 dark:text-slate-500 group-hover:text-gold-500 transition-colors shrink-0">
-                  &#8599;
-                </div>
-              </div>
-            </a>
-          ))}
+              </a>
+            );
+          })}
         </div>
       );
     };
@@ -1921,7 +1965,7 @@
                         />
                       </div>
                       <span className={`text-[10px] sm:text-[11px] font-medium shrink-0 ${francoAtteint ? 'text-gold-600' : 'text-amber-600'}`}>
-                        {francoAtteint ? 'Franco' : `${manque.toFixed(0)} \u20ac restant`}
+                        {francoAtteint ? `Franco \u2014 ${(partner.fp_prix ?? 0).toFixed(0)} \u20ac FP` : `${manque.toFixed(0)} \u20ac restant`}
                       </span>
                     </div>
                   )}
