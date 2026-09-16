@@ -287,13 +287,14 @@ app.post('/api/backup/restore', requireAdmin, (req, res) => {
 // Frontend statique
 const publicPath = path.join(__dirname, '..', 'public');
 if (fs.existsSync(publicPath)) {
-  // Sur le sous-domaine partenaire, bloquer l'accès aux fichiers admin
+  // Sur le sous-domaine partenaire, servir partenaire.html et bloquer les fichiers admin
   app.use((req, res, next) => {
     const host = req.hostname || '';
     if (host.startsWith('partenaire.')) {
       const p = req.path.toLowerCase();
-      if (p === '/index.html' || p === '/app.jsx') {
-        return res.redirect('/');
+      // Servir le portail partenaire pour la racine (sinon express.static sert index.html)
+      if (p === '/' || p === '/index.html' || p === '/app.jsx') {
+        return res.sendFile(path.join(publicPath, 'partenaire.html'));
       }
     }
     next();
