@@ -21675,7 +21675,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
   const charger = async () => {
     setLoading(true);
     try {
-      const data = await api.get('/reference/partners');
+      const data = await api.get('/reference/partners?all=1');
       if (Array.isArray(data)) setPartners(data);
     } catch (e) {
       showToast('Erreur chargement partenaires', 'error');
@@ -21804,6 +21804,24 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     try {
       await api.patch(`/reference/partners/${selected.id}`, { actif: !selected.actif });
       showToast(selected.actif ? 'Partenaire désactivé' : 'Partenaire activé', "success");
+      charger();
+    } catch (e) {
+      showToast('Erreur réseau', 'error');
+    }
+  };
+
+  const revoquerAccesPortail = async () => {
+    if (!selected || !selected.has_password) return;
+    const ok = await confirmDialog(`Révoquer l'accès portail de ${selected.nom} ? Le mot de passe sera supprimé.`, {
+      title: 'Révoquer accès portail',
+      confirmLabel: 'Révoquer',
+      cancelLabel: 'Annuler',
+      danger: true,
+    });
+    if (!ok) return;
+    try {
+      await api.delete(`/reference/partners/${selected.id}/password`);
+      showToast('Accès portail révoqué', 'success');
       charger();
     } catch (e) {
       showToast('Erreur réseau', 'error');
@@ -22060,11 +22078,12 @@ const VuePartenaires = ({ showToast, readOnly }) => {
             <button
               key={p.id}
               onClick={() => selectPartner(p)}
-              className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors ${selectedId === p.id ? 'bg-slate-900 text-white' : 'hover:bg-slate-50'}`}
+              className={`w-full text-left px-4 py-3 border-b border-slate-50 transition-colors ${selectedId === p.id ? 'bg-slate-900 text-white' : !p.actif ? 'bg-slate-50/50 opacity-60 hover:opacity-80' : 'hover:bg-slate-50'}`}
             >
               <div className="flex items-center justify-between">
-                <span className={`text-sm font-medium truncate ${selectedId === p.id ? 'text-white' : 'text-slate-900'}`}>{p.nom}</span>
+                <span className={`text-sm font-medium truncate ${selectedId === p.id ? 'text-white' : !p.actif ? 'text-slate-400' : 'text-slate-900'}`}>{p.nom}</span>
                 <div className="flex items-center gap-1.5 flex-shrink-0">
+                  {!p.actif ? <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${selectedId === p.id ? 'bg-red-400/30 text-red-200' : 'bg-red-100 text-red-600'}`}>Inactif</span> : null}
                   {p.is_master ? <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${selectedId === p.id ? 'bg-violet-400/30 text-violet-200' : 'bg-violet-100 text-violet-700'}`}>Maître</span> : null}
                   {p.master_id ? <span className={`text-[9px] px-1.5 py-0.5 rounded-full font-medium ${selectedId === p.id ? 'bg-amber-400/30 text-amber-200' : 'bg-amber-100 text-amber-700'}`}>Sous-compte</span> : null}
                   {p.vf_client_id && <span className={`text-[9px] ${selectedId === p.id ? 'text-white/40' : 'text-slate-300'}`}>VF</span>}
@@ -22564,7 +22583,12 @@ const VuePartenaires = ({ showToast, readOnly }) => {
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3 flex-wrap">
+              {selected.has_password && (
+                <button onClick={revoquerAccesPortail} className="text-xs px-3 py-2 rounded-lg font-medium bg-orange-50 text-orange-600 hover:bg-orange-100">
+                  Révoquer l'accès portail
+                </button>
+              )}
               <button onClick={toggleActif} className={`text-xs px-3 py-2 rounded-lg font-medium ${selected.actif ? 'bg-red-50 text-red-600 hover:bg-red-100' : 'bg-emerald-50 text-emerald-600 hover:bg-emerald-100'}`}>
                 {selected.actif ? 'Désactiver ce partenaire' : 'Réactiver ce partenaire'}
               </button>

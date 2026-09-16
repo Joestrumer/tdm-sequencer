@@ -455,6 +455,18 @@ module.exports = (db) => {
     }
   });
 
+  // Révoquer l'accès portail d'un partenaire (supprimer le mot de passe)
+  router.delete('/partners/:id/password', (req, res) => {
+    try {
+      const partner = db.prepare('SELECT id, nom FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+      db.prepare('UPDATE vf_partners SET password_hash = NULL, password_plain = NULL WHERE id = ?').run(req.params.id);
+      res.json({ ok: true, nom: partner.nom });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   router.delete('/partners/:id', (req, res) => {
     try {
       db.prepare('DELETE FROM vf_partners WHERE id = ?').run(req.params.id);
