@@ -22351,7 +22351,10 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                     <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-400 font-medium">Pas d'accès portail</span>
                   )}
                   <button onClick={() => window.open('/partenaire', '_blank')} className="text-[11px] px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 font-medium transition-colors">
-                    Ouvrir le portail &rarr;
+                    Portail (Railway) &rarr;
+                  </button>
+                  <button onClick={() => window.open('https://partenaire.terredemars.com/', '_blank')} className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 font-medium transition-colors">
+                    Portail (T2M) &rarr;
                   </button>
                 </div>
               </div>
