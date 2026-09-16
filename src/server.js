@@ -79,6 +79,9 @@ wmsRefreshJob.initialiser(db);
 const app = express();
 const PORT = process.env.PORT || 3001;
 
+// Derrière un reverse proxy (Railway), faire confiance aux headers X-Forwarded-*
+app.set('trust proxy', 1);
+
 // Sécurité : CORS whitelist, headers, compression
 const allowedOrigins = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(',').map(s => s.trim())
