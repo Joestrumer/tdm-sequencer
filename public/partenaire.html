@@ -242,52 +242,44 @@
     ];
 
     // ─── Section Amenities (produits en chambre) ──────────────────────────────
-    const MAIN_SUFFIXES = ['', '-5000']; // 500ml (base ref) et 5L
-    const isMainFormat = (ref, baseRef) => ref === baseRef || ref === baseRef + '-5000';
+    const is5L = (ref, baseRef) => ref === baseRef + '-5000';
+    const is500ml = (ref, baseRef) => ref === baseRef;
 
     const AmenityProductRow = ({ p, getQty, addCarton, removeCarton }) => {
       const moq = p.moq || 1;
       const qty = getQty(p.ref);
       const cartons = moq > 1 ? Math.floor(qty / moq) : qty;
       const inCart = qty > 0;
+      const unitPrice = p.prix_promo ?? p.prix_remise;
       return (
-        <div className={`flex items-center gap-2 px-3 py-2.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 dark:bg-gold-900/30 border-l-2 border-l-gold-500' : 'hover:bg-gray-50 dark:hover:bg-slate-700'}`}>
-          <div className="flex-1 min-w-0">
-            <div className="flex items-center gap-2">
-              <span className="font-mono text-[10px] text-gray-400 dark:text-slate-500 shrink-0">{p.ref}</span>
-              <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{p.nom}</span>
-            </div>
-            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
-              {p.promo_pct > 0 ? (
-                <>
-                  <span className="text-xs text-gray-400 dark:text-slate-500 line-through">{p.prix_remise.toFixed(2)} &euro;</span>
-                  <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)} &euro; HT/u</span>
-                  <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-red-500 text-white font-bold">-{p.promo_pct}%</span>
-                </>
-              ) : (
-                <>
-                  <span className="text-xs font-semibold text-gold-600">{p.prix_remise.toFixed(2)} &euro; HT/u</span>
-                  {p.discount_pct > 0 && (
-                    <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">-{p.discount_pct}%</span>
-                  )}
-                </>
-              )}
-            </div>
-            {moq > 1 && (
-              <div className="text-[10px] text-gray-500 dark:text-slate-400 mt-0.5">Carton de {moq} &middot; {((p.prix_promo ?? p.prix_remise) * moq).toFixed(2)} &euro; HT</div>
+        <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 dark:bg-gold-900/30 border-l-2 border-l-gold-500' : 'hover:bg-gray-50 dark:hover:bg-slate-700'}`}>
+          <div className="flex-1 min-w-0 flex items-center gap-2">
+            <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{p.nom}</span>
+            {p.promo_pct > 0 ? (
+              <>
+                <span className="text-[10px] text-gray-400 dark:text-slate-500 line-through shrink-0">{p.prix_remise.toFixed(2)}&euro;</span>
+                <span className="text-xs font-bold text-red-600 dark:text-red-400 shrink-0">{p.prix_promo.toFixed(2)}&euro;/u</span>
+                <span className="text-[10px] px-1 py-0.5 rounded-full bg-red-500 text-white font-bold shrink-0">-{p.promo_pct}%</span>
+              </>
+            ) : (
+              <>
+                <span className="text-xs font-semibold text-gold-600 shrink-0">{p.prix_remise.toFixed(2)}&euro; HT/u</span>
+                {p.discount_pct > 0 && <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium shrink-0">-{p.discount_pct}%</span>}
+              </>
             )}
+            {moq > 1 && <span className="text-[10px] text-gray-400 dark:text-slate-500 shrink-0">x{moq}={( unitPrice * moq).toFixed(2)}&euro;</span>}
           </div>
           <div className="flex items-center gap-1 shrink-0">
             {qty > 0 && (
-              <button onClick={() => removeCarton(p.ref)} className="w-9 h-9 rounded-lg bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-base font-bold transition-colors">-</button>
+              <button onClick={() => removeCarton(p.ref)} className="w-8 h-8 rounded-lg bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-sm font-bold transition-colors">-</button>
             )}
             {qty > 0 && (
-              <div className="text-center min-w-[32px]">
-                <div className="text-gray-900 dark:text-white font-semibold text-sm">{moq > 1 ? cartons : qty}</div>
-                {moq > 1 && <div className="text-[9px] text-gray-400 dark:text-slate-500 leading-none">{qty} u.</div>}
+              <div className="text-center min-w-[28px]">
+                <div className="text-gray-900 dark:text-white font-semibold text-sm leading-none">{moq > 1 ? cartons : qty}</div>
+                {moq > 1 && <div className="text-[9px] text-gray-400 dark:text-slate-500 leading-none">{qty}u.</div>}
               </div>
             )}
-            <button onClick={() => addCarton(p.ref)} title={moq > 1 ? `Ajouter 1 carton (${moq} u. \u00b7 ${((p.prix_promo ?? p.prix_remise) * moq).toFixed(2)} \u20ac HT)` : 'Ajouter 1 unit\u00e9'} className="w-9 h-9 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-base font-bold transition-colors">+</button>
+            <button onClick={() => addCarton(p.ref)} title={moq > 1 ? `Ajouter 1 carton (${moq} u. \u00b7 ${(unitPrice * moq).toFixed(2)} \u20ac HT)` : 'Ajouter 1 unit\u00e9'} className="w-8 h-8 rounded-lg bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-sm font-bold transition-colors">+</button>
           </div>
         </div>
       );
@@ -295,7 +287,7 @@
 
     const AmenitiesSection = ({ amenities, catalogue, panier, setPanier }) => {
       if (!amenities || Object.keys(amenities).length === 0) return null;
-      const [showOtherFormats, setShowOtherFormats] = useState(false);
+      const [showFlacons, setShowFlacons] = useState(false);
 
       const sections = AMENITY_TYPES
         .filter(type => amenities[type.key])
@@ -303,15 +295,15 @@
           const baseRef = amenities[type.key];
           const gammeInfo = type.gammes.find(g => g.ref === baseRef);
           const allProducts = catalogue.filter(p => p.ref === baseRef || p.ref.startsWith(baseRef + '-'));
-          const mainProducts = allProducts.filter(p => isMainFormat(p.ref, baseRef));
-          const otherProducts = allProducts.filter(p => !isMainFormat(p.ref, baseRef));
-          return { type, baseRef, gammeInfo, mainProducts, otherProducts };
+          const fiveLProducts = allProducts.filter(p => is5L(p.ref, baseRef));
+          const flaconProducts = allProducts.filter(p => !is5L(p.ref, baseRef));
+          return { type, baseRef, gammeInfo, fiveLProducts, flaconProducts };
         })
-        .filter(s => s.mainProducts.length > 0 || s.otherProducts.length > 0);
+        .filter(s => s.fiveLProducts.length > 0 || s.flaconProducts.length > 0);
 
       if (sections.length === 0) return null;
 
-      const hasOtherFormats = sections.some(s => s.otherProducts.length > 0);
+      const hasFlacons = sections.some(s => s.flaconProducts.length > 0);
 
       const getQty = (ref) => panier[ref]?.quantite || 0;
 
@@ -334,22 +326,22 @@
 
       return (
         <div className="mb-8 space-y-6">
-          {/* Section principale : 500ml et 5L */}
+          {/* Section principale : bidons 5L */}
           <div>
             <div className="flex items-center gap-2 mb-4">
               <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
               <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Vos produits en chambre</h3>
             </div>
             <div className="space-y-4">
-              {sections.map(({ type, gammeInfo, mainProducts }) => (
-                mainProducts.length > 0 && (
+              {sections.map(({ type, gammeInfo, fiveLProducts }) => (
+                fiveLProducts.length > 0 && (
                   <div key={type.key} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden">
-                    <div className="px-3 py-2 bg-gray-50 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-700">
+                    <div className="px-3 py-1.5 bg-gray-50 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-700 flex items-center gap-1.5">
                       <span className="text-xs font-semibold text-gray-700 dark:text-slate-200">{type.label}</span>
-                      <span className="text-xs text-gold-600 ml-1.5">{gammeInfo?.gamme || ''}</span>
+                      <span className="text-xs text-gold-600">{gammeInfo?.gamme || ''}</span>
                     </div>
                     <div className="divide-y divide-gray-50 dark:divide-slate-700">
-                      {mainProducts.map(p => (
+                      {fiveLProducts.map(p => (
                         <AmenityProductRow key={p.ref} p={p} getQty={getQty} addCarton={addCarton} removeCarton={removeCarton} />
                       ))}
                     </div>
@@ -359,28 +351,28 @@
             </div>
           </div>
 
-          {/* Section secondaire : autres formats */}
-          {hasOtherFormats && (
+          {/* Section déroulante : flacons 500ml + autres formats */}
+          {hasFlacons && (
             <div>
               <button
-                onClick={() => setShowOtherFormats(!showOtherFormats)}
+                onClick={() => setShowFlacons(!showFlacons)}
                 className="flex items-center gap-2 mb-3 group"
               >
                 <div className="w-1 h-5 bg-gray-300 dark:bg-slate-500 rounded-full"></div>
-                <h3 className="text-sm font-medium text-gray-500 dark:text-slate-400 group-hover:text-gray-700 dark:group-hover:text-slate-200 transition-colors">Autres formats disponibles <span className="font-normal text-gray-400 dark:text-slate-500">(mêmes parfums)</span></h3>
-                <span className="text-gray-400 dark:text-slate-500 text-xs group-hover:text-gray-600 dark:group-hover:text-slate-300 transition-colors">{showOtherFormats ? '\u25b2' : '\u25bc'}</span>
+                <h3 className="text-sm font-medium text-gray-500 dark:text-slate-400 group-hover:text-gray-700 dark:group-hover:text-slate-200 transition-colors">Flacons 500 ml &amp; autres formats <span className="font-normal text-gray-400 dark:text-slate-500">(m&ecirc;mes parfums)</span></h3>
+                <span className="text-gray-400 dark:text-slate-500 text-xs group-hover:text-gray-600 dark:group-hover:text-slate-300 transition-colors">{showFlacons ? '\u25b2' : '\u25bc'}</span>
               </button>
-              {showOtherFormats && (
+              {showFlacons && (
                 <div className="space-y-4 animate-fade-in">
-                  {sections.map(({ type, gammeInfo, otherProducts }) => (
-                    otherProducts.length > 0 && (
+                  {sections.map(({ type, gammeInfo, flaconProducts }) => (
+                    flaconProducts.length > 0 && (
                       <div key={type.key} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden">
-                        <div className="px-3 py-2 bg-gray-50 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-700">
+                        <div className="px-3 py-1.5 bg-gray-50 dark:bg-slate-700 border-b border-gray-100 dark:border-slate-700 flex items-center gap-1.5">
                           <span className="text-xs font-semibold text-gray-700 dark:text-slate-200">{type.label}</span>
-                          <span className="text-xs text-gold-600 ml-1.5">{gammeInfo?.gamme || ''}</span>
+                          <span className="text-xs text-gold-600">{gammeInfo?.gamme || ''}</span>
                         </div>
                         <div className="divide-y divide-gray-50 dark:divide-slate-700">
-                          {otherProducts.map(p => (
+                          {flaconProducts.map(p => (
                             <AmenityProductRow key={p.ref} p={p} getQty={getQty} addCarton={addCarton} removeCarton={removeCarton} />
                           ))}
                         </div>
