@@ -574,10 +574,16 @@ module.exports = (db) => {
       const existingPartners = db.prepare('SELECT * FROM vf_partners').all();
       const partnerByNom = {};
       const partnerByVfClientId = {};
+      const partnerByEmail = {};
       for (const p of existingPartners) {
         partnerByNom[p.nom.toLowerCase()] = p;
         if (p.nom_normalise) partnerByNom[p.nom_normalise.toLowerCase()] = p;
         if (p.vf_client_id) partnerByVfClientId[String(p.vf_client_id)] = p;
+        if (p.email) {
+          const ek = p.email.toLowerCase();
+          // Garder le premier match (éviter les doublons)
+          if (!partnerByEmail[ek]) partnerByEmail[ek] = p;
+        }
       }
 
       let updated = 0;
@@ -688,6 +694,11 @@ module.exports = (db) => {
           if (mapping && mapping.file_name) {
             partner = partnerByNom[mapping.file_name.toLowerCase()];
           }
+        }
+
+        // 4. Match par email (utile pour les comptes portail créés manuellement)
+        if (!partner && email) {
+          partner = partnerByEmail[email.toLowerCase()] || null;
         }
 
         if (partner) {
