@@ -414,90 +414,98 @@ module.exports = (db) => {
             htmlContent: `
 <!DOCTYPE html>
 <html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
-<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
-</head><body style="margin:0;padding:0;background:#F9F7F1;font-family:'DM Sans',Arial,sans-serif;">
+<link href="https://fonts.googleapis.com/css2?family=Jost:wght@300;400;500&family=DM+Sans:wght@500;600;700&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background:#F9F7F1;font-family:Jost,'Helvetica Neue',Arial,sans-serif;">
 <div style="max-width:560px;margin:0 auto;padding:40px 20px;">
 
   <!-- Header avec logo -->
-  <div style="text-align:center;margin-bottom:32px;">
-    <img src="${logoUrl}" alt="Terre de Mars" width="80" style="display:inline-block;margin-bottom:12px;" />
-    <h1 style="margin:0;font-family:'Playfair Display',Georgia,serif;font-size:22px;color:#362F15;font-weight:600;">Espace Partenaire</h1>
+  <div style="text-align:center;margin-bottom:36px;">
+    <img src="${logoUrl}" alt="Terre de Mars" width="160" style="display:inline-block;margin-bottom:16px;" />
+    <p style="margin:0;font-family:'DM Sans',Arial,sans-serif;font-size:13px;color:#A28E3F;text-transform:uppercase;letter-spacing:3px;font-weight:600;">Espace Partenaire</p>
   </div>
 
   <!-- Card principale -->
   <div style="background:#ffffff;border-radius:16px;padding:36px;border:1px solid #E3DCC0;">
 
-    <p style="font-size:15px;color:#362F15;margin:0 0 8px;">Bonjour,</p>
+    <p style="font-size:16px;color:#362F15;margin:0 0 8px;font-weight:500;">Bonjour,</p>
     <p style="font-size:14px;color:#51461F;line-height:1.7;margin:0 0 24px;">
-      Bienvenue sur votre espace partenaire Terre de Mars. Vous y trouverez notre catalogue, vos tarifs n&eacute;goci&eacute;s, et pourrez passer vos commandes en toute autonomie.
+      Bienvenue sur votre espace d&eacute;di&eacute;. D&eacute;couvrez l'int&eacute;gralit&eacute; de nos collections, passez vos commandes en toute autonomie et suivez chaque &eacute;tape de leur traitement.
     </p>
 
     <!-- Mot de passe -->
     <div style="background:#F9F7F1;border:1px solid #E3DCC0;border-radius:12px;padding:20px;margin:0 0 24px;text-align:center;">
-      <p style="font-size:12px;color:#877633;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Votre mot de passe</p>
+      <p style="font-size:11px;color:#877633;margin:0 0 8px;text-transform:uppercase;letter-spacing:2px;font-weight:600;font-family:'DM Sans',Arial,sans-serif;">Votre mot de passe</p>
       <div style="font-size:28px;letter-spacing:4px;color:#A28E3F;font-weight:700;font-family:monospace;">${plainPassword}</div>
     </div>
 
     <!-- Bouton CTA -->
     <div style="text-align:center;margin:0 0 32px;">
-      <a href="${portalUrl}" style="display:inline-block;background:#A28E3F;color:#ffffff;padding:14px 36px;border-radius:10px;text-decoration:none;font-size:15px;font-weight:600;letter-spacing:0.3px;">Acc&eacute;der au portail</a>
+      <a href="${portalUrl}" style="display:inline-block;background:#A28E3F;color:#ffffff;padding:14px 40px;border-radius:10px;text-decoration:none;font-size:14px;font-weight:600;letter-spacing:0.5px;font-family:'DM Sans',Arial,sans-serif;">Acc&eacute;der au portail</a>
     </div>
 
     <!-- Séparateur -->
-    <div style="border-top:1px solid #E3DCC0;margin:0 0 24px;"></div>
+    <div style="border-top:1px solid #E3DCC0;margin:0 0 28px;"></div>
 
     <!-- Guide -->
-    <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:17px;color:#362F15;margin:0 0 16px;font-weight:600;">Comment passer commande ?</h2>
+    <h2 style="font-family:'DM Sans',Arial,sans-serif;font-size:16px;color:#362F15;margin:0 0 20px;font-weight:700;">Votre portail en 3 &eacute;tapes</h2>
 
-    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
-      <tr><td style="padding:10px 0;vertical-align:top;">
-        <div style="display:inline-block;width:28px;height:28px;background:#A28E3F;color:#fff;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;margin-right:12px;vertical-align:top;">1</div>
-        <div style="display:inline-block;max-width:calc(100% - 48px);vertical-align:top;">
-          <strong style="font-size:14px;color:#362F15;">Catalogue</strong>
-          <p style="font-size:13px;color:#6C5E29;margin:4px 0 0;line-height:1.5;">Parcourez nos produits avec vos tarifs n&eacute;goci&eacute;s. Ajoutez au panier en un clic.</p>
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:28px;">
+      <tr><td style="padding:12px 0;vertical-align:top;">
+        <div style="display:inline-block;width:30px;height:30px;background:#A28E3F;color:#fff;border-radius:50%;text-align:center;line-height:30px;font-size:14px;font-weight:700;margin-right:14px;vertical-align:top;font-family:'DM Sans',Arial,sans-serif;">1</div>
+        <div style="display:inline-block;max-width:calc(100% - 52px);vertical-align:top;">
+          <strong style="font-size:14px;color:#362F15;font-family:'DM Sans',Arial,sans-serif;">Explorez le catalogue</strong>
+          <p style="font-size:13px;color:#6C5E29;margin:4px 0 0;line-height:1.6;">Retrouvez en t&ecirc;te de liste les r&eacute;f&eacute;rences d&eacute;j&agrave; pr&eacute;sentes dans vos chambres, disponibles en formats rechargeables. Juste en dessous, ces m&ecirc;mes collections en formats individuels. Puis d&eacute;couvrez le reste de nos cr&eacute;ations&nbsp;: cadeaux VIP, coffrets et attentions d'exception &agrave; offrir &agrave; vos voyageurs.</p>
         </div>
       </td></tr>
-      <tr><td style="padding:10px 0;vertical-align:top;">
-        <div style="display:inline-block;width:28px;height:28px;background:#A28E3F;color:#fff;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;margin-right:12px;vertical-align:top;">2</div>
-        <div style="display:inline-block;max-width:calc(100% - 48px);vertical-align:top;">
-          <strong style="font-size:14px;color:#362F15;">Panier &amp; validation</strong>
-          <p style="font-size:13px;color:#6C5E29;margin:4px 0 0;line-height:1.5;">V&eacute;rifiez vos quantit&eacute;s, ajoutez des notes si besoin, puis validez votre commande.</p>
+      <tr><td style="padding:12px 0;vertical-align:top;">
+        <div style="display:inline-block;width:30px;height:30px;background:#A28E3F;color:#fff;border-radius:50%;text-align:center;line-height:30px;font-size:14px;font-weight:700;margin-right:14px;vertical-align:top;font-family:'DM Sans',Arial,sans-serif;">2</div>
+        <div style="display:inline-block;max-width:calc(100% - 52px);vertical-align:top;">
+          <strong style="font-size:14px;color:#362F15;font-family:'DM Sans',Arial,sans-serif;">Composez votre commande</strong>
+          <p style="font-size:13px;color:#6C5E29;margin:4px 0 0;line-height:1.6;">Ajoutez vos produits au panier, ajustez les quantit&eacute;s et glissez une note si n&eacute;cessaire. Validez en un clic&nbsp;&mdash; notre &eacute;quipe prend le relais imm&eacute;diatement.</p>
         </div>
       </td></tr>
-      <tr><td style="padding:10px 0;vertical-align:top;">
-        <div style="display:inline-block;width:28px;height:28px;background:#A28E3F;color:#fff;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;margin-right:12px;vertical-align:top;">3</div>
-        <div style="display:inline-block;max-width:calc(100% - 48px);vertical-align:top;">
-          <strong style="font-size:14px;color:#362F15;">Commandes</strong>
-          <p style="font-size:13px;color:#6C5E29;margin:4px 0 0;line-height:1.5;">Suivez l'&eacute;tat de vos commandes, t&eacute;l&eacute;chargez vos factures et exportez en CSV.</p>
+      <tr><td style="padding:12px 0;vertical-align:top;">
+        <div style="display:inline-block;width:30px;height:30px;background:#A28E3F;color:#fff;border-radius:50%;text-align:center;line-height:30px;font-size:14px;font-weight:700;margin-right:14px;vertical-align:top;font-family:'DM Sans',Arial,sans-serif;">3</div>
+        <div style="display:inline-block;max-width:calc(100% - 52px);vertical-align:top;">
+          <strong style="font-size:14px;color:#362F15;font-family:'DM Sans',Arial,sans-serif;">Suivez vos commandes</strong>
+          <p style="font-size:13px;color:#6C5E29;margin:4px 0 0;line-height:1.6;">Consultez l'avancement en temps r&eacute;el, t&eacute;l&eacute;chargez vos factures et acc&eacute;dez &agrave; l'historique complet de vos achats.</p>
         </div>
       </td></tr>
     </table>
 
+    <!-- Séparateur -->
+    <div style="border-top:1px solid #E3DCC0;margin:0 0 24px;"></div>
+
     <!-- Onglets -->
-    <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:17px;color:#362F15;margin:0 0 12px;font-weight:600;">Les onglets de votre portail</h2>
+    <h2 style="font-family:'DM Sans',Arial,sans-serif;font-size:16px;color:#362F15;margin:0 0 16px;font-weight:700;">D&eacute;couvrez chaque espace</h2>
 
     <table width="100%" cellpadding="0" cellspacing="0">
       <tr>
-        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#A28E3F;">&#128218; Catalogue</strong> &mdash; Tous nos produits, vos prix, ajout au panier</td>
+        <td style="padding:10px 0;font-size:13px;color:#51461F;line-height:1.5;border-bottom:1px solid #F1EDDD;">
+          <strong style="color:#A28E3F;font-family:'DM Sans',Arial,sans-serif;">Catalogue</strong><br/>L'ensemble de nos collections&nbsp;: soins, recharges, petits formats et cadeaux VIP.</td>
       </tr>
       <tr>
-        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#dc2626;">&#127381; Bons plans</strong> &mdash; Promotions en cours et offres flash</td>
+        <td style="padding:10px 0;font-size:13px;color:#51461F;line-height:1.5;border-bottom:1px solid #F1EDDD;">
+          <strong style="color:#A28E3F;font-family:'DM Sans',Arial,sans-serif;">Bons plans</strong><br/>Offres &eacute;ph&eacute;m&egrave;res et promotions exclusives r&eacute;serv&eacute;es &agrave; nos partenaires.</td>
       </tr>
       <tr>
-        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#A28E3F;">&#128230; Commandes</strong> &mdash; Historique, suivi, factures PDF</td>
+        <td style="padding:10px 0;font-size:13px;color:#51461F;line-height:1.5;border-bottom:1px solid #F1EDDD;">
+          <strong style="color:#A28E3F;font-family:'DM Sans',Arial,sans-serif;">Commandes</strong><br/>Suivi en temps r&eacute;el, factures PDF et export CSV pour votre comptabilit&eacute;.</td>
       </tr>
       <tr>
-        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#A28E3F;">&#128196; Documents</strong> &mdash; Fiches produits, supports commerciaux</td>
+        <td style="padding:10px 0;font-size:13px;color:#51461F;line-height:1.5;border-bottom:1px solid #F1EDDD;">
+          <strong style="color:#A28E3F;font-family:'DM Sans',Arial,sans-serif;">Documents</strong><br/>Fiches produits, supports de pr&eacute;sentation et ressources commerciales.</td>
       </tr>
       <tr>
-        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#A28E3F;">&#128100; Mon compte</strong> &mdash; Adresses de livraison et facturation</td>
+        <td style="padding:10px 0;font-size:13px;color:#51461F;line-height:1.5;">
+          <strong style="color:#A28E3F;font-family:'DM Sans',Arial,sans-serif;">Mon compte</strong><br/>Vos coordonn&eacute;es, adresses de livraison et informations de facturation.</td>
       </tr>
     </table>
   </div>
 
   <!-- Footer -->
-  <div style="text-align:center;margin-top:32px;">
-    <p style="font-size:12px;color:#877633;margin:0;">Terre de Mars &mdash; Cosm&eacute;tiques d'exception pour l'h&ocirc;tellerie</p>
+  <div style="text-align:center;margin-top:36px;">
+    <p style="font-size:12px;color:#877633;margin:0;font-family:'DM Sans',Arial,sans-serif;">Terre de Mars &mdash; Cosm&eacute;tiques d'exception pour l'h&ocirc;tellerie</p>
     <p style="font-size:11px;color:#B9AA6F;margin:8px 0 0;">Ce mot de passe est personnel, ne le partagez pas.</p>
   </div>
 
