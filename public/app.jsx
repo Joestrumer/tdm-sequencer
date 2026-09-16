@@ -21037,6 +21037,21 @@ const VueCommandes = ({ showToast }) => {
     }
   };
 
+  const supprimerSelection = async () => {
+    const count = selectedOrderIds.size;
+    if (!await confirmDialog(`Supprimer définitivement ${count} commande${count > 1 ? 's' : ''} ? Cette action est irréversible.`, { danger: true, confirmLabel: `Supprimer ${count} commande${count > 1 ? 's' : ''}` })) return;
+    let success = 0;
+    for (const id of selectedOrderIds) {
+      try {
+        const res = await api.delete(`/partner-orders/${id}`);
+        if (res.ok) success++;
+      } catch (e) { /* continue */ }
+    }
+    showToast(`${success}/${count} commande(s) supprimée(s)`, success === count ? 'success' : 'error');
+    setSelectedOrderIds(new Set());
+    charger();
+  };
+
   const [batchValidating, setBatchValidating] = useState(false);
   const [batchValidateModal, setBatchValidateModal] = useState(false);
   const [batchValidateOptions, setBatchValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
@@ -21046,11 +21061,78 @@ const VueCommandes = ({ showToast }) => {
     setBatchValidateModal(false);
     try {
       const enAttenteIds = [...selectedOrderIds].filter(id => { const c = commandes.find(x => x.id === id); return c && c.statut === 'en_attente'; });
+
+      // Pré-valider l'accès au dossier CSV si nécessaire
+      if (batchValidateOptions.generateCsv) {
+        try {
+          if (!window.savedCSVDirHandle) window.savedCSVDirHandle = await _getHandleIDB('csvDir');
+          if (window.savedCSVDirHandle) {
+            const perm = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
+            if (perm === 'prompt') try { await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }); } catch (e) {}
+          }
+          if (!window.savedCSVDirHandle || await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
+            const dh = await window.showDirectoryPicker({ mode: 'readwrite', id: 'csvDir' });
+            window.savedCSVDirHandle = dh;
+            await _saveHandleIDB('csvDir', dh);
+          }
+        } catch (e) { /* pas de support ou annulé */ }
+      }
+
+      // Mapper les options frontend → backend
+      const apiOptions = {
+        documentType: batchValidateOptions.documentType,
+        shippingId: batchValidateOptions.shippingId,
+        sendEmail: batchValidateOptions.sendEmailVF,
+        logGSheets: batchValidateOptions.logGSheets,
+        generateCsv: batchValidateOptions.generateCsv,
+        createHubspotDeal: batchValidateOptions.createHubspotDeal,
+      };
+
       const res = await api.post('/partner-orders/batch-validate', {
         orderIds: enAttenteIds,
-        options: batchValidateOptions,
+        options: apiOptions,
       });
       if (res.ok) {
+        const successResults = (res.results || []).filter(r => r.ok);
+
+        // CSV : sauvegarder chaque CSV + ouvrir mailto logisticien groupé
+        const csvResults = successResults.filter(r => r.csv_base64);
+        if (csvResults.length > 0) {
+          for (const r of csvResults) {
+            const blob = new Blob([Uint8Array.from(atob(r.csv_base64), c => c.charCodeAt(0))], { type: 'text/csv;charset=utf-8' });
+            const fileName = `logisticien-${r.vf_invoice_number || r.id}.csv`;
+            const dirName = await saveFileWithPicker(blob, fileName);
+            if (!dirName) downloadFallback(blob, fileName);
+          }
+          const invoiceNums = csvResults.map(r => r.vf_invoice_number || '?').join(', ');
+          const logSubject = encodeURIComponent(`Commandes : ${invoiceNums}`);
+          const logBody = encodeURIComponent(`Bonjour,\n\nVeuillez trouver ci-joint les CSV pour les commandes ${invoiceNums}.\n\nCordialement`);
+          const logCc = encodeURIComponent('poulad@terredemars.com,alexandre@terredemars.com');
+          window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_self');
+        }
+
+        // Mailto partenaire pour chaque commande validée
+        if (batchValidateOptions.sendEmailPartner) {
+          for (const r of successResults) {
+            if (!r.partner_email) continue;
+            await new Promise(resolve => setTimeout(resolve, 400));
+            const invoiceNumber = r.vf_invoice_number || '';
+            const datePaiement = new Date(Date.now() + 30 * 86400000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
+            const defaultSubject = `Terre de Mars : Confirmation de commande n°{{numero}}`;
+            const defaultBody = `Bonjour,\n\nJe vous confirme la bonne réception de votre commande n°{{numero}} qui a été mise en préparation.\n\nLa facture vous a été transmise via un email automatique pour paiement au {{date_paiement}}.\n\nN'hésitez pas si vous avez des questions.\n\nBonne journée,`;
+            const tplSubject = (partnerEmailConfig.subject || defaultSubject).replace(/\{\{numero\}\}/g, invoiceNumber).replace(/\{\{date_paiement\}\}/g, datePaiement);
+            const tplBody = (partnerEmailConfig.body || defaultBody).replace(/\{\{numero\}\}/g, invoiceNumber).replace(/\{\{date_paiement\}\}/g, datePaiement);
+            const mailLink = document.createElement('a');
+            let mailHref = `mailto:${r.partner_email}?subject=${encodeURIComponent(tplSubject)}&body=${encodeURIComponent(tplBody)}`;
+            if (partnerEmailConfig.cc) mailHref += `&cc=${encodeURIComponent(partnerEmailConfig.cc)}`;
+            if (partnerEmailConfig.bcc) mailHref += `&bcc=${encodeURIComponent(partnerEmailConfig.bcc)}`;
+            mailLink.href = mailHref;
+            document.body.appendChild(mailLink);
+            mailLink.click();
+            document.body.removeChild(mailLink);
+          }
+        }
+
         showToast(`${res.summary.success}/${res.summary.total} commande(s) validée(s)`, res.summary.failed > 0 ? 'error' : 'success');
         setSelectedOrderIds(new Set());
         charger();
@@ -21131,11 +21213,10 @@ const VueCommandes = ({ showToast }) => {
   };
 
   const toggleSelectAll = () => {
-    const selectable = commandes.filter(c => (c.statut === 'validee' && c.vf_invoice_id) || c.statut === 'en_attente');
-    if (selectedOrderIds.size === selectable.length && selectable.length > 0) {
+    if (selectedOrderIds.size === commandes.length && commandes.length > 0) {
       setSelectedOrderIds(new Set());
     } else {
-      setSelectedOrderIds(new Set(selectable.map(c => c.id)));
+      setSelectedOrderIds(new Set(commandes.map(c => c.id)));
     }
   };
 
@@ -21381,11 +21462,11 @@ const VueCommandes = ({ showToast }) => {
             {f.stale > 0 && <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-red-100 text-red-600 font-bold" title={`${f.stale} commande${f.stale > 1 ? 's' : ''} en attente depuis +3j`}>{f.stale}</span>}
           </button>
         ))}
-        {commandes.some(c => (c.statut === 'validee' && c.vf_invoice_id) || c.statut === 'en_attente') && (
+        {commandes.length > 0 && (
           <div className="flex items-center gap-2 ml-auto">
             <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
               <input type="checkbox"
-                checked={(() => { const s = commandes.filter(c => (c.statut === 'validee' && c.vf_invoice_id) || c.statut === 'en_attente'); return s.length > 0 && selectedOrderIds.size === s.length; })()}
+                checked={commandes.length > 0 && selectedOrderIds.size === commandes.length}
                 onChange={toggleSelectAll}
                 className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 w-3.5 h-3.5" />
               Tout sélectionner
@@ -21404,6 +21485,10 @@ const VueCommandes = ({ showToast }) => {
                     Valider ({[...selectedOrderIds].filter(id => { const c = commandes.find(x => x.id === id); return c && c.statut === 'en_attente'; }).length})
                   </button>
                 )}
+                <button onClick={supprimerSelection}
+                  className="px-3 py-1.5 rounded-lg text-xs font-medium bg-red-600 text-white hover:bg-red-500 transition-colors flex items-center gap-1.5">
+                  Supprimer ({selectedOrderIds.size})
+                </button>
               </>
             )}
           </div>
@@ -21426,10 +21511,8 @@ const VueCommandes = ({ showToast }) => {
           return (
             <div key={c.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
               <div className="p-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setExpandedId(expanded ? null : c.id)}>
-                {((c.statut === 'validee' && c.vf_invoice_id) || c.statut === 'en_attente') && (
-                  <input type="checkbox" checked={selectedOrderIds.has(c.id)} onChange={(e) => toggleOrderSelection(c.id, e)} onClick={e => e.stopPropagation()}
-                    className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 w-4 h-4 flex-shrink-0 cursor-pointer" />
-                )}
+                <input type="checkbox" checked={selectedOrderIds.has(c.id)} onChange={(e) => toggleOrderSelection(c.id, e)} onClick={e => e.stopPropagation()}
+                  className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 w-4 h-4 flex-shrink-0 cursor-pointer" />
                 <div className="flex-1 min-w-0">
                   <div className="flex items-center gap-2 mb-1">
                     <span className="text-sm font-medium text-slate-900">{c.partner_nom}</span>

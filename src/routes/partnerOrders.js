@@ -711,7 +711,11 @@ module.exports = (db) => {
       const results = [];
       for (const id of orderIds) {
         try {
-          const order = db.prepare('SELECT * FROM partner_orders WHERE id = ?').get(id);
+          const order = db.prepare(`
+            SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact
+            FROM partner_orders po JOIN vf_partners vp ON vp.id = po.partner_id
+            WHERE po.id = ?
+          `).get(id);
           if (!order) { results.push({ id, ok: false, erreur: 'Commande introuvable' }); continue; }
           if (order.statut !== 'en_attente') { results.push({ id, ok: false, erreur: 'Statut non en_attente' }); continue; }
 
@@ -723,7 +727,11 @@ module.exports = (db) => {
             body: JSON.stringify(options || {}),
           });
           const data = await validateRes.json();
-          results.push({ id, ok: validateRes.ok, ...data });
+          results.push({
+            id, ok: validateRes.ok, ...data,
+            partner_nom: order.partner_nom,
+            partner_email: order.partner_email,
+          });
         } catch (e) {
           results.push({ id, ok: false, erreur: e.message });
         }
