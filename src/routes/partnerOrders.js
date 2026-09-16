@@ -700,6 +700,43 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Valider plusieurs commandes en lot ─────────────────────────────────
+  router.post('/batch-validate', async (req, res) => {
+    try {
+      const { orderIds, options } = req.body;
+      if (!orderIds || !Array.isArray(orderIds) || orderIds.length === 0) {
+        return res.status(400).json({ erreur: 'Liste de commandes requise' });
+      }
+
+      const results = [];
+      for (const id of orderIds) {
+        try {
+          const order = db.prepare('SELECT * FROM partner_orders WHERE id = ?').get(id);
+          if (!order) { results.push({ id, ok: false, erreur: 'Commande introuvable' }); continue; }
+          if (order.statut !== 'en_attente') { results.push({ id, ok: false, erreur: 'Statut non en_attente' }); continue; }
+
+          const baseUrl = `http://localhost:${process.env.PORT || 3001}`;
+          const token = req.headers.authorization;
+          const validateRes = await fetch(`${baseUrl}/api/partner-orders/${id}/validate`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json', 'Authorization': token },
+            body: JSON.stringify(options || {}),
+          });
+          const data = await validateRes.json();
+          results.push({ id, ok: validateRes.ok, ...data });
+        } catch (e) {
+          results.push({ id, ok: false, erreur: e.message });
+        }
+      }
+
+      const success = results.filter(r => r.ok).length;
+      const failed = results.filter(r => !r.ok).length;
+      res.json({ ok: true, results, summary: { success, failed, total: orderIds.length } });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── PDF pour commande validée (proxy via VF API) ───────────────────────────
   router.get('/:id/pdf', async (req, res) => {
     try {
@@ -823,6 +860,24 @@ module.exports = (db) => {
         .run(req.params.id, req.user?.id || null, 'cancelled_admin');
 
       res.json({ ok: true, message: 'Commande annulée' });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Supprimer définitivement une commande (admin) ───────────────────────
+  router.delete('/:id', (req, res) => {
+    try {
+      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ?').get(req.params.id);
+      if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
+
+      // Audit trail avant suppression
+      db.prepare('INSERT INTO partner_orders_audit (order_id, user_id, action) VALUES (?, ?, ?)')
+        .run(req.params.id, req.user?.id || null, 'deleted_admin');
+
+      db.prepare('DELETE FROM partner_orders WHERE id = ?').run(req.params.id);
+
+      res.json({ ok: true, message: 'Commande supprimée' });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }

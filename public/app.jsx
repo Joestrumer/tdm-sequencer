@@ -21022,6 +21022,47 @@ const VueCommandes = ({ showToast }) => {
     }
   };
 
+  const supprimerCommande = async (id) => {
+    if (!await confirmDialog('Supprimer définitivement cette commande ? Cette action est irréversible.', { danger: true, confirmLabel: 'Supprimer' })) return;
+    try {
+      const res = await api.delete(`/partner-orders/${id}`);
+      if (res.ok) {
+        showToast('Commande supprimée', "success");
+        charger();
+      } else {
+        showToast(res.erreur || 'Erreur', "error");
+      }
+    } catch (e) {
+      showToast('Erreur réseau', 'error');
+    }
+  };
+
+  const [batchValidating, setBatchValidating] = useState(false);
+  const [batchValidateModal, setBatchValidateModal] = useState(false);
+  const [batchValidateOptions, setBatchValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
+
+  const batchValider = async () => {
+    setBatchValidating(true);
+    setBatchValidateModal(false);
+    try {
+      const enAttenteIds = [...selectedOrderIds].filter(id => { const c = commandes.find(x => x.id === id); return c && c.statut === 'en_attente'; });
+      const res = await api.post('/partner-orders/batch-validate', {
+        orderIds: enAttenteIds,
+        options: batchValidateOptions,
+      });
+      if (res.ok) {
+        showToast(`${res.summary.success}/${res.summary.total} commande(s) validée(s)`, res.summary.failed > 0 ? 'error' : 'success');
+        setSelectedOrderIds(new Set());
+        charger();
+      } else {
+        showToast(res.erreur || 'Erreur', 'error');
+      }
+    } catch (e) {
+      showToast('Erreur réseau', 'error');
+    }
+    setBatchValidating(false);
+  };
+
   const [csvModal, setCsvModal] = useState(null);
   const [csvShippingId, setCsvShippingId] = useState('1');
 
@@ -21090,11 +21131,11 @@ const VueCommandes = ({ showToast }) => {
   };
 
   const toggleSelectAll = () => {
-    const validees = commandes.filter(c => c.statut === 'validee' && c.vf_invoice_id);
-    if (selectedOrderIds.size === validees.length && validees.length > 0) {
+    const selectable = commandes.filter(c => (c.statut === 'validee' && c.vf_invoice_id) || c.statut === 'en_attente');
+    if (selectedOrderIds.size === selectable.length && selectable.length > 0) {
       setSelectedOrderIds(new Set());
     } else {
-      setSelectedOrderIds(new Set(validees.map(c => c.id)));
+      setSelectedOrderIds(new Set(selectable.map(c => c.id)));
     }
   };
 
@@ -21274,6 +21315,63 @@ const VueCommandes = ({ showToast }) => {
         </div>
       )}
 
+      {/* Modal validation en lot */}
+      {batchValidateModal && (
+        <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50 p-4" onClick={() => !batchValidating && setBatchValidateModal(false)}>
+          <div className="bg-white rounded-2xl border border-slate-100 shadow-2xl w-full max-w-lg max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+            <div className="px-6 py-4 border-b border-slate-100 flex-shrink-0">
+              <h3 className="text-lg font-semibold text-slate-900">Valider en lot</h3>
+              <p className="text-sm text-slate-500">{[...selectedOrderIds].filter(id => { const c = commandes.find(x => x.id === id); return c && c.statut === 'en_attente'; }).length} commande(s) en attente</p>
+            </div>
+            <div className="px-6 py-4 overflow-y-auto flex-1 space-y-4">
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Type de document</label>
+                <select value={batchValidateOptions.documentType} onChange={e => setBatchValidateOptions(o => ({ ...o, documentType: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                  <option value="vat">Facture</option>
+                  <option value="proforma">Proforma</option>
+                </select>
+              </div>
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Transporteur</label>
+                <select value={batchValidateOptions.shippingId} onChange={e => setBatchValidateOptions(o => ({ ...o, shippingId: e.target.value }))}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                  {SHIPPING_OPTIONS.map(o => <option key={o.value} value={o.value}>{o.label}</option>)}
+                </select>
+              </div>
+              <div className="space-y-2">
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={batchValidateOptions.sendEmailVF} onChange={e => setBatchValidateOptions(o => ({ ...o, sendEmailVF: e.target.checked }))} className="rounded" />
+                  Envoyer email VF (facture)
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={batchValidateOptions.sendEmailPartner} onChange={e => setBatchValidateOptions(o => ({ ...o, sendEmailPartner: e.target.checked }))} className="rounded" />
+                  Envoyer email de confirmation au partenaire
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={batchValidateOptions.logGSheets} onChange={e => setBatchValidateOptions(o => ({ ...o, logGSheets: e.target.checked }))} className="rounded" />
+                  Logger Google Sheets
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={batchValidateOptions.generateCsv} onChange={e => setBatchValidateOptions(o => ({ ...o, generateCsv: e.target.checked }))} className="rounded" />
+                  Générer CSV et email logisticien
+                </label>
+                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                  <input type="checkbox" checked={batchValidateOptions.createHubspotDeal} onChange={e => setBatchValidateOptions(o => ({ ...o, createHubspotDeal: e.target.checked }))} className="rounded" />
+                  Créer deal HubSpot
+                </label>
+              </div>
+            </div>
+            <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
+              <button onClick={() => setBatchValidateModal(false)} disabled={batchValidating} className="px-4 py-2 text-sm text-slate-600 hover:text-slate-800 transition-colors">Annuler</button>
+              <button onClick={batchValider} disabled={batchValidating} className="px-5 py-2.5 bg-emerald-600 text-white rounded-xl text-sm font-medium hover:bg-emerald-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors">
+                {batchValidating ? 'Validation...' : `Valider tout`}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Filtres */}
       <div className="flex items-center gap-2 flex-wrap">
         {filtres.map(f => (
@@ -21283,20 +21381,30 @@ const VueCommandes = ({ showToast }) => {
             {f.stale > 0 && <span className="px-1.5 py-0.5 rounded-full text-[10px] bg-red-100 text-red-600 font-bold" title={`${f.stale} commande${f.stale > 1 ? 's' : ''} en attente depuis +3j`}>{f.stale}</span>}
           </button>
         ))}
-        {commandes.some(c => c.statut === 'validee' && c.vf_invoice_id) && (
+        {commandes.some(c => (c.statut === 'validee' && c.vf_invoice_id) || c.statut === 'en_attente') && (
           <div className="flex items-center gap-2 ml-auto">
             <label className="flex items-center gap-1.5 text-xs text-slate-500 cursor-pointer select-none">
               <input type="checkbox"
-                checked={(() => { const v = commandes.filter(c => c.statut === 'validee' && c.vf_invoice_id); return v.length > 0 && selectedOrderIds.size === v.length; })()}
+                checked={(() => { const s = commandes.filter(c => (c.statut === 'validee' && c.vf_invoice_id) || c.statut === 'en_attente'); return s.length > 0 && selectedOrderIds.size === s.length; })()}
                 onChange={toggleSelectAll}
                 className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 w-3.5 h-3.5" />
               Tout sélectionner
             </label>
             {selectedOrderIds.size > 0 && (
-              <button onClick={() => { setBatchCsvShippingId('1'); setBatchCsvModal(true); }} disabled={downloadingBatchCsv}
-                className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center gap-1.5">
-                CSV + Email groupé ({selectedOrderIds.size})
-              </button>
+              <>
+                {commandes.some(c => selectedOrderIds.has(c.id) && c.statut === 'validee' && c.vf_invoice_id) && (
+                  <button onClick={() => { setBatchCsvShippingId('1'); setBatchCsvModal(true); }} disabled={downloadingBatchCsv}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-slate-900 text-white hover:bg-slate-700 transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                    CSV + Email groupé ({[...selectedOrderIds].filter(id => { const c = commandes.find(x => x.id === id); return c && c.statut === 'validee' && c.vf_invoice_id; }).length})
+                  </button>
+                )}
+                {commandes.some(c => selectedOrderIds.has(c.id) && c.statut === 'en_attente') && (
+                  <button onClick={() => { setBatchValidateOptions({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true }); setBatchValidateModal(true); }} disabled={batchValidating}
+                    className="px-3 py-1.5 rounded-lg text-xs font-medium bg-emerald-600 text-white hover:bg-emerald-500 transition-colors disabled:opacity-50 flex items-center gap-1.5">
+                    Valider ({[...selectedOrderIds].filter(id => { const c = commandes.find(x => x.id === id); return c && c.statut === 'en_attente'; }).length})
+                  </button>
+                )}
+              </>
             )}
           </div>
         )}
@@ -21318,7 +21426,7 @@ const VueCommandes = ({ showToast }) => {
           return (
             <div key={c.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
               <div className="p-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setExpandedId(expanded ? null : c.id)}>
-                {c.statut === 'validee' && c.vf_invoice_id && (
+                {((c.statut === 'validee' && c.vf_invoice_id) || c.statut === 'en_attente') && (
                   <input type="checkbox" checked={selectedOrderIds.has(c.id)} onChange={(e) => toggleOrderSelection(c.id, e)} onClick={e => e.stopPropagation()}
                     className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 w-4 h-4 flex-shrink-0 cursor-pointer" />
                 )}
@@ -21520,6 +21628,11 @@ const VueCommandes = ({ showToast }) => {
                           </button>
                         </>
                       )}
+                      <button onClick={(e) => { e.stopPropagation(); supprimerCommande(c.id); }}
+                        className="px-3 py-1.5 text-xs border border-red-200 text-red-600 rounded-lg hover:bg-red-50 transition-colors"
+                        title="Supprimer définitivement">
+                        Supprimer
+                      </button>
                     </div>
                   </div>
                 </div>
