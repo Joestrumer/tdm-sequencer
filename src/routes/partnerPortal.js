@@ -516,14 +516,42 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Helper : récupérer une commande en vérifiant la propriété (master ou non) ──
+  function getOrderForPartner(orderId, req) {
+    if (req.partner.isMaster) {
+      const allIds = [req.partner.id, ...req.partner.subAccountIds];
+      const placeholders = allIds.map(() => '?').join(',');
+      return db.prepare(`SELECT * FROM partner_orders WHERE id = ? AND partner_id IN (${placeholders})`).get(orderId, ...allIds);
+    }
+    return db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(orderId, req.partner.effectiveId);
+  }
+
   // ─── Historique commandes ──────────────────────────────────────────────────
-  router.get('/commandes', requireEffectiveId, (req, res) => {
+  router.get('/commandes', (req, res) => {
     try {
-      const orders = db.prepare(`
-        SELECT * FROM partner_orders
-        WHERE partner_id = ? AND statut != 'annulee'
-        ORDER BY created_at DESC
-      `).all(req.partner.effectiveId);
+      // Master : toutes les commandes de tous les sous-comptes
+      // Non-master : nécessite un effectiveId
+      let orders;
+      if (req.partner.isMaster) {
+        const allIds = [req.partner.id, ...req.partner.subAccountIds];
+        const placeholders = allIds.map(() => '?').join(',');
+        orders = db.prepare(`
+          SELECT po.*, vp.nom AS etablissement_nom
+          FROM partner_orders po
+          LEFT JOIN vf_partners vp ON po.partner_id = vp.id
+          WHERE po.partner_id IN (${placeholders}) AND po.statut != 'annulee'
+          ORDER BY po.created_at DESC
+        `).all(...allIds);
+      } else {
+        if (!req.partner.effectiveId) {
+          return res.status(400).json({ erreur: 'Veuillez sélectionner un établissement' });
+        }
+        orders = db.prepare(`
+          SELECT * FROM partner_orders
+          WHERE partner_id = ? AND statut != 'annulee'
+          ORDER BY created_at DESC
+        `).all(req.partner.effectiveId);
+      }
 
       const result = orders.map(o => {
         let tracking_url = null;
@@ -552,14 +580,14 @@ module.exports = (db) => {
   // ─── Annuler une commande en attente (côté partenaire) ────────────────────
   router.delete('/commande/:id', requireEffectiveId, (req, res) => {
     try {
-      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.effectiveId);
+      const order = getOrderForPartner(req.params.id, req);
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
       if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Seules les commandes en attente peuvent être annulées' });
 
       db.prepare("UPDATE partner_orders SET statut = 'annulee_client' WHERE id = ?").run(req.params.id);
 
       // Notification admin
-      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
+      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(order.partner_id);
       const orderProducts = JSON.parse(order.products || '[]');
       notifierAdminCommande({
         partner: partner || { nom: 'Inconnu' },
@@ -582,7 +610,7 @@ module.exports = (db) => {
   // ─── Modifier une commande en attente ───────────────────────────────────────
   router.patch('/commande/:id', requireEffectiveId, (req, res) => {
     try {
-      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.effectiveId);
+      const order = getOrderForPartner(req.params.id, req);
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
       if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Seules les commandes en attente peuvent être modifiées' });
 
@@ -591,7 +619,7 @@ module.exports = (db) => {
         return res.status(400).json({ erreur: 'Au moins un produit requis' });
       }
 
-      const partnerId = req.partner.effectiveId;
+      const partnerId = order.partner_id;
       const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(partnerId);
 
       // Si master agit pour un sous-compte, utiliser les remises/promos du master
@@ -678,9 +706,9 @@ module.exports = (db) => {
   });
 
   // ─── Télécharger facture PDF (côté partenaire) ────────────────────────────
-  router.get('/commande/:id/pdf', requireEffectiveId, async (req, res) => {
+  router.get('/commande/:id/pdf', async (req, res) => {
     try {
-      const order = db.prepare('SELECT * FROM partner_orders WHERE id = ? AND partner_id = ?').get(req.params.id, req.partner.effectiveId);
+      const order = getOrderForPartner(req.params.id, req);
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
       if (!order.vf_invoice_id) return res.status(400).json({ erreur: 'Pas de facture associée' });
 
