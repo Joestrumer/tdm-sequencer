@@ -404,7 +404,7 @@ module.exports = (db) => {
       if (sendEmail && partner.email) {
         try {
           const brevoService = require('../services/brevoService');
-          const portalUrl = (process.env.PUBLIC_URL || 'https://tdm-sequencer-production.up.railway.app') + '/partenaire';
+          const portalUrl = 'https://partenaire.terredemars.com';
           const payload = {
             sender: brevoService.SENDER,
             to: [{ email: partner.email, name: partner.nom }],

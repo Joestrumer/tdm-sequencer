@@ -22320,9 +22320,14 @@ const VuePartenaires = ({ showToast, readOnly }) => {
           <div className="bg-white rounded-2xl border border-slate-100 p-8 text-center">
             <div className="text-slate-300 text-4xl mb-3">&#128101;</div>
             <div className="text-sm text-slate-400">Sélectionnez un partenaire dans la liste pour gérer son accès au portail.</div>
-            <a href="/partenaire" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 mt-2 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors">
-              Ouvrir le portail partenaire &rarr;
-            </a>
+            <div className="flex items-center justify-center gap-2 mt-2 flex-wrap">
+              <a href="/partenaire" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200 rounded-lg transition-colors">
+                Ouvrir le portail partenaire (Railway) &rarr;
+              </a>
+              <a href="https://partenaire.terredemars.com/" target="_blank" rel="noopener noreferrer" className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium text-emerald-700 bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 rounded-lg transition-colors">
+                Ouvrir le portail partenaire (T2M) &rarr;
+              </a>
+            </div>
             <button onClick={syncVF} disabled={syncing} className="mt-4 px-4 py-2 rounded-lg text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 transition-colors disabled:opacity-50">
               {syncing ? 'Synchronisation...' : 'Synchroniser depuis VosFactures'}
             </button>
