@@ -405,25 +405,104 @@ module.exports = (db) => {
         try {
           const brevoService = require('../services/brevoService');
           const portalUrl = 'https://partenaire.terredemars.com';
+          const logoUrl = 'https://partenaire.terredemars.com/logo-tdm.png';
           const payload = {
             sender: brevoService.SENDER,
             to: [{ email: partner.email, name: partner.nom }],
             subject: 'Terre de Mars — Votre accès portail partenaire',
+            headers: { 'X-Mailin-Tag': 'portail-partenaire', 'X-Mailin-Track': '0', 'X-Mailin-TrackLinks': '0' },
             htmlContent: `
-              <div style="font-family: 'DM Sans', Arial, sans-serif; max-width: 500px; margin: 0 auto; padding: 32px;">
-                <div style="background: #1e293b; border-radius: 12px; padding: 32px; color: white;">
-                  <h2 style="margin: 0 0 8px; font-size: 18px;">Terre de Mars</h2>
-                  <p style="color: #94a3b8; margin: 0 0 24px; font-size: 14px;">Espace Partenaire</p>
-                  <p style="font-size: 14px; line-height: 1.6; color: #e2e8f0;">Bonjour,</p>
-                  <p style="font-size: 14px; line-height: 1.6; color: #e2e8f0;">Votre mot de passe pour accéder au portail partenaire Terre de Mars :</p>
-                  <div style="background: #0f172a; border-radius: 8px; padding: 16px; margin: 16px 0; text-align: center;">
-                    <code style="font-size: 20px; letter-spacing: 2px; color: #10b981;">${plainPassword}</code>
-                  </div>
-                  <p style="font-size: 14px; line-height: 1.6; color: #e2e8f0;">Accédez au portail :</p>
-                  <a href="${portalUrl}" style="display: inline-block; background: #10b981; color: white; padding: 12px 24px; border-radius: 8px; text-decoration: none; font-size: 14px; font-weight: 600; margin: 8px 0 16px;">Ouvrir le portail</a>
-                  <p style="font-size: 12px; color: #64748b; margin-top: 24px;">Terre de Mars — Cosmétiques d'exception pour l'hôtellerie</p>
-                </div>
-              </div>`,
+<!DOCTYPE html>
+<html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Playfair+Display:wght@600&display=swap" rel="stylesheet">
+</head><body style="margin:0;padding:0;background:#F9F7F1;font-family:'DM Sans',Arial,sans-serif;">
+<div style="max-width:560px;margin:0 auto;padding:40px 20px;">
+
+  <!-- Header avec logo -->
+  <div style="text-align:center;margin-bottom:32px;">
+    <img src="${logoUrl}" alt="Terre de Mars" width="80" style="display:inline-block;margin-bottom:12px;" />
+    <h1 style="margin:0;font-family:'Playfair Display',Georgia,serif;font-size:22px;color:#362F15;font-weight:600;">Espace Partenaire</h1>
+  </div>
+
+  <!-- Card principale -->
+  <div style="background:#ffffff;border-radius:16px;padding:36px;border:1px solid #E3DCC0;">
+
+    <p style="font-size:15px;color:#362F15;margin:0 0 8px;">Bonjour,</p>
+    <p style="font-size:14px;color:#51461F;line-height:1.7;margin:0 0 24px;">
+      Bienvenue sur votre espace partenaire Terre de Mars. Vous y trouverez notre catalogue, vos tarifs n&eacute;goci&eacute;s, et pourrez passer vos commandes en toute autonomie.
+    </p>
+
+    <!-- Mot de passe -->
+    <div style="background:#F9F7F1;border:1px solid #E3DCC0;border-radius:12px;padding:20px;margin:0 0 24px;text-align:center;">
+      <p style="font-size:12px;color:#877633;margin:0 0 8px;text-transform:uppercase;letter-spacing:1px;font-weight:600;">Votre mot de passe</p>
+      <div style="font-size:28px;letter-spacing:4px;color:#A28E3F;font-weight:700;font-family:monospace;">${plainPassword}</div>
+    </div>
+
+    <!-- Bouton CTA -->
+    <div style="text-align:center;margin:0 0 32px;">
+      <a href="${portalUrl}" style="display:inline-block;background:#A28E3F;color:#ffffff;padding:14px 36px;border-radius:10px;text-decoration:none;font-size:15px;font-weight:600;letter-spacing:0.3px;">Acc&eacute;der au portail</a>
+    </div>
+
+    <!-- Séparateur -->
+    <div style="border-top:1px solid #E3DCC0;margin:0 0 24px;"></div>
+
+    <!-- Guide -->
+    <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:17px;color:#362F15;margin:0 0 16px;font-weight:600;">Comment passer commande ?</h2>
+
+    <table width="100%" cellpadding="0" cellspacing="0" style="margin-bottom:24px;">
+      <tr><td style="padding:10px 0;vertical-align:top;">
+        <div style="display:inline-block;width:28px;height:28px;background:#A28E3F;color:#fff;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;margin-right:12px;vertical-align:top;">1</div>
+        <div style="display:inline-block;max-width:calc(100% - 48px);vertical-align:top;">
+          <strong style="font-size:14px;color:#362F15;">Catalogue</strong>
+          <p style="font-size:13px;color:#6C5E29;margin:4px 0 0;line-height:1.5;">Parcourez nos produits avec vos tarifs n&eacute;goci&eacute;s. Ajoutez au panier en un clic.</p>
+        </div>
+      </td></tr>
+      <tr><td style="padding:10px 0;vertical-align:top;">
+        <div style="display:inline-block;width:28px;height:28px;background:#A28E3F;color:#fff;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;margin-right:12px;vertical-align:top;">2</div>
+        <div style="display:inline-block;max-width:calc(100% - 48px);vertical-align:top;">
+          <strong style="font-size:14px;color:#362F15;">Panier &amp; validation</strong>
+          <p style="font-size:13px;color:#6C5E29;margin:4px 0 0;line-height:1.5;">V&eacute;rifiez vos quantit&eacute;s, ajoutez des notes si besoin, puis validez votre commande.</p>
+        </div>
+      </td></tr>
+      <tr><td style="padding:10px 0;vertical-align:top;">
+        <div style="display:inline-block;width:28px;height:28px;background:#A28E3F;color:#fff;border-radius:50%;text-align:center;line-height:28px;font-size:13px;font-weight:700;margin-right:12px;vertical-align:top;">3</div>
+        <div style="display:inline-block;max-width:calc(100% - 48px);vertical-align:top;">
+          <strong style="font-size:14px;color:#362F15;">Commandes</strong>
+          <p style="font-size:13px;color:#6C5E29;margin:4px 0 0;line-height:1.5;">Suivez l'&eacute;tat de vos commandes, t&eacute;l&eacute;chargez vos factures et exportez en CSV.</p>
+        </div>
+      </td></tr>
+    </table>
+
+    <!-- Onglets -->
+    <h2 style="font-family:'Playfair Display',Georgia,serif;font-size:17px;color:#362F15;margin:0 0 12px;font-weight:600;">Les onglets de votre portail</h2>
+
+    <table width="100%" cellpadding="0" cellspacing="0">
+      <tr>
+        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#A28E3F;">&#128218; Catalogue</strong> &mdash; Tous nos produits, vos prix, ajout au panier</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#dc2626;">&#127381; Bons plans</strong> &mdash; Promotions en cours et offres flash</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#A28E3F;">&#128230; Commandes</strong> &mdash; Historique, suivi, factures PDF</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#A28E3F;">&#128196; Documents</strong> &mdash; Fiches produits, supports commerciaux</td>
+      </tr>
+      <tr>
+        <td style="padding:8px 0;font-size:13px;color:#362F15;"><strong style="color:#A28E3F;">&#128100; Mon compte</strong> &mdash; Adresses de livraison et facturation</td>
+      </tr>
+    </table>
+  </div>
+
+  <!-- Footer -->
+  <div style="text-align:center;margin-top:32px;">
+    <p style="font-size:12px;color:#877633;margin:0;">Terre de Mars &mdash; Cosm&eacute;tiques d'exception pour l'h&ocirc;tellerie</p>
+    <p style="font-size:11px;color:#B9AA6F;margin:8px 0 0;">Ce mot de passe est personnel, ne le partagez pas.</p>
+  </div>
+
+</div>
+</body></html>`,
             replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
           };
           await brevoService.brevoSendEmail(payload);
