@@ -465,8 +465,15 @@
     };
 
     // ─── Catalogue ──────────────────────────────────────────────────────────────
+    const CATEGORY_DISPLAY_NAMES = {
+      'Cadeaux VIP & Spa': 'Cadeaux VIP',
+      'Produits Spa & VIP': 'Produits Spa',
+    };
+    const displayCategory = (cat) => CATEGORY_DISPLAY_NAMES[cat] || cat;
+
     const CATEGORIES_ORDER = [
       'Cadeaux VIP & Spa',
+      'Produits Spa & VIP',
       'Produits Spa',
       'Parfums & gel hydroalcoolique',
       'Produits hygiène format voyage',
@@ -680,7 +687,7 @@
                   className="w-full flex items-center gap-2 px-3 py-3 rounded-xl bg-gray-50 dark:bg-slate-700 hover:bg-gray-100 dark:hover:bg-slate-600 transition-colors"
                 >
                   <span className={`text-gray-400 dark:text-slate-500 text-xs transition-transform ${isOpen ? 'rotate-90' : ''}`} style={{display:'inline-block'}}>&#9654;</span>
-                  <span className="text-sm font-semibold text-gray-900 dark:text-white flex-1 text-left">{categorie}</span>
+                  <span className="text-sm font-semibold text-gray-900 dark:text-white flex-1 text-left">{displayCategory(categorie)}</span>
                   <span className="text-xs text-gray-400 dark:text-slate-500">{products.length}</span>
                   {catPanierCount > 0 && (
                     <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">{catPanierCount} au panier</span>
