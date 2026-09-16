@@ -1331,7 +1331,7 @@
             facturation_entite_publique: p.facturation_entite_publique || 0,
             facturation_rue: rue, facturation_code_postal: cp, facturation_ville: ville, facturation_pays: pays,
             telephone: p.telephone || '', facturation_portable: p.facturation_portable || '',
-            email: p.email || '', facturation_email: p.facturation_email || '',
+            email: p.email || '', facturation_email: p.facturation_email || p.email || '',
             livraison_prenom: p.livraison_prenom || dp, livraison_nom: p.livraison_nom || dn,
             livraison_rue: p.livraison_rue || rue, livraison_code_postal: p.livraison_code_postal || cp,
             livraison_ville: p.livraison_ville || ville, livraison_pays: p.livraison_pays || pays,
