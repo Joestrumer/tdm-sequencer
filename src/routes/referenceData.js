@@ -742,6 +742,30 @@ module.exports = (db) => {
         }
       }
 
+      // Post-sync : récupérer les champs manquants via appels individuels VF
+      // (l'endpoint bulk /clients.json peut ne pas retourner certains champs comme country)
+      const partnersMissingData = db.prepare(
+        'SELECT id, vf_client_id, facturation_pays, facturation_tva FROM vf_partners WHERE vf_client_id IS NOT NULL AND (facturation_pays IS NULL OR facturation_tva IS NULL)'
+      ).all();
+
+      let enriched = 0;
+      for (const p of partnersMissingData) {
+        try {
+          const fullClient = await vfService.getClient(p.vf_client_id);
+          if (!fullClient) continue;
+          const patches = {};
+          if (!p.facturation_pays && fullClient.country) patches.facturation_pays = fullClient.country;
+          if (!p.facturation_tva && fullClient.tax_no) patches.facturation_tva = fullClient.tax_no;
+          if (Object.keys(patches).length > 0) {
+            const sets = Object.keys(patches).map(k => `${k} = ?`).join(', ');
+            db.prepare(`UPDATE vf_partners SET ${sets} WHERE id = ?`).run(...Object.values(patches), p.id);
+            enriched++;
+          }
+        } catch (e) {
+          logger.debug('VF enrichment failed', { partnerId: p.id, error: e.message });
+        }
+      }
+
       // Recharger pour retourner le total
       const total = db.prepare('SELECT COUNT(*) as n FROM vf_partners WHERE actif = 1').get().n;
 
@@ -750,6 +774,7 @@ module.exports = (db) => {
         vf_clients: vfClients.length,
         updated,
         created,
+        enriched,
         total_partenaires: total,
       });
     } catch (e) {
