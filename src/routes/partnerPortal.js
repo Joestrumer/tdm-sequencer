@@ -331,7 +331,7 @@ module.exports = (db) => {
       const discountSource = masterPartner || partner;
 
       // Produits actifs (exclure FP et FE)
-      const products = db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all();
+      const products = db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE') ORDER BY sort_order, ref").all();
 
       // Remises du partenaire (ou du master si applicable)
       let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(discountSource.nom);
@@ -413,7 +413,7 @@ module.exports = (db) => {
 
       // Récupérer catalogue et remises (exclure FP/FE)
       const catalog = {};
-      for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all()) {
+      for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE') ORDER BY sort_order, ref").all()) {
         catalog[p.ref] = p;
       }
       let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(discountSource.nom);
@@ -627,7 +627,7 @@ module.exports = (db) => {
       const discountSource = masterPartner || partner;
 
       const catalog = {};
-      for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE')").all()) {
+      for (const p of db.prepare("SELECT * FROM vf_catalog WHERE actif = 1 AND ref NOT IN ('FP', 'FE') ORDER BY sort_order, ref").all()) {
         catalog[p.ref] = p;
       }
       let discounts = db.prepare('SELECT * FROM vf_client_discounts WHERE client_name = ?').all(discountSource.nom);

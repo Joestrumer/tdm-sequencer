@@ -465,13 +465,13 @@
 
     // ─── Catalogue ──────────────────────────────────────────────────────────────
     const CATEGORIES_ORDER = [
-      'Cadeaux VIP & Spa',
-      'Produits Spa',
-      'Parfums & gel hydroalcoolique',
-      'Produits hygiène format voyage',
       'Flacons 500 ml',
       'Recharges 5 litres',
       'Portes flacons',
+      'Cadeaux VIP & Spa',
+      'Produits Spa & VIP',
+      'Parfums & gel hydroalcoolique',
+      'Produits hygiène format voyage',
       'Flacons vides',
       'Autres',
     ];
@@ -565,20 +565,6 @@
         return catalogue.filter(p => p.ref.toLowerCase().includes(q) || p.nom.toLowerCase().includes(q) || (p.categorie || '').toLowerCase().includes(q));
       }, [catalogue, search]);
 
-      const GAMME_ORDER = ['Insurrection', 'Irreverence', 'Reddition', 'Revelation', 'Radiance', 'Imminence'];
-      const sortByGamme = (products) => {
-        return [...products].sort((a, b) => {
-          const nomA = (a.nom || '').toLowerCase();
-          const nomB = (b.nom || '').toLowerCase();
-          const idxA = GAMME_ORDER.findIndex(g => nomA.includes(g.toLowerCase()));
-          const idxB = GAMME_ORDER.findIndex(g => nomB.includes(g.toLowerCase()));
-          const gA = idxA >= 0 ? idxA : GAMME_ORDER.length;
-          const gB = idxB >= 0 ? idxB : GAMME_ORDER.length;
-          if (gA !== gB) return gA - gB;
-          return nomA.localeCompare(nomB);
-        });
-      };
-
       const grouped = useMemo(() => {
         const groups = {};
         for (const p of filtered) {
@@ -588,10 +574,10 @@
         }
         const ordered = [];
         for (const cat of CATEGORIES_ORDER) {
-          if (groups[cat]) ordered.push({ categorie: cat, products: sortByGamme(groups[cat]) });
+          if (groups[cat]) ordered.push({ categorie: cat, products: groups[cat] });
         }
         for (const cat of Object.keys(groups)) {
-          if (!CATEGORIES_ORDER.includes(cat)) ordered.push({ categorie: cat, products: sortByGamme(groups[cat]) });
+          if (!CATEGORIES_ORDER.includes(cat)) ordered.push({ categorie: cat, products: groups[cat] });
         }
         return ordered;
       }, [filtered]);
