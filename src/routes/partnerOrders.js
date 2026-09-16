@@ -80,9 +80,11 @@ module.exports = (db) => {
     try {
       const { statut, limit: qLimit, offset: qOffset } = req.query;
       let sql = `
-        SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact
+        SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact,
+               vp.master_id, mp.email as master_email
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
+        LEFT JOIN vf_partners mp ON mp.id = vp.master_id
       `;
       const params = [];
       const conditions = [];
@@ -712,8 +714,12 @@ module.exports = (db) => {
       for (const id of orderIds) {
         try {
           const order = db.prepare(`
-            SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact
-            FROM partner_orders po JOIN vf_partners vp ON vp.id = po.partner_id
+            SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact,
+                   vp.master_id,
+                   mp.email as master_email, mp.nom as master_nom
+            FROM partner_orders po
+            JOIN vf_partners vp ON vp.id = po.partner_id
+            LEFT JOIN vf_partners mp ON mp.id = vp.master_id
             WHERE po.id = ?
           `).get(id);
           if (!order) { results.push({ id, ok: false, erreur: 'Commande introuvable' }); continue; }
@@ -731,6 +737,9 @@ module.exports = (db) => {
             id, ok: validateRes.ok, ...data,
             partner_nom: order.partner_nom,
             partner_email: order.partner_email,
+            master_id: order.master_id || null,
+            master_email: order.master_email || null,
+            master_nom: order.master_nom || null,
           });
         } catch (e) {
           results.push({ id, ok: false, erreur: e.message });

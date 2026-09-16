@@ -20898,7 +20898,7 @@ const VueCommandes = ({ showToast }) => {
     if (!validateModal) return;
     const id = validateModal.id;
     const partnerNom = validateModal.partner_nom || '';
-    const partnerEmail = validateModal.partner_email || '';
+    const partnerEmail = validateModal.master_email || validateModal.partner_email || '';
     setValidating(id);
     try {
       // Pré-valider l'accès au dossier CSV AVANT l'appel API
@@ -21111,19 +21111,30 @@ const VueCommandes = ({ showToast }) => {
           window.open(`mailto:service.client@endurancelogistique.fr?cc=${logCc}&subject=${logSubject}&body=${logBody}`, '_self');
         }
 
-        // Mailto partenaire pour chaque commande validée
-        if (batchValidateOptions.sendEmailPartner) {
+        // Mailto partenaire — regrouper par destinataire (master ou standalone)
+        if (batchValidateOptions.sendEmailPartner && successResults.length > 0) {
+          // Grouper : si un master_id existe, envoyer au master_email ; sinon au partner_email
+          const groups = {};
           for (const r of successResults) {
-            if (!r.partner_email) continue;
+            const email = r.master_email || r.partner_email;
+            if (!email) continue;
+            if (!groups[email]) groups[email] = [];
+            groups[email].push(r.vf_invoice_number || '?');
+          }
+          for (const [email, invoiceNumbers] of Object.entries(groups)) {
             await new Promise(resolve => setTimeout(resolve, 400));
-            const invoiceNumber = r.vf_invoice_number || '';
             const datePaiement = new Date(Date.now() + 30 * 86400000).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-            const defaultSubject = `Terre de Mars : Confirmation de commande n°{{numero}}`;
-            const defaultBody = `Bonjour,\n\nJe vous confirme la bonne réception de votre commande n°{{numero}} qui a été mise en préparation.\n\nLa facture vous a été transmise via un email automatique pour paiement au {{date_paiement}}.\n\nN'hésitez pas si vous avez des questions.\n\nBonne journée,`;
-            const tplSubject = (partnerEmailConfig.subject || defaultSubject).replace(/\{\{numero\}\}/g, invoiceNumber).replace(/\{\{date_paiement\}\}/g, datePaiement);
-            const tplBody = (partnerEmailConfig.body || defaultBody).replace(/\{\{numero\}\}/g, invoiceNumber).replace(/\{\{date_paiement\}\}/g, datePaiement);
+            const numList = invoiceNumbers.join(', ');
+            const defaultSubject = invoiceNumbers.length === 1
+              ? `Terre de Mars : Confirmation de commande n°{{numero}}`
+              : `Terre de Mars : Confirmation de commandes n°{{numero}}`;
+            const defaultBody = invoiceNumbers.length === 1
+              ? `Bonjour,\n\nJe vous confirme la bonne réception de votre commande n°{{numero}} qui a été mise en préparation.\n\nLa facture vous a été transmise via un email automatique pour paiement au {{date_paiement}}.\n\nN'hésitez pas si vous avez des questions.\n\nBonne journée,`
+              : `Bonjour,\n\nJe vous confirme la bonne réception de vos commandes n°{{numero}} qui ont été mises en préparation.\n\nLes factures vous ont été transmises via email automatique pour paiement au {{date_paiement}}.\n\nN'hésitez pas si vous avez des questions.\n\nBonne journée,`;
+            const tplSubject = (partnerEmailConfig.subject || defaultSubject).replace(/\{\{numero\}\}/g, numList).replace(/\{\{date_paiement\}\}/g, datePaiement);
+            const tplBody = (partnerEmailConfig.body || defaultBody).replace(/\{\{numero\}\}/g, numList).replace(/\{\{date_paiement\}\}/g, datePaiement);
             const mailLink = document.createElement('a');
-            let mailHref = `mailto:${r.partner_email}?subject=${encodeURIComponent(tplSubject)}&body=${encodeURIComponent(tplBody)}`;
+            let mailHref = `mailto:${email}?subject=${encodeURIComponent(tplSubject)}&body=${encodeURIComponent(tplBody)}`;
             if (partnerEmailConfig.cc) mailHref += `&cc=${encodeURIComponent(partnerEmailConfig.cc)}`;
             if (partnerEmailConfig.bcc) mailHref += `&bcc=${encodeURIComponent(partnerEmailConfig.bcc)}`;
             mailLink.href = mailHref;
