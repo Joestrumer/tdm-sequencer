@@ -743,9 +743,14 @@ module.exports = (db) => {
       }
 
       // Post-sync : récupérer les champs manquants via appels individuels VF
-      // (l'endpoint bulk /clients.json peut ne pas retourner certains champs comme country)
+      // Limité aux partenaires sans pays (le bulk peut ne pas retourner country)
+      // Max 30 appels pour ne pas ralentir le sync
       const partnersMissingData = db.prepare(
-        'SELECT id, vf_client_id, facturation_pays, facturation_tva FROM vf_partners WHERE vf_client_id IS NOT NULL AND (facturation_pays IS NULL OR facturation_tva IS NULL)'
+        `SELECT id, vf_client_id, facturation_rue, facturation_code_postal, facturation_ville,
+                facturation_pays, facturation_tva, facturation_portable, facturation_email
+         FROM vf_partners
+         WHERE vf_client_id IS NOT NULL AND facturation_pays IS NULL
+         LIMIT 30`
       ).all();
 
       let enriched = 0;
@@ -756,6 +761,11 @@ module.exports = (db) => {
           const patches = {};
           if (!p.facturation_pays && fullClient.country) patches.facturation_pays = fullClient.country;
           if (!p.facturation_tva && fullClient.tax_no) patches.facturation_tva = fullClient.tax_no;
+          if (!p.facturation_rue && fullClient.street) patches.facturation_rue = fullClient.street;
+          if (!p.facturation_code_postal && fullClient.post_code) patches.facturation_code_postal = fullClient.post_code;
+          if (!p.facturation_ville && fullClient.city) patches.facturation_ville = fullClient.city;
+          if (!p.facturation_portable && fullClient.mobile_phone) patches.facturation_portable = fullClient.mobile_phone;
+          if (!p.facturation_email && fullClient.email_for_reminders) patches.facturation_email = fullClient.email_for_reminders;
           if (Object.keys(patches).length > 0) {
             const sets = Object.keys(patches).map(k => `${k} = ?`).join(', ');
             db.prepare(`UPDATE vf_partners SET ${sets} WHERE id = ?`).run(...Object.values(patches), p.id);
