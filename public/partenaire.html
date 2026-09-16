@@ -1291,7 +1291,7 @@
         telephone: partner.telephone || '',
         facturation_portable: partner.facturation_portable || '',
         email: partner.email || '',
-        facturation_email: partner.facturation_email || '',
+        facturation_email: partner.facturation_email || partner.email || '',
         // Livraison (pré-rempli depuis facturation si vide)
         livraison_prenom: partner.livraison_prenom || defaultPrenom,
         livraison_nom: partner.livraison_nom || defaultNom,
