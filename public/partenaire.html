@@ -465,9 +465,6 @@
     };
 
     // ─── Catalogue ──────────────────────────────────────────────────────────────
-    const CATEGORY_ALIASES = { 'Produits Spa & VIP': 'Cadeaux VIP & Spa' };
-    const resolveCategory = (cat) => CATEGORY_ALIASES[cat] || cat || 'Autres';
-
     const CATEGORIES_ORDER = [
       'Cadeaux VIP & Spa',
       'Produits Spa',
@@ -580,7 +577,7 @@
       const grouped = useMemo(() => {
         const groups = {};
         for (const p of filtered) {
-          const cat = resolveCategory(p.categorie);
+          const cat = p.categorie || 'Autres';
           if (!groups[cat]) groups[cat] = [];
           groups[cat].push(p);
         }
@@ -632,7 +629,7 @@
         for (const ref of Object.keys(panier)) {
           const prod = catalogue.find(c => c.ref === ref);
           if (prod) {
-            const cat = resolveCategory(prod.categorie);
+            const cat = prod.categorie || 'Autres';
             counts[cat] = (counts[cat] || 0) + 1;
           }
         }
