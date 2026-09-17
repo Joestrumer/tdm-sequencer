@@ -39,7 +39,7 @@ async function _removeHandleIDB(key) {
   try { const db = await _openIDB(); const tx = db.transaction(_idbStore, 'readwrite'); tx.objectStore(_idbStore).delete(key); } catch(e) {}
 }
 
-// dirKey : 'csvDir' pour CSV logisticien, 'factureDir' pour factures PDF
+// dirKey : 'csvDir' pour CSV logisticien, 'factureDir' pour factures PDF globales, 'factureDir_{id}' pour factures par partenaire
 const _dirHandleCache = {};
 async function saveFileWithPicker(blob, fileName, dirKey = 'csvDir') {
   if (!window.showDirectoryPicker) return false;
@@ -20850,21 +20850,6 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
 // ─── VUE COMMANDES PARTENAIRES ────────────────────────────────────────────────
 const VueCommandes = ({ showToast }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
-  const [csvDirName, setCsvDirName] = useState(null);
-  const [factureDirName, setFactureDirName] = useState(null);
-  useEffect(() => {
-    _getHandleIDB('csvDir').then(h => { if (h) setCsvDirName(h.name); });
-    _getHandleIDB('factureDir').then(h => { if (h) setFactureDirName(h.name); });
-  }, []);
-  const pickDir = async (dirKey, setName) => {
-    try {
-      const dh = await window.showDirectoryPicker({ mode: 'readwrite', id: dirKey });
-      _dirHandleCache[dirKey] = dh;
-      await _saveHandleIDB(dirKey, dh);
-      setName(dh.name);
-      showToast(`Dossier sélectionné : ${dh.name}`, 'success');
-    } catch (e) { /* annulé */ }
-  };
   const [commandes, setCommandes] = useState([]);
   const [counts, setCounts] = useState({ en_attente: 0, validee: 0, annulee: 0, annulee_client: 0, total: 0 });
   const [filtre, setFiltre] = useState("tous");
@@ -20954,7 +20939,8 @@ const VueCommandes = ({ showToast }) => {
       if (validateOptions.generateCsv) {
         try { await prevalidateDirAccess('csvDir'); } catch (e) {}
       }
-      try { await prevalidateDirAccess('factureDir'); } catch (e) {}
+      const factureDirKey = validateModal.partner_id ? `factureDir_${validateModal.partner_id}` : 'factureDir';
+      try { await prevalidateDirAccess(factureDirKey); } catch (e) {}
 
       const res = await api.post(`/partner-orders/${id}/validate`, {
         documentType: validateOptions.documentType,
@@ -21015,7 +21001,7 @@ const VueCommandes = ({ showToast }) => {
               if (pdfRes.ok) {
                 const pdfBlob = await pdfRes.blob();
                 const pdfFileName = `facture-${invoiceNumber || id}.pdf`;
-                const dirName = await saveFileWithPicker(pdfBlob, pdfFileName, 'factureDir');
+                const dirName = await saveFileWithPicker(pdfBlob, pdfFileName, factureDirKey);
                 if (dirName) {
                   showToast(`Facture sauvée : ${dirName}/${pdfFileName}`, 'success');
                 } else {
@@ -21095,11 +21081,10 @@ const VueCommandes = ({ showToast }) => {
     try {
       const enAttenteIds = [...selectedOrderIds].filter(id => { const c = commandes.find(x => x.id === id); return c && c.statut === 'en_attente'; });
 
-      // Pré-valider l'accès aux dossiers si nécessaire
+      // Pré-valider l'accès au dossier CSV si nécessaire
       if (batchValidateOptions.generateCsv) {
         try { await prevalidateDirAccess('csvDir'); } catch (e) {}
       }
-      try { await prevalidateDirAccess('factureDir'); } catch (e) {}
 
       // Mapper les options frontend → backend
       const apiOptions = {
@@ -21221,7 +21206,8 @@ const VueCommandes = ({ showToast }) => {
       if (res.ok) {
         const blob = await res.blob();
         const pdfFileName = `facture-${commande.vf_invoice_number || commande.id}.pdf`;
-        const dirName = await saveFileWithPicker(blob, pdfFileName, 'factureDir');
+        const dirKey = commande.partner_id ? `factureDir_${commande.partner_id}` : 'factureDir';
+        const dirName = await saveFileWithPicker(blob, pdfFileName, dirKey);
         if (dirName) {
           showToast(`Facture sauvée : ${dirName}/${pdfFileName}`, 'success');
         } else {
@@ -21528,17 +21514,6 @@ const VueCommandes = ({ showToast }) => {
         )}
       </div>
 
-      {/* Dossiers de sauvegarde */}
-      {window.showDirectoryPicker && (
-        <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
-          <button onClick={() => pickDir('factureDir', setFactureDirName)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors" title="Choisir le dossier de sauvegarde des factures PDF">
-            <span>📁</span> Factures : <span className="font-medium text-slate-700">{factureDirName || 'non configuré'}</span>
-          </button>
-          <button onClick={() => pickDir('csvDir', setCsvDirName)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors" title="Choisir le dossier de sauvegarde des CSV logisticien">
-            <span>📁</span> CSV : <span className="font-medium text-slate-700">{csvDirName || 'non configuré'}</span>
-          </button>
-        </div>
-      )}
 
       {loading && <div className="flex items-center gap-2 text-sm text-slate-400"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
 
@@ -21912,6 +21887,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
   const [editingDiscountPct, setEditingDiscountPct] = useState('');
   const [partnerStats, setPartnerStats] = useState(null);
   const [pendingChange, setPendingChange] = useState(null);
+  const [partnerDirName, setPartnerDirName] = useState(null);
 
   const charger = async () => {
     setLoading(true);
@@ -21928,6 +21904,14 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     charger();
     api.get('/reference/catalog').then(data => { if (Array.isArray(data)) setCatalog(data); }).catch(e => console.error(e));
   }, []);
+
+  useEffect(() => {
+    if (selectedId && window.showDirectoryPicker) {
+      _getHandleIDB(`factureDir_${selectedId}`).then(h => setPartnerDirName(h ? h.name : null));
+    } else {
+      setPartnerDirName(null);
+    }
+  }, [selectedId]);
 
   const syncVF = async () => {
     setSyncing(true);
@@ -22555,6 +22539,35 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                       <div><span className="text-[10px] text-slate-400 block">Email</span><span className="text-sm text-slate-700">{selected.livraison_email || '—'}</span></div>
                     </div>
                   </div>
+
+                  {/* Dossier factures / proformas */}
+                  {window.showDirectoryPicker && (
+                    <div className="mt-4 pt-3 border-t border-slate-100">
+                      <span className="text-[10px] font-medium text-slate-500 uppercase tracking-wide">Dossier factures</span>
+                      <div className="mt-1 flex items-center gap-2">
+                        <button onClick={async () => {
+                          try {
+                            const dh = await window.showDirectoryPicker({ mode: 'readwrite', id: `factureDir_${selected.id}` });
+                            _dirHandleCache[`factureDir_${selected.id}`] = dh;
+                            await _saveHandleIDB(`factureDir_${selected.id}`, dh);
+                            setPartnerDirName(dh.name);
+                            showToast(`Dossier factures configuré : ${dh.name}`, 'success');
+                          } catch (e) { /* annulation utilisateur */ }
+                        }} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors text-xs" title="Choisir le dossier de sauvegarde des factures et proformas">
+                          <span className="text-base">📁</span>
+                          <span className="text-slate-700">{partnerDirName || 'Non configuré — cliquer pour choisir'}</span>
+                        </button>
+                        {partnerDirName && (
+                          <button onClick={async () => {
+                            _dirHandleCache[`factureDir_${selected.id}`] = null;
+                            await _removeHandleIDB(`factureDir_${selected.id}`);
+                            setPartnerDirName(null);
+                            showToast('Dossier factures retiré', 'success');
+                          }} className="text-xs text-red-400 hover:text-red-600 px-1" title="Retirer le dossier configuré">✕</button>
+                        )}
+                      </div>
+                    </div>
+                  )}
 
                   {/* Compte maître multi-établissements */}
                   <MasterAccountSection partner={selected} partners={partners} onUpdate={charger} showToast={showToast} />
