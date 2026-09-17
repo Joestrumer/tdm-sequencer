@@ -1243,6 +1243,10 @@ const migrations = [
   // Compte maître multi-établissements
   'ALTER TABLE vf_partners ADD COLUMN is_master INTEGER DEFAULT 0',
   'ALTER TABLE vf_partners ADD COLUMN master_id INTEGER',
+  // Frais de port / préparation par partenaire
+  'ALTER TABLE vf_partners ADD COLUMN exonere_fp INTEGER DEFAULT 0',
+  'ALTER TABLE vf_partners ADD COLUMN exonere_fe INTEGER DEFAULT 0',
+  'ALTER TABLE vf_partners ADD COLUMN frais_expedition_ht REAL',
 ];
 
 // ─── Table audit commandes partenaires ───────────────────────────────────────

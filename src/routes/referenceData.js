@@ -269,7 +269,7 @@ module.exports = (db) => {
     try {
       const { all } = req.query;
       const rows = all === '1'
-        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable, is_master, master_id FROM vf_partners ORDER BY nom').all()
+        ? db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable, is_master, master_id, frais_exonere, exonere_fp, exonere_fe, frais_expedition_ht FROM vf_partners ORDER BY nom').all()
         : db.prepare('SELECT id, nom, nom_normalise, actif, email, contact_nom, telephone, adresse, shipping_id, vf_client_id, password_hash IS NOT NULL as has_password, password_plain, amenities, franco_seuil, frais_port, vf_display_name, is_canonical, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, promo_enabled, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable, is_master, master_id FROM vf_partners WHERE actif = 1 ORDER BY nom').all();
       res.json(rows);
     } catch (e) {
@@ -308,6 +308,9 @@ module.exports = (db) => {
       if (req.body.franco_seuil !== undefined) { updates.push('franco_seuil = ?'); params.push(req.body.franco_seuil); }
       if (req.body.frais_port !== undefined) { updates.push('frais_port = ?'); params.push(req.body.frais_port); }
       if (req.body.frais_exonere !== undefined) { updates.push('frais_exonere = ?'); params.push(req.body.frais_exonere ? 1 : 0); }
+      if (req.body.exonere_fp !== undefined) { updates.push('exonere_fp = ?'); params.push(req.body.exonere_fp ? 1 : 0); }
+      if (req.body.exonere_fe !== undefined) { updates.push('exonere_fe = ?'); params.push(req.body.exonere_fe ? 1 : 0); }
+      if (req.body.frais_expedition_ht !== undefined) { updates.push('frais_expedition_ht = ?'); params.push(req.body.frais_expedition_ht === null || req.body.frais_expedition_ht === '' ? null : parseFloat(req.body.frais_expedition_ht)); }
       if (req.body.promo_enabled !== undefined) { updates.push('promo_enabled = ?'); params.push(req.body.promo_enabled ? 1 : 0); }
       if (req.body.vf_display_name !== undefined) { updates.push('vf_display_name = ?'); params.push(req.body.vf_display_name || null); }
       if (req.body.is_canonical !== undefined) { updates.push('is_canonical = ?'); params.push(req.body.is_canonical ? 1 : 0); }

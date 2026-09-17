@@ -742,18 +742,23 @@
       const items = Object.values(panier);
       const subtotalHT = items.reduce((s, i) => s + (i.prix_promo ?? i.prix_remise) * i.quantite, 0);
       const francoSeuil = partner.franco_seuil ?? 800;
-      const exonere = partner.frais_exonere ?? 0;
+      const globalExonere = partner.frais_exonere ?? 0;
+      const exonereFP = globalExonere || (partner.exonere_fp ?? 0);
+      const exonereFE = globalExonere || (partner.exonere_fe ?? 0);
+      const exonere = exonereFP && exonereFE ? 1 : 0;
       const fpPrix = partner.fp_prix ?? 0;
       const fePrix = partner.fe_prix ?? 0;
 
       let fraisLabel = '';
       let fraisMontant = 0;
       let francoAtteint = subtotalHT >= francoSeuil;
-      if (!exonere) {
-        if (francoAtteint) {
+      if (francoAtteint) {
+        if (!exonereFP) {
           fraisLabel = 'Frais de pr\u00e9paration (FP)';
           fraisMontant = fpPrix;
-        } else {
+        }
+      } else {
+        if (!exonereFE) {
           fraisLabel = "Frais d'exp\u00e9dition (FE)";
           fraisMontant = fePrix;
         }
@@ -774,8 +779,9 @@
               <div className="font-semibold text-amber-900 dark:text-amber-400 mb-1">Conditions :</div>
               <ul className="list-disc list-inside space-y-0.5">
                 <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger</li>
-                <li>Sous le franco : frais d'exp&eacute;dition {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>
-                <li>Au-dessus du franco : frais de pr&eacute;paration r&eacute;duits &agrave; {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>
+                {!exonereFE && <li>Sous le franco : frais d'exp&eacute;dition {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>}
+                {!exonereFP && <li>Au-dessus du franco : frais de pr&eacute;paration r&eacute;duits &agrave; {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>}
+                {(exonereFE && exonereFP) && <li>Exon&eacute;r&eacute; de frais de port et de pr&eacute;paration</li>}
                 <li>Conditionnement : bidons par cartons de 4, flacons par cartons de 6.</li>
               </ul>
             </div>
@@ -1930,7 +1936,10 @@
             const items = Object.values(panier);
             const subtotalHT = items.reduce((s, i) => s + (i.prix_promo ?? i.prix_remise) * i.quantite, 0);
             const francoSeuil = partner.franco_seuil ?? 800;
-            const exonere = partner.frais_exonere ?? 0;
+            const _gExo = partner.frais_exonere ?? 0;
+            const _exoFP = _gExo || (partner.exonere_fp ?? 0);
+            const _exoFE = _gExo || (partner.exonere_fe ?? 0);
+            const exonere = _exoFP && _exoFE ? 1 : 0;
             const francoAtteint = subtotalHT >= francoSeuil;
             const manque = Math.max(0, francoSeuil - subtotalHT);
             return (

@@ -179,8 +179,10 @@ module.exports = (db) => {
             amenities: matched.amenities || null,
             franco_seuil: matched.franco_seuil ?? DEFAULT_FRANCO_SEUIL,
             frais_exonere: matched.frais_exonere ?? 0,
+            exonere_fp: matched.exonere_fp ?? 0,
+            exonere_fe: matched.exonere_fe ?? 0,
             fp_prix: fraisMap['FP'] || 0,
-            fe_prix: fraisMap['FE'] || 0,
+            fe_prix: (matched.frais_expedition_ht != null) ? matched.frais_expedition_ht : (fraisMap['FE'] || 0),
           },
           etablissements: subAccounts,
         });
@@ -202,8 +204,10 @@ module.exports = (db) => {
           amenities: matched.amenities || null,
           franco_seuil: matched.franco_seuil ?? DEFAULT_FRANCO_SEUIL,
           frais_exonere: matched.frais_exonere ?? 0,
+          exonere_fp: matched.exonere_fp ?? 0,
+          exonere_fe: matched.exonere_fe ?? 0,
           fp_prix: fraisMap['FP'] || 0,
-          fe_prix: fraisMap['FE'] || 0,
+          fe_prix: (matched.frais_expedition_ht != null) ? matched.frais_expedition_ht : (fraisMap['FE'] || 0),
         },
       });
     } catch (e) {
@@ -249,7 +253,7 @@ module.exports = (db) => {
   // ─── Profil ────────────────────────────────────────────────────────────────
   router.get('/profil', requireEffectiveId, (req, res) => {
     try {
-      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
+      const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone, adresse, amenities, franco_seuil, frais_exonere, exonere_fp, exonere_fe, frais_expedition_ht, livraison_prenom, livraison_nom, livraison_telephone, livraison_email, facturation_prenom, facturation_nom, facturation_telephone, facturation_email, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, livraison_portable FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       // Si master agit pour un sous-compte, utiliser les amenities du master
       const masterPartner = getMasterDiscountsPartner(req);
@@ -261,7 +265,9 @@ module.exports = (db) => {
       const fraisMap = {};
       for (const r of fraisRows) fraisMap[r.ref] = r.prix_ht;
       partner.fp_prix = fraisMap['FP'] || 0;
-      partner.fe_prix = fraisMap['FE'] || 0;
+      partner.fe_prix = (partner.frais_expedition_ht != null) ? partner.frais_expedition_ht : (fraisMap['FE'] || 0);
+      partner.exonere_fp = partner.exonere_fp ?? 0;
+      partner.exonere_fe = partner.exonere_fe ?? 0;
       res.json(partner);
     } catch (e) {
       logger.error('Erreur profil partenaire', { error: e.message, partnerId: req.partner?.id });
@@ -462,24 +468,33 @@ module.exports = (db) => {
 
       totalHT = Math.round(totalHT * 100) / 100;
 
-      // Frais FP/FE : si exonéré → rien, sinon franco atteint → FP, pas atteint → FE
+      // Frais FP/FE : exonérations séparées (exonere_fp / exonere_fe) + ancien flag global frais_exonere
       const francoSeuil = partner.franco_seuil ?? DEFAULT_FRANCO_SEUIL;
-      const exonere = partner.frais_exonere ?? 0;
+      const globalExonere = partner.frais_exonere ?? 0;
+      const exonereFP = globalExonere || (partner.exonere_fp ?? 0);
+      const exonereFE = globalExonere || (partner.exonere_fe ?? 0);
       let fraisRef = null;
       let fraisNom = '';
       let fraisMontant = 0;
       let fraisTvaRate = 20;
-      if (!exonere) {
+      {
         const fraisRows = db.prepare("SELECT ref, prix_ht, nom, tva FROM vf_catalog WHERE ref IN ('FP', 'FE')").all();
         const fraisMap = {};
         for (const r of fraisRows) fraisMap[r.ref] = r;
         if (totalHT >= francoSeuil) {
-          fraisRef = 'FP'; fraisNom = fraisMap['FP']?.nom || 'Frais de préparation'; fraisMontant = fraisMap['FP']?.prix_ht || 0;
+          if (!exonereFP) {
+            fraisRef = 'FP'; fraisNom = fraisMap['FP']?.nom || 'Frais de préparation'; fraisMontant = fraisMap['FP']?.prix_ht || 0;
+          }
         } else {
-          fraisRef = 'FE'; fraisNom = fraisMap['FE']?.nom || "Frais d'expédition"; fraisMontant = fraisMap['FE']?.prix_ht || 0;
+          if (!exonereFE) {
+            fraisRef = 'FE'; fraisNom = fraisMap['FE']?.nom || "Frais d'expédition";
+            fraisMontant = (partner.frais_expedition_ht != null) ? partner.frais_expedition_ht : (fraisMap['FE']?.prix_ht || 0);
+          }
         }
-        fraisTvaRate = (fraisRef && fraisMap[fraisRef]?.tva) || 20;
-        totalTVA += fraisMontant * (fraisTvaRate / 100);
+        if (fraisRef) {
+          fraisTvaRate = (fraisMap[fraisRef]?.tva) || 20;
+          totalTVA += fraisMontant * (fraisTvaRate / 100);
+        }
       }
       const totalHTWithFrais = Math.round((totalHT + fraisMontant) * 100) / 100;
       const totalTTC = Math.round((totalHTWithFrais + totalTVA) * 100) / 100;
