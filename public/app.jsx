@@ -17289,7 +17289,7 @@ const VueProduitsCatalog = () => {
   const [search, setSearch] = useState('');
   const [saving, setSaving] = useState(false);
   const [showAdd, setShowAdd] = useState(false);
-  const [addForm, setAddForm] = useState({ ref: '', vf_product_id: '', nom: '', prix_ht: '', tva: 20, moq: 1, categorie: '' });
+  const [addForm, setAddForm] = useState({ ref: '', vf_product_id: '', nom: '', prix_ht: '', tva: 20, moq: 1, categorie: '', image_url: '' });
   const [addSaving, setAddSaving] = useState(false);
   const [deleting, setDeleting] = useState(null);
   const [collapsedCats, setCollapsedCats] = useState({});
@@ -17323,13 +17323,14 @@ const VueProduitsCatalog = () => {
         prix_ht: parseFloat(addForm.prix_ht) || 0,
         tva: parseFloat(addForm.tva) || 20,
         actif: 1,
+        image_url: (addForm.image_url || '').trim() || null,
       });
-      // Set category if selected
+      // Set category and MOQ if provided
       if (addForm.categorie) {
         await api.patch(`/reference/catalog/${encodeURIComponent(addForm.ref.trim())}`, { categorie: addForm.categorie });
       }
       setShowAdd(false);
-      setAddForm({ ref: '', vf_product_id: '', nom: '', prix_ht: '', tva: 20, moq: 1, categorie: '' });
+      setAddForm({ ref: '', vf_product_id: '', nom: '', prix_ht: '', tva: 20, moq: 1, categorie: '', image_url: '' });
       charger();
     } catch (e) { console.error(e); }
     setAddSaving(false);
@@ -17379,7 +17380,7 @@ const VueProduitsCatalog = () => {
 
   const startEdit = (p) => {
     setEditingRef(p.ref);
-    setEditForm({ nom: p.nom || '', prix_ht: p.prix_ht ?? '', csv_ref: p.csv_ref || '', vf_ref: p.vf_ref || '', moq: p.moq ?? 1, categorie: p.categorie || '', vf_product_id: p.vf_product_id || '' });
+    setEditForm({ nom: p.nom || '', prix_ht: p.prix_ht ?? '', csv_ref: p.csv_ref || '', vf_ref: p.vf_ref || '', moq: p.moq ?? 1, categorie: p.categorie || '', vf_product_id: p.vf_product_id || '', image_url: p.image_url || '' });
   };
 
   const cancelEdit = () => { setEditingRef(null); setEditForm({}); };
@@ -17413,6 +17414,7 @@ const VueProduitsCatalog = () => {
         moq: parseInt(editForm.moq) || 1,
         categorie: editForm.categorie || null,
         vf_product_id: newVfId || null,
+        image_url: (editForm.image_url || '').trim() || null,
       });
       setEditingRef(null);
       charger();
@@ -17543,12 +17545,14 @@ const VueProduitsCatalog = () => {
   const renderProductRow = (p) => {
     if (editingRef === p.ref) {
       return (
-        <div key={p.ref} className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg" data-ref={p.ref}>
+        <div key={p.ref} className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg flex-wrap" data-ref={p.ref}>
+          {editForm.image_url && <img src={editForm.image_url} alt="" className="w-8 h-8 object-cover rounded flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} />}
           <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
           <input type="text" value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
           <input type="number" step="0.01" value={editForm.prix_ht} onChange={e => setEditForm(f => ({ ...f, prix_ht: e.target.value }))} className="w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Prix" />
           <input type="text" value={editForm.vf_product_id} onChange={e => setEditForm(f => ({ ...f, vf_product_id: e.target.value }))} placeholder="ID VF" className="w-20 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" />
           <input type="number" value={editForm.moq} onChange={e => setEditForm(f => ({ ...f, moq: e.target.value }))} className="w-14 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="MOQ" />
+          <input type="url" value={editForm.image_url} onChange={e => setEditForm(f => ({ ...f, image_url: e.target.value }))} placeholder="URL image" className="w-48 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
           <button onClick={saveEdit} disabled={saving} className="text-[11px] px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50">{saving ? '...' : 'OK'}</button>
           <button onClick={cancelEdit} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Annuler</button>
         </div>
@@ -17557,6 +17561,7 @@ const VueProduitsCatalog = () => {
     return (
       <div key={p.ref} className="flex items-center gap-2 px-3 py-2 bg-white border border-slate-100 rounded-lg hover:border-slate-200 transition-colors group" data-ref={p.ref}>
         {!search && <span className="drag-handle text-slate-300 hover:text-slate-500 text-sm flex-shrink-0" title="Glisser pour changer de catégorie">&#9776;</span>}
+        {p.image_url ? <img src={p.image_url} alt="" className="w-7 h-7 object-cover rounded flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} /> : <span className="w-7 h-7 rounded bg-slate-100 flex items-center justify-center text-[9px] text-slate-400 flex-shrink-0">{(p.ref || '').slice(0, 2)}</span>}
         <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
         <span className="flex-1 text-sm text-slate-800 truncate">{p.nom}</span>
         <span className="text-sm text-slate-600 w-20 text-right flex-shrink-0">{p.prix_ht != null ? Number(p.prix_ht).toFixed(2) + ' \u20AC' : '—'}</span>
@@ -17689,6 +17694,13 @@ const VueProduitsCatalog = () => {
                 <option value="">— Aucune —</option>
                 {allCategories.map(c => <option key={c} value={c}>{c}</option>)}
               </select>
+            </div>
+            <div className="col-span-2 flex items-end gap-2">
+              <div className="flex-1">
+                <label className="text-[11px] text-slate-500 mb-1 block">URL image produit</label>
+                <input type="url" value={addForm.image_url} onChange={e => setAddForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://cdn.shopify.com/..." className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+              </div>
+              {addForm.image_url && <img src={addForm.image_url} alt="" className="w-10 h-10 object-cover rounded-lg border border-slate-200 flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} />}
             </div>
           </div>
           <div className="flex gap-2 mt-3">

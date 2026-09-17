@@ -22,16 +22,16 @@ module.exports = (db) => {
 
   router.post('/catalog', (req, res) => {
     try {
-      const { ref, vf_product_id, nom, prix_ht, tva, csv_ref, vf_ref, actif } = req.body;
+      const { ref, vf_product_id, nom, prix_ht, tva, csv_ref, vf_ref, actif, image_url } = req.body;
       db.prepare(`
-        INSERT INTO vf_catalog (ref, vf_product_id, nom, prix_ht, tva, csv_ref, vf_ref, actif)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        INSERT INTO vf_catalog (ref, vf_product_id, nom, prix_ht, tva, csv_ref, vf_ref, actif, image_url)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
         ON CONFLICT(ref) DO UPDATE SET
           vf_product_id = excluded.vf_product_id, nom = excluded.nom,
           prix_ht = excluded.prix_ht, tva = excluded.tva,
           csv_ref = excluded.csv_ref, vf_ref = excluded.vf_ref,
-          actif = excluded.actif
-      `).run(ref, vf_product_id || null, nom, prix_ht, tva || 20, csv_ref || null, vf_ref || null, actif ?? 1);
+          actif = excluded.actif, image_url = excluded.image_url
+      `).run(ref, vf_product_id || null, nom, prix_ht, tva || 20, csv_ref || null, vf_ref || null, actif ?? 1, image_url || null);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -216,7 +216,7 @@ module.exports = (db) => {
     try {
       const updates = [];
       const params = [];
-      const allowedFields = ['nom', 'prix_ht', 'csv_ref', 'vf_ref', 'moq', 'categorie', 'tva', 'vf_product_id'];
+      const allowedFields = ['nom', 'prix_ht', 'csv_ref', 'vf_ref', 'moq', 'categorie', 'tva', 'vf_product_id', 'image_url'];
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
           updates.push(`${field} = ?`);

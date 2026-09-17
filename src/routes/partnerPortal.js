@@ -369,6 +369,7 @@ module.exports = (db) => {
           tva: p.tva,
           moq: p.moq || 1,
           categorie: p.categorie || null,
+          image_url: p.image_url || null,
         };
         // Ajouter info promo si active
         if (promoActive) {

@@ -423,9 +423,9 @@
       return PRODUCT_IMAGES[base] || null;
     };
 
-    const ProductImage = ({ productRef, nom, className = "" }) => {
+    const ProductImage = ({ productRef, nom, imageUrl, className = "" }) => {
       const [imgError, setImgError] = useState(false);
-      const src = getProductImageUrl(productRef);
+      const src = imageUrl || getProductImageUrl(productRef);
       const initials = (nom || productRef || '').split(/[\s-]+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
       if (!src || imgError) {
         return (
@@ -673,7 +673,7 @@
       'P012': '/accueil-assets/lip.png',
       'P009': '/accueil-assets/mask.jpg',
     };
-    const getProductImage = (ref) => ACCUEIL_IMAGES[ref] || getProductImageUrl(ref) || null;
+    const getProductImage = (ref, dbImageUrl) => dbImageUrl || ACCUEIL_IMAGES[ref] || getProductImageUrl(ref) || null;
 
     // Catégorisation VIP pour les filtres
     const VIP_SPA_REFS = new Set(['P016', 'P009', 'P003', 'P317-100', 'P020']);
@@ -821,7 +821,7 @@
                     const unitPrice = currentProd.prix_promo ?? currentProd.prix_remise;
                     const moq = currentProd.moq || 1;
                     const packLabel = format === '5000' ? `${moq} bidon${moq > 1 ? 's' : ''}` : `${moq} flacon${moq > 1 ? 's' : ''}`;
-                    const imgSrc = getProductImage(ess.baseRef);
+                    const imgSrc = getProductImage(ess.baseRef, currentProd.image_url);
                     return (
                       <article className="tdm-essential" key={ess.key}>
                         <div className="tdm-essential-top">
@@ -892,7 +892,7 @@
                   {filteredVip.map(p => {
                     const unitPrice = p.prix_promo ?? p.prix_remise;
                     const moq = p.moq || 1;
-                    const imgSrc = getProductImage(p.ref);
+                    const imgSrc = getProductImage(p.ref, p.image_url);
                     const refNum = p.ref.replace(/^P0*/, '');
                     const isMask = p.ref === 'P009';
                     return (

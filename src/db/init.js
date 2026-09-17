@@ -1247,6 +1247,7 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN exonere_fp INTEGER DEFAULT 0',
   'ALTER TABLE vf_partners ADD COLUMN exonere_fe INTEGER DEFAULT 0',
   'ALTER TABLE vf_partners ADD COLUMN frais_expedition_ht REAL',
+  'ALTER TABLE vf_catalog ADD COLUMN image_url TEXT',
 ];
 
 // ─── Table audit commandes partenaires ───────────────────────────────────────
