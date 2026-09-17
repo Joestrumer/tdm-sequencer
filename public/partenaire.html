@@ -839,11 +839,13 @@
           })}
 
           {/* Barre de progression franco */}
-          {!exonere && (
+          {(!exonereFE || !exonereFP) && (
             <div className="bg-gray-50 dark:bg-slate-700 rounded-xl p-3">
               <div className="flex justify-between text-[11px] mb-1.5">
                 <span className={francoAtteint ? "text-gold-600 font-medium" : "text-gray-500 dark:text-slate-400"}>
-                  {francoAtteint ? `Franco atteint \u2014 frais r\u00e9duits \u00e0 ${fpPrix.toFixed(0)} \u20ac HT` : `Encore ${manquePourFranco.toFixed(2)} \u20ac pour le franco`}
+                  {francoAtteint
+                    ? (exonereFP ? 'Franco atteint \u2014 pas de frais' : `Franco atteint \u2014 frais r\u00e9duits \u00e0 ${fpPrix.toFixed(0)} \u20ac HT`)
+                    : (exonereFE ? `Encore ${manquePourFranco.toFixed(2)} \u20ac pour le franco (pas de frais d'exp\u00e9dition)` : `Encore ${manquePourFranco.toFixed(2)} \u20ac pour le franco`)}
                 </span>
                 <span className="text-gray-400 dark:text-slate-500">{subtotalHT.toFixed(0)} / {francoSeuil.toFixed(0)} &euro; HT</span>
               </div>
@@ -854,7 +856,9 @@
                 />
               </div>
               <div className="text-[10px] mt-1 text-gray-400 dark:text-slate-500">
-                Sous {francoSeuil.toFixed(0)} &euro; : exp&eacute;dition {fePrix.toFixed(0)} &euro; HT &middot; Au-dessus : r&eacute;duits &agrave; {fpPrix.toFixed(0)} &euro; HT
+                {!exonereFE && !exonereFP && (<>Sous {francoSeuil.toFixed(0)} &euro; : exp&eacute;dition {fePrix.toFixed(0)} &euro; HT &middot; Au-dessus : r&eacute;duits &agrave; {fpPrix.toFixed(0)} &euro; HT</>)}
+                {exonereFE && !exonereFP && (<>Au-dessus du franco : frais de pr&eacute;paration {fpPrix.toFixed(0)} &euro; HT</>)}
+                {!exonereFE && exonereFP && (<>Sous {francoSeuil.toFixed(0)} &euro; : exp&eacute;dition {fePrix.toFixed(0)} &euro; HT</>)}
               </div>
             </div>
           )}
@@ -864,14 +868,20 @@
               <span>Sous-total HT</span>
               <span>{subtotalHT.toFixed(2)} &euro;</span>
             </div>
-            {!exonere && (
+            {fraisMontant > 0 && (
               <div className={`flex justify-between text-sm ${francoAtteint ? 'text-gold-600' : 'text-amber-600'}`}>
                 <span>{fraisLabel}</span>
                 <span>{fraisMontant.toFixed(2)} &euro;</span>
               </div>
             )}
+            {fraisMontant === 0 && !exonere && (francoAtteint ? exonereFP : exonereFE) && (
+              <div className="flex justify-between text-sm text-emerald-600">
+                <span>{francoAtteint ? 'Frais de pr\u00e9paration' : "Frais d'exp\u00e9dition"}</span>
+                <span>Exon\u00e9r\u00e9</span>
+              </div>
+            )}
             {exonere === 1 && (
-              <div className="flex justify-between text-sm text-green-600">
+              <div className="flex justify-between text-sm text-emerald-600">
                 <span>Frais</span>
                 <span>Exon&eacute;r&eacute;</span>
               </div>
@@ -889,8 +899,9 @@
             <div className="font-semibold text-amber-900 dark:text-amber-400 mb-1">Conditions :</div>
             <ul className="list-disc list-inside space-y-0.5">
               <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger</li>
-              <li>Sous le franco : frais d'exp&eacute;dition {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>
-              <li>Au-dessus du franco : frais de pr&eacute;paration r&eacute;duits &agrave; {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>
+              {!exonereFE && <li>Sous le franco : frais d'exp&eacute;dition {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>}
+              {!exonereFP && <li>Au-dessus du franco : frais de pr&eacute;paration r&eacute;duits &agrave; {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>}
+              {(exonereFE && exonereFP) && <li>Exon&eacute;r&eacute; de frais de port et de pr&eacute;paration</li>}
               <li>Conditionnement : bidons par cartons de 4, flacons par cartons de 6.</li>
             </ul>
           </div>
@@ -1945,7 +1956,7 @@
             return (
               <div className="fixed bottom-0 left-0 right-0 z-20 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-t border-gray-200 dark:border-slate-600 shadow-lg dark:shadow-none safe-area-bottom">
                 <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 sm:py-3">
-                  {!exonere && (
+                  {(!_exoFE || !_exoFP) && (
                     <div className="flex items-center gap-2 mb-1.5 sm:mb-2">
                       <div className="flex-1 bg-gray-200 dark:bg-slate-600 rounded-full h-1.5 sm:h-2">
                         <div
@@ -1954,7 +1965,9 @@
                         />
                       </div>
                       <span className={`text-[10px] sm:text-[11px] font-medium shrink-0 ${francoAtteint ? 'text-gold-600' : 'text-amber-600'}`}>
-                        {francoAtteint ? `Franco \u2014 ${(partner.fp_prix ?? 0).toFixed(0)} \u20ac FP` : `${manque.toFixed(0)} \u20ac restant`}
+                        {francoAtteint
+                          ? (_exoFP ? 'Franco \u2014 pas de frais' : `Franco \u2014 ${(partner.fp_prix ?? 0).toFixed(0)} \u20ac FP`)
+                          : (_exoFE ? `Franco dans ${manque.toFixed(0)} \u20ac` : `${manque.toFixed(0)} \u20ac restant`)}
                       </span>
                     </div>
                   )}
