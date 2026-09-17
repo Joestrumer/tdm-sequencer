@@ -348,45 +348,84 @@
     const is500ml = (ref, baseRef) => ref === baseRef;
 
     // ─── Images produits (CDN Shopify) ──────────────────────────────────────────
+    // Base CDN
+    const CDN = 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/';
     const PRODUCT_IMAGES = {
       // Cadeaux VIP & Spa
-      'P016': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P016_1.png',
-      'P012': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P012_1.png',
-      'P009': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P009_4.jpg',
-      'P020': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P020_6.jpg',
-      'P015': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P015_1.png',
-      'P003': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P003_1.png',
-      'P021-20': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P021-20_3.jpg',
+      'P016': CDN + 'P016_1.png',
+      'P012': CDN + 'P012_1.png',
+      'P009': CDN + 'P009_4.jpg',
+      'P020': CDN + 'P020_6.jpg',
+      'P021-20': CDN + 'P021-20_3.jpg',
+      'P023': CDN + 'P023_1.png',
+      // Produits Spa
+      'P003': CDN + 'P003_1.png',
+      'P004': CDN + 'P003_1.png',
+      'P004-500': CDN + 'P003_1.png',
+      'P005': CDN + 'P003_1.png',
+      'P006': CDN + 'P003_1.png',
+      'P021': CDN + 'P021-20_3.jpg',
+      'P022': CDN + 'P317-100_1.png',
+      'P027': CDN + 'P003_1.png',
+      'P029': CDN + 'P317-100_1.png',
+      'P317-100': CDN + 'P317-100_1.png',
       // Parfums & gel hydroalcoolique
-      'P041': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P041_1.png',
-      'P039': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P039_1.png',
-      'P026': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P026_1.png',
-      // Amenities — gel douche
-      'P008': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P008_1.png',
-      'P035': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P035_1.png',
-      // Amenities — shampoing
-      'P019': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P019_1.png',
-      'P010': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P010_1_1143dd73-82fb-4306-8ed2-01219c5751e0.png',
-      'P034': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P034_1.png',
-      // Amenities — gel corps & cheveux
-      'P042': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P042_1.png',
-      'P014': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P014_1.png',
-      'P040': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P040_1.png',
-      // Amenities — après-shampoing
-      'P024': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P024_1.png',
-      'P037': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P037_1.png',
-      // Amenities — lotion
-      'P036': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P036_1.png',
-      'P011': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P011_1.png',
-      // Amenities — savon liquide
-      'P007': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P007_1.png',
-      // Gommage
-      'P317-100': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P317-100_1.png',
+      'P015': CDN + 'P015_1.png',
+      'P018': CDN + 'P018-5000_4.jpg',
+      'P018-50': CDN + 'P018-5000_4.jpg',
+      'P018-5000': CDN + 'P018-5000_4.jpg',
+      'P039': CDN + 'P039_1.png',
+      'P039-200V': CDN + 'P039_1.png',
+      'P039-500': CDN + 'P039-500_1.png',
+      'P039-3000V': CDN + 'P039-3000V.jpg',
+      'P039-5000': CDN + 'P039-5000_1.png',
+      'P039SPRAY-VIDE': CDN + 'P039SPRAY_1.png',
+      'P041': CDN + 'P041_1.png',
+      'P041-500': CDN + 'P041-500_1.png',
+      'P041-5000': CDN + 'P041_1.png',
+      // Flacons 500ml
+      'P007': CDN + 'P007_1.png',
+      'P008': CDN + 'P008_1.png',
+      'P010': CDN + 'P010_1_1143dd73-82fb-4306-8ed2-01219c5751e0.png',
+      'P011': CDN + 'P011_1.png',
+      'P014': CDN + 'P014_1.png',
+      'P019': CDN + 'P019_1.png',
+      'P024': CDN + 'P024_1.png',
+      'P034': CDN + 'P034_1.png',
+      'P035': CDN + 'P035_1.png',
+      'P036': CDN + 'P036_1.png',
+      'P037': CDN + 'P037_1.png',
+      'P040': CDN + 'P040_1.png',
+      'P042': CDN + 'P042_1.png',
+      'P044': CDN + '044_500ml.png',
+      'P045': CDN + '045_500ml.png',
+      'P046': CDN + '046_500ml.png',
+      'P047': CDN + '047_500ml.png',
+      // Savons
+      'P017': CDN + 'P017_1.png',
+      'P017-30': CDN + 'P017_1.png',
+      // Portes flacons
+      'PFS': CDN + 'PFS_1.png',
+      'PFD': CDN + 'PFD_1.png',
+      'PFT': CDN + 'PFT_1.png',
+      'SPFS': CDN + 'SPFS_1.png',
+      'PSS': CDN + 'PSS_1.png',
+      // Coffrets
+      'COFFRETS': CDN + 'coffret_tdem11_2.jpg',
+      // Flacons vides
+      'DENVER-500ML-VIDE': CDN + 'DENVER-500ML-VIDE.jpg',
+    };
+    // Variantes : si la ref exacte n'est pas dans le mapping, chercher la ref de base
+    const getProductImageUrl = (ref) => {
+      if (PRODUCT_IMAGES[ref]) return PRODUCT_IMAGES[ref];
+      // Essayer la ref de base (P008-5000 → P008, P010-150 → P010, P034-100 → P034)
+      const base = ref.replace(/-\d+.*$/, '').replace(/V$/, '').replace(/-SANS POMPE$/, '');
+      return PRODUCT_IMAGES[base] || null;
     };
 
     const ProductImage = ({ productRef, nom, className = "" }) => {
       const [imgError, setImgError] = useState(false);
-      const src = PRODUCT_IMAGES[productRef];
+      const src = getProductImageUrl(productRef);
       const initials = (nom || productRef || '').split(/[\s-]+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
       if (!src || imgError) {
         return (
@@ -634,7 +673,7 @@
       'P012': '/accueil-assets/lip.png',
       'P009': '/accueil-assets/mask.jpg',
     };
-    const getProductImage = (ref) => ACCUEIL_IMAGES[ref] || PRODUCT_IMAGES[ref] || null;
+    const getProductImage = (ref) => ACCUEIL_IMAGES[ref] || getProductImageUrl(ref) || null;
 
     // Catégorisation VIP pour les filtres
     const VIP_SPA_REFS = new Set(['P016', 'P009', 'P003', 'P317-100', 'P020']);
