@@ -39,36 +39,38 @@ async function _removeHandleIDB(key) {
   try { const db = await _openIDB(); const tx = db.transaction(_idbStore, 'readwrite'); tx.objectStore(_idbStore).delete(key); } catch(e) {}
 }
 
-async function saveFileWithPicker(blob, fileName) {
+// dirKey : 'csvDir' pour CSV logisticien, 'factureDir' pour factures PDF
+const _dirHandleCache = {};
+async function saveFileWithPicker(blob, fileName, dirKey = 'csvDir') {
   if (!window.showDirectoryPicker) return false;
   try {
     let dirHandle = null;
     // Essayer de récupérer le handle persisté (IndexedDB)
-    if (!window.savedCSVDirHandle) {
-      window.savedCSVDirHandle = await _getHandleIDB('csvDir');
+    if (!_dirHandleCache[dirKey]) {
+      _dirHandleCache[dirKey] = await _getHandleIDB(dirKey);
     }
-    if (window.savedCSVDirHandle) {
+    if (_dirHandleCache[dirKey]) {
       try {
-        const permission = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
+        const permission = await _dirHandleCache[dirKey].queryPermission({ mode: 'readwrite' });
         if (permission === 'granted') {
-          dirHandle = window.savedCSVDirHandle;
+          dirHandle = _dirHandleCache[dirKey];
         } else if (permission === 'prompt') {
           // Tenter de demander la permission (nécessite un geste utilisateur récent)
           try {
-            if (await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }) === 'granted') {
-              dirHandle = window.savedCSVDirHandle;
+            if (await _dirHandleCache[dirKey].requestPermission({ mode: 'readwrite' }) === 'granted') {
+              dirHandle = _dirHandleCache[dirKey];
             }
           } catch (e) { /* activation utilisateur expirée, on passera au picker */ }
         }
       } catch (e) {
         // Handle invalide (dossier supprimé/renommé), on le nettoie
-        window.savedCSVDirHandle = null;
+        _dirHandleCache[dirKey] = null;
       }
     }
     if (!dirHandle) {
-      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite', id: 'csvDir' });
-      window.savedCSVDirHandle = dirHandle;
-      await _saveHandleIDB('csvDir', dirHandle);
+      dirHandle = await window.showDirectoryPicker({ mode: 'readwrite', id: dirKey });
+      _dirHandleCache[dirKey] = dirHandle;
+      await _saveHandleIDB(dirKey, dirHandle);
     }
     const fileHandle = await dirHandle.getFileHandle(fileName, { create: true });
     const writable = await fileHandle.createWritable();
@@ -78,11 +80,32 @@ async function saveFileWithPicker(blob, fileName) {
   } catch (fsErr) {
     if (fsErr.name !== 'AbortError') {
       console.warn('File System Access fallback:', fsErr);
-      delete window.savedCSVDirHandle;
-      await _removeHandleIDB('csvDir');
+      _dirHandleCache[dirKey] = null;
+      await _removeHandleIDB(dirKey);
     }
     return false;
   }
+}
+
+// Pré-valider l'accès à un dossier (à appeler pendant un geste utilisateur frais)
+async function prevalidateDirAccess(dirKey) {
+  if (!window.showDirectoryPicker) return;
+  try {
+    if (!_dirHandleCache[dirKey]) {
+      _dirHandleCache[dirKey] = await _getHandleIDB(dirKey);
+    }
+    if (_dirHandleCache[dirKey]) {
+      const perm = await _dirHandleCache[dirKey].queryPermission({ mode: 'readwrite' });
+      if (perm === 'prompt') {
+        try { await _dirHandleCache[dirKey].requestPermission({ mode: 'readwrite' }); } catch (e) {}
+      }
+    }
+    if (!_dirHandleCache[dirKey] || await _dirHandleCache[dirKey].queryPermission({ mode: 'readwrite' }) !== 'granted') {
+      const dh = await window.showDirectoryPicker({ mode: 'readwrite', id: dirKey });
+      _dirHandleCache[dirKey] = dh;
+      await _saveHandleIDB(dirKey, dh);
+    }
+  } catch (e) { /* pas de support ou annulation */ }
 }
 
 function downloadFallback(blob, fileName) {
@@ -13111,18 +13134,14 @@ const FacturesSingle = ({ showToast }) => {
       });
       if (!res.ok) throw new Error('Erreur PDF: ' + res.status);
       const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-
-      // Téléchargement automatique avec le bon nom
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = documentType === 'proforma' ? `facture-proforma-${result.number || result.id}.pdf` : `facture-invoice-${result.number || result.id}.pdf`;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-
-      showToast('PDF téléchargé', 'success');
+      const fileName = documentType === 'proforma' ? `facture-proforma-${result.number || result.id}.pdf` : `facture-invoice-${result.number || result.id}.pdf`;
+      const dirName = await saveFileWithPicker(blob, fileName, 'factureDir');
+      if (dirName) {
+        showToast(`Facture sauvée : ${dirName}/${fileName}`, 'success');
+      } else {
+        downloadFallback(blob, fileName);
+        showToast('PDF téléchargé', 'success');
+      }
     } catch (err) {
       showToast('Erreur PDF: ' + err.message, 'error');
     }
@@ -14530,8 +14549,13 @@ const FacturesBatch = ({ showToast }) => {
       if (!res2.ok) throw new Error('Erreur PDF: ' + res2.status);
       const blob = await res2.blob();
       const fileName = documentType === 'proforma' ? `facture-proforma-${r.number || r.id}.pdf` : `facture-invoice-${r.number || r.id}.pdf`;
-      downloadFallback(blob, fileName);
-      showToast('PDF téléchargé', 'success');
+      const dirName = await saveFileWithPicker(blob, fileName, 'factureDir');
+      if (dirName) {
+        showToast(`Facture sauvée : ${dirName}/${fileName}`, 'success');
+      } else {
+        downloadFallback(blob, fileName);
+        showToast('PDF téléchargé', 'success');
+      }
     } catch (err) {
       showToast('Erreur PDF: ' + err.message, 'error');
     }
@@ -20826,6 +20850,21 @@ const ModalCampaignEditor = ({ campaign, onClose, showToast }) => {
 // ─── VUE COMMANDES PARTENAIRES ────────────────────────────────────────────────
 const VueCommandes = ({ showToast }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
+  const [csvDirName, setCsvDirName] = useState(null);
+  const [factureDirName, setFactureDirName] = useState(null);
+  useEffect(() => {
+    _getHandleIDB('csvDir').then(h => { if (h) setCsvDirName(h.name); });
+    _getHandleIDB('factureDir').then(h => { if (h) setFactureDirName(h.name); });
+  }, []);
+  const pickDir = async (dirKey, setName) => {
+    try {
+      const dh = await window.showDirectoryPicker({ mode: 'readwrite', id: dirKey });
+      _dirHandleCache[dirKey] = dh;
+      await _saveHandleIDB(dirKey, dh);
+      setName(dh.name);
+      showToast(`Dossier sélectionné : ${dh.name}`, 'success');
+    } catch (e) { /* annulé */ }
+  };
   const [commandes, setCommandes] = useState([]);
   const [counts, setCounts] = useState({ en_attente: 0, validee: 0, annulee: 0, annulee_client: 0, total: 0 });
   const [filtre, setFiltre] = useState("tous");
@@ -20910,26 +20949,12 @@ const VueCommandes = ({ showToast }) => {
     const partnerEmail = validateModal.master_email || validateModal.partner_email || '';
     setValidating(id);
     try {
-      // Pré-valider l'accès au dossier CSV AVANT l'appel API
+      // Pré-valider l'accès aux dossiers AVANT l'appel API
       // (le clic utilisateur est encore frais → requestPermission/showDirectoryPicker fonctionnent)
       if (validateOptions.generateCsv) {
-        try {
-          if (!window.savedCSVDirHandle) {
-            window.savedCSVDirHandle = await _getHandleIDB('csvDir');
-          }
-          if (window.savedCSVDirHandle) {
-            const perm = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
-            if (perm === 'prompt') {
-              try { await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }); } catch (e) {}
-            }
-          }
-          if (!window.savedCSVDirHandle || await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
-            const dh = await window.showDirectoryPicker({ mode: 'readwrite', id: 'csvDir' });
-            window.savedCSVDirHandle = dh;
-            await _saveHandleIDB('csvDir', dh);
-          }
-        } catch (e) { /* pas de support ou annulé */ }
+        try { await prevalidateDirAccess('csvDir'); } catch (e) {}
       }
+      try { await prevalidateDirAccess('factureDir'); } catch (e) {}
 
       const res = await api.post(`/partner-orders/${id}/validate`, {
         documentType: validateOptions.documentType,
@@ -20989,14 +21014,13 @@ const VueCommandes = ({ showToast }) => {
               const pdfRes = await fetch(`/api/partner-orders/${id}/pdf`, { headers: { 'Authorization': `Bearer ${token}` } });
               if (pdfRes.ok) {
                 const pdfBlob = await pdfRes.blob();
-                const pdfUrl = URL.createObjectURL(pdfBlob);
-                const a = document.createElement('a');
-                a.href = pdfUrl;
-                a.download = `facture-${invoiceNumber || id}.pdf`;
-                document.body.appendChild(a);
-                a.click();
-                document.body.removeChild(a);
-                setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+                const pdfFileName = `facture-${invoiceNumber || id}.pdf`;
+                const dirName = await saveFileWithPicker(pdfBlob, pdfFileName, 'factureDir');
+                if (dirName) {
+                  showToast(`Facture sauvée : ${dirName}/${pdfFileName}`, 'success');
+                } else {
+                  downloadFallback(pdfBlob, pdfFileName);
+                }
               }
             } catch (e) {
               showToast('Erreur téléchargement PDF', 'error');
@@ -21071,21 +21095,11 @@ const VueCommandes = ({ showToast }) => {
     try {
       const enAttenteIds = [...selectedOrderIds].filter(id => { const c = commandes.find(x => x.id === id); return c && c.statut === 'en_attente'; });
 
-      // Pré-valider l'accès au dossier CSV si nécessaire
+      // Pré-valider l'accès aux dossiers si nécessaire
       if (batchValidateOptions.generateCsv) {
-        try {
-          if (!window.savedCSVDirHandle) window.savedCSVDirHandle = await _getHandleIDB('csvDir');
-          if (window.savedCSVDirHandle) {
-            const perm = await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' });
-            if (perm === 'prompt') try { await window.savedCSVDirHandle.requestPermission({ mode: 'readwrite' }); } catch (e) {}
-          }
-          if (!window.savedCSVDirHandle || await window.savedCSVDirHandle.queryPermission({ mode: 'readwrite' }) !== 'granted') {
-            const dh = await window.showDirectoryPicker({ mode: 'readwrite', id: 'csvDir' });
-            window.savedCSVDirHandle = dh;
-            await _saveHandleIDB('csvDir', dh);
-          }
-        } catch (e) { /* pas de support ou annulé */ }
+        try { await prevalidateDirAccess('csvDir'); } catch (e) {}
       }
+      try { await prevalidateDirAccess('factureDir'); } catch (e) {}
 
       // Mapper les options frontend → backend
       const apiOptions = {
@@ -21206,14 +21220,13 @@ const VueCommandes = ({ showToast }) => {
       const res = await fetch(`/api/partner-orders/${commande.id}/pdf`, { headers: { 'Authorization': `Bearer ${token}` } });
       if (res.ok) {
         const blob = await res.blob();
-        const url = URL.createObjectURL(blob);
-        const a = document.createElement('a');
-        a.href = url;
-        a.download = `facture-${commande.vf_invoice_number || commande.id}.pdf`;
-        document.body.appendChild(a);
-        a.click();
-        document.body.removeChild(a);
-        setTimeout(() => URL.revokeObjectURL(url), 1000);
+        const pdfFileName = `facture-${commande.vf_invoice_number || commande.id}.pdf`;
+        const dirName = await saveFileWithPicker(blob, pdfFileName, 'factureDir');
+        if (dirName) {
+          showToast(`Facture sauvée : ${dirName}/${pdfFileName}`, 'success');
+        } else {
+          downloadFallback(blob, pdfFileName);
+        }
       } else {
         const err = await res.json().catch(() => ({}));
         showToast(err.erreur || 'Erreur PDF', 'error');
@@ -21514,6 +21527,18 @@ const VueCommandes = ({ showToast }) => {
           </div>
         )}
       </div>
+
+      {/* Dossiers de sauvegarde */}
+      {window.showDirectoryPicker && (
+        <div className="flex items-center gap-3 text-xs text-slate-500 flex-wrap">
+          <button onClick={() => pickDir('factureDir', setFactureDirName)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors" title="Choisir le dossier de sauvegarde des factures PDF">
+            <span>📁</span> Factures : <span className="font-medium text-slate-700">{factureDirName || 'non configuré'}</span>
+          </button>
+          <button onClick={() => pickDir('csvDir', setCsvDirName)} className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 hover:bg-slate-50 transition-colors" title="Choisir le dossier de sauvegarde des CSV logisticien">
+            <span>📁</span> CSV : <span className="font-medium text-slate-700">{csvDirName || 'non configuré'}</span>
+          </button>
+        </div>
+      )}
 
       {loading && <div className="flex items-center gap-2 text-sm text-slate-400"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
 
