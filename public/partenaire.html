@@ -245,6 +245,44 @@
     const is5L = (ref, baseRef) => ref === baseRef + '-5000';
     const is500ml = (ref, baseRef) => ref === baseRef;
 
+    // ─── Images produits (CDN Shopify) ──────────────────────────────────────────
+    const PRODUCT_IMAGES = {
+      'P016': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/bougie-revelation.jpg',
+      'P023': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/diffuseur-revelation.jpg',
+      'P012': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/brume-oreiller.jpg',
+      'P009': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/savon-invitation.jpg',
+      'P020': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/coffret-bain.jpg',
+      'P021-20': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/creme-mains-20ml.jpg',
+      'P026': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/gel-hydroalcoolique.jpg',
+      'P008': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/gel-douche-reddition.jpg',
+      'P035': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/gel-douche-elegance.jpg',
+      'P019': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/shampoing-reddition.jpg',
+      'P010': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/shampoing-irreverence.jpg',
+      'P034': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/shampoing-elegance.jpg',
+      'P042': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/gel-corps-cheveux-reddition.jpg',
+      'P014': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/gel-corps-cheveux-irreverence.jpg',
+      'P040': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/gel-corps-cheveux-elegance.jpg',
+      'P024': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/apres-shampoing-irreverence.jpg',
+      'P037': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/apres-shampoing-elegance.jpg',
+      'P036': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/lotion-elegance.jpg',
+      'P011': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/lotion-imminence.jpg',
+      'P007': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/savon-liquide-insurrection.jpg',
+    };
+
+    const ProductImage = ({ productRef, nom, className = "" }) => {
+      const [imgError, setImgError] = useState(false);
+      const src = PRODUCT_IMAGES[productRef];
+      const initials = (nom || productRef || '').split(/[\s-]+/).map(w => w[0]).join('').slice(0, 2).toUpperCase();
+      if (!src || imgError) {
+        return (
+          <div className={`bg-gold-50 dark:bg-gold-900/20 flex items-center justify-center ${className}`}>
+            <span className="text-gold-500 dark:text-gold-400 font-display font-semibold text-lg">{initials}</span>
+          </div>
+        );
+      }
+      return <img src={src} alt={nom || productRef} className={`object-cover ${className}`} onError={() => setImgError(true)} />;
+    };
+
     const AmenityProductRow = ({ p, getQty, addCarton, removeCarton }) => {
       const moq = p.moq || 1;
       const qty = getQty(p.ref);
@@ -452,6 +490,252 @@
               </div>
             </div>
           )}
+        </div>
+      );
+    };
+
+    // ─── Page d'accueil ───────────────────────────────────────────────────────
+    const AccueilView = ({ partner, amenities, catalogue, panier, setPanier, commandes, setVue, setPanierOpen, showToast }) => {
+      const getQty = (ref) => panier[ref]?.quantite || 0;
+
+      const addCarton = (ref) => {
+        const prod = catalogue.find(c => c.ref === ref);
+        if (!prod) return;
+        const moq = prod.moq || 1;
+        setPanier(p => ({ ...p, [ref]: { ...prod, quantite: getQty(ref) + moq } }));
+      };
+
+      const removeCarton = (ref) => {
+        const prod = catalogue.find(c => c.ref === ref);
+        if (!prod) return;
+        const moq = prod.moq || 1;
+        const next = getQty(ref) - moq;
+        if (next <= 0) {
+          setPanier(p => { const n = { ...p }; delete n[ref]; return n; });
+        } else {
+          setPanier(p => ({ ...p, [ref]: { ...prod, quantite: next } }));
+        }
+      };
+
+      // Amenities configurés avec leurs produits
+      const amenitySections = useMemo(() => {
+        if (!amenities || Object.keys(amenities).length === 0) return [];
+        return AMENITY_TYPES
+          .filter(type => amenities[type.key])
+          .map(type => {
+            const baseRef = amenities[type.key];
+            const gammeInfo = type.gammes.find(g => g.ref === baseRef);
+            const allProducts = catalogue.filter(p => p.ref === baseRef || p.ref.startsWith(baseRef + '-'));
+            const fiveLProducts = allProducts.filter(p => is5L(p.ref, baseRef));
+            const flaconProducts = allProducts.filter(p => !is5L(p.ref, baseRef));
+            return { type, baseRef, gammeInfo, fiveLProducts, flaconProducts, allProducts };
+          })
+          .filter(s => s.allProducts.length > 0);
+      }, [amenities, catalogue]);
+
+      // Produits cadeaux VIP
+      const vipProducts = useMemo(() => catalogue.filter(p => p.categorie === 'Cadeaux VIP & Spa'), [catalogue]);
+
+      // Dernière commande
+      const derniere = commandes && commandes.length > 0 ? commandes[0] : null;
+      const handleRecommander = () => {
+        if (!derniere) return;
+        const newPanier = {};
+        derniere.products.forEach(p => {
+          const prod = catalogue.find(c => c.ref === p.ref);
+          if (prod) newPanier[p.ref] = { ...prod, quantite: p.quantite };
+        });
+        setPanier(newPanier);
+        setPanierOpen(true);
+        showToast('Panier rempli avec votre derni\u00e8re commande', 'success');
+      };
+
+      const promoActive = catalogue.some(p => p.promo_pct > 0);
+
+      return (
+        <div className="animate-fade-in space-y-8 sm:space-y-10">
+
+          {/* ── Hero Banner ── */}
+          <div className="text-center py-6 sm:py-10 bg-gradient-to-b from-gold-50 to-white dark:from-slate-900 dark:to-slate-800 -mx-4 px-4 rounded-b-3xl">
+            <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-14 sm:h-16 mx-auto mb-4" />
+            <h1 className="font-display text-2xl sm:text-3xl text-gray-900 dark:text-white mb-1">Bienvenue, {partner.nom}</h1>
+            <p className="text-sm text-gray-500 dark:text-slate-400">Votre espace de commande Terre de Mars</p>
+          </div>
+
+          {/* ── R\u00e9assort rapide ── */}
+          {amenitySections.length > 0 && (
+            <div>
+              <div className="flex items-center gap-2 mb-4">
+                <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
+                <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">R&eacute;assort rapide</h2>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                {amenitySections.map(({ type, baseRef, gammeInfo, fiveLProducts, flaconProducts }) => (
+                  <div key={type.key} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
+                    <ProductImage productRef={baseRef} nom={type.label} className="w-full h-28 sm:h-32 rounded-t-xl" />
+                    <div className="p-2.5 sm:p-3">
+                      <div className="text-xs font-semibold text-gray-900 dark:text-white truncate">{type.label}</div>
+                      <div className="text-[10px] text-gold-600 dark:text-gold-400 truncate mb-2">{gammeInfo?.gamme || ''}</div>
+                      <div className="space-y-1.5">
+                        {fiveLProducts.map(p => {
+                          const qty = getQty(p.ref);
+                          const moq = p.moq || 1;
+                          const unitPrice = p.prix_promo ?? p.prix_remise;
+                          return (
+                            <div key={p.ref} className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] text-gray-500 dark:text-slate-400 truncate flex-1">5L</span>
+                              <span className="text-[10px] font-semibold text-gold-600 shrink-0">{unitPrice.toFixed(2)}&euro;</span>
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                {qty > 0 && <button onClick={() => removeCarton(p.ref)} className="w-6 h-6 rounded bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-xs font-bold transition-colors">-</button>}
+                                {qty > 0 && <span className="text-xs font-semibold text-gray-900 dark:text-white min-w-[16px] text-center">{moq > 1 ? Math.floor(qty / moq) : qty}</span>}
+                                <button onClick={() => addCarton(p.ref)} className="w-6 h-6 rounded bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-xs font-bold transition-colors">+</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                        {flaconProducts.map(p => {
+                          const qty = getQty(p.ref);
+                          const moq = p.moq || 1;
+                          const unitPrice = p.prix_promo ?? p.prix_remise;
+                          const label = p.nom.match(/(\d+\s*ml)/i)?.[1] || 'Flacon';
+                          return (
+                            <div key={p.ref} className="flex items-center justify-between gap-1">
+                              <span className="text-[10px] text-gray-500 dark:text-slate-400 truncate flex-1">{label}</span>
+                              <span className="text-[10px] font-semibold text-gold-600 shrink-0">{unitPrice.toFixed(2)}&euro;</span>
+                              <div className="flex items-center gap-0.5 shrink-0">
+                                {qty > 0 && <button onClick={() => removeCarton(p.ref)} className="w-6 h-6 rounded bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-xs font-bold transition-colors">-</button>}
+                                {qty > 0 && <span className="text-xs font-semibold text-gray-900 dark:text-white min-w-[16px] text-center">{moq > 1 ? Math.floor(qty / moq) : qty}</span>}
+                                <button onClick={() => addCarton(p.ref)} className="w-6 h-6 rounded bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-xs font-bold transition-colors">+</button>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  </div>
+                ))}
+              </div>
+              <div className="mt-4 text-center">
+                <button onClick={() => setVue("catalogue")} className="text-sm text-gold-600 dark:text-gold-400 hover:text-gold-700 dark:hover:text-gold-300 font-medium transition-colors">
+                  Voir le catalogue complet &rarr;
+                </button>
+              </div>
+            </div>
+          )}
+
+          {/* ── Cadeaux VIP & Spa ── */}
+          {vipProducts.length > 0 && (
+            <div>
+              <h2 className="font-display text-lg sm:text-xl text-gray-900 dark:text-white mb-4">Cadeaux pour vos clients VIP</h2>
+              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
+                {vipProducts.map(p => {
+                  const qty = getQty(p.ref);
+                  const moq = p.moq || 1;
+                  const unitPrice = p.prix_promo ?? p.prix_remise;
+                  return (
+                    <div key={p.ref} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
+                      <div className="bg-gold-50 dark:bg-gold-900/20">
+                        <ProductImage productRef={p.ref} nom={p.nom} className="w-full h-32 sm:h-36 rounded-t-xl" />
+                      </div>
+                      <div className="p-3">
+                        <div className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white mb-1 line-clamp-2 leading-tight">{p.nom}</div>
+                        <div className="flex items-center gap-1 mb-2">
+                          {p.promo_pct > 0 ? (
+                            <>
+                              <span className="text-[10px] text-gray-400 dark:text-slate-500 line-through">{p.prix_remise.toFixed(2)}&euro;</span>
+                              <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)}&euro; HT</span>
+                            </>
+                          ) : (
+                            <>
+                              <span className="text-xs font-semibold text-gold-600">{unitPrice.toFixed(2)}&euro; HT</span>
+                              {p.discount_pct > 0 && <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">-{p.discount_pct}%</span>}
+                            </>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {qty > 0 && <button onClick={() => removeCarton(p.ref)} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-xs font-bold transition-colors">-</button>}
+                          {qty > 0 && <span className="text-sm font-semibold text-gray-900 dark:text-white min-w-[20px] text-center">{moq > 1 ? Math.floor(qty / moq) : qty}</span>}
+                          <button onClick={() => addCarton(p.ref)} className={`flex-1 h-7 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center ${qty > 0 ? 'w-7 flex-none bg-gold-500 text-white hover:bg-gold-600' : 'bg-gold-500 text-white hover:bg-gold-600'}`}>
+                            {qty > 0 ? '+' : 'Ajouter'}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* ── Coffrets Cadeaux ── */}
+          <div className="bg-gold-100 dark:bg-gold-900/20 border border-gold-200 dark:border-gold-800 rounded-2xl p-5 sm:p-8 text-center">
+            <h2 className="font-display text-lg sm:text-xl text-gray-900 dark:text-white mb-2">Coffrets sur mesure</h2>
+            <p className="text-sm text-gray-600 dark:text-slate-300 mb-5 max-w-lg mx-auto">
+              Cr&eacute;ez des coffrets cadeaux personnalis&eacute;s pour vos clients les plus exigeants. Choix des produits, packaging premium, gravure possible.
+            </p>
+            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+              <a href="mailto:hugo@terredemars.com?subject=Coffrets%20cadeaux%20sur%20mesure" className="inline-flex items-center gap-2 bg-gold-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors">
+                Contacter Hugo
+              </a>
+              <a href="tel:+33685820335" className="text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 transition-colors">
+                06 85 82 03 35
+              </a>
+            </div>
+          </div>
+
+          {/* ── Derni\u00e8re commande ── */}
+          {derniere && (() => {
+            const statutConfig = {
+              en_attente: { label: "En attente", bg: "bg-amber-50 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-300" },
+              validee: { label: "Valid\u00e9e", bg: "bg-green-50 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400" },
+              annulee: { label: "Annul\u00e9e", bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400" },
+              annulee_client: { label: "Annul\u00e9e", bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400" },
+            };
+            const cfg = statutConfig[derniere.statut] || statutConfig.en_attente;
+            return (
+              <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl p-4 shadow-sm dark:shadow-none">
+                <div className="flex items-center justify-between mb-2">
+                  <div className="flex items-center gap-2">
+                    <div className="w-1 h-5 bg-gold-400 rounded-full"></div>
+                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Derni&egrave;re commande</h3>
+                  </div>
+                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                </div>
+                <div className="flex items-center justify-between">
+                  <div className="text-sm text-gray-500 dark:text-slate-400">
+                    {new Date(derniere.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} &mdash; {derniere.total_ht.toFixed(2)} &euro; HT
+                    <span className="text-gray-400 dark:text-slate-500 ml-1">({derniere.products.length} art.)</span>
+                  </div>
+                  <button onClick={handleRecommander} className="px-3 py-1.5 bg-gold-500 text-white text-xs font-medium rounded-lg hover:bg-gold-600 transition-colors">
+                    Re-commander
+                  </button>
+                </div>
+              </div>
+            );
+          })()}
+
+          {/* ── Acc\u00e8s rapides ── */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+            <button onClick={() => setVue("catalogue")} className="bg-white dark:bg-slate-800 border border-gold-200 dark:border-slate-600 rounded-xl p-4 text-center hover:border-gold-400 dark:hover:border-gold-600 transition-colors group">
+              <div className="text-xl mb-1 group-hover:scale-110 transition-transform">&#128230;</div>
+              <div className="text-xs font-medium text-gray-700 dark:text-slate-200">Catalogue</div>
+            </button>
+            {promoActive && (
+              <button onClick={() => setVue("bonsplans")} className="bg-white dark:bg-slate-800 border border-gold-200 dark:border-slate-600 rounded-xl p-4 text-center hover:border-red-400 dark:hover:border-red-600 transition-colors group">
+                <div className="text-xl mb-1 group-hover:scale-110 transition-transform">&#127873;</div>
+                <div className="text-xs font-medium text-red-600 dark:text-red-400">Bons plans</div>
+              </button>
+            )}
+            <button onClick={() => setVue("historique")} className="bg-white dark:bg-slate-800 border border-gold-200 dark:border-slate-600 rounded-xl p-4 text-center hover:border-gold-400 dark:hover:border-gold-600 transition-colors group">
+              <div className="text-xl mb-1 group-hover:scale-110 transition-transform">&#128196;</div>
+              <div className="text-xs font-medium text-gray-700 dark:text-slate-200">Historique</div>
+            </button>
+            <button onClick={() => setVue("documents")} className="bg-white dark:bg-slate-800 border border-gold-200 dark:border-slate-600 rounded-xl p-4 text-center hover:border-gold-400 dark:hover:border-gold-600 transition-colors group">
+              <div className="text-xl mb-1 group-hover:scale-110 transition-transform">&#128193;</div>
+              <div className="text-xs font-medium text-gray-700 dark:text-slate-200">Documents</div>
+            </button>
+          </div>
+
         </div>
       );
     };
@@ -1628,7 +1912,7 @@
         });
       };
       const [partner, setPartner] = useState(null);
-      const [vue, setVue] = useState("catalogue");
+      const [vue, setVue] = useState("accueil");
       const [catalogue, setCatalogue] = useState([]);
       const [promoActive, setPromoActive] = useState(false);
       const [promoTitle, setPromoTitle] = useState('');
@@ -1862,6 +2146,9 @@
                 )}
               </div>
               <div className="flex items-center gap-0.5 sm:gap-1">
+                <button onClick={() => { setVue("accueil"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "accueil" && !panierOpen ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`} title="Accueil">
+                  <span className="text-base sm:text-lg leading-none">&#8962;</span>
+                </button>
                 <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`}>
                   Catalogue
                 </button>
@@ -1906,12 +2193,14 @@
           )}
 
           {/* Main content */}
-          <main className={`max-w-6xl mx-auto px-4 py-6 relative z-10 ${panierCount > 0 && !panierOpen && (vue === "catalogue" || vue === "bonsplans") ? 'pb-24' : ''}`}>
+          <main className={`max-w-6xl mx-auto px-4 py-6 relative z-10 ${panierCount > 0 && !panierOpen && (vue === "accueil" || vue === "catalogue" || vue === "bonsplans") ? 'pb-24' : ''}`}>
             {panierOpen ? (
               <div className="max-w-lg mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Votre panier</h2>
                 <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={submitting} partner={partner} modifyingOrderId={modifyingOrderId} initialNotes={modifyingNotes} />
               </div>
+            ) : vue === "accueil" ? (
+              <AccueilView partner={partner} amenities={amenities} catalogue={catalogue} panier={panier} setPanier={setPanier} commandes={commandes} setVue={setVue} setPanierOpen={setPanierOpen} showToast={showToast} />
             ) : vue === "catalogue" ? (
               <div className="animate-fade-in">
                 <DerniereCommandeSection commandes={commandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} showToast={showToast} />
@@ -1943,7 +2232,7 @@
           </main>
 
           {/* Barre flottante total + franco */}
-          {panierCount > 0 && !panierOpen && (vue === "catalogue" || vue === "bonsplans") && (() => {
+          {panierCount > 0 && !panierOpen && (vue === "accueil" || vue === "catalogue" || vue === "bonsplans") && (() => {
             const items = Object.values(panier);
             const subtotalHT = items.reduce((s, i) => s + (i.prix_promo ?? i.prix_remise) * i.quantite, 0);
             const francoSeuil = partner.franco_seuil ?? 800;
