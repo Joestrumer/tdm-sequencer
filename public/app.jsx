@@ -13135,7 +13135,8 @@ const FacturesSingle = ({ showToast }) => {
       if (!res.ok) throw new Error('Erreur PDF: ' + res.status);
       const blob = await res.blob();
       const fileName = documentType === 'proforma' ? `facture-proforma-${result.number || result.id}.pdf` : `facture-invoice-${result.number || result.id}.pdf`;
-      const dirName = await saveFileWithPicker(blob, fileName, 'factureDir');
+      const dirKey = selectedClient?.id ? `factureDir_vf_${selectedClient.id}` : 'factureDir';
+      const dirName = await saveFileWithPicker(blob, fileName, dirKey);
       if (dirName) {
         showToast(`Facture sauvée : ${dirName}/${fileName}`, 'success');
       } else {
@@ -14549,7 +14550,10 @@ const FacturesBatch = ({ showToast }) => {
       if (!res2.ok) throw new Error('Erreur PDF: ' + res2.status);
       const blob = await res2.blob();
       const fileName = documentType === 'proforma' ? `facture-proforma-${r.number || r.id}.pdf` : `facture-invoice-${r.number || r.id}.pdf`;
-      const dirName = await saveFileWithPicker(blob, fileName, 'factureDir');
+      const order = orders.find(o => o.id === r.orderId);
+      const vfClientId = order?.client?.id;
+      const dirKey = vfClientId ? `factureDir_vf_${vfClientId}` : 'factureDir';
+      const dirName = await saveFileWithPicker(blob, fileName, dirKey);
       if (dirName) {
         showToast(`Facture sauvée : ${dirName}/${fileName}`, 'success');
       } else {
@@ -22550,6 +22554,10 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                             const dh = await window.showDirectoryPicker({ mode: 'readwrite', id: `factureDir_${selected.id}` });
                             _dirHandleCache[`factureDir_${selected.id}`] = dh;
                             await _saveHandleIDB(`factureDir_${selected.id}`, dh);
+                            if (selected.vf_client_id) {
+                              _dirHandleCache[`factureDir_vf_${selected.vf_client_id}`] = dh;
+                              await _saveHandleIDB(`factureDir_vf_${selected.vf_client_id}`, dh);
+                            }
                             setPartnerDirName(dh.name);
                             showToast(`Dossier factures configuré : ${dh.name}`, 'success');
                           } catch (e) { /* annulation utilisateur */ }
@@ -22561,6 +22569,10 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                           <button onClick={async () => {
                             _dirHandleCache[`factureDir_${selected.id}`] = null;
                             await _removeHandleIDB(`factureDir_${selected.id}`);
+                            if (selected.vf_client_id) {
+                              _dirHandleCache[`factureDir_vf_${selected.vf_client_id}`] = null;
+                              await _removeHandleIDB(`factureDir_vf_${selected.vf_client_id}`);
+                            }
                             setPartnerDirName(null);
                             showToast('Dossier factures retiré', 'success');
                           }} className="text-xs text-red-400 hover:text-red-600 px-1" title="Retirer le dossier configuré">✕</button>
