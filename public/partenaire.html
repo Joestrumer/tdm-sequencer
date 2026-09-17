@@ -45,7 +45,7 @@
   <script src="https://unpkg.com/@babel/standalone@7/babel.min.js"></script>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,400;0,500;1,400;1,500&family=DM+Sans:wght@300;400;500;600;700&family=Playfair+Display:wght@400;500;600;700&display=swap" rel="stylesheet" />
   <style>
     * { font-family: 'DM Sans', sans-serif; box-sizing: border-box; }
     body { margin: 0; background: #FFFFFF; }
@@ -110,6 +110,108 @@
     html.dark body { background: #0f172a; }
     .dark .tache-1, .dark .tache-2, .dark .tache-3 { opacity: 0.3; }
     .dark .tache-login-1, .dark .tache-login-2 { opacity: 0.3; }
+
+    /* ─── Accueil maquette ──────────────────────────────────────────── */
+    #tdm-partner-preview{--tdm-paper:#fbfaf7;--tdm-white:#fff;--tdm-ink:#242a23;--tdm-muted:#6c7066;--tdm-line:#dedfd5;--tdm-soft:#f0f0e9;--tdm-olive:#686c45;--tdm-dark:#30392d;--tdm-on-dark:#fcfcf7;color:var(--tdm-ink);background:var(--tdm-paper);font-family:'DM Sans',Arial,sans-serif;font-size:14px;line-height:1.5;width:100%;overflow:clip;isolation:isolate}
+    .dark #tdm-partner-preview{--tdm-paper:#191b18;--tdm-white:#232621;--tdm-ink:#f0eee6;--tdm-muted:#b5b8ab;--tdm-line:#42473d;--tdm-soft:#2e332b;--tdm-olive:#c3c69a;--tdm-dark:#dfe5d5;--tdm-on-dark:#252b22}
+    #tdm-partner-preview *{box-sizing:border-box}
+    #tdm-partner-preview [hidden]{display:none!important}
+    #tdm-partner-preview h1,#tdm-partner-preview h2,#tdm-partner-preview h3,#tdm-partner-preview p{margin:0;color:inherit}
+    #tdm-partner-preview button,#tdm-partner-preview select{font:inherit;color:inherit}
+    #tdm-partner-preview button:focus-visible,#tdm-partner-preview a:focus-visible,#tdm-partner-preview select:focus-visible{outline:2px solid var(--tdm-olive);outline-offset:4px}
+    #tdm-partner-preview button{border-radius:0}
+    #tdm-partner-preview a{color:inherit}
+    #tdm-partner-preview .tdm-eyebrow{font-size:11px;letter-spacing:2px;text-transform:uppercase;color:var(--tdm-olive);font-weight:500}
+    #tdm-partner-preview .tdm-serif{font-family:'Cormorant Garamond',Georgia,serif;font-weight:400;letter-spacing:-.8px}
+    #tdm-partner-preview .tdm-top{display:flex;align-items:center;justify-content:space-between;gap:20px;padding:23px 36px;background:var(--tdm-white);border-bottom:1px solid var(--tdm-line)}
+    #tdm-partner-preview .tdm-brand{display:flex;align-items:center;gap:18px;min-width:0}
+    #tdm-partner-preview .tdm-logo{width:96px;height:50px;object-fit:contain}
+    .dark #tdm-partner-preview .tdm-logo{filter:invert(1)}
+    #tdm-partner-preview .tdm-brand-note{padding-left:17px;border-left:1px solid var(--tdm-line);color:var(--tdm-muted);font-size:11px;letter-spacing:1.7px;line-height:1.7;text-transform:uppercase}
+    #tdm-partner-preview .tdm-nav{display:flex;align-items:center;gap:22px}
+    #tdm-partner-preview .tdm-nav button{border:0;background:none;padding:8px 0;font-size:12px;color:var(--tdm-muted);white-space:nowrap;cursor:pointer}
+    #tdm-partner-preview .tdm-nav button.tdm-nav-active{color:var(--tdm-ink);border-bottom:1px solid var(--tdm-ink)}
+    #tdm-partner-preview .tdm-account{display:flex;align-items:center;gap:18px;font-size:12px}
+    #tdm-partner-preview .tdm-bag{display:flex;align-items:center;gap:8px;border:1px solid var(--tdm-line);background:var(--tdm-white);padding:10px 13px;font-size:12px;white-space:nowrap;cursor:pointer}
+    #tdm-partner-preview .tdm-bag-count{min-width:18px;height:18px;display:inline-flex;align-items:center;justify-content:center;background:var(--tdm-dark);color:var(--tdm-on-dark);font-size:11px;border-radius:50%}
+    #tdm-partner-preview .tdm-main{padding:0 36px 32px}
+    #tdm-partner-preview .tdm-welcome{display:flex;justify-content:space-between;gap:16px;align-items:center;padding:22px 0;font-size:12px;color:var(--tdm-muted)}
+    #tdm-partner-preview .tdm-welcome strong{color:var(--tdm-ink);font-weight:500}
+    #tdm-partner-preview .tdm-hero{display:grid;grid-template-columns:1.13fr 1fr;min-height:320px;background:var(--tdm-soft)}
+    #tdm-partner-preview .tdm-hero-copy{padding:32px 32px 30px;display:flex;flex-direction:column;align-items:flex-start;justify-content:center}
+    #tdm-partner-preview .tdm-hero h1{font-size:50px;line-height:1.03;margin:15px 0 17px;letter-spacing:-1.8px}
+    #tdm-partner-preview .tdm-hero h1 em{color:var(--tdm-olive);font-weight:400}
+    #tdm-partner-preview .tdm-hero-copy>p:not(.tdm-eyebrow){font-size:13px;line-height:1.7;max-width:365px;color:var(--tdm-muted)}
+    #tdm-partner-preview .tdm-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:23px}
+    #tdm-partner-preview .tdm-action{border:1px solid var(--tdm-dark);background:var(--tdm-dark);color:var(--tdm-on-dark);padding:12px 15px;display:inline-flex;align-items:center;justify-content:center;gap:9px;font-size:12px;font-weight:500;min-height:42px;transition:opacity .15s;cursor:pointer}
+    #tdm-partner-preview .tdm-action:hover{opacity:.83}
+    #tdm-partner-preview .tdm-action.tdm-outline{background:transparent;color:var(--tdm-ink);border-color:var(--tdm-line)}
+    #tdm-partner-preview .tdm-hero-photo{position:relative;min-height:300px;margin:0;overflow:hidden}
+    #tdm-partner-preview .tdm-hero-photo img{position:absolute;width:100%;height:100%;object-fit:cover;object-position:63% 46%}
+    #tdm-partner-preview .tdm-hero-photo figcaption{position:absolute;left:18px;bottom:15px;color:#fff;font-size:11px;padding:5px 9px;background:#242a2377;backdrop-filter:blur(6px);letter-spacing:.4px}
+    #tdm-partner-preview .tdm-assurances{display:flex;justify-content:space-between;gap:16px;padding:17px 10px;border-bottom:1px solid var(--tdm-line);color:var(--tdm-muted);font-size:11px}
+    #tdm-partner-preview .tdm-assurances span{display:flex;align-items:center;gap:8px}
+    #tdm-partner-preview .tdm-section{padding-top:31px;scroll-margin-top:20px}
+    #tdm-partner-preview .tdm-section-head{display:flex;align-items:flex-end;justify-content:space-between;gap:22px;margin-bottom:18px}
+    #tdm-partner-preview .tdm-section h2{font-size:32px;line-height:1.12}
+    #tdm-partner-preview .tdm-section-sub{color:var(--tdm-muted);font-size:12px;margin-top:6px}
+    #tdm-partner-preview .tdm-textlink{display:inline-flex;align-items:center;gap:8px;background:none;border:0;border-bottom:1px solid var(--tdm-line);padding:4px 0;color:var(--tdm-ink);font-size:12px;white-space:nowrap;cursor:pointer}
+    #tdm-partner-preview .tdm-essentials{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:13px}
+    #tdm-partner-preview .tdm-essential{background:var(--tdm-white);border:1px solid var(--tdm-line);padding:14px;min-width:0}
+    #tdm-partner-preview .tdm-essential-top{display:flex;gap:8px;align-items:center;margin-bottom:10px;min-height:82px}
+    #tdm-partner-preview .tdm-essential img{width:68px;height:85px;object-fit:contain;flex-shrink:0}
+    #tdm-partner-preview .tdm-essential h3{font-size:13px;font-weight:500;line-height:1.45}
+    #tdm-partner-preview .tdm-essential p{font-size:11px;color:var(--tdm-muted);margin-top:2px}
+    #tdm-partner-preview .tdm-essential .tdm-essential-cost{font-size:12px;color:var(--tdm-ink);margin-top:7px}
+    #tdm-partner-preview .tdm-essential-controls{display:grid;grid-template-columns:auto 1fr;gap:7px}
+    #tdm-partner-preview .tdm-essential select{max-width:100%;min-width:0;font-size:11px;padding:9px 5px;border:1px solid var(--tdm-line);background:var(--tdm-white);cursor:pointer}
+    #tdm-partner-preview .tdm-add-small{padding:10px 7px;background:var(--tdm-soft);border:1px solid var(--tdm-line);font-size:11px;white-space:nowrap;cursor:pointer}
+    #tdm-partner-preview .tdm-add-small:hover{background:var(--tdm-line)}
+    #tdm-partner-preview .tdm-vip{padding-top:41px}
+    #tdm-partner-preview .tdm-vip-head .tdm-eyebrow{margin-bottom:11px}
+    #tdm-partner-preview .tdm-vip h2{font-size:39px;line-height:1.06}
+    #tdm-partner-preview .tdm-vip-intro{font-size:12px;color:var(--tdm-muted);margin-top:11px;max-width:510px;line-height:1.65}
+    #tdm-partner-preview .tdm-entry-price{text-align:right;flex-shrink:0;align-self:center;font-size:11px;color:var(--tdm-muted)}
+    #tdm-partner-preview .tdm-entry-price strong{display:block;font-family:'Cormorant Garamond',Georgia,serif;font-weight:400;font-size:40px;line-height:1.1;color:var(--tdm-ink)}
+    #tdm-partner-preview .tdm-filters{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 18px}
+    #tdm-partner-preview .tdm-filter{background:transparent;color:var(--tdm-muted);border:1px solid var(--tdm-line);padding:8px 12px;font-size:11px;cursor:pointer}
+    #tdm-partner-preview .tdm-filter.tdm-filter-active{background:var(--tdm-dark);border-color:var(--tdm-dark);color:var(--tdm-on-dark)}
+    #tdm-partner-preview .tdm-gifts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+    #tdm-partner-preview .tdm-product{min-width:0;display:flex;flex-direction:column}
+    #tdm-partner-preview .tdm-product-stage{position:relative;min-height:212px;background:var(--tdm-soft);overflow:hidden;display:flex;align-items:center;justify-content:center}
+    #tdm-partner-preview .tdm-product-stage img{width:100%;height:212px;object-fit:contain;padding:7px;transition:transform .22s}
+    #tdm-partner-preview .tdm-product:hover .tdm-product-stage img{transform:scale(1.045)}
+    #tdm-partner-preview .tdm-product-stage.tdm-mask-stage{background:#fff}
+    #tdm-partner-preview .tdm-product-ref{position:absolute;left:13px;top:11px;font-size:11px;color:var(--tdm-muted);z-index:1;letter-spacing:1px}
+    #tdm-partner-preview .tdm-mask-stage .tdm-product-ref{color:#73766d}
+    #tdm-partner-preview .tdm-product-body{padding:16px 0 0;display:flex;flex-direction:column;flex:1}
+    #tdm-partner-preview .tdm-product h3{font-size:15px;font-weight:500;margin-bottom:4px}
+    #tdm-partner-preview .tdm-product-kind{font-size:11px;color:var(--tdm-muted);letter-spacing:.2px}
+    #tdm-partner-preview .tdm-product-desc{font-size:12px;color:var(--tdm-muted);line-height:1.6;margin:10px 0 13px;min-height:39px}
+    #tdm-partner-preview .tdm-product-price{font-size:21px;font-weight:400;letter-spacing:-.5px;margin-top:auto}
+    #tdm-partner-preview .tdm-product-price span{font-size:11px;color:var(--tdm-muted);letter-spacing:0}
+    #tdm-partner-preview .tdm-product-pack{font-size:11px;color:var(--tdm-muted);margin:4px 0 13px}
+    #tdm-partner-preview .tdm-product-pack strong{color:var(--tdm-ink);font-weight:500}
+    #tdm-partner-preview .tdm-add{width:100%;background:transparent;border:1px solid var(--tdm-ink);color:var(--tdm-ink);padding:11px;display:flex;justify-content:space-between;align-items:center;font-size:12px;min-height:43px;cursor:pointer}
+    #tdm-partner-preview .tdm-add:hover{background:var(--tdm-dark);color:var(--tdm-on-dark)}
+    #tdm-partner-preview .tdm-status{display:flex;justify-content:space-between;align-items:center;gap:15px;background:var(--tdm-soft);margin-top:16px;padding:12px 15px;font-size:12px}
+    #tdm-partner-preview .tdm-coffret{margin-top:34px;padding:26px 28px;display:grid;grid-template-columns:58px 1fr auto;gap:22px;align-items:center;border:1px solid var(--tdm-line);background:var(--tdm-soft)}
+    #tdm-partner-preview .tdm-gift-icon{width:55px;height:65px;display:flex;align-items:center;justify-content:center;color:var(--tdm-olive);border:1px solid var(--tdm-line)}
+    #tdm-partner-preview .tdm-gift-icon svg{width:27px;height:27px;stroke-width:1}
+    #tdm-partner-preview .tdm-coffret h2{font-size:29px;line-height:1.1;margin:5px 0 8px}
+    #tdm-partner-preview .tdm-coffret p:not(.tdm-eyebrow){font-size:12px;color:var(--tdm-muted);max-width:390px}
+    #tdm-partner-preview .tdm-coffret-action{text-align:right}
+    #tdm-partner-preview .tdm-coffret-action>p{margin-bottom:11px}
+    #tdm-partner-preview .tdm-coffret-action strong{font-weight:500;color:var(--tdm-ink)}
+    #tdm-partner-preview .tdm-contact{background:var(--tdm-white);padding:22px;margin-top:12px;display:flex;justify-content:space-between;gap:20px;align-items:center;border:1px solid var(--tdm-line);font-size:12px}
+    #tdm-partner-preview .tdm-contact p{color:var(--tdm-muted);margin-top:5px}
+    #tdm-partner-preview .tdm-contact-details{display:grid;gap:4px;text-align:right}
+    #tdm-partner-preview .tdm-foot{padding:28px 0 0;display:flex;justify-content:space-between;gap:20px;align-items:center;font-size:11px;color:var(--tdm-muted)}
+    #tdm-partner-preview .tdm-foot .tdm-foot-signature{letter-spacing:2px;text-transform:uppercase;color:var(--tdm-ink)}
+    #tdm-partner-preview .tdm-foot a{text-decoration:none;border-bottom:1px solid var(--tdm-line)}
+    @media(max-width:850px){#tdm-partner-preview .tdm-top{padding:18px 24px;gap:16px;flex-wrap:wrap}#tdm-partner-preview .tdm-brand-note{display:none}#tdm-partner-preview .tdm-nav{gap:18px}#tdm-partner-preview .tdm-account-name{display:none}#tdm-partner-preview .tdm-main{padding-left:24px;padding-right:24px}#tdm-partner-preview .tdm-hero h1{font-size:43px}#tdm-partner-preview .tdm-hero-copy{padding:27px 24px}#tdm-partner-preview .tdm-hero{grid-template-columns:1.1fr 1fr}#tdm-partner-preview .tdm-essential{padding:10px}#tdm-partner-preview .tdm-essential img{width:50px}#tdm-partner-preview .tdm-essential-controls{grid-template-columns:1fr}#tdm-partner-preview .tdm-coffret{grid-template-columns:1fr auto}#tdm-partner-preview .tdm-gift-icon{display:none}}
+    @media(max-width:600px){#tdm-partner-preview .tdm-top{padding:16px 18px}#tdm-partner-preview .tdm-brand{flex:1}#tdm-partner-preview .tdm-logo{width:85px;height:43px}#tdm-partner-preview .tdm-nav{order:3;width:100%;justify-content:space-between;padding-top:7px}#tdm-partner-preview .tdm-main{padding:0 18px 23px}#tdm-partner-preview .tdm-welcome{font-size:11px;padding:17px 0}#tdm-partner-preview .tdm-welcome>span:last-child{display:none}#tdm-partner-preview .tdm-hero{grid-template-columns:1fr}#tdm-partner-preview .tdm-hero-copy{padding:26px 23px}#tdm-partner-preview .tdm-hero h1{font-size:43px}#tdm-partner-preview .tdm-hero-photo{min-height:190px}#tdm-partner-preview .tdm-hero-photo img{object-position:60% 36%}#tdm-partner-preview .tdm-assurances{padding:14px 0;flex-wrap:wrap;gap:10px 18px;font-size:11px}#tdm-partner-preview .tdm-section-head{align-items:flex-start;gap:12px}#tdm-partner-preview .tdm-section h2{font-size:29px}#tdm-partner-preview .tdm-section-head>.tdm-textlink{white-space:normal;max-width:105px;text-align:left;font-size:11px}#tdm-partner-preview .tdm-essentials{grid-template-columns:1fr;gap:9px}#tdm-partner-preview .tdm-essential{display:grid;grid-template-columns:1fr 115px;gap:8px;align-items:center;padding:10px}#tdm-partner-preview .tdm-essential-top{min-height:72px;margin:0}#tdm-partner-preview .tdm-essential img{height:75px;width:49px}#tdm-partner-preview .tdm-essential select{font-size:12px}#tdm-partner-preview .tdm-essential h3{font-size:12px}#tdm-partner-preview .tdm-vip .tdm-section-head{display:block}#tdm-partner-preview .tdm-vip h2{font-size:34px}#tdm-partner-preview .tdm-entry-price{margin-top:15px;text-align:left;display:flex;align-items:baseline;gap:8px;flex-wrap:wrap}#tdm-partner-preview .tdm-entry-price strong{font-size:29px}#tdm-partner-preview .tdm-gifts{grid-template-columns:1fr;gap:26px}#tdm-partner-preview .tdm-product-stage{min-height:240px}#tdm-partner-preview .tdm-product-stage img{height:240px}#tdm-partner-preview .tdm-product-body{padding-top:14px}#tdm-partner-preview .tdm-product-desc{min-height:0;margin:8px 0 12px}#tdm-partner-preview .tdm-coffret{grid-template-columns:1fr;padding:22px;gap:16px}#tdm-partner-preview .tdm-coffret-action{text-align:left}#tdm-partner-preview .tdm-contact{display:block;padding:18px}#tdm-partner-preview .tdm-contact-details{text-align:left;margin-top:15px}#tdm-partner-preview .tdm-status{align-items:flex-start}#tdm-partner-preview .tdm-status .tdm-textlink{white-space:normal}#tdm-partner-preview .tdm-foot{display:block}#tdm-partner-preview .tdm-foot>span:last-child{display:block;margin-top:9px}}
+    @media(prefers-reduced-motion:reduce){#tdm-partner-preview *{transition:none!important;scroll-behavior:auto!important}}
   </style>
 </head>
 <body>
@@ -264,7 +366,7 @@
       'P035': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P035_1.png',
       // Amenities — shampoing
       'P019': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P019_1.png',
-      'P010': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P010_1.png',
+      'P010': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P010_1_1143dd73-82fb-4306-8ed2-01219c5751e0.png',
       'P034': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P034_1.png',
       // Amenities — gel corps & cheveux
       'P042': 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P042_1.png',
@@ -508,247 +610,348 @@
     };
 
     // ─── Page d'accueil ───────────────────────────────────────────────────────
+    // Inline SVG icons (Lucide)
+    const LucideIcon = ({ name, size = 16, sw = 1.5 }) => {
+      const d = {
+        'arrow-up-right': '<line x1="7" x2="17" y1="17" y2="7"/><polyline points="7 7 17 7 17 17"/>',
+        'arrow-down': '<line x1="12" x2="12" y1="5" y2="19"/><polyline points="19 12 12 19 5 12"/>',
+        'package-check': '<path d="m16 16 2 2 4-4"/><path d="M21 10V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l2-1.14"/><path d="m7.5 4.27 9 5.15"/><polyline points="3.29 7 12 12 20.71 7"/><line x1="12" x2="12" y1="22" y2="12"/>',
+        'refresh-cw': '<polyline points="1 4 1 10 7 10"/><polyline points="23 20 23 14 17 14"/><path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4-4.64 4.36A9 9 0 0 1 3.51 15"/>',
+        'messages-square': '<path d="M14 9a2 2 0 0 1-2 2H6l-4 4V4c0-1.1.9-2 2-2h8a2 2 0 0 1 2 2z"/><path d="M18 9h2a2 2 0 0 1 2 2v11l-4-4h-6a2 2 0 0 1-2-2v-1"/>',
+        'plus': '<line x1="12" x2="12" y1="5" y2="19"/><line x1="5" x2="19" y1="12" y2="12"/>',
+        'shopping-bag': '<path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" x2="21" y1="6" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/>',
+        'gift': '<polyline points="20 12 20 22 4 22 4 12"/><rect width="20" height="5" x="2" y="7"/><line x1="12" x2="12" y1="22" y2="7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
+      };
+      return React.createElement('svg', { width: size, height: size, viewBox: '0 0 24 24', fill: 'none', stroke: 'currentColor', strokeWidth: sw, strokeLinecap: 'round', strokeLinejoin: 'round', 'aria-hidden': 'true', dangerouslySetInnerHTML: { __html: d[name] || '' } });
+    };
+
+    // Images locales de la maquette (optimisées, priorité sur CDN)
+    const ACCUEIL_IMAGES = {
+      'P008': '/accueil-assets/reddition.png',
+      'P010': '/accueil-assets/shampoo.png',
+      'P011': '/accueil-assets/lotion.png',
+      'P016': '/accueil-assets/eye.png',
+      'P012': '/accueil-assets/lip.png',
+      'P009': '/accueil-assets/mask.jpg',
+    };
+    const getProductImage = (ref) => ACCUEIL_IMAGES[ref] || PRODUCT_IMAGES[ref] || null;
+
+    // Catégorisation VIP pour les filtres
+    const VIP_SPA_REFS = new Set(['P016', 'P009', 'P003', 'P317-100', 'P020']);
+
     const AccueilView = ({ partner, amenities, catalogue, panier, setPanier, commandes, setVue, setPanierOpen, showToast }) => {
-      const getQty = (ref) => panier[ref]?.quantite || 0;
+      const [feedback, setFeedback] = useState(null);
+      const [contactOpen, setContactOpen] = useState(false);
+      const [vipFilter, setVipFilter] = useState('all');
+      const [essentialFormats, setEssentialFormats] = useState({});
+      const previewRef = useRef(null);
 
-      const addCarton = (ref) => {
+      const euro = (n) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n);
+
+      const panierCount = Object.values(panier).reduce((s, i) => s + i.quantite, 0);
+
+      const addCarton = (ref, feedbackLabel) => {
         const prod = catalogue.find(c => c.ref === ref);
         if (!prod) return;
         const moq = prod.moq || 1;
-        setPanier(p => ({ ...p, [ref]: { ...prod, quantite: getQty(ref) + moq } }));
+        const current = panier[ref]?.quantite || 0;
+        setPanier(p => ({ ...p, [ref]: { ...prod, quantite: current + moq } }));
+        const unitPrice = prod.prix_promo ?? prod.prix_remise;
+        setFeedback(`1 carton ajout\u00e9 \u00b7 ${moq} unit\u00e9${moq > 1 ? 's' : ''} \u00b7 ${euro(unitPrice * moq)} HT`);
+        setTimeout(() => setFeedback(null), 5000);
       };
 
-      const removeCarton = (ref) => {
-        const prod = catalogue.find(c => c.ref === ref);
-        if (!prod) return;
-        const moq = prod.moq || 1;
-        const next = getQty(ref) - moq;
-        if (next <= 0) {
-          setPanier(p => { const n = { ...p }; delete n[ref]; return n; });
-        } else {
-          setPanier(p => ({ ...p, [ref]: { ...prod, quantite: next } }));
-        }
+      const scrollTo = (id) => {
+        const el = previewRef.current?.querySelector('#' + id);
+        if (el) el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
       };
 
-      // Amenities configurés avec leurs produits
-      const amenitySections = useMemo(() => {
+      // Build essentials from partner amenities
+      const essentials = useMemo(() => {
         if (!amenities || Object.keys(amenities).length === 0) return [];
         return AMENITY_TYPES
           .filter(type => amenities[type.key])
           .map(type => {
             const baseRef = amenities[type.key];
             const gammeInfo = type.gammes.find(g => g.ref === baseRef);
-            const allProducts = catalogue.filter(p => p.ref === baseRef || p.ref.startsWith(baseRef + '-'));
-            const fiveLProducts = allProducts.filter(p => is5L(p.ref, baseRef));
-            const flaconProducts = allProducts.filter(p => !is5L(p.ref, baseRef));
-            return { type, baseRef, gammeInfo, fiveLProducts, flaconProducts, allProducts };
+            const prod500 = catalogue.find(p => p.ref === baseRef);
+            const prod5L = catalogue.find(p => p.ref === baseRef + '-5000');
+            if (!prod500 && !prod5L) return null;
+            return { key: type.key, label: type.label, gamme: gammeInfo?.gamme || '', baseRef, prod500, prod5L };
           })
-          .filter(s => s.allProducts.length > 0);
+          .filter(Boolean);
       }, [amenities, catalogue]);
 
-      // Produits cadeaux VIP
+      // VIP products
       const vipProducts = useMemo(() => catalogue.filter(p => p.categorie === 'Cadeaux VIP & Spa'), [catalogue]);
+      const filteredVip = useMemo(() => {
+        if (vipFilter === 'all') return vipProducts;
+        if (vipFilter === 'small') return vipProducts.filter(p => (p.prix_promo ?? p.prix_remise) <= 1.50);
+        if (vipFilter === 'spa') return vipProducts.filter(p => VIP_SPA_REFS.has(p.ref));
+        return vipProducts;
+      }, [vipProducts, vipFilter]);
+      const minVipPrice = useMemo(() => {
+        if (vipProducts.length === 0) return 0;
+        return Math.min(...vipProducts.map(p => p.prix_promo ?? p.prix_remise));
+      }, [vipProducts]);
 
-      // Dernière commande
-      const derniere = commandes && commandes.length > 0 ? commandes[0] : null;
-      const handleRecommander = () => {
-        if (!derniere) return;
-        const newPanier = {};
-        derniere.products.forEach(p => {
-          const prod = catalogue.find(c => c.ref === p.ref);
-          if (prod) newPanier[p.ref] = { ...prod, quantite: p.quantite };
-        });
-        setPanier(newPanier);
-        setPanierOpen(true);
-        showToast('Panier rempli avec votre derni\u00e8re commande', 'success');
+      // Coffret product
+      const coffretProd = useMemo(() => catalogue.find(p => p.nom && p.nom.toLowerCase().includes('coffret') && p.categorie !== 'Cadeaux VIP & Spa'), [catalogue]);
+
+      // Product descriptions for VIP (editorial, from mockup)
+      const vipDescriptions = {
+        'P016': 'Une attention d\u00e9licate \u00e0 d\u00e9couvrir au calme de la chambre.',
+        'P012': 'Le petit soin que vos h\u00f4tes glissent dans leur sac, et emportent avec eux.',
+        'P009': "L'invitation \u00e0 prolonger l'exp\u00e9rience bien-\u00eatre, le temps d'un rituel.",
+      };
+      const vipNames = {
+        'P016': 'Le regard, Variance',
+        'P012': 'La douceur, C\u00e9leste',
+        'P009': 'La parenth\u00e8se, R\u00e9demption',
+      };
+      const vipKinds = {
+        'P016': 'Soin contour des yeux',
+        'P012': 'Baume l\u00e8vres \u00b7 15 ml',
+        'P009': 'Masque visage \u00b7 Biocellulose',
       };
 
-      const promoActive = catalogue.some(p => p.promo_pct > 0);
-
       return (
-        <div className="animate-fade-in space-y-8 sm:space-y-10">
-
-          {/* ── Hero Banner ── */}
-          <div className="text-center py-6 sm:py-10 bg-gradient-to-b from-gold-50 to-white dark:from-slate-900 dark:to-slate-800 -mx-4 px-4 rounded-b-3xl">
-            <img src="/logo-tdm-anim.gif" alt="Terre de Mars" className="h-14 sm:h-16 mx-auto mb-4" />
-            <h1 className="font-display text-2xl sm:text-3xl text-gray-900 dark:text-white mb-1">Bienvenue, {partner.nom}</h1>
-            <p className="text-sm text-gray-500 dark:text-slate-400">Votre espace de commande Terre de Mars</p>
-          </div>
-
-          {/* ── R\u00e9assort rapide ── */}
-          {amenitySections.length > 0 && (
-            <div>
-              <div className="flex items-center gap-2 mb-4">
-                <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
-                <h2 className="text-base sm:text-lg font-semibold text-gray-900 dark:text-white">R&eacute;assort rapide</h2>
-              </div>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-                {amenitySections.map(({ type, baseRef, gammeInfo, fiveLProducts, flaconProducts }) => (
-                  <div key={type.key} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
-                    <ProductImage productRef={baseRef} nom={type.label} className="w-full h-28 sm:h-32 rounded-t-xl" />
-                    <div className="p-2.5 sm:p-3">
-                      <div className="text-xs font-semibold text-gray-900 dark:text-white truncate">{type.label}</div>
-                      <div className="text-[10px] text-gold-600 dark:text-gold-400 truncate mb-2">{gammeInfo?.gamme || ''}</div>
-                      <div className="space-y-1.5">
-                        {fiveLProducts.map(p => {
-                          const qty = getQty(p.ref);
-                          const moq = p.moq || 1;
-                          const unitPrice = p.prix_promo ?? p.prix_remise;
-                          return (
-                            <div key={p.ref} className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] text-gray-500 dark:text-slate-400 truncate flex-1">5L</span>
-                              <span className="text-[10px] font-semibold text-gold-600 shrink-0">{unitPrice.toFixed(2)}&euro;</span>
-                              <div className="flex items-center gap-0.5 shrink-0">
-                                {qty > 0 && <button onClick={() => removeCarton(p.ref)} className="w-6 h-6 rounded bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-xs font-bold transition-colors">-</button>}
-                                {qty > 0 && <span className="text-xs font-semibold text-gray-900 dark:text-white min-w-[16px] text-center">{moq > 1 ? Math.floor(qty / moq) : qty}</span>}
-                                <button onClick={() => addCarton(p.ref)} className="w-6 h-6 rounded bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-xs font-bold transition-colors">+</button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                        {flaconProducts.map(p => {
-                          const qty = getQty(p.ref);
-                          const moq = p.moq || 1;
-                          const unitPrice = p.prix_promo ?? p.prix_remise;
-                          const label = p.nom.match(/(\d+\s*ml)/i)?.[1] || 'Flacon';
-                          return (
-                            <div key={p.ref} className="flex items-center justify-between gap-1">
-                              <span className="text-[10px] text-gray-500 dark:text-slate-400 truncate flex-1">{label}</span>
-                              <span className="text-[10px] font-semibold text-gold-600 shrink-0">{unitPrice.toFixed(2)}&euro;</span>
-                              <div className="flex items-center gap-0.5 shrink-0">
-                                {qty > 0 && <button onClick={() => removeCarton(p.ref)} className="w-6 h-6 rounded bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-xs font-bold transition-colors">-</button>}
-                                {qty > 0 && <span className="text-xs font-semibold text-gray-900 dark:text-white min-w-[16px] text-center">{moq > 1 ? Math.floor(qty / moq) : qty}</span>}
-                                <button onClick={() => addCarton(p.ref)} className="w-6 h-6 rounded bg-gold-500 text-white hover:bg-gold-600 flex items-center justify-center text-xs font-bold transition-colors">+</button>
-                              </div>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="mt-4 text-center">
-                <button onClick={() => setVue("catalogue")} className="text-sm text-gold-600 dark:text-gold-400 hover:text-gold-700 dark:hover:text-gold-300 font-medium transition-colors">
-                  Voir le catalogue complet &rarr;
-                </button>
-              </div>
+        <div id="tdm-partner-preview" ref={previewRef}>
+          {/* Sub-header */}
+          <header className="tdm-top" id="tdm-home">
+            <div className="tdm-brand">
+              <img className="tdm-logo" src="/accueil-assets/logo.webp" alt="Terre de Mars" />
+              <span className="tdm-brand-note">L'espace<br/>partenaire</span>
             </div>
-          )}
+            <nav className="tdm-nav" aria-label="Navigation accueil">
+              <button className="tdm-nav-active" onClick={() => scrollTo('tdm-home')}>Accueil</button>
+              {essentials.length > 0 && <button onClick={() => scrollTo('tdm-essentials')}>Mes essentiels</button>}
+              {vipProducts.length > 0 && <button onClick={() => scrollTo('tdm-vip')}>Cadeaux VIP</button>}
+            </nav>
+            <div className="tdm-account">
+              <span className="tdm-account-name">{partner.nom}</span>
+              <button className="tdm-bag" onClick={() => setPanierOpen(true)} aria-label={`Voir le panier, ${panierCount} article${panierCount > 1 ? 's' : ''}`}>
+                <LucideIcon name="shopping-bag" size={15} /> Panier <span className="tdm-bag-count">{panierCount}</span>
+              </button>
+            </div>
+          </header>
+          <main className="tdm-main">
+            <div className="tdm-welcome">
+              <span>Bienvenue, <strong>{partner.nom.split(' ')[0] || partner.nom}.</strong></span>
+              <span>Votre s&eacute;lection. Vos tarifs partenaires.</span>
+            </div>
 
-          {/* ── Cadeaux VIP & Spa ── */}
-          {vipProducts.length > 0 && (
-            <div>
-              <h2 className="font-display text-lg sm:text-xl text-gray-900 dark:text-white mb-4">Cadeaux pour vos clients VIP</h2>
-              <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4">
-                {vipProducts.map(p => {
-                  const qty = getQty(p.ref);
-                  const moq = p.moq || 1;
-                  const unitPrice = p.prix_promo ?? p.prix_remise;
-                  return (
-                    <div key={p.ref} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden shadow-sm dark:shadow-none">
-                      <div className="bg-gold-50 dark:bg-gold-900/20">
-                        <ProductImage productRef={p.ref} nom={p.nom} className="w-full h-32 sm:h-36 rounded-t-xl" />
-                      </div>
-                      <div className="p-3">
-                        <div className="text-xs sm:text-sm font-medium text-gray-900 dark:text-white mb-1 line-clamp-2 leading-tight">{p.nom}</div>
-                        <div className="flex items-center gap-1 mb-2">
-                          {p.promo_pct > 0 ? (
-                            <>
-                              <span className="text-[10px] text-gray-400 dark:text-slate-500 line-through">{p.prix_remise.toFixed(2)}&euro;</span>
-                              <span className="text-xs font-bold text-red-600 dark:text-red-400">{p.prix_promo.toFixed(2)}&euro; HT</span>
-                            </>
+            {/* ── Hero ── */}
+            <section className="tdm-hero" aria-label="Bienvenue dans votre espace partenaire">
+              <div className="tdm-hero-copy">
+                <p className="tdm-eyebrow">L'art de recevoir, par Terre de Mars</p>
+                <h1 className="tdm-serif">Votre maison.<br/><em>Notre signature.</em></h1>
+                <p>Vos essentiels, nos collections et les petites attentions qui font les grands s&eacute;jours.</p>
+                <div className="tdm-actions">
+                  {essentials.length > 0 && (
+                    <button className="tdm-action" onClick={() => scrollTo('tdm-essentials')}>
+                      Commander mes essentiels <LucideIcon name="arrow-up-right" size={14} />
+                    </button>
+                  )}
+                  {vipProducts.length > 0 && (
+                    <button className="tdm-action tdm-outline" onClick={() => scrollTo('tdm-vip')}>
+                      D&eacute;couvrir les cadeaux VIP
+                    </button>
+                  )}
+                  {essentials.length === 0 && vipProducts.length === 0 && (
+                    <button className="tdm-action" onClick={() => setVue('catalogue')}>
+                      Parcourir le catalogue <LucideIcon name="arrow-up-right" size={14} />
+                    </button>
+                  )}
+                </div>
+              </div>
+              <figure className="tdm-hero-photo">
+                <img src="/accueil-assets/hero.jpg" alt="Flacons Terre de Mars dans une salle de bain d'h\u00f4tel" />
+                <figcaption>Chez nos partenaires</figcaption>
+              </figure>
+            </section>
+
+            {/* ── Assurances ── */}
+            <div className="tdm-assurances">
+              <span><LucideIcon name="package-check" size={14} sw={1.2} /> Vos conditions partenaires</span>
+              <span><LucideIcon name="refresh-cw" size={14} sw={1.2} /> Des formats rechargeables</span>
+              <span><LucideIcon name="messages-square" size={14} sw={1.2} /> Un interlocuteur d&eacute;di&eacute;</span>
+            </div>
+
+            {/* ── Essentiels ── */}
+            {essentials.length > 0 && (
+              <section className="tdm-section" id="tdm-essentials">
+                <div className="tdm-section-head">
+                  <div>
+                    <h2 className="tdm-serif">Vos essentiels, simplement.</h2>
+                    <p className="tdm-section-sub">Retrouvez une s&eacute;lection de vos produits en chambre.</p>
+                  </div>
+                  {vipProducts.length > 0 && (
+                    <button className="tdm-textlink" onClick={() => scrollTo('tdm-vip')}>
+                      Compl&eacute;ter avec une attention VIP <LucideIcon name="arrow-down" size={13} />
+                    </button>
+                  )}
+                </div>
+                <div className="tdm-essentials">
+                  {essentials.map(ess => {
+                    const format = essentialFormats[ess.key] || '500';
+                    const currentProd = format === '5000' ? (ess.prod5L || ess.prod500) : (ess.prod500 || ess.prod5L);
+                    if (!currentProd) return null;
+                    const unitPrice = currentProd.prix_promo ?? currentProd.prix_remise;
+                    const moq = currentProd.moq || 1;
+                    const packLabel = format === '5000' ? `${moq} bidon${moq > 1 ? 's' : ''}` : `${moq} flacon${moq > 1 ? 's' : ''}`;
+                    const imgSrc = getProductImage(ess.baseRef);
+                    return (
+                      <article className="tdm-essential" key={ess.key}>
+                        <div className="tdm-essential-top">
+                          {imgSrc ? (
+                            <img src={imgSrc} alt={ess.label} />
                           ) : (
-                            <>
-                              <span className="text-xs font-semibold text-gold-600">{unitPrice.toFixed(2)}&euro; HT</span>
-                              {p.discount_pct > 0 && <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium">-{p.discount_pct}%</span>}
-                            </>
+                            <div style={{ width: 68, height: 85, background: 'var(--tdm-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <span style={{ color: 'var(--tdm-muted)', fontSize: 14, fontWeight: 500 }}>{ess.label.slice(0, 2).toUpperCase()}</span>
+                            </div>
                           )}
+                          <div>
+                            <h3>{ess.label} {ess.gamme.split('/')[0]?.trim()}</h3>
+                            <p>{ess.gamme.split('/')[1]?.trim() || ess.gamme}</p>
+                            <p className="tdm-essential-cost"><span>{euro(unitPrice)}</span> HT / unit&eacute;</p>
+                            <p><span>{packLabel} &middot; {euro(unitPrice * moq)} HT</span></p>
+                          </div>
                         </div>
-                        <div className="flex items-center gap-1">
-                          {qty > 0 && <button onClick={() => removeCarton(p.ref)} className="w-7 h-7 rounded-lg bg-gray-100 dark:bg-slate-600 text-gray-600 dark:text-slate-300 hover:bg-gray-200 dark:hover:bg-slate-500 flex items-center justify-center text-xs font-bold transition-colors">-</button>}
-                          {qty > 0 && <span className="text-sm font-semibold text-gray-900 dark:text-white min-w-[20px] text-center">{moq > 1 ? Math.floor(qty / moq) : qty}</span>}
-                          <button onClick={() => addCarton(p.ref)} className={`flex-1 h-7 rounded-lg text-xs font-semibold transition-colors flex items-center justify-center ${qty > 0 ? 'w-7 flex-none bg-gold-500 text-white hover:bg-gold-600' : 'bg-gold-500 text-white hover:bg-gold-600'}`}>
-                            {qty > 0 ? '+' : 'Ajouter'}
+                        <div className="tdm-essential-controls">
+                          <select
+                            value={format}
+                            onChange={(e) => setEssentialFormats(prev => ({ ...prev, [ess.key]: e.target.value }))}
+                            aria-label={`Format ${ess.label}`}
+                          >
+                            {ess.prod500 && <option value="500">500 ml</option>}
+                            {ess.prod5L && <option value="5000">Recharge 5 L</option>}
+                          </select>
+                          <button className="tdm-add-small" onClick={() => addCarton(currentProd.ref)}>
+                            + Ajouter 1 carton
                           </button>
                         </div>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          )}
-
-          {/* ── Coffrets Cadeaux ── */}
-          <div className="bg-gold-100 dark:bg-gold-900/20 border border-gold-200 dark:border-gold-800 rounded-2xl p-5 sm:p-8 text-center">
-            <h2 className="font-display text-lg sm:text-xl text-gray-900 dark:text-white mb-2">Coffrets sur mesure</h2>
-            <p className="text-sm text-gray-600 dark:text-slate-300 mb-5 max-w-lg mx-auto">
-              Cr&eacute;ez des coffrets cadeaux personnalis&eacute;s pour vos clients les plus exigeants. Choix des produits, packaging premium, gravure possible.
-            </p>
-            <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-              <a href="mailto:hugo@terredemars.com?subject=Coffrets%20cadeaux%20sur%20mesure" className="inline-flex items-center gap-2 bg-gold-500 text-white px-5 py-2.5 rounded-xl text-sm font-semibold hover:bg-gold-600 transition-colors">
-                Contacter Hugo
-              </a>
-              <a href="tel:+33685820335" className="text-sm text-gray-500 dark:text-slate-400 hover:text-gray-700 dark:hover:text-slate-200 transition-colors">
-                06 85 82 03 35
-              </a>
-            </div>
-          </div>
-
-          {/* ── Derni\u00e8re commande ── */}
-          {derniere && (() => {
-            const statutConfig = {
-              en_attente: { label: "En attente", bg: "bg-amber-50 dark:bg-amber-900/30", text: "text-amber-700 dark:text-amber-300" },
-              validee: { label: "Valid\u00e9e", bg: "bg-green-50 dark:bg-green-900/30", text: "text-green-700 dark:text-green-400" },
-              annulee: { label: "Annul\u00e9e", bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400" },
-              annulee_client: { label: "Annul\u00e9e", bg: "bg-red-50 dark:bg-red-900/30", text: "text-red-700 dark:text-red-400" },
-            };
-            const cfg = statutConfig[derniere.statut] || statutConfig.en_attente;
-            return (
-              <div className="bg-white dark:bg-slate-800 border border-gray-200 dark:border-slate-600 rounded-xl p-4 shadow-sm dark:shadow-none">
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <div className="w-1 h-5 bg-gold-400 rounded-full"></div>
-                    <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Derni&egrave;re commande</h3>
-                  </div>
-                  <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${cfg.bg} ${cfg.text}`}>{cfg.label}</span>
+                      </article>
+                    );
+                  })}
                 </div>
-                <div className="flex items-center justify-between">
-                  <div className="text-sm text-gray-500 dark:text-slate-400">
-                    {new Date(derniere.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long' })} &mdash; {derniere.total_ht.toFixed(2)} &euro; HT
-                    <span className="text-gray-400 dark:text-slate-500 ml-1">({derniere.products.length} art.)</span>
-                  </div>
-                  <button onClick={handleRecommander} className="px-3 py-1.5 bg-gold-500 text-white text-xs font-medium rounded-lg hover:bg-gold-600 transition-colors">
-                    Re-commander
-                  </button>
-                </div>
-              </div>
-            );
-          })()}
-
-          {/* ── Acc\u00e8s rapides ── */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-            <button onClick={() => setVue("catalogue")} className="bg-white dark:bg-slate-800 border border-gold-200 dark:border-slate-600 rounded-xl p-4 text-center hover:border-gold-400 dark:hover:border-gold-600 transition-colors group">
-              <div className="text-xl mb-1 group-hover:scale-110 transition-transform">&#128230;</div>
-              <div className="text-xs font-medium text-gray-700 dark:text-slate-200">Catalogue</div>
-            </button>
-            {promoActive && (
-              <button onClick={() => setVue("bonsplans")} className="bg-white dark:bg-slate-800 border border-gold-200 dark:border-slate-600 rounded-xl p-4 text-center hover:border-red-400 dark:hover:border-red-600 transition-colors group">
-                <div className="text-xl mb-1 group-hover:scale-110 transition-transform">&#127873;</div>
-                <div className="text-xs font-medium text-red-600 dark:text-red-400">Bons plans</div>
-              </button>
+              </section>
             )}
-            <button onClick={() => setVue("historique")} className="bg-white dark:bg-slate-800 border border-gold-200 dark:border-slate-600 rounded-xl p-4 text-center hover:border-gold-400 dark:hover:border-gold-600 transition-colors group">
-              <div className="text-xl mb-1 group-hover:scale-110 transition-transform">&#128196;</div>
-              <div className="text-xs font-medium text-gray-700 dark:text-slate-200">Historique</div>
-            </button>
-            <button onClick={() => setVue("documents")} className="bg-white dark:bg-slate-800 border border-gold-200 dark:border-slate-600 rounded-xl p-4 text-center hover:border-gold-400 dark:hover:border-gold-600 transition-colors group">
-              <div className="text-xl mb-1 group-hover:scale-110 transition-transform">&#128193;</div>
-              <div className="text-xs font-medium text-gray-700 dark:text-slate-200">Documents</div>
-            </button>
-          </div>
 
+            {/* ── Cadeaux VIP ── */}
+            {vipProducts.length > 0 && (
+              <section className="tdm-section tdm-vip" id="tdm-vip">
+                <div className="tdm-section-head tdm-vip-head">
+                  <div>
+                    <p className="tdm-eyebrow">Les attentions Terre de Mars</p>
+                    <h2 className="tdm-serif">Un s&eacute;jour se termine.<br/>Une attention reste.</h2>
+                    <p className="tdm-vip-intro">Un soin d&eacute;pos&eacute; en chambre, un rituel &agrave; offrir, un souvenir &agrave; emporter.<br/>Choisissez le d&eacute;tail qui fera la diff&eacute;rence pour vos h&ocirc;tes.</p>
+                  </div>
+                  <div className="tdm-entry-price">
+                    Notre s&eacute;lection, d&egrave;s
+                    <strong>{euro(minVipPrice)}</strong>
+                    HT par soin &middot; selon conditionnement
+                  </div>
+                </div>
+                <div className="tdm-filters" role="group" aria-label="Filtrer la s\u00e9lection de cadeaux">
+                  {[
+                    { key: 'all', label: 'Toute la s\u00e9lection' },
+                    { key: 'small', label: 'Moins de 1,50 \u20ac HT / soin' },
+                    { key: 'spa', label: "L'esprit spa" },
+                  ].map(f => (
+                    <button
+                      key={f.key}
+                      className={`tdm-filter ${vipFilter === f.key ? 'tdm-filter-active' : ''}`}
+                      onClick={() => setVipFilter(f.key)}
+                      aria-pressed={String(vipFilter === f.key)}
+                    >{f.label}</button>
+                  ))}
+                </div>
+                <div className="tdm-gifts">
+                  {filteredVip.map(p => {
+                    const unitPrice = p.prix_promo ?? p.prix_remise;
+                    const moq = p.moq || 1;
+                    const imgSrc = getProductImage(p.ref);
+                    const refNum = p.ref.replace(/^P0*/, '');
+                    const isMask = p.ref === 'P009';
+                    return (
+                      <article className="tdm-product" key={p.ref}>
+                        <div className={`tdm-product-stage ${isMask ? 'tdm-mask-stage' : ''}`}>
+                          <span className="tdm-product-ref">{refNum}</span>
+                          {imgSrc ? (
+                            <img src={imgSrc} alt={p.nom} />
+                          ) : (
+                            <div style={{ width: '100%', height: 212, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                              <span style={{ color: 'var(--tdm-muted)', fontSize: 22, fontFamily: "'Cormorant Garamond',serif" }}>{(p.nom || p.ref).slice(0, 2)}</span>
+                            </div>
+                          )}
+                        </div>
+                        <div className="tdm-product-body">
+                          <h3>{vipNames[p.ref] || p.nom}</h3>
+                          <p className="tdm-product-kind">{vipKinds[p.ref] || p.categorie}</p>
+                          <p className="tdm-product-desc">{vipDescriptions[p.ref] || ''}</p>
+                          <div className="tdm-product-price">{euro(unitPrice)} <span>HT / soin</span></div>
+                          <p className="tdm-product-pack">Carton de {moq} soin{moq > 1 ? 's' : ''} &middot; <strong>{euro(unitPrice * moq)} HT</strong></p>
+                          <button className="tdm-add" onClick={() => addCarton(p.ref)}>
+                            Ajouter 1 carton <LucideIcon name="plus" size={15} />
+                          </button>
+                        </div>
+                      </article>
+                    );
+                  })}
+                </div>
+              </section>
+            )}
+
+            {/* ── Feedback bar ── */}
+            {feedback && (
+              <div className="tdm-status">
+                <span>{feedback}</span>
+                <button className="tdm-textlink" onClick={() => setPanierOpen(true)}>
+                  Voir le panier <LucideIcon name="arrow-up-right" size={13} />
+                </button>
+              </div>
+            )}
+
+            {/* ── Coffrets ── */}
+            <section className="tdm-coffret">
+              <div className="tdm-gift-icon">
+                <LucideIcon name="gift" size={27} sw={1} />
+              </div>
+              <div>
+                <p className="tdm-eyebrow">Jusqu'au dernier d&eacute;tail</p>
+                <h2 className="tdm-serif">L'attention prend la forme d'un cadeau.</h2>
+                <p>R&eacute;unissez vos soins dans un coffret Terre de Mars avec papier de soie. Construisons ensemble une s&eacute;lection pour votre &eacute;tablissement.</p>
+              </div>
+              <div className="tdm-coffret-action">
+                {coffretProd && <p>Coffret seul &middot; <strong>{euro(coffretProd.prix_promo ?? coffretProd.prix_remise)} HT</strong></p>}
+                <button className="tdm-action" onClick={() => { setContactOpen(!contactOpen); if (!contactOpen) setTimeout(() => scrollTo('tdm-contact'), 50); }} aria-expanded={String(contactOpen)} aria-controls="tdm-contact">
+                  Pr&eacute;parer mes cadeaux <LucideIcon name="arrow-up-right" size={14} />
+                </button>
+              </div>
+            </section>
+
+            {/* ── Contact ── */}
+            {contactOpen && (
+              <section className="tdm-contact" id="tdm-contact">
+                <div>
+                  <strong>Votre s&eacute;lection, avec Hugo.</strong>
+                  <p>Choix des soins, quantit&eacute; et pr&eacute;sentation&nbsp;:<br/>pr&eacute;parons les attentions adapt&eacute;es &agrave; votre &eacute;tablissement.</p>
+                </div>
+                <div className="tdm-contact-details">
+                  <span>Hugo Montiel &middot; Votre interlocuteur Terre de Mars</span>
+                  <a href="mailto:hugo@terredemars.com">hugo@terredemars.com</a>
+                  <a href="tel:+33685820335">06 85 82 03 35</a>
+                </div>
+              </section>
+            )}
+
+            {/* ── Footer ── */}
+            <footer className="tdm-foot">
+              <span className="tdm-foot-signature">Terre de Mars &middot; L'art du soin, le sens de l'accueil.</span>
+              <span>Vos tarifs partenaires &middot; Prix HT &middot; <a href="https://www.terredemars.com/pages/hospitality" target="_blank" rel="noopener noreferrer">Visuels Terre de Mars</a></span>
+            </footer>
+          </main>
         </div>
       );
     };
@@ -2206,7 +2409,7 @@
           )}
 
           {/* Main content */}
-          <main className={`max-w-6xl mx-auto px-4 py-6 relative z-10 ${panierCount > 0 && !panierOpen && (vue === "accueil" || vue === "catalogue" || vue === "bonsplans") ? 'pb-24' : ''}`}>
+          <main className={`relative z-10 ${vue === "accueil" ? '' : 'max-w-6xl mx-auto px-4 py-6'} ${panierCount > 0 && !panierOpen && (vue === "accueil" || vue === "catalogue" || vue === "bonsplans") ? 'pb-24' : ''}`}>
             {panierOpen ? (
               <div className="max-w-lg mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Votre panier</h2>
