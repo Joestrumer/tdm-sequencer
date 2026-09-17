@@ -12696,6 +12696,14 @@ const resolveAddressText = (mode, client) => {
 
 const DEFAULT_FRANCO_SEUIL = 800;
 
+const IDF_DEPARTEMENTS = ['75', '77', '78', '91', '92', '93', '94', '95'];
+const getDefaultShippingId = (codePostal) => {
+  if (!codePostal) return '1';
+  const dept = String(codePostal).trim().slice(0, 2);
+  if (IDF_DEPARTEMENTS.includes(dept)) return '101'; // Coursier Colis
+  return '1302'; // Chronopost 13H Instance Agence
+};
+
 const SHIPPING_OPTIONS = [
   { value: '1', label: '1 - Enlevement Colis' },
   { value: '2', label: '2 - Enlevement Palette' },
@@ -20888,7 +20896,8 @@ const VueCommandes = ({ showToast }) => {
   useEffect(() => { charger(); }, [filtre]);
 
   const openValidateModal = (commande) => {
-    setValidateOptions({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
+    const cp = commande.partner_livraison_cp || commande.partner_facturation_cp || '';
+    setValidateOptions({ documentType: 'vat', shippingId: getDefaultShippingId(cp), sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
     // Utiliser les produits édités si disponibles
     const currentProducts = editableProducts[commande.id] || commande.products;
     setValidateModal({ ...commande, products: currentProducts });

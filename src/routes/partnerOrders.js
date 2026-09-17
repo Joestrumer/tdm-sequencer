@@ -81,7 +81,8 @@ module.exports = (db) => {
       const { statut, limit: qLimit, offset: qOffset } = req.query;
       let sql = `
         SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact,
-               vp.master_id, mp.email as master_email
+               vp.master_id, mp.email as master_email,
+               vp.livraison_code_postal as partner_livraison_cp, vp.facturation_code_postal as partner_facturation_cp
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         LEFT JOIN vf_partners mp ON mp.id = vp.master_id
