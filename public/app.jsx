@@ -17545,16 +17545,21 @@ const VueProduitsCatalog = () => {
   const renderProductRow = (p) => {
     if (editingRef === p.ref) {
       return (
-        <div key={p.ref} className="flex items-center gap-2 px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg flex-wrap" data-ref={p.ref}>
-          {editForm.image_url && <img src={editForm.image_url} alt="" className="w-8 h-8 object-cover rounded flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} />}
-          <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
-          <input type="text" value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
-          <input type="number" step="0.01" value={editForm.prix_ht} onChange={e => setEditForm(f => ({ ...f, prix_ht: e.target.value }))} className="w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Prix" />
-          <input type="text" value={editForm.vf_product_id} onChange={e => setEditForm(f => ({ ...f, vf_product_id: e.target.value }))} placeholder="ID VF" className="w-20 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" />
-          <input type="number" value={editForm.moq} onChange={e => setEditForm(f => ({ ...f, moq: e.target.value }))} className="w-14 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="MOQ" />
-          <input type="url" value={editForm.image_url} onChange={e => setEditForm(f => ({ ...f, image_url: e.target.value }))} placeholder="URL image" className="w-48 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
-          <button onClick={saveEdit} disabled={saving} className="text-[11px] px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50">{saving ? '...' : 'OK'}</button>
-          <button onClick={cancelEdit} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Annuler</button>
+        <div key={p.ref} className="px-3 py-2 bg-blue-50 border border-blue-200 rounded-lg space-y-2" data-ref={p.ref}>
+          <div className="flex items-center gap-2">
+            {editForm.image_url && <img src={editForm.image_url} alt="" className="w-8 h-8 object-cover rounded flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} />}
+            <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
+            <input type="text" value={editForm.nom} onChange={e => setEditForm(f => ({ ...f, nom: e.target.value }))} className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            <input type="number" step="0.01" value={editForm.prix_ht} onChange={e => setEditForm(f => ({ ...f, prix_ht: e.target.value }))} className="w-20 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="Prix" />
+            <input type="text" value={editForm.vf_product_id} onChange={e => setEditForm(f => ({ ...f, vf_product_id: e.target.value }))} placeholder="ID VF" className="w-20 border border-slate-200 rounded px-2 py-1 text-sm font-mono focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            <input type="number" value={editForm.moq} onChange={e => setEditForm(f => ({ ...f, moq: e.target.value }))} className="w-14 border border-slate-200 rounded px-2 py-1 text-sm text-right focus:outline-none focus:ring-1 focus:ring-blue-400" placeholder="MOQ" />
+          </div>
+          <div className="flex items-center gap-2">
+            <label className="text-[11px] text-slate-500 flex-shrink-0">Image URL</label>
+            <input type="url" value={editForm.image_url} onChange={e => setEditForm(f => ({ ...f, image_url: e.target.value }))} placeholder="https://cdn.shopify.com/..." className="flex-1 border border-slate-200 rounded px-2 py-1 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400" />
+            <button onClick={saveEdit} disabled={saving} className="text-[11px] px-2 py-1 rounded bg-slate-900 text-white hover:bg-slate-700 disabled:opacity-50">{saving ? '...' : 'OK'}</button>
+            <button onClick={cancelEdit} className="text-[11px] px-2 py-1 rounded border border-slate-200 text-slate-600 hover:bg-slate-50">Annuler</button>
+          </div>
         </div>
       );
     }
@@ -17564,6 +17569,7 @@ const VueProduitsCatalog = () => {
         {p.image_url ? <img src={p.image_url} alt="" className="w-7 h-7 object-cover rounded flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} /> : <span className="w-7 h-7 rounded bg-slate-100 flex items-center justify-center text-[9px] text-slate-400 flex-shrink-0">{(p.ref || '').slice(0, 2)}</span>}
         <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
         <span className="flex-1 text-sm text-slate-800 truncate">{p.nom}</span>
+        {p.image_url ? <a href={p.image_url} target="_blank" rel="noopener" className="text-[10px] text-blue-400 hover:text-blue-600 truncate max-w-[150px] flex-shrink-0" title={p.image_url}>img</a> : <span className="text-[10px] text-slate-300 flex-shrink-0">—</span>}
         <span className="text-sm text-slate-600 w-20 text-right flex-shrink-0">{p.prix_ht != null ? Number(p.prix_ht).toFixed(2) + ' \u20AC' : '—'}</span>
         <span className="font-mono text-xs w-16 text-right flex-shrink-0">{p.vf_product_id ? <a href={`https://terredemars.vosfactures.fr/products/${p.vf_product_id}`} target="_blank" rel="noopener" className="text-blue-500 hover:text-blue-700 underline">{p.vf_product_id}</a> : <span className="text-amber-500">—</span>}</span>
         <span className="text-xs text-slate-400 w-12 text-right flex-shrink-0">x{p.moq ?? 1}</span>
