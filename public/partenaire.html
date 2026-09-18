@@ -176,21 +176,21 @@
     #tdm-partner-preview .tdm-filters{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 18px}
     #tdm-partner-preview .tdm-filter{background:transparent;color:var(--tdm-muted);border:1px solid var(--tdm-line);padding:8px 12px;font-size:11px;cursor:pointer}
     #tdm-partner-preview .tdm-filter.tdm-filter-active{background:var(--tdm-dark);border-color:var(--tdm-dark);color:var(--tdm-on-dark)}
-    #tdm-partner-preview .tdm-gifts{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:18px}
+    #tdm-partner-preview .tdm-gifts{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:14px}
     #tdm-partner-preview .tdm-product{min-width:0;display:flex;flex-direction:column}
-    #tdm-partner-preview .tdm-product-stage{position:relative;min-height:212px;background:var(--tdm-soft);overflow:hidden;display:flex;align-items:center;justify-content:center}
-    #tdm-partner-preview .tdm-product-stage img{width:100%;height:212px;object-fit:contain;padding:7px;transition:transform .22s}
+    #tdm-partner-preview .tdm-product-stage{position:relative;min-height:160px;background:var(--tdm-soft);overflow:hidden;display:flex;align-items:center;justify-content:center}
+    #tdm-partner-preview .tdm-product-stage img{width:100%;height:160px;object-fit:contain;padding:5px;transition:transform .22s}
     #tdm-partner-preview .tdm-product:hover .tdm-product-stage img{transform:scale(1.045)}
     #tdm-partner-preview .tdm-product-stage.tdm-mask-stage{background:#fff}
     #tdm-partner-preview .tdm-product-ref{position:absolute;left:13px;top:11px;font-size:11px;color:var(--tdm-muted);z-index:1;letter-spacing:1px}
     #tdm-partner-preview .tdm-mask-stage .tdm-product-ref{color:#73766d}
-    #tdm-partner-preview .tdm-product-body{padding:16px 0 0;display:flex;flex-direction:column;flex:1}
-    #tdm-partner-preview .tdm-product h3{font-size:15px;font-weight:500;margin-bottom:4px}
-    #tdm-partner-preview .tdm-product-kind{font-size:11px;color:var(--tdm-muted);letter-spacing:.2px}
-    #tdm-partner-preview .tdm-product-desc{font-size:12px;color:var(--tdm-muted);line-height:1.6;margin:10px 0 13px;min-height:39px}
-    #tdm-partner-preview .tdm-product-price{font-size:21px;font-weight:400;letter-spacing:-.5px;margin-top:auto}
-    #tdm-partner-preview .tdm-product-price span{font-size:11px;color:var(--tdm-muted);letter-spacing:0}
-    #tdm-partner-preview .tdm-product-pack{font-size:11px;color:var(--tdm-muted);margin:4px 0 13px}
+    #tdm-partner-preview .tdm-product-body{padding:12px 0 0;display:flex;flex-direction:column;flex:1}
+    #tdm-partner-preview .tdm-product h3{font-size:13px;font-weight:500;margin-bottom:3px}
+    #tdm-partner-preview .tdm-product-kind{font-size:10px;color:var(--tdm-muted);letter-spacing:.2px}
+    #tdm-partner-preview .tdm-product-desc{font-size:11px;color:var(--tdm-muted);line-height:1.5;margin:6px 0 10px;min-height:33px}
+    #tdm-partner-preview .tdm-product-price{font-size:18px;font-weight:400;letter-spacing:-.5px;margin-top:auto}
+    #tdm-partner-preview .tdm-product-price span{font-size:10px;color:var(--tdm-muted);letter-spacing:0}
+    #tdm-partner-preview .tdm-product-pack{font-size:10px;color:var(--tdm-muted);margin:3px 0 10px}
     #tdm-partner-preview .tdm-product-pack strong{color:var(--tdm-ink);font-weight:500}
     #tdm-partner-preview .tdm-add{width:100%;background:transparent;border:1px solid var(--tdm-ink);color:var(--tdm-ink);padding:11px;display:flex;justify-content:space-between;align-items:center;font-size:12px;min-height:43px;cursor:pointer}
     #tdm-partner-preview .tdm-add:hover{background:var(--tdm-dark);color:var(--tdm-on-dark)}
@@ -479,6 +479,7 @@
 
     const AmenitiesSection = ({ amenities, catalogue, panier, setPanier }) => {
       if (!amenities || Object.keys(amenities).length === 0) return null;
+      const [showBidons, setShowBidons] = useState(true);
       const [showFlacons, setShowFlacons] = useState(false);
 
       const sections = AMENITY_TYPES
@@ -520,11 +521,16 @@
         <div className="mb-8 space-y-6">
           {/* Section principale : bidons 5L */}
           <div>
-            <div className="flex items-center gap-2 mb-4">
+            <button
+              onClick={() => setShowBidons(!showBidons)}
+              className="flex items-center gap-2 mb-4 group"
+            >
               <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white">Vos produits en chambre</h3>
-            </div>
-            <div className="space-y-4">
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-gold-700 dark:group-hover:text-gold-400 transition-colors">Vos produits en chambre</h3>
+              <span className="text-gray-400 dark:text-slate-500 text-xs group-hover:text-gray-600 dark:group-hover:text-slate-300 transition-colors">{showBidons ? '\u25b2' : '\u25bc'}</span>
+            </button>
+            {showBidons && (
+            <div className="space-y-4 animate-fade-in">
               {sections.map(({ type, gammeInfo, fiveLProducts }) => (
                 fiveLProducts.length > 0 && (
                   <div key={type.key} className="bg-white dark:bg-slate-800 border border-gray-100 dark:border-slate-700 rounded-xl overflow-hidden">
@@ -541,6 +547,7 @@
                 )
               ))}
             </div>
+            )}
           </div>
 
           {/* Section déroulante : flacons 500ml + autres formats */}
@@ -860,12 +867,16 @@
               const diffuserDefs = [
                 { baseRef: 'P039', label: 'Diffuseur Intuition', hasFormats: true, formats: [
                   { value: '200', label: '200 ml', refSuffix: '' },
+                  { value: '200V', label: '200 ml Verre', refSuffix: '-200V' },
                   { value: '500', label: '500 ml', refSuffix: '-500' },
+                  { value: '3000V', label: '3 L Verre', refSuffix: '-3000V' },
                   { value: '5000', label: 'Recharge 5 L', refSuffix: '-5000' },
                 ]},
                 { baseRef: 'P041', label: 'Diffuseur R\u00e9v\u00e9lation', hasFormats: true, formats: [
                   { value: '200', label: '200 ml', refSuffix: '' },
+                  { value: '200V', label: '200 ml Verre', refSuffix: '-200V' },
                   { value: '500', label: '500 ml', refSuffix: '-500' },
+                  { value: '3000V', label: '3 L Verre', refSuffix: '-3000V' },
                   { value: '5000', label: 'Recharge 5 L', refSuffix: '-5000' },
                 ]},
                 { baseRef: 'P015', label: 'Bougie Intuition 190g', hasFormats: false },
@@ -1014,7 +1025,7 @@
                           {imgSrc ? (
                             <img src={imgSrc} alt={p.nom} />
                           ) : (
-                            <div style={{ width: '100%', height: 212, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                            <div style={{ width: '100%', height: 160, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
                               <span style={{ color: 'var(--tdm-muted)', fontSize: 22, fontFamily: "'Cormorant Garamond',serif" }}>{(p.nom || p.ref).slice(0, 2)}</span>
                             </div>
                           )}
@@ -1414,7 +1425,7 @@
                 <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger</li>
                 {!exonereFE && <li>Sous le franco : frais d'exp&eacute;dition {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>}
                 {!exonereFP && <li>Au-dessus du franco : frais de pr&eacute;paration r&eacute;duits &agrave; {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>}
-                {(exonereFE && exonereFP) && <li>Exon&eacute;r&eacute; de frais de port et de pr&eacute;paration</li>}
+                {!!(exonereFE && exonereFP) && <li>Exon&eacute;r&eacute; de frais de port et de pr&eacute;paration</li>}
                 <li>Conditionnement : bidons par cartons de 4, flacons par cartons de 6.</li>
               </ul>
             </div>
@@ -1534,7 +1545,7 @@
               <li>Franco port {francoSeuil.toFixed(0)} &euro; HT en France et 1&nbsp;500 &euro; HT &agrave; l'&eacute;tranger</li>
               {!exonereFE && <li>Sous le franco : frais d'exp&eacute;dition {fePrix > 0 ? fePrix.toFixed(0) : '80'} &euro; HT (FP inclus)</li>}
               {!exonereFP && <li>Au-dessus du franco : frais de pr&eacute;paration r&eacute;duits &agrave; {fpPrix > 0 ? fpPrix.toFixed(0) : '25'} &euro; HT</li>}
-              {(exonereFE && exonereFP) && <li>Exon&eacute;r&eacute; de frais de port et de pr&eacute;paration</li>}
+              {!!(exonereFE && exonereFP) && <li>Exon&eacute;r&eacute; de frais de port et de pr&eacute;paration</li>}
               <li>Conditionnement : bidons par cartons de 4, flacons par cartons de 6.</li>
             </ul>
           </div>
@@ -2480,7 +2491,7 @@
           <header className="sticky top-0 z-30 bg-white/95 dark:bg-slate-900/95 backdrop-blur border-b border-gray-200 dark:border-slate-600">
             <div className="max-w-6xl mx-auto px-3 sm:px-4 py-2 sm:py-3 flex items-center justify-between">
               <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-                <img src="/accueil-assets/logo.webp" alt="Terre de Mars" className="h-7 sm:h-9 dark:invert" />
+                <a href="https://www.terredemars.com/pages/hospitality" target="_blank" rel="noopener noreferrer"><img src="/accueil-assets/logo.webp" alt="Terre de Mars" className="h-7 sm:h-9 dark:invert" /></a>
                 <span className="hidden sm:block pl-2.5 sm:pl-3 border-l border-gray-200 dark:border-slate-600 text-[10px] sm:text-[11px] uppercase tracking-[1.5px] leading-[1.7] text-gray-400 dark:text-slate-400">L'espace<br/>partenaire</span>
                 {isMaster && selectedEtablissement ? (
                   <select
