@@ -2108,7 +2108,7 @@ try {
 
 // ─── Migration : backfill image_url depuis le mapping CDN Shopify ──
 try {
-  const imgDone = db.prepare("SELECT valeur FROM config WHERE cle = 'migration_image_url_v1'").get();
+  const imgDone = db.prepare("SELECT valeur FROM config WHERE cle = 'migration_image_url_v2'").get();
   if (!imgDone) {
     const CDN = 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/';
     const IMAGE_MAP = {
@@ -2170,12 +2170,22 @@ try {
     };
     const stmt = db.prepare('UPDATE vf_catalog SET image_url = ? WHERE ref = ? AND (image_url IS NULL OR image_url = \'\')');
     let count = 0;
+    // 1) Matching exact
     for (const [ref, url] of Object.entries(IMAGE_MAP)) {
       const result = stmt.run(url, ref);
       if (result.changes > 0) count++;
     }
-    db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('migration_image_url_v1', '1')").run();
-    console.log(`✅ Migration image_url_v1 : ${count} produit(s) mis à jour`);
+    // 2) Matching variantes (P007-5000, P008-300V, P034-100, etc.) → image du produit de base
+    const remaining = db.prepare('SELECT ref FROM vf_catalog WHERE actif = 1 AND (image_url IS NULL OR image_url = \'\')').all();
+    for (const row of remaining) {
+      const base = row.ref.replace(/-\d+.*$/, '').replace(/V$/, '').replace(/-SANS POMPE$/, '');
+      if (base !== row.ref && IMAGE_MAP[base]) {
+        const result = stmt.run(IMAGE_MAP[base], row.ref);
+        if (result.changes > 0) count++;
+      }
+    }
+    db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('migration_image_url_v2', '1')").run();
+    console.log(`✅ Migration image_url_v2 : ${count} produit(s) mis à jour`);
   }
 } catch (e) {
   console.error('⚠️  Erreur migration image_url:', e.message);
