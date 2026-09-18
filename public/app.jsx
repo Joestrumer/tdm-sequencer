@@ -17569,7 +17569,7 @@ const VueProduitsCatalog = () => {
         {p.image_url ? <img src={p.image_url} alt="" className="w-7 h-7 object-cover rounded flex-shrink-0" onError={e => { e.target.style.display = 'none'; }} /> : <span className="w-7 h-7 rounded bg-slate-100 flex items-center justify-center text-[9px] text-slate-400 flex-shrink-0">{(p.ref || '').slice(0, 2)}</span>}
         <span className="font-mono text-xs text-slate-600 w-20 flex-shrink-0">{p.ref}</span>
         <span className="flex-1 text-sm text-slate-800 truncate">{p.nom}</span>
-        {p.image_url ? <a href={p.image_url} target="_blank" rel="noopener" className="text-[10px] text-blue-400 hover:text-blue-600 truncate max-w-[150px] flex-shrink-0" title={p.image_url}>img</a> : <span className="text-[10px] text-slate-300 flex-shrink-0">—</span>}
+        {p.image_url && <a href={p.image_url} target="_blank" rel="noopener" className="text-[11px] text-blue-500 hover:text-blue-700 underline truncate max-w-[200px] flex-shrink-0" title={p.image_url}>{p.image_url.replace(/^https?:\/\//, '').slice(0, 30)}...</a>}
         <span className="text-sm text-slate-600 w-20 text-right flex-shrink-0">{p.prix_ht != null ? Number(p.prix_ht).toFixed(2) + ' \u20AC' : '—'}</span>
         <span className="font-mono text-xs w-16 text-right flex-shrink-0">{p.vf_product_id ? <a href={`https://terredemars.vosfactures.fr/products/${p.vf_product_id}`} target="_blank" rel="noopener" className="text-blue-500 hover:text-blue-700 underline">{p.vf_product_id}</a> : <span className="text-amber-500">—</span>}</span>
         <span className="text-xs text-slate-400 w-12 text-right flex-shrink-0">x{p.moq ?? 1}</span>
