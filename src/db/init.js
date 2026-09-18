@@ -2106,5 +2106,80 @@ try {
   console.error('⚠️  Erreur migration email_signatures:', e.message);
 }
 
+// ─── Migration : backfill image_url depuis le mapping CDN Shopify ──
+try {
+  const imgDone = db.prepare("SELECT valeur FROM config WHERE cle = 'migration_image_url_v1'").get();
+  if (!imgDone) {
+    const CDN = 'https://cdn.shopify.com/s/files/1/0955/1141/3001/files/';
+    const IMAGE_MAP = {
+      'P016': CDN + 'P016_1.png',
+      'P012': CDN + 'P012_1.png',
+      'P009': CDN + 'P009_4.jpg',
+      'P020': CDN + 'P020_6.jpg',
+      'P021-20': CDN + 'P021-20_3.jpg',
+      'P023': CDN + 'P023_1.png',
+      'P003': CDN + 'P003_1.png',
+      'P004': CDN + 'P003_1.png',
+      'P004-500': CDN + 'P003_1.png',
+      'P005': CDN + 'P003_1.png',
+      'P006': CDN + 'P003_1.png',
+      'P021': CDN + 'P021-20_3.jpg',
+      'P022': CDN + 'P317-100_1.png',
+      'P027': CDN + 'P003_1.png',
+      'P029': CDN + 'P317-100_1.png',
+      'P317-100': CDN + 'P317-100_1.png',
+      'P015': CDN + 'P015_1.png',
+      'P018': CDN + 'P018-5000_4.jpg',
+      'P018-50': CDN + 'P018-5000_4.jpg',
+      'P018-5000': CDN + 'P018-5000_4.jpg',
+      'P039': CDN + 'P039_1.png',
+      'P039-200V': CDN + 'P039_1.png',
+      'P039-500': CDN + 'P039-500_1.png',
+      'P039-3000V': CDN + 'P039-3000V.jpg',
+      'P039-5000': CDN + 'P039-5000_1.png',
+      'P039SPRAY-VIDE': CDN + 'P039SPRAY_1.png',
+      'P041': CDN + 'P041_1.png',
+      'P041-500': CDN + 'P041-500_1.png',
+      'P041-5000': CDN + 'P041_1.png',
+      'P007': CDN + 'P007_1.png',
+      'P008': CDN + 'P008_1.png',
+      'P010': CDN + 'P010_1_1143dd73-82fb-4306-8ed2-01219c5751e0.png',
+      'P011': CDN + 'P011_1.png',
+      'P014': CDN + 'P014_1.png',
+      'P019': CDN + 'P019_1.png',
+      'P024': CDN + 'P024_1.png',
+      'P034': CDN + 'P034_1.png',
+      'P035': CDN + 'P035_1.png',
+      'P036': CDN + 'P036_1.png',
+      'P037': CDN + 'P037_1.png',
+      'P040': CDN + 'P040_1.png',
+      'P042': CDN + 'P042_1.png',
+      'P044': CDN + '044_500ml.png',
+      'P045': CDN + '045_500ml.png',
+      'P046': CDN + '046_500ml.png',
+      'P047': CDN + '047_500ml.png',
+      'P017': CDN + 'P017_1.png',
+      'P017-30': CDN + 'P017_1.png',
+      'PFS': CDN + 'PFS_1.png',
+      'PFD': CDN + 'PFD_1.png',
+      'PFT': CDN + 'PFT_1.png',
+      'SPFS': CDN + 'SPFS_1.png',
+      'PSS': CDN + 'PSS_1.png',
+      'COFFRETS': CDN + 'coffret_tdem11_2.jpg',
+      'DENVER-500ML-VIDE': CDN + 'DENVER-500ML-VIDE.jpg',
+    };
+    const stmt = db.prepare('UPDATE vf_catalog SET image_url = ? WHERE ref = ? AND (image_url IS NULL OR image_url = \'\')');
+    let count = 0;
+    for (const [ref, url] of Object.entries(IMAGE_MAP)) {
+      const result = stmt.run(url, ref);
+      if (result.changes > 0) count++;
+    }
+    db.prepare("INSERT OR REPLACE INTO config (cle, valeur) VALUES ('migration_image_url_v1', '1')").run();
+    console.log(`✅ Migration image_url_v1 : ${count} produit(s) mis à jour`);
+  }
+} catch (e) {
+  console.error('⚠️  Erreur migration image_url:', e.message);
+}
+
 console.log('✅ Base de données initialisée :', DB_PATH);
 module.exports = db;
