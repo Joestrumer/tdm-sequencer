@@ -683,6 +683,7 @@
       const [contactOpen, setContactOpen] = useState(false);
       const [vipFilter, setVipFilter] = useState('all');
       const [essentialFormats, setEssentialFormats] = useState({});
+      const [diffuserFormats, setDiffuserFormats] = useState({});
       const previewRef = useRef(null);
 
       const euro = (n) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n);
@@ -757,11 +758,6 @@
       return (
         <div id="tdm-partner-preview" ref={previewRef}>
           <main className="tdm-main">
-            <div className="tdm-welcome">
-              <span>Bienvenue, <strong>{partner.nom.split(' ')[0] || partner.nom}.</strong></span>
-              <span>Votre s&eacute;lection. Vos tarifs partenaires.</span>
-            </div>
-
             {/* ── Hero ── */}
             <section className="tdm-hero" aria-label="Bienvenue dans votre espace partenaire">
               <div className="tdm-hero-copy">
@@ -805,7 +801,7 @@
                 <div className="tdm-section-head">
                   <div>
                     <h2 className="tdm-serif">Vos essentiels, simplement.</h2>
-                    <p className="tdm-section-sub">Retrouvez une s&eacute;lection de vos produits en chambre.</p>
+                    <p className="tdm-section-sub">Retrouvez votre selection de produits en chambre.</p>
                   </div>
                   {vipProducts.length > 0 && (
                     <button className="tdm-textlink" onClick={() => scrollTo('tdm-vip')}>
@@ -815,7 +811,7 @@
                 </div>
                 <div className="tdm-essentials">
                   {essentials.map(ess => {
-                    const format = essentialFormats[ess.key] || '500';
+                    const format = essentialFormats[ess.key] || '5000';
                     const currentProd = format === '5000' ? (ess.prod5L || ess.prod500) : (ess.prod500 || ess.prod5L);
                     if (!currentProd) return null;
                     const unitPrice = currentProd.prix_promo ?? currentProd.prix_remise;
@@ -845,8 +841,8 @@
                             onChange={(e) => setEssentialFormats(prev => ({ ...prev, [ess.key]: e.target.value }))}
                             aria-label={`Format ${ess.label}`}
                           >
-                            {ess.prod500 && <option value="500">500 ml</option>}
                             {ess.prod5L && <option value="5000">Recharge 5 L</option>}
+                            {ess.prod500 && <option value="500">500 ml</option>}
                           </select>
                           <button className="tdm-add-small" onClick={() => addCarton(currentProd.ref)}>
                             + Ajouter 1 carton
@@ -858,6 +854,122 @@
                 </div>
               </section>
             )}
+
+            {/* ── Diffuseurs & Bougie ── */}
+            {(() => {
+              const diffuserDefs = [
+                { baseRef: 'P039', label: 'Diffuseur Intuition', hasFormats: true, formats: [
+                  { value: '200', label: '200 ml', refSuffix: '' },
+                  { value: '500', label: '500 ml', refSuffix: '-500' },
+                  { value: '5000', label: 'Recharge 5 L', refSuffix: '-5000' },
+                ]},
+                { baseRef: 'P041', label: 'Diffuseur R\u00e9v\u00e9lation', hasFormats: true, formats: [
+                  { value: '200', label: '200 ml', refSuffix: '' },
+                  { value: '500', label: '500 ml', refSuffix: '-500' },
+                  { value: '5000', label: 'Recharge 5 L', refSuffix: '-5000' },
+                ]},
+                { baseRef: 'P015', label: 'Bougie Intuition 190g', hasFormats: false },
+              ];
+              const diffuserProducts = diffuserDefs.map(def => {
+                if (def.hasFormats) {
+                  const prods = {};
+                  def.formats.forEach(f => {
+                    const ref = def.baseRef + f.refSuffix;
+                    const prod = catalogue.find(p => p.ref === ref);
+                    if (prod) prods[f.value] = prod;
+                  });
+                  if (Object.keys(prods).length === 0) return null;
+                  return { ...def, prods };
+                } else {
+                  const prod = catalogue.find(p => p.ref === def.baseRef);
+                  if (!prod) return null;
+                  return { ...def, prod };
+                }
+              }).filter(Boolean);
+              if (diffuserProducts.length === 0) return null;
+              return (
+                <section className="tdm-section" id="tdm-diffusers">
+                  <div className="tdm-section-head">
+                    <div>
+                      <h2 className="tdm-serif">Diffuseurs &amp; Bougie</h2>
+                      <p className="tdm-section-sub">Cr&eacute;ez une signature olfactive dans vos chambres et parties communes</p>
+                    </div>
+                  </div>
+                  <div className="tdm-essentials">
+                    {diffuserProducts.map(item => {
+                      if (item.hasFormats) {
+                        const format = diffuserFormats[item.baseRef] || '200';
+                        const currentProd = item.prods[format] || Object.values(item.prods)[0];
+                        if (!currentProd) return null;
+                        const unitPrice = currentProd.prix_promo ?? currentProd.prix_remise;
+                        const moq = currentProd.moq || 1;
+                        const packLabel = format === '5000' ? `${moq} bidon${moq > 1 ? 's' : ''}` : `${moq} flacon${moq > 1 ? 's' : ''}`;
+                        const imgSrc = getProductImage(item.baseRef, currentProd.image_url);
+                        return (
+                          <article className="tdm-essential" key={item.baseRef}>
+                            <div className="tdm-essential-top">
+                              {imgSrc ? (
+                                <img src={imgSrc} alt={item.label} />
+                              ) : (
+                                <div style={{ width: 68, height: 85, background: 'var(--tdm-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <span style={{ color: 'var(--tdm-muted)', fontSize: 14, fontWeight: 500 }}>{item.label.slice(0, 2).toUpperCase()}</span>
+                                </div>
+                              )}
+                              <div>
+                                <h3>{item.label}</h3>
+                                <p className="tdm-essential-cost"><span>{euro(unitPrice)}</span> HT / unit&eacute;</p>
+                                <p><span>{packLabel} &middot; {euro(unitPrice * moq)} HT</span></p>
+                              </div>
+                            </div>
+                            <div className="tdm-essential-controls">
+                              <select
+                                value={format}
+                                onChange={(e) => setDiffuserFormats(prev => ({ ...prev, [item.baseRef]: e.target.value }))}
+                                aria-label={`Format ${item.label}`}
+                              >
+                                {item.formats.filter(f => item.prods[f.value]).map(f => (
+                                  <option key={f.value} value={f.value}>{f.label}</option>
+                                ))}
+                              </select>
+                              <button className="tdm-add-small" onClick={() => addCarton(currentProd.ref)}>
+                                + Ajouter 1 carton
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      } else {
+                        const unitPrice = item.prod.prix_promo ?? item.prod.prix_remise;
+                        const moq = item.prod.moq || 1;
+                        const imgSrc = getProductImage(item.baseRef, item.prod.image_url);
+                        return (
+                          <article className="tdm-essential" key={item.baseRef}>
+                            <div className="tdm-essential-top">
+                              {imgSrc ? (
+                                <img src={imgSrc} alt={item.label} />
+                              ) : (
+                                <div style={{ width: 68, height: 85, background: 'var(--tdm-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                                  <span style={{ color: 'var(--tdm-muted)', fontSize: 14, fontWeight: 500 }}>{item.label.slice(0, 2).toUpperCase()}</span>
+                                </div>
+                              )}
+                              <div>
+                                <h3>{item.label}</h3>
+                                <p className="tdm-essential-cost"><span>{euro(unitPrice)}</span> HT / unit&eacute;</p>
+                                <p><span>{moq} unit&eacute;{moq > 1 ? 's' : ''} &middot; {euro(unitPrice * moq)} HT</span></p>
+                              </div>
+                            </div>
+                            <div className="tdm-essential-controls">
+                              <button className="tdm-add-small" onClick={() => addCarton(item.prod.ref)}>
+                                + Ajouter 1 carton
+                              </button>
+                            </div>
+                          </article>
+                        );
+                      }
+                    })}
+                  </div>
+                </section>
+              );
+            })()}
 
             {/* ── Cadeaux VIP ── */}
             {vipProducts.length > 0 && (
@@ -2163,6 +2275,7 @@
       });
       const [commandes, setCommandes] = useState([]);
       const [panierOpen, setPanierOpen] = useState(false);
+      const [contactModalOpen, setContactModalOpen] = useState(false);
       const [modifyingOrderId, setModifyingOrderId] = useState(null);
       const [modifyingNotes, setModifyingNotes] = useState("");
       const [loading, setLoading] = useState(false);
@@ -2404,6 +2517,9 @@
                 <button onClick={() => { setVue("profil"); setPanierOpen(false); }} className={`px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors ${vue === "profil" ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`}>
                   <span className="hidden sm:inline">Mon compte</span><span className="sm:hidden">Compte</span>
                 </button>
+                <button onClick={() => setContactModalOpen(true)} className="px-2 sm:px-3 py-2 rounded-lg text-xs sm:text-sm transition-colors text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white">
+                  Contact
+                </button>
                 <button onClick={() => { setPanierOpen(!panierOpen); if (!panierOpen) setVue("catalogue"); }} className="flex items-center gap-1.5 ml-1 sm:ml-2 px-2.5 sm:px-3 py-1.5 sm:py-2 border border-gray-200 dark:border-slate-600 text-xs text-gray-600 dark:text-slate-300 hover:text-gray-900 dark:hover:text-white transition-colors" aria-label={`Panier, ${panierCount} article${panierCount > 1 ? 's' : ''}`}>
                   <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M6 2 3 6v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V6l-3-4z"/><line x1="3" x2="21" y1="6" y2="6"/><path d="M16 10a4 4 0 0 1-8 0"/></svg>
                   <span className="hidden sm:inline">Panier</span>
@@ -2418,6 +2534,25 @@
               </div>
             </div>
           </header>
+
+          {/* Contact Modal */}
+          {contactModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => setContactModalOpen(false)}>
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+              <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-md w-full mx-4 p-8" onClick={e => e.stopPropagation()}>
+                <button onClick={() => setContactModalOpen(false)} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 text-xl leading-none" aria-label="Fermer">&times;</button>
+                <div className="mb-4">
+                  <strong className="text-lg text-gray-900 dark:text-white">Votre s&eacute;lection, avec Hugo.</strong>
+                  <p className="mt-2 text-sm text-gray-600 dark:text-slate-300">Choix des soins, quantit&eacute; et pr&eacute;sentation&nbsp;:<br/>pr&eacute;parons les attentions adapt&eacute;es &agrave; votre &eacute;tablissement.</p>
+                </div>
+                <div className="flex flex-col gap-2 text-sm text-gray-700 dark:text-slate-300">
+                  <span className="font-medium">Hugo Montiel &middot; Votre interlocuteur Terre de Mars</span>
+                  <a href="mailto:hugo@terredemars.com" className="text-gold-700 dark:text-gold-400 hover:underline">hugo@terredemars.com</a>
+                  <a href="tel:+33685820335" className="text-gold-700 dark:text-gold-400 hover:underline">06 85 82 03 35</a>
+                </div>
+              </div>
+            </div>
+          )}
 
           {/* Order success banner */}
           {orderSuccess && (
