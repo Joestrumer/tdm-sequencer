@@ -171,8 +171,8 @@
     #tdm-partner-preview .tdm-vip-head .tdm-eyebrow{margin-bottom:11px}
     #tdm-partner-preview .tdm-vip h2{font-size:39px;line-height:1.06}
     #tdm-partner-preview .tdm-vip-intro{font-size:12px;color:var(--tdm-muted);margin-top:11px;max-width:510px;line-height:1.65}
-    #tdm-partner-preview .tdm-entry-price{text-align:right;flex-shrink:0;align-self:center;font-size:11px;color:var(--tdm-muted)}
-    #tdm-partner-preview .tdm-entry-price strong{display:block;font-family:'Cormorant Garamond',Georgia,serif;font-weight:400;font-size:40px;line-height:1.1;color:var(--tdm-ink)}
+    #tdm-partner-preview .tdm-vip-photo{flex-shrink:0;align-self:center;max-width:340px;border-radius:6px;overflow:hidden}
+    #tdm-partner-preview .tdm-vip-photo img{width:100%;height:auto;display:block;object-fit:cover}
     #tdm-partner-preview .tdm-filters{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 18px}
     #tdm-partner-preview .tdm-filter{background:transparent;color:var(--tdm-muted);border:1px solid var(--tdm-line);padding:8px 12px;font-size:11px;cursor:pointer}
     #tdm-partner-preview .tdm-filter.tdm-filter-active{background:var(--tdm-dark);border-color:var(--tdm-dark);color:var(--tdm-on-dark)}
@@ -867,16 +867,16 @@
               const diffuserDefs = [
                 { baseRef: 'P039', label: 'Diffuseur Intuition', hasFormats: true, formats: [
                   { value: '200', label: '200 ml', refSuffix: '' },
-                  { value: '200V', label: '200 ml Verre', refSuffix: '-200V' },
+                  { value: '200V', label: 'Flacon vide 200 ml', refSuffix: '-200V' },
                   { value: '500', label: '500 ml', refSuffix: '-500' },
-                  { value: '3000V', label: '3 L Verre', refSuffix: '-3000V' },
+                  { value: '3000V', label: 'Flacon vide 3 L', refSuffix: '-3000V' },
                   { value: '5000', label: 'Recharge 5 L', refSuffix: '-5000' },
                 ]},
                 { baseRef: 'P041', label: 'Diffuseur R\u00e9v\u00e9lation', hasFormats: true, formats: [
                   { value: '200', label: '200 ml', refSuffix: '' },
-                  { value: '200V', label: '200 ml Verre', refSuffix: '-200V' },
+                  { value: '200V', label: 'Flacon vide 200 ml', ref: 'P039-200V' },
                   { value: '500', label: '500 ml', refSuffix: '-500' },
-                  { value: '3000V', label: '3 L Verre', refSuffix: '-3000V' },
+                  { value: '3000V', label: 'Flacon vide 3 L', ref: 'P039-3000V' },
                   { value: '5000', label: 'Recharge 5 L', refSuffix: '-5000' },
                 ]},
                 { baseRef: 'P015', label: 'Bougie Intuition 190g', hasFormats: false },
@@ -885,7 +885,7 @@
                 if (def.hasFormats) {
                   const prods = {};
                   def.formats.forEach(f => {
-                    const ref = def.baseRef + f.refSuffix;
+                    const ref = f.ref || (def.baseRef + (f.refSuffix || ''));
                     const prod = catalogue.find(p => p.ref === ref);
                     if (prod) prods[f.value] = prod;
                   });
@@ -991,10 +991,8 @@
                     <h2 className="tdm-serif">Un s&eacute;jour se termine.<br/>Une attention reste.</h2>
                     <p className="tdm-vip-intro">Un soin d&eacute;pos&eacute; en chambre, un rituel &agrave; offrir, un souvenir &agrave; emporter.<br/>Choisissez le d&eacute;tail qui fera la diff&eacute;rence pour vos h&ocirc;tes.</p>
                   </div>
-                  <div className="tdm-entry-price">
-                    Notre s&eacute;lection, d&egrave;s
-                    <strong>{euro(minVipPrice)}</strong>
-                    HT par soin &middot; selon conditionnement
+                  <div className="tdm-vip-photo">
+                    <img src="/accueil-assets/vip-chambre.jpg" alt="Soins Terre de Mars d&eacute;pos&eacute;s sur un lit d'h&ocirc;tel" />
                   </div>
                 </div>
                 <div className="tdm-filters" role="group" aria-label="Filtrer la s\u00e9lection de cadeaux">
