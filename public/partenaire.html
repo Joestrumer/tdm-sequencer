@@ -744,7 +744,7 @@
       }, [amenities, catalogue]);
 
       // VIP products
-      const vipProducts = useMemo(() => catalogue.filter(p => (p.categorie === 'Cadeaux VIP & Spa' || p.categorie === 'Produits Spa' || p.categorie === 'Produits Spa & VIP') && !p.ref.startsWith('COFFRET')), [catalogue]);
+      const vipProducts = useMemo(() => catalogue.filter(p => (p.categorie === 'Cadeaux VIP & Spa' || p.categorie === 'Produits Spa' || p.categorie === 'Produits Spa & VIP') && !p.ref.startsWith('COFFRET')).sort((a, b) => (a.prix_promo ?? a.prix_remise) - (b.prix_promo ?? b.prix_remise)), [catalogue]);
       const filteredVip = useMemo(() => {
         if (vipFilter === 'all') return vipProducts;
         if (vipFilter === 'small') return vipProducts.filter(p => (p.prix_promo ?? p.prix_remise) <= 2.00);
