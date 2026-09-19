@@ -171,7 +171,7 @@
     #tdm-partner-preview .tdm-vip-head .tdm-eyebrow{margin-bottom:11px}
     #tdm-partner-preview .tdm-vip h2{font-size:39px;line-height:1.06}
     #tdm-partner-preview .tdm-vip-intro{font-size:12px;color:var(--tdm-muted);margin-top:11px;max-width:510px;line-height:1.65}
-    #tdm-partner-preview .tdm-vip-photo{flex-shrink:0;align-self:center;max-width:340px;border-radius:6px;overflow:hidden}
+    #tdm-partner-preview .tdm-vip-photo{flex-shrink:0;align-self:center;max-width:440px;border-radius:6px;overflow:hidden}
     #tdm-partner-preview .tdm-vip-photo img{width:100%;height:auto;display:block;object-fit:cover}
     #tdm-partner-preview .tdm-filters{display:flex;flex-wrap:wrap;gap:8px;margin:20px 0 18px}
     #tdm-partner-preview .tdm-filter{background:transparent;color:var(--tdm-muted);border:1px solid var(--tdm-line);padding:8px 12px;font-size:11px;cursor:pointer}
@@ -360,14 +360,14 @@
       'P023': CDN + 'P023_1.png',
       // Produits Spa
       'P003': CDN + 'P003_1.png',
-      'P004': CDN + 'P003_1.png',
-      'P004-500': CDN + 'P003_1.png',
-      'P005': CDN + 'P003_1.png',
-      'P006': CDN + 'P003_1.png',
-      'P021': CDN + 'P021-20_3.jpg',
-      'P022': CDN + 'P317-100_1.png',
-      'P027': CDN + 'P003_1.png',
-      'P029': CDN + 'P317-100_1.png',
+      'P004': CDN + 'P004-500_1.png',
+      'P004-500': CDN + 'P004-500_1.png',
+      'P005': CDN + 'P005_1.png',
+      'P006': CDN + 'P006_1.png',
+      'P021': CDN + 'P021_1.png',
+      'P022': CDN + 'P022_1.png',
+      'P027': CDN + 'P027_1.png',
+      'P029': CDN + 'P029_1.png',
       'P317-100': CDN + 'P317-100_1.png',
       // Parfums & gel hydroalcoolique
       'P015': CDN + 'P015_1.png',
@@ -401,9 +401,23 @@
       'P045': CDN + '045_500ml.png',
       'P046': CDN + '046_500ml.png',
       'P047': CDN + '047_500ml.png',
+      // Produits hygiène format voyage (tubes)
+      'P008-75': CDN + 'P008-150_1.png',
+      'P008-150': CDN + 'P008-150_1.png',
+      'P010-30': CDN + 'P010-30_1.png',
+      'P010-50': CDN + 'P010-50_1.png',
+      'P010-150': CDN + 'P010-150_1.png',
+      'P011-100': CDN + 'P011-100_1.png',
+      'P011-30': CDN + 'P011-100_1.png',
+      'P019-50': CDN + 'P019-50_1.png',
+      'P024-40': CDN + 'P024-40_1.png',
+      'P034-100': CDN + 'P034-100_1.png',
+      'P035-100': CDN + 'P035-100_1.png',
+      'P036-100': CDN + 'P036-100_1.png',
+      'P037-100': CDN + 'P037-100_1.png',
       // Savons
       'P017': CDN + 'P017_1.png',
-      'P017-30': CDN + 'P017_1.png',
+      'P017-30': CDN + 'P017-30_1.png',
       // Portes flacons
       'PFS': CDN + 'PFS_1.png',
       'PFD': CDN + 'PFD_1.png',
@@ -683,7 +697,7 @@
     const getProductImage = (ref, dbImageUrl) => dbImageUrl || ACCUEIL_IMAGES[ref] || getProductImageUrl(ref) || null;
 
     // Catégorisation VIP pour les filtres
-    const VIP_SPA_REFS = new Set(['P016', 'P009', 'P003', 'P317-100', 'P020']);
+    const VIP_SPA_REFS = new Set(['P016', 'P009', 'P003', 'P317-100', 'P020', 'P004', 'P004-500', 'P005', 'P006', 'P021', 'P022', 'P027', 'P029']);
 
     const AccueilView = ({ partner, amenities, catalogue, panier, setPanier, commandes, setVue, setPanierOpen, showToast }) => {
       const [feedback, setFeedback] = useState(null);
@@ -730,10 +744,10 @@
       }, [amenities, catalogue]);
 
       // VIP products
-      const vipProducts = useMemo(() => catalogue.filter(p => p.categorie === 'Cadeaux VIP & Spa'), [catalogue]);
+      const vipProducts = useMemo(() => catalogue.filter(p => p.categorie === 'Cadeaux VIP & Spa' || p.categorie === 'Produits Spa'), [catalogue]);
       const filteredVip = useMemo(() => {
         if (vipFilter === 'all') return vipProducts;
-        if (vipFilter === 'small') return vipProducts.filter(p => (p.prix_promo ?? p.prix_remise) <= 1.50);
+        if (vipFilter === 'small') return vipProducts.filter(p => (p.prix_promo ?? p.prix_remise) <= 2.00);
         if (vipFilter === 'spa') return vipProducts.filter(p => VIP_SPA_REFS.has(p.ref));
         return vipProducts;
       }, [vipProducts, vipFilter]);
@@ -998,7 +1012,7 @@
                 <div className="tdm-filters" role="group" aria-label="Filtrer la s\u00e9lection de cadeaux">
                   {[
                     { key: 'all', label: 'Toute la s\u00e9lection' },
-                    { key: 'small', label: 'Moins de 1,50 \u20ac HT / soin' },
+                    { key: 'small', label: 'Moins de 2 \u20ac HT / soin' },
                     { key: 'spa', label: "L'esprit spa" },
                   ].map(f => (
                     <button
