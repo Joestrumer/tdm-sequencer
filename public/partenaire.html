@@ -1028,12 +1028,10 @@
                     const unitPrice = p.prix_promo ?? p.prix_remise;
                     const moq = p.moq || 1;
                     const imgSrc = getProductImage(p.ref, p.image_url);
-                    const refNum = p.ref.replace(/^P0*/, '');
                     const isMask = p.ref === 'P009';
                     return (
                       <article className="tdm-product" key={p.ref}>
                         <div className={`tdm-product-stage ${isMask ? 'tdm-mask-stage' : ''}`}>
-                          <span className="tdm-product-ref">{refNum}</span>
                           {imgSrc ? (
                             <img src={imgSrc} alt={p.nom} />
                           ) : (
