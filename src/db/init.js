@@ -1697,7 +1697,6 @@ let productsInserted = 0;
 for (const p of MISSING_PRODUCTS) {
   const r = stmtInsertProduct.run(p.ref, p.nom, p.prix_ht, p.moq);
   if (r.changes > 0) productsInserted++;
-  }
 }
 if (productsInserted > 0) console.log(`🆕 ${productsInserted} produit(s) manquant(s) ajouté(s) au catalogue`);
 
