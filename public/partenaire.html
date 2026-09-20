@@ -759,22 +759,6 @@
       // Coffret product
       const coffretProd = useMemo(() => catalogue.find(p => p.nom && p.nom.toLowerCase().includes('coffret') && p.categorie !== 'Cadeaux VIP & Spa'), [catalogue]);
 
-      // Product descriptions for VIP (editorial, from mockup)
-      const vipDescriptions = {
-        'P016': 'Une attention d\u00e9licate \u00e0 d\u00e9couvrir au calme de la chambre.',
-        'P012': 'Le petit soin que vos h\u00f4tes glissent dans leur sac, et emportent avec eux.',
-        'P009': "L'invitation \u00e0 prolonger l'exp\u00e9rience bien-\u00eatre, le temps d'un rituel.",
-      };
-      const vipNames = {
-        'P016': 'Le regard, Variance',
-        'P012': 'La douceur, C\u00e9leste',
-        'P009': 'La parenth\u00e8se, R\u00e9demption',
-      };
-      const vipKinds = {
-        'P016': 'Soin contour des yeux',
-        'P012': 'Baume l\u00e8vres \u00b7 15 ml',
-        'P009': 'Masque visage \u00b7 Biocellulose',
-      };
 
       return (
         <div id="tdm-partner-preview" ref={previewRef}>
@@ -1041,9 +1025,7 @@
                           )}
                         </div>
                         <div className="tdm-product-body">
-                          <h3>{vipNames[p.ref] || p.nom}</h3>
-                          <p className="tdm-product-kind">{vipKinds[p.ref] || p.categorie}</p>
-                          <p className="tdm-product-desc">{vipDescriptions[p.ref] || ''}</p>
+                          <h3>{p.nom}</h3>
                           <div className="tdm-product-price">{euro(unitPrice)} <span>HT / soin</span></div>
                           <p className="tdm-product-pack">Carton de {moq} soin{moq > 1 ? 's' : ''} &middot; <strong>{euro(unitPrice * moq)} HT</strong></p>
                           <button className="tdm-add" onClick={() => addCarton(p.ref)}>
