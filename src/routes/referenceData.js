@@ -234,7 +234,7 @@ module.exports = (db) => {
 
   router.delete('/catalog/:ref', (req, res) => {
     try {
-      db.prepare('DELETE FROM vf_catalog WHERE ref = ?').run(req.params.ref);
+      db.prepare('UPDATE vf_catalog SET actif = 0 WHERE ref = ?').run(req.params.ref);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
