@@ -738,6 +738,7 @@ module.exports = (db) => {
           telephone = COALESCE(excluded.telephone, vf_partners.telephone),
           adresse = COALESCE(excluded.adresse, vf_partners.adresse),
           vf_client_id = COALESCE(excluded.vf_client_id, vf_partners.vf_client_id),
+          actif = 1,
           facturation_rue = COALESCE(excluded.facturation_rue, vf_partners.facturation_rue),
           facturation_code_postal = COALESCE(excluded.facturation_code_postal, vf_partners.facturation_code_postal),
           facturation_ville = COALESCE(excluded.facturation_ville, vf_partners.facturation_ville),
@@ -901,6 +902,49 @@ module.exports = (db) => {
         created,
         enriched,
         total_partenaires: total,
+      });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // ─── Diagnostic VF client ─────────────────────────────────────────────────
+  // Cherche pourquoi un client VF n'apparaît pas dans les partenaires
+  router.get('/partners/lookup-vf/:vfClientId', async (req, res) => {
+    try {
+      const vfClientId = req.params.vfClientId;
+
+      // 1. Chercher dans vf_partners par vf_client_id
+      const localPartner = db.prepare('SELECT id, nom, actif, vf_client_id, vf_display_name FROM vf_partners WHERE vf_client_id = ?').get(vfClientId);
+
+      // 2. Chercher dans vf_client_mappings
+      const mappings = db.prepare('SELECT * FROM vf_client_mappings WHERE vf_client_id = ?').all(vfClientId);
+
+      // 3. Récupérer le client depuis l'API VF
+      let vfClient = null;
+      try {
+        const vfService = require('../services/vosfacturesService')(db);
+        vfClient = await vfService.getClient(vfClientId);
+      } catch (e) {
+        vfClient = { error: e.message };
+      }
+
+      // 4. Si le client VF existe, chercher si un partenaire a le même nom
+      let nameConflict = null;
+      if (vfClient && vfClient.name) {
+        nameConflict = db.prepare('SELECT id, nom, actif, vf_client_id FROM vf_partners WHERE LOWER(nom) = LOWER(?)').get(vfClient.name.trim());
+      }
+
+      res.json({
+        vf_client_id: vfClientId,
+        vf_client: vfClient ? { name: vfClient.name, email: vfClient.email, city: vfClient.city, shortcut: vfClient.shortcut } : null,
+        local_partner: localPartner || null,
+        mappings,
+        name_conflict: nameConflict || null,
+        diagnostic: !vfClient ? 'Client VF introuvable via API'
+          : localPartner ? (localPartner.actif ? 'Partenaire existe et est actif' : 'Partenaire existe mais est INACTIF (actif=0)')
+          : nameConflict ? `Nom "${vfClient.name}" déjà utilisé par partenaire #${nameConflict.id} (vf_client_id=${nameConflict.vf_client_id})`
+          : 'Client VF non synchronisé — relancer la sync VF',
       });
     } catch (e) {
       res.status(500).json({ erreur: e.message });

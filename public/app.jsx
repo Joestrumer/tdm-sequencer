@@ -21897,6 +21897,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
   const [showPwd, setShowPwd] = useState(false);
   const [saving, setSaving] = useState(false);
   const [syncing, setSyncing] = useState(false);
+  const [lookupResult, setLookupResult] = useState(null);
   const [tab, setTab] = useState("tous"); // "tous" | "portail" | "remises"
   const [catalog, setCatalog] = useState([]);
   const [discounts, setDiscounts] = useState([]);
@@ -21949,6 +21950,21 @@ const VuePartenaires = ({ showToast, readOnly }) => {
       showToast('Erreur réseau', "error");
     }
     setSyncing(false);
+  };
+
+  const lookupVF = async () => {
+    const input = prompt('ID client VosFactures (ex: 112513649) ou URL :');
+    if (!input) return;
+    const idMatch = input.match(/(\d{5,})/);
+    if (!idMatch) { showToast('ID invalide', 'error'); return; }
+    const vfId = idMatch[1];
+    try {
+      const res = await api.get(`/reference/partners/lookup-vf/${vfId}`);
+      setLookupResult(res);
+      if (res.diagnostic) showToast(res.diagnostic, res.local_partner ? 'success' : 'warning');
+    } catch (e) {
+      showToast('Erreur lookup', 'error');
+    }
   };
 
   const loadAllDiscounts = async () => {
@@ -22314,6 +22330,9 @@ const VuePartenaires = ({ showToast, readOnly }) => {
           <button onClick={syncVF} disabled={syncing} className="px-3 py-2.5 rounded-xl text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 transition-colors disabled:opacity-50 flex-shrink-0" title="Synchroniser noms et données depuis VosFactures">
             {syncing ? <span className="inline-block w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" /> : 'Sync VF'}
           </button>
+          <button onClick={lookupVF} className="px-3 py-2.5 rounded-xl text-xs font-medium bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-100 transition-colors flex-shrink-0" title="Chercher un client VF par ID">
+            Chercher VF
+          </button>
           <button onClick={() => {
             const headers = ['Nom','Email','Contact','Téléphone','Adresse','Franco HT','Frais exonéré','VF Client ID','Accès portail','Livraison Prénom','Livraison Nom','Livraison Tél','Livraison Email','Facturation Prénom','Facturation Nom','Facturation Tél','Facturation Email'];
             const rows = filtered.map(p => [p.nom, p.email, p.contact_nom, p.telephone, p.adresse, p.franco_seuil ?? '', p.frais_exonere ? 'Oui' : 'Non', p.vf_client_id, p.has_password ? 'Oui' : 'Non', p.livraison_prenom, p.livraison_nom, p.livraison_telephone, p.livraison_email, p.facturation_prenom, p.facturation_nom, p.facturation_telephone, p.facturation_email]);
@@ -22324,6 +22343,31 @@ const VuePartenaires = ({ showToast, readOnly }) => {
             CSV
           </button>
         </div>
+        {lookupResult && (
+          <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 text-xs space-y-1">
+            <div className="flex justify-between items-start">
+              <strong className="text-amber-800">Diagnostic VF #{lookupResult.vf_client_id}</strong>
+              <button onClick={() => setLookupResult(null)} className="text-amber-400 hover:text-amber-600">&times;</button>
+            </div>
+            {lookupResult.vf_client && <div className="text-slate-700">Client VF : <strong>{lookupResult.vf_client.name}</strong> {lookupResult.vf_client.city && `(${lookupResult.vf_client.city})`} {lookupResult.vf_client.email && `\u2014 ${lookupResult.vf_client.email}`}</div>}
+            {lookupResult.local_partner && <div className="text-green-700">Partenaire local #{lookupResult.local_partner.id} : {lookupResult.local_partner.nom} {lookupResult.local_partner.actif ? '(actif)' : '(INACTIF)'}</div>}
+            {lookupResult.name_conflict && !lookupResult.local_partner && <div className="text-red-700">Conflit nom : partenaire #{lookupResult.name_conflict.id} "{lookupResult.name_conflict.nom}" a vf_client_id={lookupResult.name_conflict.vf_client_id}</div>}
+            <div className={`font-medium ${lookupResult.local_partner?.actif ? 'text-green-700' : 'text-amber-700'}`}>{lookupResult.diagnostic}</div>
+            {!lookupResult.local_partner && lookupResult.vf_client && (
+              <button onClick={async () => {
+                try {
+                  await api.post('/reference/partners', { nom: lookupResult.vf_client.name, nom_normalise: lookupResult.vf_client.name.toLowerCase() });
+                  await api.patch(`/reference/partners/${(await api.get('/reference/partners?all=1')).find(p => p.nom === lookupResult.vf_client.name)?.id}`, { vf_display_name: lookupResult.vf_client.name });
+                  showToast('Partenaire cr\u00e9\u00e9 ! Relance Sync VF pour remplir les donn\u00e9es.', 'success');
+                  setLookupResult(null);
+                  charger();
+                } catch (e) { showToast('Erreur cr\u00e9ation', 'error'); }
+              }} className="mt-1 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600">
+                Cr\u00e9er ce partenaire + Sync VF
+              </button>
+            )}
+          </div>
+        )}
         {loading && <div className="text-xs text-slate-400 py-2">Chargement...</div>}
         <div className="bg-white rounded-2xl border border-slate-100 overflow-hidden max-h-[calc(100vh-220px)] overflow-y-auto">
           {filtered.map(p => (
