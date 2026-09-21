@@ -22465,65 +22465,64 @@ const VuePartenaires = ({ showToast, readOnly }) => {
           <div className="space-y-4 animate-fade-in" key={selected.id}>
             {/* Header partenaire */}
             <div className="bg-white rounded-2xl border border-slate-100 p-5">
-              <div className="flex items-center justify-between mb-4">
-                <div>
+              <div className="mb-4">
+                <div className="flex items-center justify-between">
                   <h2 className="text-lg font-semibold text-slate-900">{selected.nom}</h2>
-                  <div className="flex items-center gap-2 mt-0.5">
-                    {selected.vf_client_id && <a href={`https://terredemars.vosfactures.fr/clients/${selected.vf_client_id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 hover:bg-blue-100 hover:text-blue-700 font-mono transition-colors">VF #{selected.vf_client_id} &rarr;</a>}
-                    {linkingVfFor !== selected.id ? (
-                      <button onClick={() => { setLinkingVfFor(selected.id); setVfLinkQuery(''); setVfLinkResults([]); }} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors">{selected.vf_client_id ? 'Changer' : 'Lier un client VF'}</button>
+                  <div className="flex items-center gap-1.5">
+                    {selected.has_password ? (
+                      <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">Accès portail actif</span>
                     ) : (
-                      <div className="relative">
-                        <div className="flex items-center gap-1">
-                          <input
-                            autoFocus
-                            type="text"
-                            placeholder="Rechercher un client VF..."
-                            value={vfLinkQuery}
-                            onChange={e => rechercherVFLink(e.target.value)}
-                            onKeyDown={e => e.key === 'Escape' && (setLinkingVfFor(null), setVfLinkQuery(''), setVfLinkResults([]))}
-                            className="text-xs border border-slate-200 rounded-lg px-2 py-1 w-56 focus:outline-none focus:ring-1 focus:ring-blue-400"
-                          />
-                          {vfLinkSearching && <span className="text-xs text-slate-400">...</span>}
-                          <button onClick={() => { setLinkingVfFor(null); setVfLinkQuery(''); setVfLinkResults([]); }} className="text-xs text-slate-400 hover:text-slate-600">Annuler</button>
-                        </div>
-                        {vfLinkResults.length > 0 && (
-                          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-80 max-h-48 overflow-y-auto">
-                            {vfLinkResults.map(c => (
-                              <button key={c.id} onClick={async () => {
-                                try {
-                                  const r = await api.post(`/reference/partners/${selected.id}/link-vf-client`, { vf_client_id: String(c.id) });
-                                  showToast(r.message || `Client VF #${c.id} lié`, 'success');
-                                  setLinkingVfFor(null); setVfLinkQuery(''); setVfLinkResults([]);
-                                  charger();
-                                } catch (e) { showToast('Erreur liaison : ' + (e.message || e), 'error'); }
-                              }} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
-                                <div className="text-xs font-medium text-slate-800">{c.name}</div>
-                                <div className="text-[10px] text-slate-400">{[c.city, c.email, `#${c.id}`].filter(Boolean).join(' · ')}</div>
-                              </button>
-                            ))}
-                          </div>
-                        )}
-                        {vfLinkQuery.length >= 2 && !vfLinkSearching && vfLinkResults.length === 0 && (
-                          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-80 p-3 text-xs text-slate-400">Aucun résultat</div>
-                        )}
-                      </div>
+                      <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-400 font-medium">Pas d'accès portail</span>
                     )}
-                    <span className="text-xs text-slate-400">{selected.nom_normalise}</span>
+                    <button onClick={() => window.open('/partenaire', '_blank')} className="text-[10px] px-2 py-1 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 font-medium transition-colors">
+                      Railway &rarr;
+                    </button>
+                    <button onClick={() => window.open('https://partenaire.terredemars.com/', '_blank')} className="text-[10px] px-2 py-1 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 font-medium transition-colors">
+                      T2M &rarr;
+                    </button>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
-                  {selected.has_password ? (
-                    <span className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 font-medium">Accès portail actif</span>
+                <div className="flex items-center gap-2 mt-1">
+                  {selected.vf_client_id && <a href={`https://terredemars.vosfactures.fr/clients/${selected.vf_client_id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 hover:bg-blue-100 hover:text-blue-700 font-mono transition-colors">VF #{selected.vf_client_id} &rarr;</a>}
+                  {linkingVfFor !== selected.id ? (
+                    <button onClick={() => { setLinkingVfFor(selected.id); setVfLinkQuery(''); setVfLinkResults([]); }} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors">{selected.vf_client_id ? 'Changer' : 'Lier un client VF'}</button>
                   ) : (
-                    <span className="text-[11px] px-2.5 py-1 rounded-full bg-slate-100 text-slate-400 font-medium">Pas d'accès portail</span>
+                    <div className="relative">
+                      <div className="flex items-center gap-1">
+                        <input
+                          autoFocus
+                          type="text"
+                          placeholder="Rechercher un client VF..."
+                          value={vfLinkQuery}
+                          onChange={e => rechercherVFLink(e.target.value)}
+                          onKeyDown={e => e.key === 'Escape' && (setLinkingVfFor(null), setVfLinkQuery(''), setVfLinkResults([]))}
+                          className="text-xs border border-slate-200 rounded-lg px-2 py-1 w-56 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                        />
+                        {vfLinkSearching && <span className="text-xs text-slate-400">...</span>}
+                        <button onClick={() => { setLinkingVfFor(null); setVfLinkQuery(''); setVfLinkResults([]); }} className="text-xs text-slate-400 hover:text-slate-600">Annuler</button>
+                      </div>
+                      {vfLinkResults.length > 0 && (
+                        <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-80 max-h-48 overflow-y-auto">
+                          {vfLinkResults.map(c => (
+                            <button key={c.id} onClick={async () => {
+                              try {
+                                const r = await api.post(`/reference/partners/${selected.id}/link-vf-client`, { vf_client_id: String(c.id) });
+                                showToast(r.message || `Client VF #${c.id} lié`, 'success');
+                                setLinkingVfFor(null); setVfLinkQuery(''); setVfLinkResults([]);
+                                charger();
+                              } catch (e) { showToast('Erreur liaison : ' + (e.message || e), 'error'); }
+                            }} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
+                              <div className="text-xs font-medium text-slate-800">{c.name}</div>
+                              <div className="text-[10px] text-slate-400">{[c.city, c.email, `#${c.id}`].filter(Boolean).join(' · ')}</div>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                      {vfLinkQuery.length >= 2 && !vfLinkSearching && vfLinkResults.length === 0 && (
+                        <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-80 p-3 text-xs text-slate-400">Aucun résultat</div>
+                      )}
+                    </div>
                   )}
-                  <button onClick={() => window.open('/partenaire', '_blank')} className="text-[11px] px-2.5 py-1 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-200 font-medium transition-colors">
-                    Portail (Railway) &rarr;
-                  </button>
-                  <button onClick={() => window.open('https://partenaire.terredemars.com/', '_blank')} className="text-[11px] px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-600 hover:bg-emerald-100 border border-emerald-200 font-medium transition-colors">
-                    Portail (T2M) &rarr;
-                  </button>
                 </div>
               </div>
 
