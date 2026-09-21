@@ -9,6 +9,21 @@ const crypto = require('crypto');
 module.exports = (db) => {
   const router = express.Router();
 
+  // Transforme un lien Google Drive en URL image directe
+  function transformGoogleDriveUrl(url) {
+    if (!url) return url;
+    // https://drive.google.com/file/d/FILE_ID/view...
+    const fileMatch = url.match(/drive\.google\.com\/file\/d\/([^/]+)/);
+    if (fileMatch) return `https://lh3.googleusercontent.com/d/${fileMatch[1]}`;
+    // https://drive.google.com/open?id=FILE_ID
+    const openMatch = url.match(/drive\.google\.com\/open\?id=([^&]+)/);
+    if (openMatch) return `https://lh3.googleusercontent.com/d/${openMatch[1]}`;
+    // https://drive.google.com/uc?id=FILE_ID&...
+    const ucMatch = url.match(/drive\.google\.com\/uc\?.*id=([^&]+)/);
+    if (ucMatch) return `https://lh3.googleusercontent.com/d/${ucMatch[1]}`;
+    return url;
+  }
+
   // ─── Catalogue ────────────────────────────────────────────────────────────
 
   router.get('/catalog', (req, res) => {
@@ -23,6 +38,7 @@ module.exports = (db) => {
   router.post('/catalog', (req, res) => {
     try {
       const { ref, vf_product_id, nom, prix_ht, tva, csv_ref, vf_ref, actif, image_url } = req.body;
+      const cleanImageUrl = transformGoogleDriveUrl(image_url);
       db.prepare(`
         INSERT INTO vf_catalog (ref, vf_product_id, nom, prix_ht, tva, csv_ref, vf_ref, actif, image_url)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -31,7 +47,7 @@ module.exports = (db) => {
           prix_ht = excluded.prix_ht, tva = excluded.tva,
           csv_ref = excluded.csv_ref, vf_ref = excluded.vf_ref,
           actif = excluded.actif, image_url = excluded.image_url
-      `).run(ref, vf_product_id || null, nom, prix_ht, tva || 20, csv_ref || null, vf_ref || null, actif ?? 1, image_url || null);
+      `).run(ref, vf_product_id || null, nom, prix_ht, tva || 20, csv_ref || null, vf_ref || null, actif ?? 1, cleanImageUrl || null);
       res.json({ ok: true });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -220,7 +236,7 @@ module.exports = (db) => {
       for (const field of allowedFields) {
         if (req.body[field] !== undefined) {
           updates.push(`${field} = ?`);
-          params.push(req.body[field]);
+          params.push(field === 'image_url' ? transformGoogleDriveUrl(req.body[field]) : req.body[field]);
         }
       }
       if (updates.length === 0) return res.status(400).json({ erreur: 'Aucun champ à mettre à jour' });
