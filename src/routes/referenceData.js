@@ -976,7 +976,6 @@ module.exports = (db) => {
       if (!vfClient || !vfClient.name) return res.status(404).json({ erreur: 'Client VF introuvable' });
 
       const vfName = vfClient.name.trim();
-      const nomNormalise = vfName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
       const email = vfClient.email || null;
       const contactName = vfClient.shortcut || null;
       const phone = vfClient.phone || null;
@@ -988,6 +987,20 @@ module.exports = (db) => {
       const mobile = vfClient.mobile_phone || '';
       const buyer = vfClient.buyer ? 1 : 0;
       const adresse = [street, postCode, city].filter(Boolean).join(', ') || null;
+
+      // Vérifier conflit de nom avec un partenaire qui a un vf_client_id DIFFÉRENT
+      const nameConflict = db.prepare('SELECT id, nom, vf_client_id FROM vf_partners WHERE LOWER(nom) = LOWER(?)').get(vfName);
+      let finalName = vfName;
+      if (nameConflict && nameConflict.vf_client_id && nameConflict.vf_client_id !== String(vf_client_id)) {
+        // Nom déjà pris par un autre partenaire VF — désambiguïser avec la ville ou l'ID VF
+        finalName = city ? `${vfName} (${city})` : `${vfName} (VF#${vf_client_id})`;
+        // Si même le nom désambiguïsé existe déjà, ajouter l'ID VF
+        const stillConflict = db.prepare('SELECT id FROM vf_partners WHERE LOWER(nom) = LOWER(?)').get(finalName);
+        if (stillConflict) {
+          finalName = `${vfName} (VF#${vf_client_id})`;
+        }
+      }
+      const nomNormalise = finalName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
       db.prepare(`
         INSERT INTO vf_partners (nom, nom_normalise, email, contact_nom, telephone, adresse, vf_client_id, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, vf_display_name, actif)
@@ -1005,14 +1018,14 @@ module.exports = (db) => {
           facturation_tva = COALESCE(excluded.facturation_tva, vf_partners.facturation_tva),
           vf_display_name = COALESCE(excluded.vf_display_name, vf_partners.vf_display_name),
           actif = 1
-      `).run(vfName, nomNormalise, email, contactName, phone, adresse, String(vf_client_id), street || null, postCode || null, city || null, country || null, taxNo || null, buyer, mobile || null, vfName);
+      `).run(finalName, nomNormalise, email, contactName, phone, adresse, String(vf_client_id), street || null, postCode || null, city || null, country || null, taxNo || null, buyer, mobile || null, vfName);
 
       // Aussi créer le mapping dans vf_client_mappings
       const existingMapping = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
       if (existingMapping) {
-        db.prepare('UPDATE vf_client_mappings SET file_name = ?, vf_client_id = ? WHERE vf_name = ?').run(vfName, String(vf_client_id), vfName);
+        db.prepare('UPDATE vf_client_mappings SET file_name = ?, vf_client_id = ? WHERE vf_name = ?').run(finalName, String(vf_client_id), vfName);
       } else {
-        db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name, vf_client_id) VALUES (?, ?, ?)').run(vfName, vfName, String(vf_client_id));
+        db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name, vf_client_id) VALUES (?, ?, ?)').run(vfName, finalName, String(vf_client_id));
       }
 
       const partner = db.prepare('SELECT id, nom FROM vf_partners WHERE vf_client_id = ?').get(String(vf_client_id));

@@ -22356,11 +22356,11 @@ const VuePartenaires = ({ showToast, readOnly }) => {
             {!lookupResult.local_partner && lookupResult.vf_client && (
               <button onClick={async () => {
                 try {
-                  await api.post('/reference/partners/create-from-vf', { vf_client_id: lookupResult.vf_client_id });
-                  showToast('Partenaire créé avec les données VF', 'success');
+                  const r = await api.post('/reference/partners/create-from-vf', { vf_client_id: lookupResult.vf_client_id });
+                  showToast(r.message || `Partenaire "${r.nom}" créé (ID #${r.partner_id})`, 'success');
                   setLookupResult(null);
                   charger();
-                } catch (e) { showToast('Erreur création', 'error'); }
+                } catch (e) { showToast('Erreur création : ' + (e.message || e), 'error'); }
               }} className="mt-1 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600">
                 Créer ce partenaire
               </button>
