@@ -1035,6 +1035,40 @@ module.exports = (db) => {
     }
   });
 
+  // ─── Lier un client VF à un partenaire existant ──────────────────────────
+  router.post('/partners/:id/link-vf-client', async (req, res) => {
+    try {
+      const partnerId = req.params.id;
+      const { vf_client_id } = req.body;
+      if (!vf_client_id) return res.status(400).json({ erreur: 'vf_client_id requis' });
+
+      const partner = db.prepare('SELECT id, nom FROM vf_partners WHERE id = ?').get(partnerId);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+
+      // Récupérer le nom VF pour le mapping
+      let vfName = null;
+      try {
+        const vfService = require('../services/vosfacturesService')(db);
+        const vfClient = await vfService.getClient(vf_client_id);
+        vfName = vfClient?.name?.trim() || null;
+      } catch (_) {}
+
+      // Créer le mapping VF → partenaire existant
+      if (vfName) {
+        const existingMapping = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
+        if (existingMapping) {
+          db.prepare('UPDATE vf_client_mappings SET file_name = ?, vf_client_id = ? WHERE id = ?').run(partner.nom, String(vf_client_id), existingMapping.id);
+        } else {
+          db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name, vf_client_id) VALUES (?, ?, ?)').run(vfName, partner.nom, String(vf_client_id));
+        }
+      }
+
+      res.json({ ok: true, partner_id: partner.id, nom: partner.nom, vf_name: vfName, message: `Client VF #${vf_client_id} lié au partenaire "${partner.nom}"` });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Remises client ───────────────────────────────────────────────────────
 
   router.get('/discounts', (req, res) => {

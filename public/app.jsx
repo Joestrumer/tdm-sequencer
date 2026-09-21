@@ -22354,16 +22354,30 @@ const VuePartenaires = ({ showToast, readOnly }) => {
             {lookupResult.name_conflict && !lookupResult.local_partner && <div className="text-red-700">Conflit nom : partenaire #{lookupResult.name_conflict.id} "{lookupResult.name_conflict.nom}" a vf_client_id={lookupResult.name_conflict.vf_client_id}</div>}
             <div className={`font-medium ${lookupResult.local_partner?.actif ? 'text-green-700' : 'text-amber-700'}`}>{lookupResult.diagnostic}</div>
             {!lookupResult.local_partner && lookupResult.vf_client && (
-              <button onClick={async () => {
-                try {
-                  const r = await api.post('/reference/partners/create-from-vf', { vf_client_id: lookupResult.vf_client_id });
-                  showToast(r.message || `Partenaire "${r.nom}" créé (ID #${r.partner_id})`, 'success');
-                  setLookupResult(null);
-                  charger();
-                } catch (e) { showToast('Erreur création : ' + (e.message || e), 'error'); }
-              }} className="mt-1 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600">
-                Créer ce partenaire
-              </button>
+              <div className="flex gap-2 mt-1">
+                {lookupResult.name_conflict && (
+                  <button onClick={async () => {
+                    try {
+                      const r = await api.post(`/reference/partners/${lookupResult.name_conflict.id}/link-vf-client`, { vf_client_id: lookupResult.vf_client_id });
+                      showToast(r.message || `Client VF lié au partenaire #${r.partner_id}`, 'success');
+                      setLookupResult(null);
+                      charger();
+                    } catch (e) { showToast('Erreur liaison : ' + (e.message || e), 'error'); }
+                  }} className="px-3 py-1.5 rounded-lg bg-green-600 text-white text-xs font-medium hover:bg-green-700">
+                    Lier au partenaire #{lookupResult.name_conflict.id}
+                  </button>
+                )}
+                <button onClick={async () => {
+                  try {
+                    const r = await api.post('/reference/partners/create-from-vf', { vf_client_id: lookupResult.vf_client_id });
+                    showToast(r.message || `Partenaire "${r.nom}" créé (ID #${r.partner_id})`, 'success');
+                    setLookupResult(null);
+                    charger();
+                  } catch (e) { showToast('Erreur création : ' + (e.message || e), 'error'); }
+                }} className="px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600">
+                  {lookupResult.name_conflict ? 'Créer séparément' : 'Créer ce partenaire'}
+                </button>
+              </div>
             )}
           </div>
         )}
