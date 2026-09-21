@@ -99,6 +99,7 @@ module.exports = (db, userToken = null) => ({
     let page = 1;
     while (true) {
       const data = await vfFetch(`/clients.json?page=${page}&per_page=100`, {}, db, userToken);
+      logger.debug(`📇 VF clients page ${page}: ${Array.isArray(data) ? data.length : 'non-array'} résultats`);
       if (!Array.isArray(data) || data.length === 0) break;
       allClients.push(...data);
       if (data.length < 100) break;
@@ -107,7 +108,7 @@ module.exports = (db, userToken = null) => ({
     allClients.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
     cache.clients = allClients;
     cache.clientsTime = Date.now();
-    logger.debug(`📇 ${allClients.length} clients VF chargés en cache`);
+    logger.info(`📇 ${allClients.length} clients VF chargés (${page} pages)`);
     return allClients;
   },
 

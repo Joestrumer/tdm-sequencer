@@ -892,6 +892,50 @@ module.exports = (db) => {
         }
       }
 
+      // Post-sync : récupérer les clients VF connus mais absents de la liste paginée
+      // (l'API VF /clients.json ne retourne pas toujours tous les clients)
+      const syncedIds = new Set(vfClients.map(c => String(c.id)));
+      const missingPartners = db.prepare(
+        'SELECT id, nom, vf_client_id FROM vf_partners WHERE vf_client_id IS NOT NULL AND actif = 1'
+      ).all().filter(p => !syncedIds.has(String(p.vf_client_id)));
+
+      let recovered = 0;
+      for (const p of missingPartners) {
+        try {
+          const fullClient = await vfService.getClient(p.vf_client_id);
+          if (!fullClient || !fullClient.name) continue;
+          const vfName = fullClient.name.trim();
+          const email = fullClient.email || null;
+          const contactName = fullClient.shortcut || null;
+          const phone = fullClient.phone || null;
+          const street = fullClient.street || '';
+          const postCode = fullClient.post_code || '';
+          const city = fullClient.city || '';
+          const country = fullClient.country || '';
+          const taxNo = fullClient.tax_no || '';
+          const mobile = fullClient.mobile_phone || '';
+          const adresse = [street, postCode, city].filter(Boolean).join(', ') || null;
+          db.prepare(`
+            UPDATE vf_partners SET
+              email = COALESCE(?, email), contact_nom = COALESCE(?, contact_nom),
+              telephone = COALESCE(?, telephone), adresse = COALESCE(?, adresse),
+              vf_display_name = COALESCE(?, vf_display_name),
+              facturation_rue = COALESCE(?, facturation_rue),
+              facturation_code_postal = COALESCE(?, facturation_code_postal),
+              facturation_ville = COALESCE(?, facturation_ville),
+              facturation_pays = COALESCE(?, facturation_pays),
+              facturation_tva = COALESCE(?, facturation_tva),
+              facturation_portable = COALESCE(?, facturation_portable)
+            WHERE id = ?
+          `).run(email, contactName, phone, adresse, vfName, street || null, postCode || null, city || null, country || null, taxNo || null, mobile || null, p.id);
+          recovered++;
+        } catch (_) {}
+      }
+
+      if (missingPartners.length > 0) {
+        logger.info(`📇 Post-sync: ${missingPartners.length} clients VF absents de la liste paginée, ${recovered} récupérés via API unitaire`);
+      }
+
       // Recharger pour retourner le total
       const total = db.prepare('SELECT COUNT(*) as n FROM vf_partners WHERE actif = 1').get().n;
 
@@ -901,6 +945,8 @@ module.exports = (db) => {
         updated,
         created,
         enriched,
+        recovered,
+        missing_from_api: missingPartners.length,
         total_partenaires: total,
       });
     } catch (e) {
