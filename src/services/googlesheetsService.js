@@ -44,8 +44,22 @@ function getAuth(db) {
   });
 }
 
-function resolveCanonicalClientName(db, vfName) {
+function resolveCanonicalClientName(db, vfName, vfClientId) {
+  if (!vfName && !vfClientId) return vfName;
+
+  // Priorité 1 : lookup par vf_client_id (le plus fiable, insensible aux variations de nom)
+  if (vfClientId) {
+    // Chercher dans vf_partners d'abord (source de vérité admin)
+    const partnerById = db.prepare('SELECT nom FROM vf_partners WHERE vf_client_id = ? AND actif = 1').get(String(vfClientId));
+    if (partnerById && partnerById.nom) return partnerById.nom;
+    // Chercher dans vf_client_mappings par client_id
+    const mappingById = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_client_id = ? AND file_name IS NOT NULL LIMIT 1').get(String(vfClientId));
+    if (mappingById && mappingById.file_name) return mappingById.file_name;
+  }
+
   if (!vfName) return vfName;
+
+  // Priorité 2 : lookup exact par vf_name dans vf_client_mappings
   const mapping = db.prepare('SELECT file_name, vf_client_id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
   if (mapping && mapping.file_name) return mapping.file_name;
   // Si file_name est null mais vf_client_id existe, chercher un autre mapping avec le même client_id qui a un file_name
@@ -369,9 +383,10 @@ module.exports = (db) => ({
       const vfName = invoiceData.clientName || '';
       logger.debug(`📊 Résolution partner name: VF="${vfName}"`);
 
-      // D'abord essayer le mapping DB (vf_client_mappings)
-      const dbMapped = resolveCanonicalClientName(db, vfName);
-      logger.debug(`📊 Mapping DB: "${vfName}" → "${dbMapped}"`);
+      // D'abord essayer le mapping DB (vf_client_mappings + vf_partners par client_id)
+      const vfClientId = invoiceData.clientId || invoiceData.client_id || null;
+      const dbMapped = resolveCanonicalClientName(db, vfName, vfClientId);
+      logger.debug(`📊 Mapping DB: "${vfName}" (clientId=${vfClientId}) → "${dbMapped}"`);
 
       if (dbMapped && dbMapped !== vfName) {
         // Mapping explicite trouvé

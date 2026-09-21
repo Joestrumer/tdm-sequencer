@@ -46,8 +46,22 @@ module.exports = (db) => {
     return db.prepare('SELECT * FROM vf_client_mappings').all();
   }
 
-  function resolveCanonicalClientName(vfName) {
+  function resolveCanonicalClientName(vfName, vfClientId) {
+    if (!vfName && !vfClientId) return vfName;
+
+    // Priorité 1 : lookup par vf_client_id (le plus fiable, insensible aux variations de nom)
+    if (vfClientId) {
+      // Chercher dans vf_partners d'abord (source de vérité admin)
+      const partnerById = db.prepare('SELECT nom FROM vf_partners WHERE vf_client_id = ? AND actif = 1').get(String(vfClientId));
+      if (partnerById && partnerById.nom) return partnerById.nom;
+      // Chercher dans vf_client_mappings par client_id
+      const mappingById = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_client_id = ? AND file_name IS NOT NULL LIMIT 1').get(String(vfClientId));
+      if (mappingById && mappingById.file_name) return mappingById.file_name;
+    }
+
     if (!vfName) return vfName;
+
+    // Priorité 2 : lookup exact par vf_name dans vf_client_mappings
     const mapping = db.prepare('SELECT file_name, vf_client_id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
     if (mapping && mapping.file_name) return mapping.file_name;
     // Si file_name est null mais vf_client_id existe, chercher un autre mapping avec le même client_id qui a un file_name
@@ -304,7 +318,7 @@ module.exports = (db) => {
       const forcedPrices = getForcedPrices();
 
       // Résoudre le nom canonique du client pour les remises
-      const canonicalClientName = resolveCanonicalClientName(client.name);
+      const canonicalClientName = resolveCanonicalClientName(client.name, client.id);
       const discountsDb = canonicalClientName ? getDiscountsForClient(canonicalClientName) : [];
 
       // Construire les positions de la facture (logique HTML)
@@ -514,6 +528,7 @@ module.exports = (db) => {
             const resolvedPartner = (canonicalClientName && canonicalClientName !== client.name) ? canonicalClientName : undefined;
             const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
               clientName: client.name,
+              clientId: client.id,
               invoiceNumber: result.number || '',
               invoiceDate: new Date().toISOString().split('T')[0],
               products: gsProducts,
@@ -572,7 +587,7 @@ module.exports = (db) => {
       const codeMappings = getCodeMappings('code_alias');
       const forcedPrices = getForcedPrices();
 
-      const canonicalClientName = resolveCanonicalClientName(client.name);
+      const canonicalClientName = resolveCanonicalClientName(client.name, client.id);
       const discountsDb = canonicalClientName ? getDiscountsForClient(canonicalClientName) : [];
 
       const positions = [];
@@ -882,10 +897,11 @@ module.exports = (db) => {
       }
 
       // Résoudre le nom canonique du client
-      const canonicalClientName = resolveCanonicalClientName(client.name);
+      const canonicalClientName = resolveCanonicalClientName(client.name, client.id);
       const resolvedPartner = (canonicalClientName && canonicalClientName !== client.name) ? canonicalClientName : undefined;
       const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
         clientName: client.name,
+        clientId: client.id,
         invoiceNumber: orderNumber || 'LOG-' + Date.now(),
         invoiceDate: new Date().toISOString().split('T')[0],
         products: gsProducts,
@@ -1000,7 +1016,8 @@ module.exports = (db) => {
       let canonName = partnerName;
       if (!canonName) {
         const clientName = invoiceData.clientName || invoiceData.client_name || '';
-        const dbMapped = resolveCanonicalClientName(clientName);
+        const clientId = invoiceData.clientId || invoiceData.client_id || null;
+        const dbMapped = resolveCanonicalClientName(clientName, clientId);
         canonName = (dbMapped && dbMapped !== clientName) ? dbMapped : undefined;
       }
 
