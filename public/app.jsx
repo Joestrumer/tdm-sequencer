@@ -22561,6 +22561,18 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                         {showPwd ? 'Masquer' : 'Afficher'}
                       </button>
                     )}
+                    {selected.has_password && selected.email && (
+                      <button onClick={async () => {
+                        try {
+                          setSaving(true);
+                          const r = await api.post(`/reference/partners/${selected.id}/resend-password-email`);
+                          showToast(r.message || 'Email envoyé', 'success');
+                        } catch (e) { showToast('Erreur envoi : ' + (e.message || e), 'error'); }
+                        setSaving(false);
+                      }} disabled={saving} className="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 font-medium disabled:opacity-50">
+                        Renvoyer l'email
+                      </button>
+                    )}
                     <button onClick={genererMotDePasse} className="text-[11px] px-2 py-1 rounded-lg bg-blue-50 text-blue-600 hover:bg-blue-100 font-medium">
                       {selected.has_password ? 'Régénérer' : 'Générer un mot de passe'}
                     </button>

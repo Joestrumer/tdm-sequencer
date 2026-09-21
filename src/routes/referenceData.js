@@ -407,30 +407,14 @@ module.exports = (db) => {
     }
   });
 
-  // Générer un mot de passe pour un partenaire
-  router.post('/partners/:id/generate-password', async (req, res) => {
-    try {
-      const partner = db.prepare('SELECT id, nom, email FROM vf_partners WHERE id = ?').get(req.params.id);
-      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+  // Envoyer l'email d'accès portail à un partenaire
+  async function envoyerEmailAccesPortail(partner, plainPassword) {
+    const brevoService = require('../services/brevoService');
+    const prenom = (partner.nom || '').split(/\s*[-–—(]/)[0].trim() || partner.nom;
+    const escapedPrenom = (prenom || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+    const escapedCode = (plainPassword || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 
-      const plainPassword = crypto.randomBytes(4).toString('hex'); // 8 caractères hex
-      const hash = await bcrypt.hash(plainPassword, 10);
-
-      db.prepare('UPDATE vf_partners SET password_hash = ?, password_plain = ? WHERE id = ?').run(hash, plainPassword, partner.id);
-
-      // Envoyer l'email si demandé
-      const { sendEmail } = req.body || {};
-      let emailSent = false;
-      if (sendEmail && partner.email) {
-        try {
-          const brevoService = require('../services/brevoService');
-
-          // Substituer les variables du template
-          const prenom = (partner.nom || '').split(/\s*[-–—(]/)[0].trim() || partner.nom;
-          const escapedPrenom = (prenom || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          const escapedCode = (plainPassword || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-
-          const htmlContent = `<!doctype html>
+    const htmlContent = `<!doctype html>
 <html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><title>Votre espace partenaire Terre de Mars</title>
 <style>@media only screen and (max-width:480px){.outer{padding:20px 10px!important}.pad{padding-left:24px!important;padding-right:24px!important}.title{font-size:30px!important;line-height:36px!important}.code{font-size:20px!important;letter-spacing:1px!important}.product{width:106px!important;height:auto!important}}a:focus{outline:2px solid #8E7A34;outline-offset:3px}</style>
 <!--[if mso]><style>table,td,p,a{font-family:Arial,sans-serif!important}table{border-collapse:collapse}</style><![endif]-->
@@ -483,19 +467,53 @@ module.exports = (db) => {
 <!--[if mso]></td></tr></table><![endif]-->
 </td></tr></table></body></html>`;
 
-          const payload = {
-            sender: brevoService.SENDER,
-            to: [{ email: partner.email, name: partner.nom }],
-            subject: 'Votre espace partenaire Terre de Mars vous attend',
-            headers: { 'X-Mailin-Tag': 'portail-partenaire', 'X-Mailin-Track': '0', 'X-Mailin-TrackLinks': '0' },
-            htmlContent,
-            replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
-          };
-          await brevoService.brevoSendEmail(payload);
+    const payload = {
+      sender: brevoService.SENDER,
+      to: [{ email: partner.email, name: partner.nom }],
+      subject: 'Votre espace partenaire Terre de Mars vous attend',
+      headers: { 'X-Mailin-Tag': 'portail-partenaire', 'X-Mailin-Track': '0', 'X-Mailin-TrackLinks': '0' },
+      htmlContent,
+      replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
+    };
+    await brevoService.brevoSendEmail(payload);
+  }
+
+  // Renvoyer l'email d'accès portail (sans changer le mot de passe)
+  router.post('/partners/:id/resend-password-email', async (req, res) => {
+    try {
+      const partner = db.prepare('SELECT id, nom, email, password_plain FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+      if (!partner.password_plain) return res.status(400).json({ erreur: 'Aucun mot de passe configuré pour ce partenaire' });
+      if (!partner.email) return res.status(400).json({ erreur: 'Aucun email configuré pour ce partenaire' });
+
+      await envoyerEmailAccesPortail(partner, partner.password_plain);
+      res.json({ ok: true, message: `Email renvoyé à ${partner.email}` });
+    } catch (e) {
+      logger.error(`Erreur renvoi email accès portail ${req.params.id}: ${e.message}`);
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
+  // Générer un mot de passe pour un partenaire
+  router.post('/partners/:id/generate-password', async (req, res) => {
+    try {
+      const partner = db.prepare('SELECT id, nom, email FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
+
+      const plainPassword = crypto.randomBytes(4).toString('hex'); // 8 caractères hex
+      const hash = await bcrypt.hash(plainPassword, 10);
+
+      db.prepare('UPDATE vf_partners SET password_hash = ?, password_plain = ? WHERE id = ?').run(hash, plainPassword, partner.id);
+
+      // Envoyer l'email si demandé
+      const { sendEmail } = req.body || {};
+      let emailSent = false;
+      if (sendEmail && partner.email) {
+        try {
+          await envoyerEmailAccesPortail(partner, plainPassword);
           emailSent = true;
         } catch (emailErr) {
-          logger.error(`❌ Erreur envoi email mot de passe partenaire ${partner.nom}: ${emailErr.message}`);
-          logger.error(emailErr.stack || emailErr);
+          logger.error(`Erreur envoi email mot de passe partenaire ${partner.nom}: ${emailErr.message}`);
         }
       }
 
