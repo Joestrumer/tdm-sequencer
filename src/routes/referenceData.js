@@ -1042,18 +1042,42 @@ module.exports = (db) => {
       const { vf_client_id } = req.body;
       if (!vf_client_id) return res.status(400).json({ erreur: 'vf_client_id requis' });
 
-      const partner = db.prepare('SELECT id, nom FROM vf_partners WHERE id = ?').get(partnerId);
+      const partner = db.prepare('SELECT id, nom, vf_client_id FROM vf_partners WHERE id = ?').get(partnerId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
-      // Récupérer le nom VF pour le mapping
-      let vfName = null;
+      const oldVfClientId = partner.vf_client_id;
+
+      // Récupérer le client VF pour enrichir le partenaire
+      let vfClient = null;
       try {
         const vfService = require('../services/vosfacturesService')(db);
-        const vfClient = await vfService.getClient(vf_client_id);
-        vfName = vfClient?.name?.trim() || null;
+        vfClient = await vfService.getClient(vf_client_id);
       } catch (_) {}
+      const vfName = vfClient?.name?.trim() || null;
 
-      // Créer le mapping VF → partenaire existant
+      // Mettre à jour le vf_client_id du partenaire (c'est ce compte VF qui sera utilisé pour facturer)
+      db.prepare(`
+        UPDATE vf_partners SET
+          vf_client_id = ?,
+          email = COALESCE(?, email),
+          contact_nom = COALESCE(?, contact_nom),
+          telephone = COALESCE(?, telephone),
+          facturation_rue = COALESCE(?, facturation_rue),
+          facturation_code_postal = COALESCE(?, facturation_code_postal),
+          facturation_ville = COALESCE(?, facturation_ville),
+          facturation_pays = COALESCE(?, facturation_pays),
+          facturation_tva = COALESCE(?, facturation_tva),
+          facturation_portable = COALESCE(?, facturation_portable)
+        WHERE id = ?
+      `).run(
+        String(vf_client_id),
+        vfClient?.email || null, vfClient?.shortcut || null, vfClient?.phone || null,
+        vfClient?.street || null, vfClient?.post_code || null, vfClient?.city || null,
+        vfClient?.country || null, vfClient?.tax_no || null, vfClient?.mobile_phone || null,
+        partnerId
+      );
+
+      // Créer le mapping VF → partenaire (pour la reconnaissance par nom)
       if (vfName) {
         const existingMapping = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
         if (existingMapping) {
@@ -1063,7 +1087,17 @@ module.exports = (db) => {
         }
       }
 
-      res.json({ ok: true, partner_id: partner.id, nom: partner.nom, vf_name: vfName, message: `Client VF #${vf_client_id} lié au partenaire "${partner.nom}"` });
+      // Garder aussi un mapping pour l'ancien client VF s'il existait
+      if (oldVfClientId && oldVfClientId !== String(vf_client_id)) {
+        const oldMapping = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_client_id = ? AND file_name = ?').get(oldVfClientId, partner.nom);
+        if (!oldMapping) {
+          try {
+            db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name, vf_client_id) VALUES (?, ?, ?)').run(partner.nom, partner.nom, oldVfClientId);
+          } catch (_) {}
+        }
+      }
+
+      res.json({ ok: true, partner_id: partner.id, nom: partner.nom, vf_name: vfName, old_vf_client_id: oldVfClientId, message: `Client VF #${vf_client_id} lié au partenaire "${partner.nom}" (ancien: ${oldVfClientId || 'aucun'})` });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
