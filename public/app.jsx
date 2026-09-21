@@ -11891,6 +11891,7 @@ const FacturesPartners = ({ showToast }) => {
   const [vfSearching, setVfSearching] = useState(false);
   const vfSearchTimer = useRef(null);
   const vfAbortRef = useRef(null);
+  const [linkingVfFor, setLinkingVfFor] = useState(null); // partner id when linking VF client from detail
 
   const charger = async () => {
     setLoading(true);
@@ -22440,6 +22441,45 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                   <h2 className="text-lg font-semibold text-slate-900">{selected.nom}</h2>
                   <div className="flex items-center gap-2 mt-0.5">
                     {selected.vf_client_id && <a href={`https://terredemars.vosfactures.fr/clients/${selected.vf_client_id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 hover:bg-blue-100 hover:text-blue-700 font-mono transition-colors">VF #{selected.vf_client_id} &rarr;</a>}
+                    {linkingVfFor !== selected.id ? (
+                      <button onClick={() => { setLinkingVfFor(selected.id); setVfQuery(''); setVfResults([]); }} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors">{selected.vf_client_id ? 'Changer' : 'Lier un client VF'}</button>
+                    ) : (
+                      <div className="relative">
+                        <div className="flex items-center gap-1">
+                          <input
+                            autoFocus
+                            type="text"
+                            placeholder="Rechercher un client VF..."
+                            value={vfQuery}
+                            onChange={e => rechercherVF(e.target.value)}
+                            onKeyDown={e => e.key === 'Escape' && (setLinkingVfFor(null), setVfQuery(''), setVfResults([]))}
+                            className="text-xs border border-slate-200 rounded-lg px-2 py-1 w-56 focus:outline-none focus:ring-1 focus:ring-blue-400"
+                          />
+                          {vfSearching && <span className="text-xs text-slate-400">...</span>}
+                          <button onClick={() => { setLinkingVfFor(null); setVfQuery(''); setVfResults([]); }} className="text-xs text-slate-400 hover:text-slate-600">Annuler</button>
+                        </div>
+                        {vfResults.length > 0 && (
+                          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-80 max-h-48 overflow-y-auto">
+                            {vfResults.map(c => (
+                              <button key={c.id} onClick={async () => {
+                                try {
+                                  const r = await api.post(`/reference/partners/${selected.id}/link-vf-client`, { vf_client_id: String(c.id) });
+                                  showToast(r.message || `Client VF #${c.id} lié`, 'success');
+                                  setLinkingVfFor(null); setVfQuery(''); setVfResults([]);
+                                  charger();
+                                } catch (e) { showToast('Erreur liaison : ' + (e.message || e), 'error'); }
+                              }} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
+                                <div className="text-xs font-medium text-slate-800">{c.name}</div>
+                                <div className="text-[10px] text-slate-400">{[c.city, c.email, `#${c.id}`].filter(Boolean).join(' · ')}</div>
+                              </button>
+                            ))}
+                          </div>
+                        )}
+                        {vfQuery.length >= 2 && !vfSearching && vfResults.length === 0 && (
+                          <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-80 p-3 text-xs text-slate-400">Aucun résultat</div>
+                        )}
+                      </div>
+                    )}
                     <span className="text-xs text-slate-400">{selected.nom_normalise}</span>
                   </div>
                 </div>
