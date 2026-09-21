@@ -2527,8 +2527,8 @@
             </div>
             {/* Ligne 2 : Navigation centrée */}
             <div className="max-w-6xl mx-auto px-3 sm:px-4 pb-1.5 flex items-center justify-center gap-0.5 sm:gap-1 border-t border-gray-100 dark:border-slate-700 pt-1.5">
-              <button onClick={() => { setVue("accueil"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors ${vue === "accueil" && !panierOpen ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`} title="Accueil">
-                <span className="text-base sm:text-lg leading-none">&#8962;</span>
+              <button onClick={() => { setVue("accueil"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors ${vue === "accueil" && !panierOpen ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`}>
+                Accueil
               </button>
               <button onClick={() => { setVue("catalogue"); setPanierOpen(false); setOrderSuccess(false); }} className={`px-2 sm:px-3 py-1.5 rounded-lg text-xs sm:text-sm transition-colors ${vue === "catalogue" && !panierOpen ? "bg-gold-50 dark:bg-gold-900/30 text-gold-700 dark:text-gold-400 font-medium" : "text-gray-500 dark:text-slate-400 hover:text-gray-900 dark:hover:text-white"}`}>
                 Catalogue
