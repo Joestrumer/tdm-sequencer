@@ -5,6 +5,7 @@
 const express = require('express');
 const bcrypt = require('bcryptjs');
 const crypto = require('crypto');
+const logger = require('../config/logger');
 
 module.exports = (db) => {
   const router = express.Router();
@@ -493,7 +494,8 @@ module.exports = (db) => {
           await brevoService.brevoSendEmail(payload);
           emailSent = true;
         } catch (emailErr) {
-          console.error('Erreur envoi email mot de passe:', emailErr.message);
+          logger.error(`❌ Erreur envoi email mot de passe partenaire ${partner.nom}: ${emailErr.message}`);
+          logger.error(emailErr.stack || emailErr);
         }
       }
 
@@ -501,7 +503,7 @@ module.exports = (db) => {
         ok: true,
         password: plainPassword,
         emailSent,
-        message: `Mot de passe généré pour ${partner.nom}.` + (emailSent ? ' Email envoyé.' : ''),
+        message: `Mot de passe généré pour ${partner.nom}.` + (emailSent ? ' Email envoyé.' : ' ⚠️ Email non envoyé.'),
       });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
