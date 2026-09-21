@@ -423,19 +423,64 @@ module.exports = (db) => {
       if (sendEmail && partner.email) {
         try {
           const brevoService = require('../services/brevoService');
-          const fs = require('fs');
-          const path = require('path');
 
-          // Charger le template HTML externe
-          const templatePath = path.join(__dirname, '../../public/Terre_de_Mars_Email_Accueil_Partenaire.html');
-          let htmlContent = fs.readFileSync(templatePath, 'utf8');
-
-          // Substituer les variables
+          // Substituer les variables du template
           const prenom = (partner.nom || '').split(/\s*[-–—(]/)[0].trim() || partner.nom;
           const escapedPrenom = (prenom || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
           const escapedCode = (plainPassword || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
-          htmlContent = htmlContent.replace(/\{\{prenom\}\}/g, escapedPrenom);
-          htmlContent = htmlContent.replace(/\{\{code_acces\}\}/g, escapedCode);
+
+          const htmlContent = `<!doctype html>
+<html lang="fr"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="x-apple-disable-message-reformatting"><title>Votre espace partenaire Terre de Mars</title>
+<style>@media only screen and (max-width:480px){.outer{padding:20px 10px!important}.pad{padding-left:24px!important;padding-right:24px!important}.title{font-size:30px!important;line-height:36px!important}.code{font-size:20px!important;letter-spacing:1px!important}.product{width:106px!important;height:auto!important}}a:focus{outline:2px solid #8E7A34;outline-offset:3px}</style>
+<!--[if mso]><style>table,td,p,a{font-family:Arial,sans-serif!important}table{border-collapse:collapse}</style><![endif]-->
+</head><body style="margin:0;padding:0;background:#F5F2E8;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
+<div style="display:none!important;max-height:0;max-width:0;overflow:hidden;opacity:0;mso-hide:all;">Votre code personnel, vos essentiels et de nouvelles attentions pour vos h\u00f4tes.</div>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#F5F2E8;"><tr><td align="center" class="outer" style="padding:32px 16px 40px;">
+<!--[if mso]><table role="presentation" width="600" align="center"><tr><td><![endif]-->
+<table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;">
+<tr><td align="center" style="padding:0 24px 26px;">
+<img src="https://partenaire.terredemars.com/accueil-assets/logo.webp" width="260" height="74" alt="TERRE DE MARS" style="display:block;width:260px;max-width:100%;height:auto;border:0;color:#2F2A19;font-family:Georgia,serif;font-size:24px;">
+<p style="margin:13px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:16px;letter-spacing:2.8px;color:#9B863C;text-transform:uppercase;">L\u2019espace partenaire \u00b7 L\u2019art de recevoir</p>
+</td></tr>
+<tr><td style="background:#ffffff;border:1px solid #DED6B9;border-radius:14px;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+<tr><td class="pad" align="center" style="padding:34px 42px 24px;">
+<h1 class="title" style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:34px;line-height:41px;font-weight:normal;color:#2F2A19;">Votre maison.<br><em>Notre signature.</em></h1>
+<p style="margin:21px 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:23px;color:#665B36;">Bonjour ${escapedPrenom},</p>
+<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:23px;color:#665B36;">Votre espace partenaire est pr\u00eat. Retrouvez vos essentiels \u00e0 vos tarifs partenaires et d\u00e9couvrez de nouvelles attentions pour vos h\u00f4tes.</p>
+</td></tr>
+<tr><td class="pad" style="padding:0 42px 20px;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#F7F4EA;border:1px solid #E5DEC6;border-radius:9px;"><tr><td align="center" style="padding:19px 12px;">
+<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:16px;letter-spacing:1.7px;text-transform:uppercase;color:#8C7938;font-weight:bold;">Votre code d\u2019acc\u00e8s personnel</p>
+<p class="code" style="margin:8px 0 0;font-family:'Courier New',monospace;font-size:23px;line-height:32px;letter-spacing:1px;color:#2F2A19;font-weight:bold;">${escapedCode}</p>
+</td></tr></table>
+</td></tr>
+<tr><td class="pad" align="center" style="padding:0 42px 28px;">
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center"><tr><td align="center" bgcolor="#8E7A34" style="border-radius:6px;mso-padding-alt:15px 23px;"><a href="https://partenaire.terredemars.com/" target="_blank" style="display:inline-block;padding:15px 23px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;font-weight:bold;color:#ffffff;text-decoration:none;">Acc\u00e9der \u00e0 mon espace partenaire</a></td></tr></table>
+<p style="margin:12px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:18px;color:#7D714A;">Saisissez votre code sur la page de connexion.<br>Conservez cet email pour retrouver votre acc\u00e8s.</p>
+</td></tr>
+<tr><td class="pad" style="padding:0 42px;"><table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
+<tr><td width="36" valign="top" style="padding:17px 0;border-bottom:1px solid #EEE8D5;font-family:Georgia,serif;font-size:17px;line-height:23px;color:#9B863C;">01</td><td valign="top" style="padding:17px 0;border-bottom:1px solid #EEE8D5;"><h3 style="margin:0 0 5px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#2F2A19;">Vos essentiels, simplement.</h3><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#665B36;">Retrouvez votre s\u00e9lection de produits en chambre, en recharges 5\u00a0L ou en flacons 500\u00a0ml. Choisissez vos formats, ajoutez vos cartons au panier et passez commande en ligne.</p></td></tr><tr><td width="36" valign="top" style="padding:17px 0;border-bottom:1px solid #EEE8D5;font-family:Georgia,serif;font-size:17px;line-height:23px;color:#9B863C;">02</td><td valign="top" style="padding:17px 0;border-bottom:1px solid #EEE8D5;"><h3 style="margin:0 0 5px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#2F2A19;">Votre signature olfactive.</h3><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#665B36;">D\u00e9couvrez les diffuseurs Intuition et R\u00e9v\u00e9lation, leurs recharges et la bougie Intuition pour vos chambres et espaces communs.</p></td></tr><tr><td width="36" valign="top" style="padding:17px 0;border-bottom:1px solid #EEE8D5;font-family:Georgia,serif;font-size:17px;line-height:23px;color:#9B863C;">03</td><td valign="top" style="padding:17px 0;border-bottom:1px solid #EEE8D5;"><h3 style="margin:0 0 5px;font-family:Arial,Helvetica,sans-serif;font-size:14px;line-height:21px;color:#2F2A19;">Votre quotidien, au m\u00eame endroit.</h3><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#665B36;">Acc\u00e9dez au <strong>catalogue complet</strong>, retrouvez vos <strong>commandes</strong>, consultez vos <strong>documents</strong> et g\u00e9rez vos coordonn\u00e9es dans <strong>Mon compte</strong>.</p></td></tr>
+</table></td></tr>
+<tr><td class="pad" style="padding:28px 42px 0;">
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#F7F4EA;border:1px solid #E5DEC6;border-radius:9px;"><tr><td align="center" style="padding:25px 18px;">
+<p style="margin:0 0 10px;font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:16px;letter-spacing:1.8px;text-transform:uppercase;color:#8C7938;font-weight:bold;">Les attentions Terre de Mars</p>
+<h2 style="margin:0;font-family:Georgia,'Times New Roman',serif;font-size:25px;line-height:32px;font-weight:normal;color:#2F2A19;">Un s\u00e9jour se termine.<br><em>Une attention reste.</em></h2>
+<p style="margin:13px 0 17px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#665B36;">Un baume \u00e0 l\u00e8vres d\u00e9pos\u00e9 en chambre, un soin pour prolonger un moment au spa, un souvenir \u00e0 emporter\u2026</p>
+<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0"><tr><td width="50%" align="center" valign="top"><img class="product" src="https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P016_1.png" width="130" height="130" alt="Cr\u00e8me contour des yeux Terre de Mars" style="display:block;width:130px;max-width:100%;height:auto;border:0;"><p style="margin:8px 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#665B36;">Cr\u00e8me contour des yeux</p></td><td width="50%" align="center" valign="top"><img class="product" src="https://cdn.shopify.com/s/files/1/0955/1141/3001/files/P012_1.png" width="130" height="130" alt="Baume l\u00e8vres C\u00e9leste Terre de Mars" style="display:block;width:130px;max-width:100%;height:auto;border:0;"><p style="margin:8px 4px 0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:17px;color:#665B36;">Baume l\u00e8vres C\u00e9leste</p></td></tr></table>
+<p style="margin:19px 0 18px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#665B36;">Explorez la s\u00e9lection <strong>cadeaux VIP &amp; soins spa</strong> et imaginez vos coffrets avec papier de soie. Pour une s\u00e9lection adapt\u00e9e \u00e0 votre \u00e9tablissement, cliquez sur \u00ab\u00a0Pr\u00e9parer mes cadeaux\u00a0\u00bb dans votre espace.</p>
+<table role="presentation" cellspacing="0" cellpadding="0" border="0" align="center"><tr><td align="center" bgcolor="#8E7A34" style="border-radius:6px;mso-padding-alt:15px 23px;"><a href="https://partenaire.terredemars.com/" target="_blank" style="display:inline-block;padding:15px 23px;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:18px;font-weight:bold;color:#ffffff;text-decoration:none;">D\u00e9couvrir les attentions VIP</a></td></tr></table>
+</td></tr></table>
+</td></tr>
+<tr><td class="pad" style="padding:25px 42px 31px;">
+<p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#665B36;">Une question sur une commande ou un projet cadeau\u00a0? Retrouvez votre interlocuteur d\u00e9di\u00e9 dans la rubrique <strong>Contact</strong>.</p>
+<p style="margin:18px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:13px;line-height:21px;color:#2F2A19;">Au plaisir de vous accompagner,<br><strong>L\u2019\u00e9quipe Terre de Mars</strong></p>
+</td></tr>
+</table></td></tr>
+<tr><td align="center" style="padding:23px 18px 0;"><p style="margin:0;font-family:Arial,Helvetica,sans-serif;font-size:11px;line-height:18px;color:#7D714A;">TERRE DE MARS \u00b7 L\u2019art du soin, le sens de l\u2019accueil.</p><p style="margin:7px 0 0;font-family:Arial,Helvetica,sans-serif;font-size:10px;line-height:16px;color:#7D714A;">Votre acc\u00e8s est personnel. Conservez votre code confidentiel.</p></td></tr>
+</table>
+<!--[if mso]></td></tr></table><![endif]-->
+</td></tr></table></body></html>`;
 
           const payload = {
             sender: brevoService.SENDER,
