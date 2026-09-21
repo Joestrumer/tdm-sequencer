@@ -22316,21 +22316,21 @@ const VuePartenaires = ({ showToast, readOnly }) => {
       <div className="flex gap-6">
       {/* Liste gauche */}
       <div className="w-72 flex-shrink-0 space-y-3">
+        <div className="relative">
+          <input
+            type="text"
+            value={search}
+            onChange={e => setSearch(e.target.value)}
+            placeholder="Rechercher un partenaire..."
+            className="w-full border border-slate-200 rounded-xl px-3 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+          />
+          {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>}
+        </div>
         <div className="flex gap-2">
-          <div className="relative flex-1">
-            <input
-              type="text"
-              value={search}
-              onChange={e => setSearch(e.target.value)}
-              placeholder="Rechercher..."
-              className="w-full border border-slate-200 rounded-xl px-3 py-2.5 pr-8 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-            />
-            {search && <button onClick={() => setSearch('')} className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-lg leading-none">&times;</button>}
-          </div>
-          <button onClick={syncVF} disabled={syncing} className="px-3 py-2.5 rounded-xl text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 transition-colors disabled:opacity-50 flex-shrink-0" title="Synchroniser noms et données depuis VosFactures">
+          <button onClick={syncVF} disabled={syncing} className="px-3 py-2 rounded-xl text-xs font-medium bg-blue-50 text-blue-600 hover:bg-blue-100 border border-blue-100 transition-colors disabled:opacity-50 flex-1" title="Synchroniser noms et données depuis VosFactures">
             {syncing ? <span className="inline-block w-3 h-3 border-2 border-blue-300 border-t-blue-600 rounded-full animate-spin" /> : 'Sync VF'}
           </button>
-          <button onClick={lookupVF} className="px-3 py-2.5 rounded-xl text-xs font-medium bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-100 transition-colors flex-shrink-0" title="Chercher un client VF par ID">
+          <button onClick={lookupVF} className="px-3 py-2 rounded-xl text-xs font-medium bg-amber-50 text-amber-600 hover:bg-amber-100 border border-amber-100 transition-colors flex-1" title="Chercher un client VF par ID">
             Chercher VF
           </button>
           <button onClick={() => {
@@ -22339,7 +22339,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
             const csv = '\uFEFF' + [headers, ...rows].map(r => r.map(v => `"${String(v || '').replace(/"/g, '""')}"`).join(';')).join('\n');
             const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
             const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = `partenaires-${new Date().toISOString().slice(0,10)}.csv`; a.click();
-          }} className="px-3 py-2.5 rounded-xl text-xs font-medium bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors flex-shrink-0" title="Exporter la liste filtrée en CSV">
+          }} className="px-3 py-2 rounded-xl text-xs font-medium bg-slate-50 text-slate-600 hover:bg-slate-100 border border-slate-200 transition-colors flex-1" title="Exporter la liste filtrée en CSV">
             CSV
           </button>
         </div>
