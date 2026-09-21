@@ -326,7 +326,6 @@ module.exports = (db) => {
           : (totalPriceNet * (1 + taxRate / 100));
 
         const position = {
-          name: vfProduct.productName || p.nom || vfProduct.ref,
           code: p.ref || vfProduct.vfRef || ref,
           tax: taxRate,
           quantity: qty,
@@ -334,7 +333,12 @@ module.exports = (db) => {
           total_price_gross: totalPriceGross.toFixed(2),
         };
 
-        if (vfProduct.productId) position.product_id = vfProduct.productId;
+        // Si product_id existe, ne pas envoyer name pour que VF utilise le nom du produit VF
+        if (vfProduct.productId) {
+          position.product_id = vfProduct.productId;
+        } else {
+          position.name = vfProduct.productName || p.nom || vfProduct.ref;
+        }
         if (discount > 0) position.discount_percent = discount;
 
         positions.push(position);
@@ -369,14 +373,17 @@ module.exports = (db) => {
         const vfProduct = findVFProduct(fpRef, fpMontant, catalog, codeMappings, productIdMappings, productNameMappings);
 
         const fpPosition = {
-          name: vfProduct.productName || 'FRAIS DE PORT',
           code: fpRef,
           price_net: Number(fpMontant).toFixed(2),
           total_price_gross: Number(fpGross).toFixed(2),
           tax: fpTax,
           quantity: 1,
         };
-        if (vfProduct.productId) fpPosition.product_id = vfProduct.productId;
+        if (vfProduct.productId) {
+          fpPosition.product_id = vfProduct.productId;
+        } else {
+          fpPosition.name = vfProduct.productName || 'FRAIS DE PORT';
+        }
         positions.push(fpPosition);
         fraisPort.push({ ref: fpRef, nom: 'FRAIS DE PORT', prix_ht: fpMontant, quantite: 1, tva: fpTax });
       }

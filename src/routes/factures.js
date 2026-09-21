@@ -359,14 +359,19 @@ module.exports = (db) => {
           ? (forcedPriceTTC * qty)
           : (totalPriceNet * (1 + taxRate / 100));
 
-        // Construire la position (comme le HTML)
+        // Construire la position
+        // Si product_id existe, ne pas envoyer name pour que VF utilise le nom du produit VF
         const position = {
-          product_id: vfProduct.productId || undefined,
-          name: vfProduct.productName || p.nom || p.name || vfProduct.ref,
           code: p.ref || vfProduct.vfRef || ref,
           tax: taxRate,
           quantity: qty,
         };
+
+        if (vfProduct.productId) {
+          position.product_id = vfProduct.productId;
+        } else {
+          position.name = vfProduct.productName || p.nom || p.name || vfProduct.ref;
+        }
 
         // Toujours envoyer price_net et total_price_gross (VF les exige)
         position.price_net = priceToUse.toFixed(2);
@@ -376,9 +381,6 @@ module.exports = (db) => {
         if (discount > 0) {
           position.discount_percent = discount;
         }
-
-        // Nettoyer les undefined
-        if (!position.product_id) delete position.product_id;
 
         positions.push(position);
       }
@@ -396,18 +398,21 @@ module.exports = (db) => {
         const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
 
         const position = {
-          name: vfProduct.productName || f.nom || f.name || ref,
           code: f.ref || ref,
           price_net: Number(priceHT).toFixed(2),
           total_price_gross: Number(gross).toFixed(2),
           tax: taxRate,
           quantity: qty,
         };
+        if (vfProduct.productId) {
+          position.product_id = vfProduct.productId;
+        } else {
+          position.name = vfProduct.productName || f.nom || f.name || ref;
+        }
         if (fraisDiscount > 0) {
           position.discount_percent = fraisDiscount;
           hasDiscount = true;
         }
-        if (vfProduct.productId) position.product_id = vfProduct.productId;
 
         positions.push(position);
       }
@@ -622,16 +627,18 @@ module.exports = (db) => {
           : (totalPriceNet * (1 + taxRate / 100));
 
         const position = {
-          product_id: vfProduct.productId || undefined,
-          name: vfProduct.productName || p.nom || p.name || vfProduct.ref,
           code: p.ref || vfProduct.vfRef || ref,
           tax: taxRate,
           quantity: qty,
           price_net: priceToUse.toFixed(2),
           total_price_gross: totalPriceGross.toFixed(2),
         };
+        if (vfProduct.productId) {
+          position.product_id = vfProduct.productId;
+        } else {
+          position.name = vfProduct.productName || p.nom || p.name || vfProduct.ref;
+        }
         if (discount > 0) position.discount_percent = discount;
-        if (!position.product_id) delete position.product_id;
 
         positions.push(position);
       }
@@ -645,14 +652,17 @@ module.exports = (db) => {
         const vfProduct = findVFProduct(ref, priceHT, catalog, codeMappings, productIdMappings, productNameMappings);
 
         const position = {
-          name: vfProduct.productName || f.nom || f.name || ref,
           code: f.ref || ref,
           price_net: Number(priceHT).toFixed(2),
           total_price_gross: Number(gross).toFixed(2),
           tax: taxRate,
           quantity: qty,
         };
-        if (vfProduct.productId) position.product_id = vfProduct.productId;
+        if (vfProduct.productId) {
+          position.product_id = vfProduct.productId;
+        } else {
+          position.name = vfProduct.productName || f.nom || f.name || ref;
+        }
         positions.push(position);
       }
 
