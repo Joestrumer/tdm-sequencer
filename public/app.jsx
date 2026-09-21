@@ -22356,14 +22356,13 @@ const VuePartenaires = ({ showToast, readOnly }) => {
             {!lookupResult.local_partner && lookupResult.vf_client && (
               <button onClick={async () => {
                 try {
-                  await api.post('/reference/partners', { nom: lookupResult.vf_client.name, nom_normalise: lookupResult.vf_client.name.toLowerCase() });
-                  await api.patch(`/reference/partners/${(await api.get('/reference/partners?all=1')).find(p => p.nom === lookupResult.vf_client.name)?.id}`, { vf_display_name: lookupResult.vf_client.name });
-                  showToast('Partenaire cr\u00e9\u00e9 ! Relance Sync VF pour remplir les donn\u00e9es.', 'success');
+                  await api.post('/reference/partners/create-from-vf', { vf_client_id: lookupResult.vf_client_id });
+                  showToast('Partenaire créé avec les données VF', 'success');
                   setLookupResult(null);
                   charger();
-                } catch (e) { showToast('Erreur cr\u00e9ation', 'error'); }
+                } catch (e) { showToast('Erreur création', 'error'); }
               }} className="mt-1 px-3 py-1.5 rounded-lg bg-amber-500 text-white text-xs font-medium hover:bg-amber-600">
-                Cr\u00e9er ce partenaire + Sync VF
+                Créer ce partenaire
               </button>
             )}
           </div>

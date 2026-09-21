@@ -951,6 +951,68 @@ module.exports = (db) => {
     }
   });
 
+  // Créer un partenaire directement depuis un client VF (par ID)
+  router.post('/partners/create-from-vf', async (req, res) => {
+    try {
+      const { vf_client_id } = req.body;
+      if (!vf_client_id) return res.status(400).json({ erreur: 'vf_client_id requis' });
+
+      // Vérifier qu'il n'existe pas déjà
+      const existing = db.prepare('SELECT id, nom FROM vf_partners WHERE vf_client_id = ?').get(String(vf_client_id));
+      if (existing) return res.json({ ok: true, message: `Partenaire "${existing.nom}" existe déjà`, partner_id: existing.id });
+
+      // Récupérer le client depuis l'API VF
+      const vfService = require('../services/vosfacturesService')(db);
+      const vfClient = await vfService.getClient(vf_client_id);
+      if (!vfClient || !vfClient.name) return res.status(404).json({ erreur: 'Client VF introuvable' });
+
+      const vfName = vfClient.name.trim();
+      const nomNormalise = vfName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+      const email = vfClient.email || null;
+      const contactName = vfClient.shortcut || null;
+      const phone = vfClient.phone || null;
+      const street = vfClient.street || '';
+      const city = vfClient.city || '';
+      const postCode = vfClient.post_code || '';
+      const country = vfClient.country || '';
+      const taxNo = vfClient.tax_no || '';
+      const mobile = vfClient.mobile_phone || '';
+      const buyer = vfClient.buyer ? 1 : 0;
+      const adresse = [street, postCode, city].filter(Boolean).join(', ') || null;
+
+      db.prepare(`
+        INSERT INTO vf_partners (nom, nom_normalise, email, contact_nom, telephone, adresse, vf_client_id, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, vf_display_name, actif)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        ON CONFLICT(nom) DO UPDATE SET
+          vf_client_id = excluded.vf_client_id,
+          email = COALESCE(excluded.email, vf_partners.email),
+          contact_nom = COALESCE(excluded.contact_nom, vf_partners.contact_nom),
+          telephone = COALESCE(excluded.telephone, vf_partners.telephone),
+          adresse = COALESCE(excluded.adresse, vf_partners.adresse),
+          facturation_rue = COALESCE(excluded.facturation_rue, vf_partners.facturation_rue),
+          facturation_code_postal = COALESCE(excluded.facturation_code_postal, vf_partners.facturation_code_postal),
+          facturation_ville = COALESCE(excluded.facturation_ville, vf_partners.facturation_ville),
+          facturation_pays = COALESCE(excluded.facturation_pays, vf_partners.facturation_pays),
+          facturation_tva = COALESCE(excluded.facturation_tva, vf_partners.facturation_tva),
+          vf_display_name = COALESCE(excluded.vf_display_name, vf_partners.vf_display_name),
+          actif = 1
+      `).run(vfName, nomNormalise, email, contactName, phone, adresse, String(vf_client_id), street || null, postCode || null, city || null, country || null, taxNo || null, buyer, mobile || null, vfName);
+
+      // Aussi créer le mapping dans vf_client_mappings
+      const existingMapping = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
+      if (existingMapping) {
+        db.prepare('UPDATE vf_client_mappings SET file_name = ?, vf_client_id = ? WHERE vf_name = ?').run(vfName, String(vf_client_id), vfName);
+      } else {
+        db.prepare('INSERT INTO vf_client_mappings (vf_name, file_name, vf_client_id) VALUES (?, ?, ?)').run(vfName, vfName, String(vf_client_id));
+      }
+
+      const partner = db.prepare('SELECT id, nom FROM vf_partners WHERE vf_client_id = ?').get(String(vf_client_id));
+      res.json({ ok: true, partner_id: partner?.id, nom: partner?.nom });
+    } catch (e) {
+      res.status(500).json({ erreur: e.message });
+    }
+  });
+
   // ─── Remises client ───────────────────────────────────────────────────────
 
   router.get('/discounts', (req, res) => {
