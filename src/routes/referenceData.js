@@ -423,110 +423,26 @@ module.exports = (db) => {
       if (sendEmail && partner.email) {
         try {
           const brevoService = require('../services/brevoService');
-          const portalUrl = 'https://partenaire.terredemars.com';
-          const logoUrl = 'https://partenaire.terredemars.com/logo-tdm.png';
+          const fs = require('fs');
+          const path = require('path');
+
+          // Charger le template HTML externe
+          const templatePath = path.join(__dirname, '../../public/Terre_de_Mars_Email_Accueil_Partenaire.html');
+          let htmlContent = fs.readFileSync(templatePath, 'utf8');
+
+          // Substituer les variables
+          const prenom = (partner.nom || '').split(/\s*[-–—(]/)[0].trim() || partner.nom;
+          const escapedPrenom = (prenom || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          const escapedCode = (plainPassword || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+          htmlContent = htmlContent.replace(/\{\{prenom\}\}/g, escapedPrenom);
+          htmlContent = htmlContent.replace(/\{\{code_acces\}\}/g, escapedCode);
+
           const payload = {
             sender: brevoService.SENDER,
             to: [{ email: partner.email, name: partner.nom }],
-            subject: 'Terre de Mars — Votre accès portail partenaire',
+            subject: 'Votre espace partenaire Terre de Mars vous attend',
             headers: { 'X-Mailin-Tag': 'portail-partenaire', 'X-Mailin-Track': '0', 'X-Mailin-TrackLinks': '0' },
-            htmlContent: `<!doctype html>
-<html lang="fr">
-<head>
-<meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
-<meta name="x-apple-disable-message-reformatting">
-<title>Votre espace partenaire Terre de Mars</title>
-<!--[if mso]><style>table,td,p,a{font-family:Arial,sans-serif!important}</style><![endif]-->
-</head>
-<body style="margin:0;padding:0;background:#F5F2E8;-webkit-text-size-adjust:100%;-ms-text-size-adjust:100%;">
-<div style="display:none;max-height:0;overflow:hidden;opacity:0;color:transparent;">Votre maison, notre signature \u2014 acc\u00e9dez \u00e0 vos essentiels, diffuseurs, soins VIP et passez commande en quelques clics.</div>
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="width:100%;background:#F5F2E8;">
-<tr><td align="center" style="padding:36px 16px 48px;">
-<table role="presentation" width="600" cellspacing="0" cellpadding="0" border="0" style="width:100%;max-width:600px;">
-
-<tr><td align="center" style="padding:8px 24px 28px;">
-<img src="${logoUrl}" width="498" alt="Terre de Mars" style="display:block;width:498px;max-width:100%;height:auto;border:0;">
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:10px;line-height:16px;letter-spacing:3.4px;text-transform:uppercase;color:#9B863C;font-weight:700;margin-top:16px;">L\u2019art de recevoir</div>
-</td></tr>
-
-<tr><td style="background:#FFFFFF;border:1px solid #DED6B9;border-radius:18px;overflow:hidden;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-<tr><td style="padding:50px 46px 38px;text-align:center;">
-<div style="font-family:Georgia,'Times New Roman',serif;font-size:34px;line-height:42px;color:#2F2A19;font-weight:400;">Votre maison.<br><em>Notre signature.</em></div>
-<p style="margin:22px auto 0;max-width:470px;font-family:Arial,'Helvetica Neue',sans-serif;font-size:15px;line-height:25px;color:#665B36;">Vos essentiels, nos collections et les petites attentions qui font les grands s\u00e9jours \u2014 tout est r\u00e9uni dans votre espace partenaire.</p>
-</td></tr>
-
-<tr><td style="padding:0 46px 32px;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0" style="background:#F7F4EA;border:1px solid #E5DEC6;border-radius:12px;">
-<tr><td align="center" style="padding:22px 24px;">
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:10px;line-height:14px;letter-spacing:2.4px;text-transform:uppercase;color:#8C7938;font-weight:700;">Votre mot de passe personnel</div>
-<div style="font-family:'Courier New',monospace;font-size:25px;line-height:34px;letter-spacing:4px;color:#2F2A19;font-weight:700;margin-top:8px;">${plainPassword}</div>
-</td></tr>
-</table>
-</td></tr>
-
-<tr><td align="center" style="padding:0 46px 48px;">
-<table role="presentation" cellspacing="0" cellpadding="0" border="0"><tr><td bgcolor="#A28E3F" style="border-radius:8px;">
-<a href="${portalUrl}" target="_blank" style="display:inline-block;padding:16px 34px;font-family:Arial,'Helvetica Neue',sans-serif;font-size:12px;line-height:16px;letter-spacing:1.4px;text-transform:uppercase;color:#FFFFFF;text-decoration:none;font-weight:700;">Acc\u00e9der \u00e0 mon espace</a>
-</td></tr></table>
-<p style="margin:14px 0 0;font-family:Arial,'Helvetica Neue',sans-serif;font-size:11px;line-height:17px;color:#A09570;">Quelques instants suffisent pour parcourir votre catalogue et passer commande.</p>
-</td></tr>
-
-<tr><td style="padding:0 46px;"><div style="height:1px;background:#E8E1C9;line-height:1px;font-size:1px;">&nbsp;</div></td></tr>
-
-<tr><td style="padding:40px 46px 8px;">
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:10px;line-height:14px;letter-spacing:2.6px;text-transform:uppercase;color:#A28E3F;font-weight:700;">Votre espace en un coup d\u2019\u0153il</div>
-<div style="font-family:Georgia,'Times New Roman',serif;font-size:25px;line-height:32px;color:#2F2A19;margin-top:8px;">Tout ce dont vous avez besoin,<br>au m\u00eame endroit.</div>
-</td></tr>
-
-<tr><td style="padding:12px 46px 4px;">
-<table role="presentation" width="100%" cellspacing="0" cellpadding="0" border="0">
-<tr>
-<td width="46" valign="top" style="padding:15px 0;"><div style="width:32px;height:32px;line-height:32px;border:1px solid #CBBE8A;border-radius:50%;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:14px;color:#8F7B35;">01</div></td>
-<td valign="top" style="padding:14px 0 16px;border-bottom:1px solid #EEE8D5;">
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:14px;line-height:20px;color:#2F2A19;font-weight:700;">Vos essentiels en recharge 5\u202fL</div>
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:13px;line-height:21px;color:#6B603C;margin-top:5px;">Retrouvez vos produits en chambre en format bidon 5\u202fL et renouvelez vos commandes en un clic. Flacons 500\u202fml \u00e9galement disponibles.</div>
-</td></tr>
-<tr>
-<td width="46" valign="top" style="padding:15px 0;"><div style="width:32px;height:32px;line-height:32px;border:1px solid #CBBE8A;border-radius:50%;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:14px;color:#8F7B35;">02</div></td>
-<td valign="top" style="padding:14px 0 16px;border-bottom:1px solid #EEE8D5;">
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:14px;line-height:20px;color:#2F2A19;font-weight:700;">Diffuseurs & bougie</div>
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:13px;line-height:21px;color:#6B603C;margin-top:5px;">Cr\u00e9ez une signature olfactive dans vos chambres et parties communes avec nos diffuseurs Intuition et R\u00e9v\u00e9lation, et la bougie Intuition.</div>
-</td></tr>
-<tr>
-<td width="46" valign="top" style="padding:15px 0;"><div style="width:32px;height:32px;line-height:32px;border:1px solid #CBBE8A;border-radius:50%;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:14px;color:#8F7B35;">03</div></td>
-<td valign="top" style="padding:14px 0 16px;border-bottom:1px solid #EEE8D5;">
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:14px;line-height:20px;color:#2F2A19;font-weight:700;">Soins & attentions VIP</div>
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:13px;line-height:21px;color:#6B603C;margin-top:5px;">Contour des yeux, baume l\u00e8vres, masques, gommages, huiles et s\u00e9rums\u2009: d\u00e9posez une attention en chambre ou composez un coffret sur mesure.</div>
-</td></tr>
-<tr>
-<td width="46" valign="top" style="padding:15px 0;"><div style="width:32px;height:32px;line-height:32px;border:1px solid #CBBE8A;border-radius:50%;text-align:center;font-family:Georgia,'Times New Roman',serif;font-size:14px;color:#8F7B35;">04</div></td>
-<td valign="top" style="padding:14px 0 16px;">
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:14px;line-height:20px;color:#2F2A19;font-weight:700;">Catalogue & commande en ligne</div>
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:13px;line-height:21px;color:#6B603C;margin-top:5px;">Parcourez l\u2019ensemble du catalogue \u00e0 vos tarifs partenaires, ajoutez au panier et transmettez votre commande directement depuis votre espace.</div>
-</td></tr>
-</table>
-</td></tr>
-
-<tr><td style="padding:28px 46px 0;"><div style="height:1px;background:#E8E1C9;line-height:1px;font-size:1px;">&nbsp;</div></td></tr>
-
-<tr><td align="center" style="padding:36px 46px 44px;">
-<div style="font-family:Georgia,'Times New Roman',serif;font-size:21px;line-height:29px;color:#2F2A19;">Un s\u00e9jour se termine.<br>Une attention reste.</div>
-<p style="margin:14px auto 24px;max-width:455px;font-family:Arial,'Helvetica Neue',sans-serif;font-size:13px;line-height:21px;color:#6B603C;">Commandes, historique, documents \u2014 tout est accessible depuis votre espace. Une question\u2009? Hugo, votre interlocuteur d\u00e9di\u00e9, est \u00e0 un clic.</p>
-<a href="${portalUrl}" target="_blank" style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:11px;line-height:16px;letter-spacing:1.5px;text-transform:uppercase;color:#8E7A34;text-decoration:none;font-weight:700;border-bottom:1px solid #BDAE73;padding-bottom:3px;">Entrer dans mon espace \u2192</a>
-</td></tr>
-</table>
-</td></tr>
-
-<tr><td align="center" style="padding:28px 28px 0;">
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:11px;line-height:18px;letter-spacing:.3px;color:#7D714A;">TERRE DE MARS \u2014 L\u2019art du soin, le sens de l\u2019accueil.</div>
-<div style="font-family:Arial,'Helvetica Neue',sans-serif;font-size:10px;line-height:16px;color:#A89C78;margin-top:7px;">Votre acc\u00e8s est personnel. Conservez vos identifiants de mani\u00e8re confidentielle.</div>
-</td></tr>
-</table>
-</td></tr>
-</table>
-</body></html>`,
+            htmlContent,
             replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
           };
           await brevoService.brevoSendEmail(payload);
