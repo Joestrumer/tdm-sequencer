@@ -360,17 +360,15 @@ module.exports = (db) => {
           : (totalPriceNet * (1 + taxRate / 100));
 
         // Construire la position
-        // Si product_id existe, ne pas envoyer name pour que VF utilise le nom du produit VF
         const position = {
           code: p.ref || vfProduct.vfRef || ref,
+          name: vfProduct.productName || p.nom || p.name || vfProduct.ref || ref,
           tax: taxRate,
           quantity: qty,
         };
 
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
-        } else {
-          position.name = vfProduct.productName || p.nom || p.name || vfProduct.ref;
         }
 
         // Toujours envoyer price_net et total_price_gross (VF les exige)
@@ -399,6 +397,7 @@ module.exports = (db) => {
 
         const position = {
           code: f.ref || ref,
+          name: vfProduct.productName || f.nom || f.name || ref,
           price_net: Number(priceHT).toFixed(2),
           total_price_gross: Number(gross).toFixed(2),
           tax: taxRate,
@@ -406,8 +405,6 @@ module.exports = (db) => {
         };
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
-        } else {
-          position.name = vfProduct.productName || f.nom || f.name || ref;
         }
         if (fraisDiscount > 0) {
           position.discount_percent = fraisDiscount;
@@ -628,6 +625,7 @@ module.exports = (db) => {
 
         const position = {
           code: p.ref || vfProduct.vfRef || ref,
+          name: vfProduct.productName || p.nom || p.name || vfProduct.ref || ref,
           tax: taxRate,
           quantity: qty,
           price_net: priceToUse.toFixed(2),
@@ -635,8 +633,6 @@ module.exports = (db) => {
         };
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
-        } else {
-          position.name = vfProduct.productName || p.nom || p.name || vfProduct.ref;
         }
         if (discount > 0) position.discount_percent = discount;
 
@@ -653,6 +649,7 @@ module.exports = (db) => {
 
         const position = {
           code: f.ref || ref,
+          name: vfProduct.productName || f.nom || f.name || ref,
           price_net: Number(priceHT).toFixed(2),
           total_price_gross: Number(gross).toFixed(2),
           tax: taxRate,
@@ -660,8 +657,6 @@ module.exports = (db) => {
         };
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
-        } else {
-          position.name = vfProduct.productName || f.nom || f.name || ref;
         }
         positions.push(position);
       }

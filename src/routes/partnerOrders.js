@@ -327,17 +327,15 @@ module.exports = (db) => {
 
         const position = {
           code: p.ref || vfProduct.vfRef || ref,
+          name: vfProduct.productName || p.nom || vfProduct.ref || ref,
           tax: taxRate,
           quantity: qty,
           price_net: priceToUse.toFixed(2),
           total_price_gross: totalPriceGross.toFixed(2),
         };
 
-        // Si product_id existe, ne pas envoyer name pour que VF utilise le nom du produit VF
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
-        } else {
-          position.name = vfProduct.productName || p.nom || vfProduct.ref;
         }
         if (discount > 0) position.discount_percent = discount;
 
@@ -374,6 +372,7 @@ module.exports = (db) => {
 
         const fpPosition = {
           code: fpRef,
+          name: vfProduct.productName || 'FRAIS DE PORT',
           price_net: Number(fpMontant).toFixed(2),
           total_price_gross: Number(fpGross).toFixed(2),
           tax: fpTax,
@@ -381,8 +380,6 @@ module.exports = (db) => {
         };
         if (vfProduct.productId) {
           fpPosition.product_id = vfProduct.productId;
-        } else {
-          fpPosition.name = vfProduct.productName || 'FRAIS DE PORT';
         }
         positions.push(fpPosition);
         fraisPort.push({ ref: fpRef, nom: 'FRAIS DE PORT', prix_ht: fpMontant, quantite: 1, tva: fpTax });
