@@ -11891,7 +11891,6 @@ const FacturesPartners = ({ showToast }) => {
   const [vfSearching, setVfSearching] = useState(false);
   const vfSearchTimer = useRef(null);
   const vfAbortRef = useRef(null);
-  const [linkingVfFor, setLinkingVfFor] = useState(null); // partner id when linking VF client from detail
 
   const charger = async () => {
     setLoading(true);
@@ -21912,6 +21911,36 @@ const VuePartenaires = ({ showToast, readOnly }) => {
   const [partnerStats, setPartnerStats] = useState(null);
   const [pendingChange, setPendingChange] = useState(null);
   const [partnerDirName, setPartnerDirName] = useState(null);
+  const [linkingVfFor, setLinkingVfFor] = useState(null);
+  const [vfLinkQuery, setVfLinkQuery] = useState('');
+  const [vfLinkResults, setVfLinkResults] = useState([]);
+  const [vfLinkSearching, setVfLinkSearching] = useState(false);
+  const vfLinkTimer = useRef(null);
+  const vfLinkAbort = useRef(null);
+
+  const rechercherVFLink = (q) => {
+    setVfLinkQuery(q);
+    setVfLinkResults([]);
+    clearTimeout(vfLinkTimer.current);
+    if (vfLinkAbort.current) vfLinkAbort.current.abort();
+    if (!q || q.length < 2) return;
+    vfLinkTimer.current = setTimeout(async () => {
+      const controller = new AbortController();
+      vfLinkAbort.current = controller;
+      setVfLinkSearching(true);
+      try {
+        const res = await fetch(window.location.origin + '/api/factures/clients?q=' + encodeURIComponent(q), {
+          headers: { 'Authorization': 'Bearer ' + (sessionStorage.getItem('tdm_token') || '') },
+          signal: controller.signal,
+        });
+        const data = await res.json();
+        if (res.ok && Array.isArray(data)) setVfLinkResults(data);
+      } catch (e) {
+        if (e.name !== 'AbortError') console.error('Erreur recherche VF:', e);
+      }
+      setVfLinkSearching(false);
+    }, 400);
+  };
 
   const charger = async () => {
     setLoading(true);
@@ -22442,7 +22471,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                   <div className="flex items-center gap-2 mt-0.5">
                     {selected.vf_client_id && <a href={`https://terredemars.vosfactures.fr/clients/${selected.vf_client_id}`} target="_blank" rel="noopener noreferrer" className="text-[10px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-500 hover:bg-blue-100 hover:text-blue-700 font-mono transition-colors">VF #{selected.vf_client_id} &rarr;</a>}
                     {linkingVfFor !== selected.id ? (
-                      <button onClick={() => { setLinkingVfFor(selected.id); setVfQuery(''); setVfResults([]); }} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors">{selected.vf_client_id ? 'Changer' : 'Lier un client VF'}</button>
+                      <button onClick={() => { setLinkingVfFor(selected.id); setVfLinkQuery(''); setVfLinkResults([]); }} className="text-[10px] px-1.5 py-0.5 rounded bg-slate-100 text-slate-500 hover:bg-slate-200 hover:text-slate-700 transition-colors">{selected.vf_client_id ? 'Changer' : 'Lier un client VF'}</button>
                     ) : (
                       <div className="relative">
                         <div className="flex items-center gap-1">
@@ -22450,22 +22479,22 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                             autoFocus
                             type="text"
                             placeholder="Rechercher un client VF..."
-                            value={vfQuery}
-                            onChange={e => rechercherVF(e.target.value)}
-                            onKeyDown={e => e.key === 'Escape' && (setLinkingVfFor(null), setVfQuery(''), setVfResults([]))}
+                            value={vfLinkQuery}
+                            onChange={e => rechercherVFLink(e.target.value)}
+                            onKeyDown={e => e.key === 'Escape' && (setLinkingVfFor(null), setVfLinkQuery(''), setVfLinkResults([]))}
                             className="text-xs border border-slate-200 rounded-lg px-2 py-1 w-56 focus:outline-none focus:ring-1 focus:ring-blue-400"
                           />
-                          {vfSearching && <span className="text-xs text-slate-400">...</span>}
-                          <button onClick={() => { setLinkingVfFor(null); setVfQuery(''); setVfResults([]); }} className="text-xs text-slate-400 hover:text-slate-600">Annuler</button>
+                          {vfLinkSearching && <span className="text-xs text-slate-400">...</span>}
+                          <button onClick={() => { setLinkingVfFor(null); setVfLinkQuery(''); setVfLinkResults([]); }} className="text-xs text-slate-400 hover:text-slate-600">Annuler</button>
                         </div>
-                        {vfResults.length > 0 && (
+                        {vfLinkResults.length > 0 && (
                           <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-80 max-h-48 overflow-y-auto">
-                            {vfResults.map(c => (
+                            {vfLinkResults.map(c => (
                               <button key={c.id} onClick={async () => {
                                 try {
                                   const r = await api.post(`/reference/partners/${selected.id}/link-vf-client`, { vf_client_id: String(c.id) });
                                   showToast(r.message || `Client VF #${c.id} lié`, 'success');
-                                  setLinkingVfFor(null); setVfQuery(''); setVfResults([]);
+                                  setLinkingVfFor(null); setVfLinkQuery(''); setVfLinkResults([]);
                                   charger();
                                 } catch (e) { showToast('Erreur liaison : ' + (e.message || e), 'error'); }
                               }} className="w-full text-left px-3 py-2 hover:bg-blue-50 border-b border-slate-50 last:border-0 transition-colors">
@@ -22475,7 +22504,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                             ))}
                           </div>
                         )}
-                        {vfQuery.length >= 2 && !vfSearching && vfResults.length === 0 && (
+                        {vfLinkQuery.length >= 2 && !vfLinkSearching && vfLinkResults.length === 0 && (
                           <div className="absolute top-full left-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg z-50 w-80 p-3 text-xs text-slate-400">Aucun résultat</div>
                         )}
                       </div>
