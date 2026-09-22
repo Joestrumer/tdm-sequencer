@@ -330,15 +330,17 @@ module.exports = (db) => {
 
         const position = {
           code: p.ref || vfProduct.vfRef || ref,
-          name: vfProduct.productName || p.nom || vfProduct.ref || ref,
           tax: taxRate,
           quantity: qty,
           price_net: priceToUse.toFixed(2),
           total_price_gross: totalPriceGross.toFixed(2),
         };
 
+        // Nom : laisser VF utiliser le nom du produit si product_id trouvé
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
+        } else {
+          position.name = vfProduct.productName || p.nom || vfProduct.ref || ref;
         }
         if (discount > 0) position.discount_percent = discount;
 
@@ -388,22 +390,26 @@ module.exports = (db) => {
       }
 
       for (const fi of fraisItems) {
-        const netAfterDisc = fi.montant * (1 - (fi.discount || 0) / 100);
-        const fpGross = roundPrice(netAfterDisc * (1 + fi.tva / 100));
+        // total_price_gross AVANT remise (comme pour les produits) — VF applique discount_percent
+        const fpGross = roundPrice(fi.montant * (1 + fi.tva / 100));
         const vfProduct = findVFProduct(fi.ref, fi.montant, catalog, codeMappings, productIdMappings, productNameMappings);
 
         const fpPosition = {
           code: fi.ref,
-          name: vfProduct.productName || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION"),
           price_net: Number(fi.montant).toFixed(2),
           total_price_gross: Number(fpGross).toFixed(2),
           tax: fi.tva,
           quantity: 1,
         };
+        // Nom : laisser VF utiliser le nom du produit si product_id trouvé
+        if (vfProduct.productId) {
+          fpPosition.product_id = vfProduct.productId;
+        } else {
+          fpPosition.name = vfProduct.productName || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION");
+        }
         if (fi.discount > 0) fpPosition.discount_percent = fi.discount;
-        if (vfProduct.productId) fpPosition.product_id = vfProduct.productId;
         positions.push(fpPosition);
-        fraisPort.push({ ref: fi.ref, nom: fpPosition.name, prix_ht: fi.montant, quantite: 1, tva: fi.tva });
+        fraisPort.push({ ref: fi.ref, nom: fpPosition.name || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION"), prix_ht: fi.montant, quantite: 1, tva: fi.tva, discount: fi.discount || 0 });
       }
 
       // Résoudre le client VF pour la facture
@@ -469,8 +475,19 @@ module.exports = (db) => {
         JSON.stringify({ orderId: order.id, canonicalClientName, validatedBy: req.user.id }),
       );
 
-      // Mettre à jour la commande — sauvegarder les produits/frais modifiés + statut
-      const updatedProducts = Array.isArray(productsOverride) && productsOverride.length > 0 ? productsOverride : JSON.parse(order.products || '[]');
+      // Mettre à jour la commande — sauvegarder les produits + frais (avec discount) dans products
+      const updatedProducts = Array.isArray(productsOverride) && productsOverride.length > 0 ? [...productsOverride] : [...JSON.parse(order.products || '[]')];
+      // Ajouter les frais comme lignes produit pour l'affichage futur
+      for (const fi of fraisItems) {
+        const netHT = fi.montant * (1 - (fi.discount || 0) / 100);
+        updatedProducts.push({
+          ref: fi.ref,
+          nom: fi.ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION',
+          quantite: 1, prix_ht: fi.montant, tva: fi.tva, discount_pct: fi.discount || 0,
+          total_ht: Math.round(netHT * 100) / 100,
+          total_ttc: Math.round(netHT * (1 + fi.tva / 100) * 100) / 100,
+        });
+      }
       // positions inclut déjà produits + frais
       const updatedTotalHT = positions.reduce((s, p) => {
         const net = parseFloat(p.price_net);
