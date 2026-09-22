@@ -114,6 +114,9 @@
     /* ─── Accueil maquette ──────────────────────────────────────────── */
     #tdm-partner-preview{--tdm-paper:#fbfaf7;--tdm-white:#fff;--tdm-ink:#242a23;--tdm-muted:#6c7066;--tdm-line:#dedfd5;--tdm-soft:#f0f0e9;--tdm-olive:#686c45;--tdm-dark:#30392d;--tdm-on-dark:#fcfcf7;color:var(--tdm-ink);background:var(--tdm-paper);font-family:'DM Sans',Arial,sans-serif;font-size:14px;line-height:1.5;width:100%;overflow:clip;isolation:isolate}
     .dark #tdm-partner-preview{--tdm-paper:#191b18;--tdm-white:#232621;--tdm-ink:#f0eee6;--tdm-muted:#b5b8ab;--tdm-line:#42473d;--tdm-soft:#2e332b;--tdm-olive:#c3c69a;--tdm-dark:#dfe5d5;--tdm-on-dark:#252b22}
+    #tdm-devis-modal{--tdm-paper:#fbfaf7;--tdm-white:#fff;--tdm-ink:#242a23;--tdm-muted:#6c7066;--tdm-line:#dedfd5;--tdm-soft:#f0f0e9;--tdm-olive:#686c45;--tdm-dark:#30392d;--tdm-on-dark:#fcfcf7}
+    .dark #tdm-devis-modal{--tdm-paper:#191b18;--tdm-white:#232621;--tdm-ink:#f0eee6;--tdm-muted:#b5b8ab;--tdm-line:#42473d;--tdm-soft:#2e332b;--tdm-olive:#c3c69a;--tdm-dark:#dfe5d5;--tdm-on-dark:#252b22}
+    #tdm-devis-modal *{box-sizing:border-box}
     #tdm-partner-preview *{box-sizing:border-box}
     #tdm-partner-preview [hidden]{display:none!important}
     #tdm-partner-preview h1,#tdm-partner-preview h2,#tdm-partner-preview h3,#tdm-partner-preview p{margin:0;color:inherit}
@@ -790,6 +793,7 @@
 
 
       return (
+        <React.Fragment>
         <div id="tdm-partner-preview" ref={previewRef}>
           <main className="tdm-main">
             {/* ── Hero ── */}
@@ -1192,6 +1196,7 @@
             </footer>
           </main>
 
+        </div>
           {/* ── Modal Demande de devis ── */}
           {devisModalOpen && (() => {
             const closeDevis = () => { setDevisModalOpen(false); setDevisSelected({}); setDevisMessage(''); };
@@ -1215,18 +1220,18 @@
             const ownedRefs = new Set();
             if (amenities) Object.values(amenities).forEach(r => { if (r) ownedRefs.add(r); });
             const selectedCount = Object.values(devisSelected).filter(Boolean).length;
-            const thBase = { background:'var(--tdm-soft)',padding:'10px 6px',textAlign:'center',verticalAlign:'top',fontWeight:400,borderBottom:'2px solid var(--tdm-olive)',borderLeft:'1px solid var(--tdm-line)',borderRight:'1px solid var(--tdm-line)' };
-            const tdBase = { padding:'10px 8px',textAlign:'center',borderBottom:'1px solid var(--tdm-line)',borderLeft:'1px solid var(--tdm-line)',borderRight:'1px solid var(--tdm-line)' };
+            const thBase = { background:'var(--tdm-soft)',padding:'8px 5px',textAlign:'center',verticalAlign:'top',fontWeight:400,borderBottom:'2px solid var(--tdm-olive)',borderLeft:'1px solid var(--tdm-line)',borderRight:'1px solid var(--tdm-line)' };
+            const tdBase = { padding:'6px 6px',textAlign:'center',borderBottom:'1px solid var(--tdm-line)',borderLeft:'1px solid var(--tdm-line)',borderRight:'1px solid var(--tdm-line)' };
             return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeDevis} style={{padding:16}}>
+            <div id="tdm-devis-modal" className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeDevis} style={{padding:'60px 16px 16px'}}>
               <div className="absolute inset-0" style={{background:'rgba(0,0,0,.35)',backdropFilter:'blur(4px)'}}></div>
-              <div className="relative w-full flex flex-col" style={{maxWidth:960,maxHeight:'90vh',background:'var(--tdm-white)',border:'1px solid var(--tdm-line)',fontFamily:"'DM Sans',Arial,sans-serif",color:'var(--tdm-ink)',fontSize:13}} onClick={e => e.stopPropagation()}>
-                <div style={{padding:'24px 28px 16px',flexShrink:0}}>
-                  <button onClick={closeDevis} style={{position:'absolute',top:14,right:18,background:'none',border:'none',fontSize:20,color:'var(--tdm-muted)',cursor:'pointer',lineHeight:1}} aria-label="Fermer">&times;</button>
-                  <h3 className="tdm-serif" style={{fontSize:26,marginBottom:6}}>Nos gammes par fragrances</h3>
-                  <p style={{fontSize:12,color:'var(--tdm-muted)',lineHeight:1.6,maxWidth:520}}>S&eacute;lectionnez les parfums dont vous souhaitez recevoir des &eacute;chantillons, demandez-moi des &eacute;chantillons pour tester les parfums ou d&eacute;crivez vos besoins.</p>
+              <div className="relative w-full flex flex-col" style={{maxWidth:960,maxHeight:'calc(100vh - 76px)',background:'var(--tdm-white)',border:'1px solid var(--tdm-line)',fontFamily:"'DM Sans',Arial,sans-serif",color:'var(--tdm-ink)',fontSize:13}} onClick={e => e.stopPropagation()}>
+                <div style={{padding:'18px 28px 12px',flexShrink:0}}>
+                  <button onClick={closeDevis} style={{position:'absolute',top:12,right:18,background:'none',border:'none',fontSize:20,color:'var(--tdm-muted)',cursor:'pointer',lineHeight:1,zIndex:1}} aria-label="Fermer">&times;</button>
+                  <h3 style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontWeight:400,letterSpacing:'-.8px',fontSize:24,marginBottom:4}}>Nos gammes par fragrances</h3>
+                  <p style={{fontSize:12,color:'var(--tdm-muted)',lineHeight:1.6,maxWidth:520}}>S&eacute;lectionnez les parfums et les produits que vous souhaitez d&eacute;couvrir &agrave; travers nos &eacute;chantillons, puis parlez-moi de votre projet.</p>
                 </div>
-                <div style={{flex:1,overflowY:'auto',padding:'0 28px 20px'}}>
+                <div style={{flex:1,overflowY:'auto',padding:'0 28px 14px'}}>
                   <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
                     <table style={{borderCollapse:'collapse',width:'100%',fontSize:12,minWidth:720}}>
                       <thead>
@@ -1234,9 +1239,9 @@
                           <th style={{...thBase,textAlign:'left',minWidth:120,fontSize:10,textTransform:'uppercase',letterSpacing:1,fontWeight:600,color:'var(--tdm-muted)',verticalAlign:'middle'}}>Typologie<br/>des produits</th>
                           {FRAGS.map(f => (
                             <th key={f.key} style={{...thBase,minWidth:80}}>
-                              <div className="tdm-serif" style={{fontSize:15,color:'var(--tdm-olive)',lineHeight:1.2}}>{f.name}</div>
-                              <div style={{fontSize:10,fontStyle:'italic',color:'var(--tdm-olive)',marginTop:2}}>{f.sub}</div>
-                              <div style={{marginTop:5,fontSize:9,textTransform:'uppercase',letterSpacing:.3,color:'var(--tdm-muted)',lineHeight:1.4}}>{f.notes}</div>
+                              <div style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontWeight:400,fontSize:14,color:'var(--tdm-olive)',lineHeight:1.2}}>{f.name}</div>
+                              <div style={{fontSize:9,fontStyle:'italic',color:'var(--tdm-olive)',marginTop:1}}>{f.sub}</div>
+                              <div style={{marginTop:3,fontSize:8,textTransform:'uppercase',letterSpacing:.3,color:'var(--tdm-muted)',lineHeight:1.3}}>{f.notes}</div>
                             </th>
                           ))}
                           <th style={{...thBase,minWidth:55,fontSize:9,fontWeight:600,color:'var(--tdm-muted)',textTransform:'uppercase',letterSpacing:.3}}>Prix&nbsp;HT<br/>Flacon 500ml</th>
@@ -1283,14 +1288,14 @@
                     <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{display:'inline-block',width:10,height:10,background:'rgba(104,108,69,.10)',border:'1px solid var(--tdm-line)'}}></span> D&eacute;j&agrave; en place</span>
                     <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{display:'inline-block',width:10,height:10,background:'var(--tdm-dark)'}}></span> S&eacute;lectionn&eacute;</span>
                   </div>
-                  <div style={{marginTop:18}}>
-                    <label style={{display:'block',fontSize:11,fontWeight:500,letterSpacing:1,textTransform:'uppercase',color:'var(--tdm-muted)',marginBottom:6}}>Message</label>
+                  <div style={{marginTop:14}}>
+                    <label style={{display:'block',fontSize:11,fontWeight:500,letterSpacing:1,textTransform:'uppercase',color:'var(--tdm-muted)',marginBottom:4}}>Message</label>
                     <textarea
                       value={devisMessage}
                       onChange={e => setDevisMessage(e.target.value)}
-                      rows={3}
-                      style={{width:'100%',border:'1px solid var(--tdm-line)',background:'var(--tdm-paper)',color:'var(--tdm-ink)',padding:'9px 12px',fontSize:12,fontFamily:'inherit',resize:'none',lineHeight:1.6}}
-                      placeholder="D\u00e9crivez votre demande..."
+                      rows={2}
+                      style={{width:'100%',border:'1px solid var(--tdm-line)',background:'var(--tdm-paper)',color:'var(--tdm-ink)',padding:'8px 12px',fontSize:12,fontFamily:"'DM Sans',Arial,sans-serif",resize:'none',lineHeight:1.6}}
+                      placeholder="Décrivez votre demande..."
                     />
                   </div>
                 </div>
@@ -1327,8 +1332,7 @@
                         setDevisSending(false);
                       }
                     }}
-                    className="tdm-action"
-                    style={{opacity: (devisSending || !devisMessage.trim()) ? 0.4 : 1, cursor: (devisSending || !devisMessage.trim()) ? 'default' : 'pointer'}}
+                    style={{border:'1px solid var(--tdm-dark)',background:'var(--tdm-dark)',color:'var(--tdm-on-dark)',padding:'10px 18px',display:'inline-flex',alignItems:'center',justifyContent:'center',fontSize:12,fontWeight:500,fontFamily:"'DM Sans',Arial,sans-serif",transition:'opacity .15s',opacity: (devisSending || !devisMessage.trim()) ? 0.4 : 1, cursor: (devisSending || !devisMessage.trim()) ? 'default' : 'pointer'}}
                   >
                     {devisSending ? 'Envoi en cours\u2026' : 'Envoyer ma demande'}
                   </button>
@@ -1337,7 +1341,7 @@
             </div>
             );
           })()}
-        </div>
+        </React.Fragment>
       );
     };
 
