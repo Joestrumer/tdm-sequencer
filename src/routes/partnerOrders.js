@@ -407,7 +407,7 @@ module.exports = (db) => {
         } else {
           fpPosition.name = vfProduct.productName || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION");
         }
-        if (fi.discount > 0) fpPosition.discount_percent = fi.discount;
+        if (fi.discount > 0) { fpPosition.discount_percent = fi.discount; hasDiscount = true; }
         positions.push(fpPosition);
         fraisPort.push({ ref: fi.ref, nom: fpPosition.name || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION"), prix_ht: fi.montant, quantite: 1, tva: fi.tva, discount: fi.discount || 0 });
       }
