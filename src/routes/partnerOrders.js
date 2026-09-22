@@ -253,7 +253,7 @@ module.exports = (db) => {
   // ─── Valider commande ─────────────────────────────────────────────────────
   router.post('/:id/validate', async (req, res) => {
     try {
-      const { documentType, shippingId, sendEmail = true, logGSheets = true, generateCsv = false, createHubspotDeal = true, fraisOverride, discountOverride } = req.body || {};
+      const { documentType, shippingId, sendEmail = true, logGSheets = true, generateCsv = false, createHubspotDeal = true, fraisOverride, discountOverride, productsOverride } = req.body || {};
 
       const order = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.nom_normalise, vp.email as partner_email,
@@ -272,7 +272,9 @@ module.exports = (db) => {
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
       if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Cette commande ne peut plus être validée' });
 
-      const products = JSON.parse(order.products || '[]');
+      const products = Array.isArray(productsOverride) && productsOverride.length > 0
+        ? productsOverride
+        : JSON.parse(order.products || '[]');
       // Validation des données avant création facture
       if (!products.length) return res.status(400).json({ erreur: 'Commande sans produits' });
       for (const p of products) {
@@ -467,12 +469,19 @@ module.exports = (db) => {
         JSON.stringify({ orderId: order.id, canonicalClientName, validatedBy: req.user.id }),
       );
 
-      // Mettre à jour la commande — seulement si facture VF créée avec succès
+      // Mettre à jour la commande — sauvegarder les produits/frais modifiés + statut
+      const updatedProducts = Array.isArray(productsOverride) && productsOverride.length > 0 ? productsOverride : JSON.parse(order.products || '[]');
+      const updatedTotalHT = positions.reduce((s, p) => {
+        const net = parseFloat(p.price_net);
+        const disc = p.discount_percent || 0;
+        return s + (net * (1 - disc / 100)) * p.quantity;
+      }, 0) + fraisItems.reduce((s, f) => s + f.montant * (1 - (f.discount || 0) / 100), 0);
       db.prepare(`
         UPDATE partner_orders
-        SET statut = 'validee', vf_invoice_id = ?, vf_invoice_number = ?, validated_at = datetime('now'), validated_by = ?
+        SET statut = 'validee', vf_invoice_id = ?, vf_invoice_number = ?, validated_at = datetime('now'), validated_by = ?,
+            products = ?, total_ht = ?
         WHERE id = ?
-      `).run(String(result.id || ''), result.number || '', req.user.id, order.id);
+      `).run(String(result.id || ''), result.number || '', req.user.id, JSON.stringify(updatedProducts), Math.round(updatedTotalHT * 100) / 100, order.id);
 
       // Audit trail
       db.prepare('INSERT INTO partner_orders_audit (order_id, user_id, action, after_data) VALUES (?, ?, ?, ?)')

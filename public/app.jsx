@@ -20982,11 +20982,14 @@ const VueCommandes = ({ showToast }) => {
       body.fraisOverride = fraisForOrder.map(f => ({
         ref: f.ref, montant: f.prix_ht, tva: f.tva || 20, discount: f.discount || 0,
       }));
-      // Discount override — lire depuis le détail
-      const discVal = editableDiscount[id];
-      if (discVal !== undefined && discVal !== '' && discVal != null) {
-        const d = parseFloat(discVal);
-        if (!isNaN(d) && d >= 0) body.discountOverride = d;
+      // Produits override — envoyer les produits édités (avec remise par produit)
+      const editedProducts = editableProducts[id];
+      if (editedProducts) {
+        body.productsOverride = editedProducts.map(p => ({
+          ref: p.ref, nom: p.nom, quantite: p.quantite, prix_ht: p.prix_ht,
+          tva: p.tva || 20, discount_pct: p.discount_pct || 0,
+          total_ht: p.total_ht, total_ttc: p.total_ttc,
+        }));
       }
       const res = await api.post(`/partner-orders/${id}/validate`, body);
       if (res.ok) {
@@ -21643,7 +21646,25 @@ const VueCommandes = ({ showToast }) => {
                                   ) : p.quantite}
                                 </td>
                                 <td className="py-2 text-right">{(p.prix_ht)?.toFixed(2)} &euro;</td>
-                                <td className="py-2 text-right">{p.discount_pct > 0 ? <span className="text-amber-600 font-medium">-{p.discount_pct}%</span> : <span className="text-slate-300">—</span>}</td>
+                                <td className="py-2 text-right">{isEditable ? (
+                                  <div className="inline-flex items-center">
+                                    <input type="number" step="0.5" min="0" max="100" value={p.discount_pct || ''} placeholder="0"
+                                      onChange={e => {
+                                        const d = parseFloat(e.target.value) || 0;
+                                        const updated = displayProducts.map((pr, idx) => {
+                                          if (idx !== i) return pr;
+                                          const pu = pr.prix_ht || 0;
+                                          const q = pr.quantite || 1;
+                                          const lineHT = Math.round(pu * (1 - d / 100) * q * 100) / 100;
+                                          return { ...pr, discount_pct: d, total_ht: lineHT, total_ttc: Math.round(lineHT * (1 + (pr.tva || 20) / 100) * 100) / 100 };
+                                        });
+                                        setEditableProducts(prev => ({ ...prev, [c.id]: updated }));
+                                        persistProducts(c.id, updated);
+                                      }}
+                                      className="w-14 border border-slate-200 rounded px-1 py-0.5 text-xs text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                                    <span className="text-xs text-slate-400 ml-0.5">%</span>
+                                  </div>
+                                ) : p.discount_pct > 0 ? <span className="text-amber-600 font-medium">-{p.discount_pct}%</span> : <span className="text-slate-300">—</span>}</td>
                                 <td className="py-2 text-right font-medium">{p.total_ht?.toFixed(2)} &euro;</td>
                                 {isEditable && (
                                   <td className="py-2 text-center">
@@ -21657,19 +21678,73 @@ const VueCommandes = ({ showToast }) => {
                                 )}
                               </tr>
                             ))}
-                            {c.frais_ref && c.frais_montant > 0 && (
-                              <tr className="border-b border-slate-100 border-t border-slate-200">
-                                <td className="py-2 font-mono text-xs text-slate-500">{c.frais_ref}</td>
-                                <td className="py-2 text-slate-500 italic">{c.frais_ref === 'FP' ? 'Frais de préparation' : "Frais d'expédition"}</td>
-                                <td className="py-2 text-center">1</td>
-                                <td className="py-2 text-right">{c.frais_montant?.toFixed(2)} &euro;</td>
-                                <td className="py-2 text-right"><span className="text-slate-300">—</span></td>
-                                <td className="py-2 text-right font-medium">{c.frais_montant?.toFixed(2)} &euro;</td>
-                                {isEditable && <td></td>}
-                              </tr>
-                            )}
+                            {(() => {
+                              const defaultFrais = c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'Frais de préparation' : "Frais d'expédition", prix_ht: c.frais_montant, tva: c.frais_tva || 20 }] : [];
+                              const fraisList = editableFrais[c.id] !== undefined ? editableFrais[c.id] : defaultFrais;
+                              return fraisList.map((f, fi) => (
+                                <tr key={'frais'+fi} className="border-b border-slate-100 border-t border-slate-200">
+                                  <td className="py-2 font-mono text-xs text-slate-500">{f.ref}</td>
+                                  <td className="py-2 text-slate-500 italic">{f.nom}</td>
+                                  <td className="py-2 text-center">1</td>
+                                  <td className="py-2 text-right">
+                                    {isEditable ? (
+                                      <input type="number" step="0.01" min="0" value={f.prix_ht}
+                                        onChange={e => {
+                                          const cur = editableFrais[c.id] !== undefined ? [...editableFrais[c.id]] : [...defaultFrais];
+                                          cur[fi] = { ...cur[fi], prix_ht: parseFloat(e.target.value) || 0 };
+                                          setEditableFrais(prev => ({ ...prev, [c.id]: cur }));
+                                        }}
+                                        className="w-20 border border-slate-200 rounded px-1 py-0.5 text-xs text-right font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                                    ) : <>{f.prix_ht?.toFixed(2)} &euro;</>}
+                                  </td>
+                                  <td className="py-2 text-right"><span className="text-slate-300">—</span></td>
+                                  <td className="py-2 text-right font-medium">{f.prix_ht?.toFixed(2)} &euro;</td>
+                                  {isEditable && (
+                                    <td className="py-2 text-center">
+                                      <button onClick={(e) => {
+                                        e.stopPropagation();
+                                        const cur = editableFrais[c.id] !== undefined ? [...editableFrais[c.id]] : [...defaultFrais];
+                                        setEditableFrais(prev => ({ ...prev, [c.id]: cur.filter((_, idx) => idx !== fi) }));
+                                      }} className="text-red-400 hover:text-red-600 text-xs" title="Supprimer">&#10005;</button>
+                                    </td>
+                                  )}
+                                </tr>
+                              ));
+                            })()}
                           </tbody>
                         </table>
+
+                        {/* Boutons ajouter frais — uniquement pour les commandes en attente */}
+                        {isEditable && (() => {
+                          const defaultFrais = c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'Frais de préparation' : "Frais d'expédition", prix_ht: c.frais_montant, tva: c.frais_tva || 20 }] : [];
+                          const fraisList = editableFrais[c.id] !== undefined ? editableFrais[c.id] : defaultFrais;
+                          const hasFP = fraisList.some(f => f.ref === 'FP');
+                          const hasFE = fraisList.some(f => f.ref === 'FE');
+                          return (hasFP && hasFE) ? null : (
+                            <div className="flex gap-2 mb-3">
+                              {!hasFP && (
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  const cur = editableFrais[c.id] !== undefined ? [...editableFrais[c.id]] : [...defaultFrais];
+                                  cur.push({ ref: 'FP', nom: 'Frais de préparation', prix_ht: 15, tva: 20 });
+                                  setEditableFrais(prev => ({ ...prev, [c.id]: cur }));
+                                }} className="text-xs bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600 transition-colors">
+                                  + Frais préparation
+                                </button>
+                              )}
+                              {!hasFE && (
+                                <button onClick={(e) => {
+                                  e.stopPropagation();
+                                  const cur = editableFrais[c.id] !== undefined ? [...editableFrais[c.id]] : [...defaultFrais];
+                                  cur.push({ ref: 'FE', nom: "Frais d'expédition", prix_ht: 15, tva: 20 });
+                                  setEditableFrais(prev => ({ ...prev, [c.id]: cur }));
+                                }} className="text-xs bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg px-3 py-1.5 text-slate-600 transition-colors">
+                                  + Frais expédition
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })()}
 
                         {/* Ajouter un produit — uniquement pour les commandes en attente */}
                         {isEditable && (
@@ -21756,10 +21831,24 @@ const VueCommandes = ({ showToast }) => {
                   )}
 
                   <div className="flex items-center justify-between">
-                    <div>
-                      <span className="text-sm font-semibold text-slate-900">{c.total_ht?.toFixed(2)} &euro; HT</span>
-                      <span className="text-xs text-slate-400 ml-2">{c.total_ttc?.toFixed(2)} &euro; TTC</span>
-                    </div>
+                    {(() => {
+                      const isEd = c.statut === 'en_attente';
+                      const prods = isEd ? getEditableProducts(c) : (c.products || []);
+                      const defaultFrais = c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, prix_ht: c.frais_montant, tva: c.frais_tva || 20 }] : [];
+                      const frais = editableFrais[c.id] !== undefined ? editableFrais[c.id] : defaultFrais;
+                      const prodHT = prods.reduce((s, p) => s + (p.total_ht || 0), 0);
+                      const fraisHT = frais.reduce((s, f) => s + (f.prix_ht || 0), 0);
+                      const calcHT = prodHT + fraisHT;
+                      const prodTTC = prods.reduce((s, p) => s + (p.total_ttc || 0), 0);
+                      const fraisTTC = frais.reduce((s, f) => s + Math.round((f.prix_ht || 0) * (1 + (f.tva || 20) / 100) * 100) / 100, 0);
+                      const calcTTC = prodTTC + fraisTTC;
+                      return (
+                        <div>
+                          <span className="text-sm font-semibold text-slate-900">{calcHT.toFixed(2)} &euro; HT</span>
+                          <span className="text-xs text-slate-400 ml-2">{calcTTC.toFixed(2)} &euro; TTC</span>
+                        </div>
+                      );
+                    })()}
                     <div className="flex items-center gap-2">
                       {c.vf_invoice_number && <span className="text-xs text-emerald-600 font-medium">Facture n&deg;{c.vf_invoice_number}</span>}
                       {c.statut === 'validee' && c.vf_invoice_id && (
