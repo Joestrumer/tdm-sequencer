@@ -1929,7 +1929,7 @@
                             {p.discount_pct > 0 && !p.promo_pct && <span className="text-[10px] px-1 py-0.5 rounded bg-gold-100 dark:bg-gold-900/40 text-gold-700 dark:text-gold-400 font-medium shrink-0">-{p.discount_pct}%</span>}
                           </div>
                           <div className="flex items-center gap-3 shrink-0 ml-2">
-                            <span className="text-xs text-gray-400 dark:text-slate-500">{p.quantite} u. &times; {p.prix_remise.toFixed(2)} &euro;</span>
+                            <span className="text-xs text-gray-400 dark:text-slate-500">{p.quantite} u. &times; {(p.prix_remise ?? p.prix_ht ?? 0).toFixed(2)} &euro;</span>
                             <span className="text-gray-900 dark:text-white font-medium w-20 text-right">{p.total_ht.toFixed(2)} &euro;</span>
                           </div>
                         </div>
