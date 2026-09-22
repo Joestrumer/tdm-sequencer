@@ -861,7 +861,17 @@
                           <div>
                             <h3>{ess.label} {ess.gamme.split('/')[0]?.trim()}</h3>
                             <p>{ess.gamme.split('/')[1]?.trim() || ess.gamme}</p>
-                            <p className="tdm-essential-cost"><span>{euro(unitPrice)}</span> HT / unit&eacute;</p>
+                            <p className="tdm-essential-cost">
+                              {currentProd.promo_pct > 0 ? (<>
+                                <span style={{ textDecoration: 'line-through', color: 'var(--tdm-muted)', fontSize: '0.85em' }}>{euro(currentProd.prix_remise)}</span>{' '}
+                                <span style={{ color: '#dc2626', fontWeight: 600 }}>{euro(currentProd.prix_promo)}</span>{' '}
+                                <span style={{ background: '#dc2626', color: '#fff', fontSize: '0.75em', padding: '1px 5px', borderRadius: 3 }}>-{currentProd.promo_pct}%</span>
+                              </>) : currentProd.discount_pct > 0 ? (<>
+                                <span>{euro(unitPrice)}</span>{' '}
+                                <span style={{ background: 'var(--tdm-soft)', color: 'var(--tdm-olive)', fontSize: '0.75em', padding: '1px 5px', borderRadius: 3 }}>-{currentProd.discount_pct}%</span>
+                              </>) : (<span>{euro(unitPrice)}</span>)}
+                              {' '}HT / unit&eacute;
+                            </p>
                             <p><span>{packLabel} &middot; {euro(unitPrice * moq)} HT</span></p>
                           </div>
                         </div>
@@ -957,7 +967,17 @@
                               )}
                               <div>
                                 <h3>{item.label}</h3>
-                                <p className="tdm-essential-cost"><span>{euro(unitPrice)}</span> HT / unit&eacute;</p>
+                                <p className="tdm-essential-cost">
+                                  {currentProd.promo_pct > 0 ? (<>
+                                    <span style={{ textDecoration: 'line-through', color: 'var(--tdm-muted)', fontSize: '0.85em' }}>{euro(currentProd.prix_remise)}</span>{' '}
+                                    <span style={{ color: '#dc2626', fontWeight: 600 }}>{euro(currentProd.prix_promo)}</span>{' '}
+                                    <span style={{ background: '#dc2626', color: '#fff', fontSize: '0.75em', padding: '1px 5px', borderRadius: 3 }}>-{currentProd.promo_pct}%</span>
+                                  </>) : currentProd.discount_pct > 0 ? (<>
+                                    <span>{euro(unitPrice)}</span>{' '}
+                                    <span style={{ background: 'var(--tdm-soft)', color: 'var(--tdm-olive)', fontSize: '0.75em', padding: '1px 5px', borderRadius: 3 }}>-{currentProd.discount_pct}%</span>
+                                  </>) : (<span>{euro(unitPrice)}</span>)}
+                                  {' '}HT / unit&eacute;
+                                </p>
                                 <p><span>{packLabel} &middot; {euro(unitPrice * moq)} HT</span></p>
                               </div>
                             </div>
@@ -999,7 +1019,17 @@
                               )}
                               <div>
                                 <h3>{item.label}</h3>
-                                <p className="tdm-essential-cost"><span>{euro(unitPrice)}</span> HT / unit&eacute;</p>
+                                <p className="tdm-essential-cost">
+                                  {item.prod.promo_pct > 0 ? (<>
+                                    <span style={{ textDecoration: 'line-through', color: 'var(--tdm-muted)', fontSize: '0.85em' }}>{euro(item.prod.prix_remise)}</span>{' '}
+                                    <span style={{ color: '#dc2626', fontWeight: 600 }}>{euro(item.prod.prix_promo)}</span>{' '}
+                                    <span style={{ background: '#dc2626', color: '#fff', fontSize: '0.75em', padding: '1px 5px', borderRadius: 3 }}>-{item.prod.promo_pct}%</span>
+                                  </>) : item.prod.discount_pct > 0 ? (<>
+                                    <span>{euro(unitPrice)}</span>{' '}
+                                    <span style={{ background: 'var(--tdm-soft)', color: 'var(--tdm-olive)', fontSize: '0.75em', padding: '1px 5px', borderRadius: 3 }}>-{item.prod.discount_pct}%</span>
+                                  </>) : (<span>{euro(unitPrice)}</span>)}
+                                  {' '}HT / unit&eacute;
+                                </p>
                                 <p><span>{moq} unit&eacute;{moq > 1 ? 's' : ''} &middot; {euro(unitPrice * moq)} HT</span></p>
                               </div>
                             </div>
@@ -1069,7 +1099,17 @@
                         </div>
                         <div className="tdm-product-body">
                           <h3>{p.nom}</h3>
-                          <div className="tdm-product-price">{euro(unitPrice)} <span>HT / soin</span></div>
+                          <div className="tdm-product-price">
+                            {p.promo_pct > 0 ? (<>
+                              <span style={{ textDecoration: 'line-through', color: 'var(--tdm-muted)', fontSize: '0.85em' }}>{euro(p.prix_remise)}</span>{' '}
+                              <span style={{ color: '#dc2626' }}>{euro(p.prix_promo)}</span>{' '}
+                              <span style={{ background: '#dc2626', color: '#fff', fontSize: '0.7em', padding: '2px 6px', borderRadius: 3, verticalAlign: 'middle' }}>-{p.promo_pct}%</span>
+                            </>) : p.discount_pct > 0 ? (<>
+                              {euro(unitPrice)}{' '}
+                              <span style={{ background: 'var(--tdm-soft)', color: 'var(--tdm-olive)', fontSize: '0.7em', padding: '2px 6px', borderRadius: 3, verticalAlign: 'middle' }}>-{p.discount_pct}%</span>
+                            </>) : euro(unitPrice)}
+                            {' '}<span>HT / soin</span>
+                          </div>
                           <p className="tdm-product-pack">Carton de {moq} soin{moq > 1 ? 's' : ''} &middot; <strong>{euro(unitPrice * moq)} HT</strong></p>
                           {(() => { const q = panier[p.ref]?.quantite || 0; const c = moq > 1 ? Math.floor(q / moq) : q; return c > 0 ? (
                           <div className="tdm-qty-row tdm-qty-large">
