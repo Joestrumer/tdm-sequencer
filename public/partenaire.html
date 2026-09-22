@@ -2445,6 +2445,8 @@
       const handleSelectEtablissement = async (etab) => {
         sessionStorage.setItem('partner_acting_as', String(etab.id));
         setSelectedEtablissement(etab);
+        setPanier({});
+        localStorage.removeItem('tdm_panier');
         try {
           const profil = await api.get('/profil');
           if (!profil.erreur) {
@@ -2552,7 +2554,7 @@
                   <select
                     value={selectedEtablissement.id}
                     onChange={e => handleSwitchEtablissement(e.target.value)}
-                    className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white bg-transparent border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gold-500/50 hidden sm:block max-w-[200px] min-w-0 truncate"
+                    className="text-xs sm:text-sm font-semibold text-gray-900 dark:text-white bg-transparent border border-gray-200 dark:border-slate-600 rounded-lg px-2 py-1 focus:outline-none focus:ring-1 focus:ring-gold-500/50 max-w-[140px] sm:max-w-[200px] min-w-0 truncate"
                   >
                     {etablissements.map(e => (
                       <option key={e.id} value={e.id}>{e.nom}</option>
