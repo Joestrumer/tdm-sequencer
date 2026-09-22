@@ -21593,6 +21593,9 @@ const VueCommandes = ({ showToast }) => {
 
               {expanded && (
                 <div className="border-t border-slate-100 p-4 bg-slate-50/50 animate-fade-in">
+                  {/* Notes en premier, bien visible */}
+                  {c.notes && <div className="text-sm font-bold text-slate-800 mb-3 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">Notes : "{c.notes}"</div>}
+
                   {/* Infos partenaire */}
                   <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-4">
                     {c.partner_contact && <div><span className="text-xs text-slate-400 block">Contact</span><span className="text-sm text-slate-700">{c.partner_contact}</span></div>}
@@ -21654,6 +21657,17 @@ const VueCommandes = ({ showToast }) => {
                                 )}
                               </tr>
                             ))}
+                            {c.frais_ref && c.frais_montant > 0 && (
+                              <tr className="border-b border-slate-100 border-t border-slate-200">
+                                <td className="py-2 font-mono text-xs text-slate-500">{c.frais_ref}</td>
+                                <td className="py-2 text-slate-500 italic">{c.frais_ref === 'FP' ? 'Frais de préparation' : "Frais d'expédition"}</td>
+                                <td className="py-2 text-center">1</td>
+                                <td className="py-2 text-right">{c.frais_montant?.toFixed(2)} &euro;</td>
+                                <td className="py-2 text-right"><span className="text-slate-300">—</span></td>
+                                <td className="py-2 text-right font-medium">{c.frais_montant?.toFixed(2)} &euro;</td>
+                                {isEditable && <td></td>}
+                              </tr>
+                            )}
                           </tbody>
                         </table>
 
@@ -21708,64 +21722,7 @@ const VueCommandes = ({ showToast }) => {
                     );
                   })()}
 
-                  {c.notes && <div className="text-xs text-slate-500 italic mb-3">Notes : "{c.notes}"</div>}
-
-                  {/* Frais de port — éditables si en_attente, lecture seule sinon */}
-                  {c.statut === 'en_attente' ? (
-                    <div className="mb-3">
-                      <div className="text-xs font-medium text-slate-400 mb-1">Frais de port / expédition</div>
-                      {(editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : [])).map((f, i) => (
-                        <div key={'fp'+i} className="flex items-center justify-between text-sm py-1 text-slate-500">
-                          <span className="flex-1 text-xs">{f.nom}</span>
-                          <div className="flex items-center gap-1">
-                            <input type="number" step="0.01" min="0" value={f.prix_ht}
-                              onChange={e => {
-                                const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
-                                const nf = [...current]; nf[i] = { ...nf[i], prix_ht: parseFloat(e.target.value) || 0 };
-                                setEditableFrais(prev => ({ ...prev, [c.id]: nf }));
-                              }}
-                              className="w-20 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
-                            <span className="text-xs">€ HT</span>
-                            <input type="number" step="1" min="0" max="100" value={f.discount || 0}
-                              onChange={e => {
-                                const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
-                                const nf = [...current]; nf[i] = { ...nf[i], discount: parseFloat(e.target.value) || 0 };
-                                setEditableFrais(prev => ({ ...prev, [c.id]: nf }));
-                              }}
-                              className="w-14 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
-                            <span className="text-xs">%</span>
-                            <button onClick={() => {
-                              const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
-                              setEditableFrais(prev => ({ ...prev, [c.id]: current.filter((_, idx) => idx !== i) }));
-                            }} className="ml-1 text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
-                          </div>
-                        </div>
-                      ))}
-                      <div className="flex gap-2 mt-1">
-                        <button onClick={() => {
-                          const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
-                          setEditableFrais(prev => ({ ...prev, [c.id]: [...current, { ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, tva: 20, discount: 0 }] }));
-                        }} className="text-xs text-blue-600 hover:text-blue-800">+ Frais préparation</button>
-                        <button onClick={() => {
-                          const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
-                          setEditableFrais(prev => ({ ...prev, [c.id]: [...current, { ref: 'FE', nom: 'FRAIS EXPEDITION', prix_ht: 80, tva: 20, discount: 0 }] }));
-                        }} className="text-xs text-blue-600 hover:text-blue-800">+ Frais expédition</button>
-                      </div>
-                      {/* Remise globale */}
-                      <div className="flex items-center gap-2 mt-2">
-                        <span className="text-xs text-slate-400">Remise globale</span>
-                        <input type="number" step="1" min="0" max="100" placeholder="—" value={editableDiscount[c.id] ?? ''}
-                          onChange={e => setEditableDiscount(prev => ({ ...prev, [c.id]: e.target.value }))}
-                          className="w-16 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
-                        <span className="text-xs text-slate-400">% — vide = remises partenaire</span>
-                      </div>
-                    </div>
-                  ) : c.frais_ref && c.frais_montant > 0 ? (
-                    <div className="flex items-center justify-between text-xs text-slate-500 mb-2 px-1">
-                      <span>{c.frais_ref === 'FP' ? 'Frais de préparation' : "Frais d'expédition"} ({c.frais_ref})</span>
-                      <span className="font-mono">{c.frais_montant?.toFixed(2)} € HT</span>
-                    </div>
-                  ) : null}
+                  {/* Notes already shown above */}
 
                   {/* Suivi expédition (commandes validées) */}
                   {c.statut === 'validee' && (
@@ -21800,11 +21757,8 @@ const VueCommandes = ({ showToast }) => {
 
                   <div className="flex items-center justify-between">
                     <div>
-                      {c.frais_montant > 0 && c.subtotal_ht != null && (
-                        <span className="text-xs text-slate-400 mr-2">Produits {c.subtotal_ht?.toFixed(2)} € +</span>
-                      )}
                       <span className="text-sm font-semibold text-slate-900">{c.total_ht?.toFixed(2)} &euro; HT</span>
-                      <span className="text-xs text-slate-400 ml-2">({c.total_ttc?.toFixed(2)} &euro; TTC)</span>
+                      <span className="text-xs text-slate-400 ml-2">{c.total_ttc?.toFixed(2)} &euro; TTC</span>
                     </div>
                     <div className="flex items-center gap-2">
                       {c.vf_invoice_number && <span className="text-xs text-emerald-600 font-medium">Facture n&deg;{c.vf_invoice_number}</span>}
