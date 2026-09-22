@@ -714,6 +714,10 @@
       const [vipFilter, setVipFilter] = useState('all');
       const [essentialFormats, setEssentialFormats] = useState({});
       const [diffuserFormats, setDiffuserFormats] = useState({});
+      const [devisModalOpen, setDevisModalOpen] = useState(false);
+      const [devisProducts, setDevisProducts] = useState([{ ref: '', quantite: '' }]);
+      const [devisMessage, setDevisMessage] = useState('');
+      const [devisSending, setDevisSending] = useState(false);
       const previewRef = useRef(null);
 
       const euro = (n) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n);
@@ -897,6 +901,15 @@
                       </article>
                     );
                   })}
+                </div>
+
+                {/* ── Bandeau Demande de devis ── */}
+                <div className="mt-8 bg-gold-50 dark:bg-gold-900/20 border border-gold-200 dark:border-gold-800 rounded-2xl px-6 py-6 text-center">
+                  <p className="text-base font-semibold text-gray-900 dark:text-white mb-1">Vous souhaitez am&eacute;liorer votre exp&eacute;rience client&nbsp;?</p>
+                  <p className="text-sm text-gray-600 dark:text-slate-300 mb-4">Demandez un devis pour int&eacute;grer d&rsquo;autres produits dans votre salle de bain.</p>
+                  <button onClick={() => setDevisModalOpen(true)} className="inline-flex items-center gap-2 px-5 py-2.5 bg-gold-700 hover:bg-gold-800 text-white text-sm font-medium rounded-xl transition-colors">
+                    Demander un devis
+                  </button>
                 </div>
               </section>
             )}
@@ -1179,6 +1192,107 @@
               <span>Vos tarifs partenaires &middot; Prix HT &middot; <a href="https://www.terredemars.com/pages/hospitality" target="_blank" rel="noopener noreferrer">Visuels Terre de Mars</a></span>
             </footer>
           </main>
+
+          {/* ── Modal Demande de devis ── */}
+          {devisModalOpen && (
+            <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={() => { setDevisModalOpen(false); setDevisProducts([{ ref: '', quantite: '' }]); setDevisMessage(''); }}>
+              <div className="absolute inset-0 bg-black/40 backdrop-blur-sm"></div>
+              <div className="relative bg-white dark:bg-slate-800 rounded-2xl shadow-2xl max-w-lg w-full mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+                <div className="flex-shrink-0 p-6 pb-0">
+                  <button onClick={() => { setDevisModalOpen(false); setDevisProducts([{ ref: '', quantite: '' }]); setDevisMessage(''); }} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 text-xl leading-none" aria-label="Fermer">&times;</button>
+                  <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Demande de devis</h3>
+                  <p className="text-sm text-gray-600 dark:text-slate-300">S&eacute;lectionnez les produits et quantit&eacute;s que vous souhaitez chiffrer.</p>
+                </div>
+                <div className="flex-1 overflow-y-auto p-6 space-y-3">
+                  {devisProducts.map((dp, idx) => (
+                    <div key={idx} className="flex items-center gap-2">
+                      <select
+                        value={dp.ref}
+                        onChange={e => setDevisProducts(prev => prev.map((p, i) => i === idx ? { ...p, ref: e.target.value } : p))}
+                        className="flex-1 min-w-0 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-white"
+                      >
+                        <option value="">-- Choisir un produit --</option>
+                        {(() => {
+                          const grouped = {};
+                          catalogue.filter(p => p.actif !== 0).forEach(p => {
+                            const cat = p.categorie || 'Autres';
+                            if (!grouped[cat]) grouped[cat] = [];
+                            grouped[cat].push(p);
+                          });
+                          return Object.entries(grouped).map(([cat, prods]) => (
+                            <optgroup key={cat} label={cat}>
+                              {prods.map(p => <option key={p.ref} value={p.ref}>{p.ref} &ndash; {p.nom}</option>)}
+                            </optgroup>
+                          ));
+                        })()}
+                      </select>
+                      <input
+                        type="number"
+                        min="1"
+                        placeholder="Qt\u00e9"
+                        value={dp.quantite}
+                        onChange={e => setDevisProducts(prev => prev.map((p, i) => i === idx ? { ...p, quantite: e.target.value } : p))}
+                        className="w-20 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-center"
+                      />
+                      {devisProducts.length > 1 && (
+                        <button onClick={() => setDevisProducts(prev => prev.filter((_, i) => i !== idx))} className="text-gray-400 hover:text-red-500 text-lg leading-none" aria-label="Supprimer">&times;</button>
+                      )}
+                    </div>
+                  ))}
+                  <button
+                    onClick={() => setDevisProducts(prev => [...prev, { ref: '', quantite: '' }])}
+                    className="text-sm text-gold-700 dark:text-gold-400 hover:underline font-medium"
+                  >+ Ajouter un produit</button>
+
+                  <div className="pt-2">
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Message (optionnel)</label>
+                    <textarea
+                      value={devisMessage}
+                      onChange={e => setDevisMessage(e.target.value)}
+                      rows={3}
+                      className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-white resize-none"
+                      placeholder="Pr&eacute;cisez votre demande si n&eacute;cessaire..."
+                    />
+                  </div>
+                </div>
+                <div className="flex-shrink-0 border-t border-gray-200 dark:border-slate-700 p-6 pt-4">
+                  <button
+                    disabled={devisSending || devisProducts.every(p => !p.ref)}
+                    onClick={async () => {
+                      const valid = devisProducts.filter(p => p.ref && p.quantite);
+                      if (valid.length === 0) return;
+                      setDevisSending(true);
+                      try {
+                        const payload = {
+                          products: valid.map(p => {
+                            const prod = catalogue.find(c => c.ref === p.ref);
+                            return { ref: p.ref, nom: prod ? prod.nom : p.ref, quantite: parseInt(p.quantite, 10) };
+                          }),
+                          message: devisMessage
+                        };
+                        const res = await api.post('/devis', payload);
+                        if (res.ok) {
+                          showToast('Demande de devis envoy\u00e9e !', 'success');
+                          setDevisModalOpen(false);
+                          setDevisProducts([{ ref: '', quantite: '' }]);
+                          setDevisMessage('');
+                        } else {
+                          showToast(res.erreur || 'Erreur lors de l\u2019envoi', 'error');
+                        }
+                      } catch (e) {
+                        showToast('Erreur lors de l\u2019envoi de la demande', 'error');
+                      } finally {
+                        setDevisSending(false);
+                      }
+                    }}
+                    className="w-full py-2.5 bg-gold-700 hover:bg-gold-800 disabled:opacity-50 disabled:cursor-not-allowed text-white text-sm font-medium rounded-xl transition-colors"
+                  >
+                    {devisSending ? 'Envoi en cours\u2026' : 'Envoyer ma demande'}
+                  </button>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       );
     };
