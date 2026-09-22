@@ -471,11 +471,12 @@ module.exports = (db) => {
 
       // Mettre à jour la commande — sauvegarder les produits/frais modifiés + statut
       const updatedProducts = Array.isArray(productsOverride) && productsOverride.length > 0 ? productsOverride : JSON.parse(order.products || '[]');
+      // positions inclut déjà produits + frais
       const updatedTotalHT = positions.reduce((s, p) => {
         const net = parseFloat(p.price_net);
         const disc = p.discount_percent || 0;
         return s + (net * (1 - disc / 100)) * p.quantity;
-      }, 0) + fraisItems.reduce((s, f) => s + f.montant * (1 - (f.discount || 0) / 100), 0);
+      }, 0);
       db.prepare(`
         UPDATE partner_orders
         SET statut = 'validee', vf_invoice_id = ?, vf_invoice_number = ?, validated_at = datetime('now'), validated_by = ?,
