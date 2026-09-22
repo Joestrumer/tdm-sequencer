@@ -20879,7 +20879,7 @@ const VueCommandes = ({ showToast }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [validating, setValidating] = useState(null);
   const [validateModal, setValidateModal] = useState(null);
-  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
+  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true, fraisMode: 'auto', fraisRef: null, fraisMontant: 0, discountOverride: '' });
   const [downloadingCsv, setDownloadingCsv] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
   const [batchCsvModal, setBatchCsvModal] = useState(false);
@@ -20943,7 +20943,14 @@ const VueCommandes = ({ showToast }) => {
 
   const openValidateModal = (commande) => {
     const cp = commande.partner_livraison_cp || commande.partner_facturation_cp || '';
-    setValidateOptions({ documentType: 'vat', shippingId: getDefaultShippingId(cp), sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
+    setValidateOptions({
+      documentType: 'vat', shippingId: getDefaultShippingId(cp),
+      sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true,
+      fraisMode: 'auto',
+      fraisRef: commande.frais_ref || null,
+      fraisMontant: commande.frais_montant || 0,
+      discountOverride: '',
+    });
     // Utiliser les produits édités si disponibles
     const currentProducts = editableProducts[commande.id] || commande.products;
     setValidateModal({ ...commande, products: currentProducts });
@@ -20964,14 +20971,26 @@ const VueCommandes = ({ showToast }) => {
       const factureDirKey = validateModal.partner_id ? `factureDir_${validateModal.partner_id}` : 'factureDir';
       try { await prevalidateDirAccess(factureDirKey); } catch (e) {}
 
-      const res = await api.post(`/partner-orders/${id}/validate`, {
+      const body = {
         documentType: validateOptions.documentType,
         shippingId: validateOptions.shippingId,
         sendEmail: validateOptions.sendEmailVF,
         logGSheets: validateOptions.logGSheets,
         generateCsv: validateOptions.generateCsv,
         createHubspotDeal: validateOptions.createHubspotDeal,
-      });
+      };
+      // Frais override
+      if (validateOptions.fraisMode === 'none') {
+        body.fraisOverride = { ref: null };
+      } else if (validateOptions.fraisMode === 'manual') {
+        body.fraisOverride = { ref: validateOptions.fraisRef || 'FP', montant: parseFloat(validateOptions.fraisMontant) || 0 };
+      }
+      // Discount override
+      if (validateOptions.discountOverride !== '' && validateOptions.discountOverride != null) {
+        const d = parseFloat(validateOptions.discountOverride);
+        if (!isNaN(d) && d >= 0) body.discountOverride = d;
+      }
+      const res = await api.post(`/partner-orders/${id}/validate`, body);
       if (res.ok) {
         const invoiceNumber = res.vf_invoice_number || '';
 
@@ -21380,6 +21399,56 @@ const VueCommandes = ({ showToast }) => {
                   {(validateModal.products || []).map((p, i) => (
                     <span key={i} className="px-2 py-0.5 bg-white border border-slate-200 rounded text-xs text-slate-600 font-mono">{p.ref} x{p.quantite}</span>
                   ))}
+                </div>
+              </div>
+
+              {/* Frais de port */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Frais de port / expédition</label>
+                <div className="flex gap-2 mb-2">
+                  {[
+                    { value: 'auto', label: `Auto (${validateModal.frais_ref ? `${validateModal.frais_ref} ${(validateModal.frais_montant || 0).toFixed(2)} €` : 'aucun'})` },
+                    { value: 'manual', label: 'Manuel' },
+                    { value: 'none', label: 'Aucun' },
+                  ].map(opt => (
+                    <button key={opt.value}
+                      onClick={() => {
+                        const upd = { fraisMode: opt.value };
+                        if (opt.value === 'manual' && validateOptions.fraisMode !== 'manual') {
+                          upd.fraisRef = validateModal.frais_ref || 'FP';
+                          upd.fraisMontant = validateModal.frais_montant || 0;
+                        }
+                        setValidateOptions(o => ({ ...o, ...upd }));
+                      }}
+                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${validateOptions.fraisMode === opt.value ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
+                    >{opt.label}</button>
+                  ))}
+                </div>
+                {validateOptions.fraisMode === 'manual' && (
+                  <div className="flex gap-2">
+                    <select value={validateOptions.fraisRef || 'FP'} onChange={e => setValidateOptions(o => ({ ...o, fraisRef: e.target.value }))}
+                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
+                      <option value="FP">FP (Préparation)</option>
+                      <option value="FE">FE (Expédition)</option>
+                    </select>
+                    <div className="flex items-center gap-1 flex-1">
+                      <input type="number" step="0.01" min="0" value={validateOptions.fraisMontant}
+                        onChange={e => setValidateOptions(o => ({ ...o, fraisMontant: e.target.value }))}
+                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                      <span className="text-xs text-slate-500 shrink-0">€ HT</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Discount */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Remise globale (optionnel)</label>
+                <div className="flex items-center gap-2">
+                  <input type="number" step="1" min="0" max="100" placeholder="—" value={validateOptions.discountOverride}
+                    onChange={e => setValidateOptions(o => ({ ...o, discountOverride: e.target.value }))}
+                    className="w-24 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
+                  <span className="text-xs text-slate-500">% — vide = remises partenaire habituelles</span>
                 </div>
               </div>
 

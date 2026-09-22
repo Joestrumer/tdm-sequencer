@@ -253,14 +253,15 @@ module.exports = (db) => {
   // ─── Valider commande ─────────────────────────────────────────────────────
   router.post('/:id/validate', async (req, res) => {
     try {
-      const { documentType, shippingId, sendEmail = true, logGSheets = true, generateCsv = false, createHubspotDeal = true } = req.body || {};
+      const { documentType, shippingId, sendEmail = true, logGSheets = true, generateCsv = false, createHubspotDeal = true, fraisOverride, discountOverride } = req.body || {};
 
       const order = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.nom_normalise, vp.email as partner_email,
                vp.contact_nom as partner_contact, vp.shipping_id as partner_shipping_id,
                vp.adresse as partner_adresse, vp.telephone as partner_telephone,
                vp.franco_seuil as partner_franco_seuil, vp.frais_port as partner_frais_port,
-               vp.frais_exonere as partner_frais_exonere,
+               vp.frais_exonere as partner_frais_exonere, vp.exonere_fp, vp.exonere_fe,
+               vp.frais_expedition_ht as partner_frais_expedition_ht,
                vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email,
                vp.vf_client_id as partner_vf_client_id
         FROM partner_orders po
@@ -304,7 +305,7 @@ module.exports = (db) => {
         const taxRate = p.tva || catEntry?.tva || 20;
         const priceHT = p.prix_ht || catEntry?.prix_ht || 0;
 
-        let discount = p.discount_pct || 0;
+        let discount = (discountOverride != null && discountOverride >= 0) ? discountOverride : (p.discount_pct || 0);
         if (!discount && canonicalClientName) {
           discount = discountMap.get(ref) || 0;
         }
@@ -342,37 +343,57 @@ module.exports = (db) => {
         positions.push(position);
       }
 
-      // Frais de port — utiliser les frais stockés à la création si disponibles, sinon recalculer
+      // Frais de port — override admin ou logique portail partenaire
       const fraisPort = [];
-      if (!order.partner_frais_exonere) {
-        let fpRef, fpMontant, fpTax;
+      const globalExonere = order.partner_frais_exonere ?? 0;
+      const exonereFP = globalExonere || (order.exonere_fp ?? 0);
+      const exonereFE = globalExonere || (order.exonere_fe ?? 0);
 
-        if (order.frais_ref && order.frais_montant > 0) {
-          // Frais stockés à la création de la commande — prix figé
-          fpRef = order.frais_ref;
-          fpMontant = order.frais_montant;
-          fpTax = order.frais_tva || 20;
-        } else {
-          // Fallback : recalculer (anciennes commandes sans frais stockés)
-          const totalHTProducts = positions.reduce((s, p) => s + parseFloat(p.price_net) * p.quantity, 0);
-          const francoSeuil = order.partner_franco_seuil || DEFAULT_FRANCO_SEUIL;
-          const fpCatalog = catalog['FP'];
-          const feCatalog = catalog['FE'];
-          fpRef = 'FP';
-          fpTax = 20;
-          if (totalHTProducts >= francoSeuil) {
+      // fraisOverride: { ref: 'FP'|'FE'|null, montant: number|null }
+      // null/undefined = auto (logique portail), ref=null = supprimer les frais
+      let fpRef = null, fpMontant = 0, fpTax = 20;
+
+      if (fraisOverride !== undefined && fraisOverride !== null) {
+        // Override admin explicite
+        if (fraisOverride.ref) {
+          fpRef = fraisOverride.ref;
+          fpMontant = fraisOverride.montant ?? 0;
+          fpTax = fraisOverride.tva ?? 20;
+        }
+        // sinon ref=null → pas de frais
+      } else {
+        // Auto : même logique que le portail partenaire (partnerPortal.js POST /commande)
+        const totalHTProducts = positions.reduce((s, p) => {
+          const net = parseFloat(p.price_net);
+          const disc = p.discount_percent || 0;
+          return s + (net * (1 - disc / 100)) * p.quantity;
+        }, 0);
+        const francoSeuil = order.partner_franco_seuil || DEFAULT_FRANCO_SEUIL;
+        const fpCatalog = catalog['FP'];
+        const feCatalog = catalog['FE'];
+
+        if (totalHTProducts >= francoSeuil) {
+          if (!exonereFP) {
+            fpRef = 'FP';
             fpMontant = fpCatalog?.prix_ht || 25;
-          } else {
-            fpMontant = (order.partner_frais_port && order.partner_frais_port > 0) ? order.partner_frais_port : (feCatalog?.prix_ht || 80);
+          }
+        } else {
+          if (!exonereFE) {
+            fpRef = 'FE';
+            fpMontant = (order.partner_frais_expedition_ht != null)
+              ? order.partner_frais_expedition_ht
+              : (feCatalog?.prix_ht || 80);
           }
         }
+      }
 
+      if (fpRef && fpMontant > 0) {
         const fpGross = roundPrice(fpMontant * (1 + fpTax / 100));
         const vfProduct = findVFProduct(fpRef, fpMontant, catalog, codeMappings, productIdMappings, productNameMappings);
 
         const fpPosition = {
           code: fpRef,
-          name: vfProduct.productName || 'FRAIS DE PORT',
+          name: vfProduct.productName || (fpRef === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION"),
           price_net: Number(fpMontant).toFixed(2),
           total_price_gross: Number(fpGross).toFixed(2),
           tax: fpTax,
@@ -382,7 +403,7 @@ module.exports = (db) => {
           fpPosition.product_id = vfProduct.productId;
         }
         positions.push(fpPosition);
-        fraisPort.push({ ref: fpRef, nom: 'FRAIS DE PORT', prix_ht: fpMontant, quantite: 1, tva: fpTax });
+        fraisPort.push({ ref: fpRef, nom: fpPosition.name, prix_ht: fpMontant, quantite: 1, tva: fpTax });
       }
 
       // Résoudre le client VF pour la facture
