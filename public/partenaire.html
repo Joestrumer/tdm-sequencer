@@ -859,7 +859,7 @@
                             </div>
                           )}
                           <div>
-                            <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{ess.baseRef.replace(/^P0*/, '')}</span>{ess.label} {ess.gamme.split('/')[0]?.trim()}</h3>
+                            <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{ess.baseRef.replace(/^P/, '')}</span>{ess.label} {ess.gamme.split('/')[0]?.trim()}</h3>
                             <p>{ess.gamme.split('/')[1]?.trim() || ess.gamme}</p>
                             <p className="tdm-essential-cost">
                               {currentProd.promo_pct > 0 ? (<>
@@ -966,7 +966,7 @@
                                 </div>
                               )}
                               <div>
-                                <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{item.baseRef.replace(/^P0*/, '')}</span>{item.label}</h3>
+                                <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{item.baseRef.replace(/^P/, '')}</span>{item.label}</h3>
                                 <p className="tdm-essential-cost">
                                   {currentProd.promo_pct > 0 ? (<>
                                     <span style={{ textDecoration: 'line-through', color: 'var(--tdm-muted)', fontSize: '0.85em' }}>{euro(currentProd.prix_remise)}</span>{' '}
@@ -1018,7 +1018,7 @@
                                 </div>
                               )}
                               <div>
-                                <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{item.prod.ref.replace(/^P0*/, '')}</span>{item.label}</h3>
+                                <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{item.prod.ref.replace(/^P/, '')}</span>{item.label}</h3>
                                 <p className="tdm-essential-cost">
                                   {item.prod.promo_pct > 0 ? (<>
                                     <span style={{ textDecoration: 'line-through', color: 'var(--tdm-muted)', fontSize: '0.85em' }}>{euro(item.prod.prix_remise)}</span>{' '}
@@ -1098,7 +1098,7 @@
                           )}
                         </div>
                         <div className="tdm-product-body">
-                          <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{p.ref.replace(/^P0*/, '')}</span>{p.nom}</h3>
+                          <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{p.ref.replace(/^P/, '')}</span>{p.nom}</h3>
                           <div className="tdm-product-price">
                             {p.promo_pct > 0 ? (<>
                               <span style={{ textDecoration: 'line-through', color: 'var(--tdm-muted)', fontSize: '0.85em' }}>{euro(p.prix_remise)}</span>{' '}
@@ -1426,7 +1426,7 @@
                                 <img src={imgSrc} alt="" className="w-8 h-8 object-contain shrink-0 rounded" />
                               ) : (
                                 <div className="w-8 h-8 bg-gray-100 dark:bg-slate-600 rounded flex items-center justify-center shrink-0">
-                                  <span className="text-[9px] text-gray-400 dark:text-slate-500 font-medium">{p.ref.replace(/^P0*/, '').slice(0,3)}</span>
+                                  <span className="text-[9px] text-gray-400 dark:text-slate-500 font-medium">{p.ref.replace(/^P/, '').slice(0,3)}</span>
                                 </div>
                               );
                             })()}
