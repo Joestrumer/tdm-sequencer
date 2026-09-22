@@ -760,18 +760,29 @@ module.exports = (db) => {
   router.post('/devis', requireEffectiveId, (req, res) => {
     try {
       const { products, message } = req.body;
-      if (!Array.isArray(products) || products.length === 0) {
-        return res.status(400).json({ erreur: 'Veuillez sélectionner au moins un produit' });
+      if (!message || !message.trim()) {
+        return res.status(400).json({ erreur: 'Veuillez saisir un message' });
       }
+      const productList = Array.isArray(products) ? products : [];
 
       const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
       const esc = s => String(s || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 
-      const productRows = products.map(p =>
-        `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.ref)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.nom)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center">${parseInt(p.quantite, 10) || 0}</td></tr>`
-      ).join('');
+      const productTableHtml = productList.length > 0 ? (() => {
+        const productRows = productList.map(p =>
+          `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.ref)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.nom)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center">${parseInt(p.quantite, 10) || 0}</td></tr>`
+        ).join('');
+        return `<table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
+            <thead><tr style="background:#f1f5f9">
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Ref</th>
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Produit</th>
+              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center">Quantit&eacute;</th>
+            </tr></thead>
+            <tbody>${productRows}</tbody>
+          </table>`;
+      })() : '';
 
       const emailHtml = `
         <div style="font-family:'DM Sans',Arial,sans-serif;max-width:600px;margin:0 auto">
@@ -780,15 +791,8 @@ module.exports = (db) => {
           ${partner.contact_nom ? `<p><strong>Contact :</strong> ${esc(partner.contact_nom)}</p>` : ''}
           ${partner.email ? `<p><strong>Email :</strong> ${esc(partner.email)}</p>` : ''}
           ${partner.telephone ? `<p><strong>T\u00e9l\u00e9phone :</strong> ${esc(partner.telephone)}</p>` : ''}
-          <table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
-            <thead><tr style="background:#f1f5f9">
-              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Ref</th>
-              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:left">Produit</th>
-              <th style="padding:8px 12px;border:1px solid #e2e8f0;text-align:center">Quantit&eacute;</th>
-            </tr></thead>
-            <tbody>${productRows}</tbody>
-          </table>
-          ${message ? `<p><strong>Message :</strong> ${esc(message)}</p>` : ''}
+          <p><strong>Message :</strong> ${esc(message)}</p>
+          ${productTableHtml}
           <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
           <p style="color:#94a3b8;font-size:12px">Demande envoy&eacute;e depuis le portail partenaire.</p>
         </div>
@@ -804,7 +808,7 @@ module.exports = (db) => {
             subject: `Demande de devis \u2014 ${partner.nom}`,
             htmlContent: emailHtml,
           });
-          logger.info('Email demande de devis envoy\u00e9', { partner: partner.nom, products: products.length });
+          logger.info('Email demande de devis envoyé', { partner: partner.nom, products: productList.length });
         } catch (emailErr) {
           logger.error('Erreur envoi email demande de devis', { error: emailErr.message, stack: emailErr.stack, partner: partner.nom });
         }

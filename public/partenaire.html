@@ -904,10 +904,9 @@
                 </div>
 
                 {/* ── Bandeau Demande de devis ── */}
-                <div className="mt-8 bg-gold-50 dark:bg-gold-900/20 border border-gold-200 dark:border-gold-800 rounded-2xl px-6 py-6 text-center">
-                  <p className="text-base font-semibold text-gray-900 dark:text-white mb-1">Vous souhaitez am&eacute;liorer votre exp&eacute;rience client&nbsp;?</p>
-                  <p className="text-sm text-gray-600 dark:text-slate-300 mb-4">Demandez un devis pour int&eacute;grer d&rsquo;autres produits dans votre salle de bain.</p>
-                  <button onClick={() => setDevisModalOpen(true)} className="inline-flex items-center gap-2 px-5 py-2.5 bg-gold-700 hover:bg-gold-800 text-white text-sm font-medium rounded-xl transition-colors">
+                <div className="mt-6 bg-gold-50 dark:bg-gold-900/20 border border-gold-200 dark:border-gold-800 rounded-xl px-5 py-3 flex items-center justify-between gap-4">
+                  <p className="text-sm font-medium text-gray-900 dark:text-white">Vous souhaitez un rituel de soin plus complet dans vos salles de bain&nbsp;?</p>
+                  <button onClick={() => setDevisModalOpen(true)} className="tdm-action flex-shrink-0">
                     Demander un devis
                   </button>
                 </div>
@@ -1201,7 +1200,7 @@
                 <div className="flex-shrink-0 p-6 pb-0">
                   <button onClick={() => { setDevisModalOpen(false); setDevisProducts([{ ref: '', quantite: '' }]); setDevisMessage(''); }} className="absolute top-4 right-4 text-gray-400 hover:text-gray-600 dark:hover:text-slate-200 text-xl leading-none" aria-label="Fermer">&times;</button>
                   <h3 className="text-lg font-semibold text-gray-900 dark:text-white mb-1">Demande de devis</h3>
-                  <p className="text-sm text-gray-600 dark:text-slate-300">S&eacute;lectionnez les produits et quantit&eacute;s que vous souhaitez chiffrer.</p>
+                  <p className="text-sm text-gray-600 dark:text-slate-300">S&eacute;lectionnez les produits et quantit&eacute;s souhait&eacute;s, ou d&eacute;crivez votre besoin.</p>
                 </div>
                 <div className="flex-1 overflow-y-auto p-6 space-y-3">
                   {devisProducts.map((dp, idx) => (
@@ -1229,7 +1228,7 @@
                       <input
                         type="number"
                         min="1"
-                        placeholder="Qt\u00e9"
+                        placeholder="Qté"
                         value={dp.quantite}
                         onChange={e => setDevisProducts(prev => prev.map((p, i) => i === idx ? { ...p, quantite: e.target.value } : p))}
                         className="w-20 border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-white text-center"
@@ -1245,22 +1244,22 @@
                   >+ Ajouter un produit</button>
 
                   <div className="pt-2">
-                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Message (optionnel)</label>
+                    <label className="block text-sm font-medium text-gray-700 dark:text-slate-300 mb-1">Message</label>
                     <textarea
                       value={devisMessage}
                       onChange={e => setDevisMessage(e.target.value)}
                       rows={3}
                       className="w-full border border-gray-300 dark:border-slate-600 rounded-lg px-3 py-2 text-sm bg-white dark:bg-slate-700 text-gray-900 dark:text-white resize-none"
-                      placeholder="Pr&eacute;cisez votre demande si n&eacute;cessaire..."
+                      placeholder="Décrivez votre demande..."
                     />
                   </div>
                 </div>
                 <div className="flex-shrink-0 border-t border-gray-200 dark:border-slate-700 p-6 pt-4">
                   <button
-                    disabled={devisSending || devisProducts.every(p => !p.ref)}
+                    disabled={devisSending || !devisMessage.trim()}
                     onClick={async () => {
+                      if (!devisMessage.trim()) return;
                       const valid = devisProducts.filter(p => p.ref && p.quantite);
-                      if (valid.length === 0) return;
                       setDevisSending(true);
                       try {
                         const payload = {
@@ -1272,15 +1271,15 @@
                         };
                         const res = await api.post('/devis', payload);
                         if (res.ok) {
-                          showToast('Demande de devis envoy\u00e9e !', 'success');
+                          showToast('Demande de devis envoyée !', 'success');
                           setDevisModalOpen(false);
                           setDevisProducts([{ ref: '', quantite: '' }]);
                           setDevisMessage('');
                         } else {
-                          showToast(res.erreur || 'Erreur lors de l\u2019envoi', 'error');
+                          showToast(res.erreur || "Erreur lors de l'envoi", 'error');
                         }
                       } catch (e) {
-                        showToast('Erreur lors de l\u2019envoi de la demande', 'error');
+                        showToast("Erreur lors de l'envoi de la demande", 'error');
                       } finally {
                         setDevisSending(false);
                       }
