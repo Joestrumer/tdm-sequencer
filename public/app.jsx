@@ -20879,7 +20879,7 @@ const VueCommandes = ({ showToast }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [validating, setValidating] = useState(null);
   const [validateModal, setValidateModal] = useState(null);
-  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true, fraisPort: [], discountOverride: '' });
+  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true });
   const [downloadingCsv, setDownloadingCsv] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
   const [batchCsvModal, setBatchCsvModal] = useState(false);
@@ -20888,6 +20888,8 @@ const VueCommandes = ({ showToast }) => {
   const [catalogCmd, setCatalogCmd] = useState([]);
   const [addProductSearchCmd, setAddProductSearchCmd] = useState({});
   const [editableProducts, setEditableProducts] = useState({});
+  const [editableFrais, setEditableFrais] = useState({});
+  const [editableDiscount, setEditableDiscount] = useState({});
   const [partnerEmailConfig, setPartnerEmailConfig] = useState({});
 
   useEffect(() => {
@@ -20943,16 +20945,9 @@ const VueCommandes = ({ showToast }) => {
 
   const openValidateModal = (commande) => {
     const cp = commande.partner_livraison_cp || commande.partner_facturation_cp || '';
-    // Initialiser frais_port depuis la commande stockée
-    const initFrais = [];
-    if (commande.frais_ref && commande.frais_montant > 0) {
-      initFrais.push({ ref: commande.frais_ref, nom: commande.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: commande.frais_montant, quantite: 1, tva: commande.frais_tva || 20, discount: 0 });
-    }
     setValidateOptions({
       documentType: 'vat', shippingId: getDefaultShippingId(cp),
       sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true,
-      fraisPort: initFrais,
-      discountOverride: '',
     });
     // Utiliser les produits édités si disponibles
     const currentProducts = editableProducts[commande.id] || commande.products;
@@ -20982,13 +20977,15 @@ const VueCommandes = ({ showToast }) => {
         generateCsv: validateOptions.generateCsv,
         createHubspotDeal: validateOptions.createHubspotDeal,
       };
-      // Frais override — envoyer la liste complète
-      body.fraisOverride = (validateOptions.fraisPort || []).map(f => ({
+      // Frais override — lire depuis le détail de la commande
+      const fraisForOrder = editableFrais[id] || (validateModal.frais_ref && validateModal.frais_montant > 0 ? [{ ref: validateModal.frais_ref, prix_ht: validateModal.frais_montant, tva: validateModal.frais_tva || 20, discount: 0 }] : []);
+      body.fraisOverride = fraisForOrder.map(f => ({
         ref: f.ref, montant: f.prix_ht, tva: f.tva || 20, discount: f.discount || 0,
       }));
-      // Discount override
-      if (validateOptions.discountOverride !== '' && validateOptions.discountOverride != null) {
-        const d = parseFloat(validateOptions.discountOverride);
+      // Discount override — lire depuis le détail
+      const discVal = editableDiscount[id];
+      if (discVal !== undefined && discVal !== '' && discVal != null) {
+        const d = parseFloat(discVal);
         if (!isNaN(d) && d >= 0) body.discountOverride = d;
       }
       const res = await api.post(`/partner-orders/${id}/validate`, body);
@@ -21403,55 +21400,6 @@ const VueCommandes = ({ showToast }) => {
                 </div>
               </div>
 
-              {/* Frais de port — même pattern que expeditions */}
-              <div>
-                <label className="text-xs font-medium text-slate-500 mb-1 block">Frais de port / expédition</label>
-                {(validateOptions.fraisPort || []).map((f, i) => (
-                  <div key={'fp'+i} className="flex items-center justify-between text-sm py-1 text-slate-500">
-                    <span className="flex-1 text-xs">{f.nom}</span>
-                    <div className="flex items-center gap-1">
-                      <input type="number" step="0.01" min="0" value={f.prix_ht}
-                        onChange={e => {
-                          const nf = [...(validateOptions.fraisPort || [])];
-                          nf[i] = { ...nf[i], prix_ht: parseFloat(e.target.value) || 0 };
-                          setValidateOptions(o => ({ ...o, fraisPort: nf }));
-                        }}
-                        className="w-20 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
-                      <span className="text-xs">€ HT</span>
-                      <input type="number" step="1" min="0" max="100" value={f.discount || 0}
-                        onChange={e => {
-                          const nf = [...(validateOptions.fraisPort || [])];
-                          nf[i] = { ...nf[i], discount: parseFloat(e.target.value) || 0 };
-                          setValidateOptions(o => ({ ...o, fraisPort: nf }));
-                        }}
-                        className="w-14 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
-                      <span className="text-xs">%</span>
-                      <button onClick={() => {
-                        const nf = (validateOptions.fraisPort || []).filter((_, idx) => idx !== i);
-                        setValidateOptions(o => ({ ...o, fraisPort: nf }));
-                      }} className="ml-1 text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
-                    </div>
-                  </div>
-                ))}
-                <div className="flex gap-2 mt-1">
-                  <button onClick={() => setValidateOptions(o => ({ ...o, fraisPort: [...(o.fraisPort || []), { ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20, discount: 0 }] }))}
-                    className="text-xs text-blue-600 hover:text-blue-800">+ Frais préparation</button>
-                  <button onClick={() => setValidateOptions(o => ({ ...o, fraisPort: [...(o.fraisPort || []), { ref: 'FE', nom: 'FRAIS EXPEDITION', prix_ht: 80, quantite: 1, tva: 20, discount: 0 }] }))}
-                    className="text-xs text-blue-600 hover:text-blue-800">+ Frais expédition</button>
-                </div>
-              </div>
-
-              {/* Discount */}
-              <div>
-                <label className="text-xs font-medium text-slate-500 mb-1 block">Remise globale (optionnel)</label>
-                <div className="flex items-center gap-2">
-                  <input type="number" step="1" min="0" max="100" placeholder="—" value={validateOptions.discountOverride}
-                    onChange={e => setValidateOptions(o => ({ ...o, discountOverride: e.target.value }))}
-                    className="w-24 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-                  <span className="text-xs text-slate-500">% — vide = remises partenaire habituelles</span>
-                </div>
-              </div>
-
               {/* Type de document */}
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">Type de document</label>
@@ -21762,13 +21710,62 @@ const VueCommandes = ({ showToast }) => {
 
                   {c.notes && <div className="text-xs text-slate-500 italic mb-3">Notes : "{c.notes}"</div>}
 
-                  {/* Frais de port */}
-                  {c.frais_ref && c.frais_montant > 0 && (
+                  {/* Frais de port — éditables si en_attente, lecture seule sinon */}
+                  {c.statut === 'en_attente' ? (
+                    <div className="mb-3">
+                      <div className="text-xs font-medium text-slate-400 mb-1">Frais de port / expédition</div>
+                      {(editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : [])).map((f, i) => (
+                        <div key={'fp'+i} className="flex items-center justify-between text-sm py-1 text-slate-500">
+                          <span className="flex-1 text-xs">{f.nom}</span>
+                          <div className="flex items-center gap-1">
+                            <input type="number" step="0.01" min="0" value={f.prix_ht}
+                              onChange={e => {
+                                const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
+                                const nf = [...current]; nf[i] = { ...nf[i], prix_ht: parseFloat(e.target.value) || 0 };
+                                setEditableFrais(prev => ({ ...prev, [c.id]: nf }));
+                              }}
+                              className="w-20 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
+                            <span className="text-xs">€ HT</span>
+                            <input type="number" step="1" min="0" max="100" value={f.discount || 0}
+                              onChange={e => {
+                                const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
+                                const nf = [...current]; nf[i] = { ...nf[i], discount: parseFloat(e.target.value) || 0 };
+                                setEditableFrais(prev => ({ ...prev, [c.id]: nf }));
+                              }}
+                              className="w-14 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
+                            <span className="text-xs">%</span>
+                            <button onClick={() => {
+                              const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
+                              setEditableFrais(prev => ({ ...prev, [c.id]: current.filter((_, idx) => idx !== i) }));
+                            }} className="ml-1 text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
+                          </div>
+                        </div>
+                      ))}
+                      <div className="flex gap-2 mt-1">
+                        <button onClick={() => {
+                          const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
+                          setEditableFrais(prev => ({ ...prev, [c.id]: [...current, { ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, tva: 20, discount: 0 }] }));
+                        }} className="text-xs text-blue-600 hover:text-blue-800">+ Frais préparation</button>
+                        <button onClick={() => {
+                          const current = editableFrais[c.id] || (c.frais_ref && c.frais_montant > 0 ? [{ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: c.frais_montant, tva: c.frais_tva || 20, discount: 0 }] : []);
+                          setEditableFrais(prev => ({ ...prev, [c.id]: [...current, { ref: 'FE', nom: 'FRAIS EXPEDITION', prix_ht: 80, tva: 20, discount: 0 }] }));
+                        }} className="text-xs text-blue-600 hover:text-blue-800">+ Frais expédition</button>
+                      </div>
+                      {/* Remise globale */}
+                      <div className="flex items-center gap-2 mt-2">
+                        <span className="text-xs text-slate-400">Remise globale</span>
+                        <input type="number" step="1" min="0" max="100" placeholder="—" value={editableDiscount[c.id] ?? ''}
+                          onChange={e => setEditableDiscount(prev => ({ ...prev, [c.id]: e.target.value }))}
+                          className="w-16 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
+                        <span className="text-xs text-slate-400">% — vide = remises partenaire</span>
+                      </div>
+                    </div>
+                  ) : c.frais_ref && c.frais_montant > 0 ? (
                     <div className="flex items-center justify-between text-xs text-slate-500 mb-2 px-1">
                       <span>{c.frais_ref === 'FP' ? 'Frais de préparation' : "Frais d'expédition"} ({c.frais_ref})</span>
                       <span className="font-mono">{c.frais_montant?.toFixed(2)} € HT</span>
                     </div>
-                  )}
+                  ) : null}
 
                   {/* Suivi expédition (commandes validées) */}
                   {c.statut === 'validee' && (
