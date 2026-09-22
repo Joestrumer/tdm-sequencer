@@ -20917,7 +20917,17 @@ const VueCommandes = ({ showToast }) => {
 
   const getEditableProducts = (c) => {
     if (editableProducts[c.id]) return editableProducts[c.id];
-    const copy = (c.products || []).map(p => ({ ...p }));
+    const copy = (c.products || []).map(p => {
+      const item = { ...p };
+      // Recalculer total_ht et total_ttc si manquants
+      const pu = item.prix_ht || 0;
+      const q = item.quantite || 1;
+      const d = item.discount_pct || 0;
+      const tva = item.tva || 20;
+      if (!item.total_ht) item.total_ht = Math.round(pu * (1 - d / 100) * q * 100) / 100;
+      if (!item.total_ttc) item.total_ttc = Math.round(item.total_ht * (1 + tva / 100) * 100) / 100;
+      return item;
+    });
     // Intégrer les frais (FP/FE) comme lignes produit
     if (c.frais_ref && c.frais_montant > 0) {
       const fraisHT = c.frais_montant;
@@ -21618,11 +21628,15 @@ const VueCommandes = ({ showToast }) => {
                   {(() => {
                     const isEditable = c.statut === 'en_attente';
                     const displayProducts = isEditable ? getEditableProducts(c) : (() => {
-                      const prods = (c.products || []).map(p => ({ ...p }));
-                      // Ajouter frais pour l'affichage si pas déjà dans les produits
+                      const prods = (c.products || []).map(p => {
+                        const item = { ...p };
+                        const pu = item.prix_ht || 0, q = item.quantite || 1, d = item.discount_pct || 0, tva = item.tva || 20;
+                        if (!item.total_ht) item.total_ht = Math.round(pu * (1 - d / 100) * q * 100) / 100;
+                        if (!item.total_ttc) item.total_ttc = Math.round(item.total_ht * (1 + tva / 100) * 100) / 100;
+                        return item;
+                      });
                       if (c.frais_ref && c.frais_montant > 0 && !prods.some(p => p.ref === 'FP' || p.ref === 'FE')) {
-                        const fraisHT = c.frais_montant;
-                        const fraisTva = c.frais_tva || 20;
+                        const fraisHT = c.frais_montant, fraisTva = c.frais_tva || 20;
                         prods.push({ ref: c.frais_ref, nom: c.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', quantite: 1, prix_ht: fraisHT, tva: fraisTva, discount_pct: 0, total_ht: fraisHT, total_ttc: Math.round(fraisHT * (1 + fraisTva / 100) * 100) / 100 });
                       }
                       return prods;
@@ -21803,7 +21817,13 @@ const VueCommandes = ({ showToast }) => {
                     {(() => {
                       const isEd = c.statut === 'en_attente';
                       const allItems = isEd ? getEditableProducts(c) : (() => {
-                        const prods = (c.products || []).map(p => ({ ...p }));
+                        const prods = (c.products || []).map(p => {
+                          const item = { ...p };
+                          const pu = item.prix_ht || 0, q = item.quantite || 1, d = item.discount_pct || 0, tva = item.tva || 20;
+                          if (!item.total_ht) item.total_ht = Math.round(pu * (1 - d / 100) * q * 100) / 100;
+                          if (!item.total_ttc) item.total_ttc = Math.round(item.total_ht * (1 + tva / 100) * 100) / 100;
+                          return item;
+                        });
                         if (c.frais_ref && c.frais_montant > 0 && !prods.some(p => p.ref === 'FP' || p.ref === 'FE')) {
                           const fHT = c.frais_montant, fTva = c.frais_tva || 20;
                           prods.push({ ref: c.frais_ref, quantite: 1, prix_ht: fHT, tva: fTva, discount_pct: 0, total_ht: fHT, total_ttc: Math.round(fHT * (1 + fTva / 100) * 100) / 100 });
