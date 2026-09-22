@@ -287,7 +287,7 @@ module.exports = (db) => {
       const forcedPrices = getCodeMappings('forced_price');
 
       // Résoudre le client VF
-      const canonicalClientName = resolveCanonicalClientName(order.partner_nom) || order.nom_normalise;
+      const canonicalClientName = resolveCanonicalClientName(order.partner_nom, order.partner_vf_client_id) || order.nom_normalise;
       const discountsDb = getDiscountsForClient(canonicalClientName);
       // Pré-construire Map pour lookup O(1) au lieu de O(n) par produit
       const discountMap = new Map();
@@ -537,15 +537,16 @@ module.exports = (db) => {
             });
           }
 
-          // Utiliser le nom canonique du partenaire (vf_partners.nom) directement pour GSheets
-          // On passe partnerName en 4e argument pour court-circuiter la résolution de nom
-          // qui peut tronquer les noms contenant " - " (ex: "Eklo Hotels Nantes Centre - Île de Nantes")
+          // Ne passer le nom canonique que s'il diffère du nom VF (mapping réel trouvé)
+          // Sinon laisser logInvoice résoudre via mapPartnerNameToCanon avec les noms du spreadsheet
+          const resolvedPartner = (canonicalClientName && canonicalClientName !== order.partner_nom) ? canonicalClientName : undefined;
           const gsResult = await gsheetsService.logInvoice(spreadsheetId, sheetName, {
             clientName: order.partner_nom,
+            clientId: order.partner_vf_client_id,
             invoiceNumber: result.number || '',
             invoiceDate: today,
             products: gsProducts,
-          }, order.partner_nom);
+          }, resolvedPartner);
 
           if (gsResult.ok) {
             db.prepare('UPDATE vf_invoice_logs SET gsheet_logged = 1 WHERE vf_invoice_id = ?').run(String(result.id));
