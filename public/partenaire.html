@@ -195,6 +195,14 @@
     #tdm-partner-preview .tdm-add{width:100%;background:transparent;border:1px solid var(--tdm-ink);color:var(--tdm-ink);padding:11px;display:flex;justify-content:space-between;align-items:center;font-size:12px;min-height:43px;cursor:pointer}
     #tdm-partner-preview .tdm-add:hover{background:var(--tdm-dark);color:var(--tdm-on-dark)}
     #tdm-partner-preview .tdm-add-active,#tdm-partner-preview .tdm-add-small.tdm-add-active{background:var(--tdm-dark);color:var(--tdm-on-dark);border-color:var(--tdm-dark)}
+    #tdm-partner-preview .tdm-qty-row{display:flex;align-items:center;gap:0;width:100%;border:1px solid var(--tdm-dark);overflow:hidden}
+    #tdm-partner-preview .tdm-qty-btn{background:var(--tdm-soft);border:none;cursor:pointer;font-size:14px;font-weight:700;color:var(--tdm-ink);display:flex;align-items:center;justify-content:center;transition:background .15s}
+    #tdm-partner-preview .tdm-qty-btn:hover{background:var(--tdm-line)}
+    #tdm-partner-preview .tdm-qty-label{flex:1;text-align:center;font-size:12px;font-weight:600;background:var(--tdm-dark);color:var(--tdm-on-dark);white-space:nowrap}
+    #tdm-partner-preview .tdm-qty-row.tdm-qty-small .tdm-qty-btn{padding:6px 10px;font-size:12px}
+    #tdm-partner-preview .tdm-qty-row.tdm-qty-small .tdm-qty-label{padding:6px 4px;font-size:11px}
+    #tdm-partner-preview .tdm-qty-row.tdm-qty-large .tdm-qty-btn{padding:11px 14px;font-size:15px}
+    #tdm-partner-preview .tdm-qty-row.tdm-qty-large .tdm-qty-label{padding:11px 6px;font-size:12px}
     #tdm-partner-preview .tdm-status{display:flex;justify-content:space-between;align-items:center;gap:15px;background:var(--tdm-soft);margin-top:16px;padding:12px 15px;font-size:12px}
     #tdm-partner-preview .tdm-coffret{margin-top:34px;padding:26px 28px;display:grid;grid-template-columns:58px 1fr auto;gap:22px;align-items:center;border:1px solid var(--tdm-line);background:var(--tdm-soft)}
     #tdm-partner-preview .tdm-gift-icon{width:55px;height:65px;display:flex;align-items:center;justify-content:center;color:var(--tdm-olive);border:1px solid var(--tdm-line)}
@@ -723,6 +731,22 @@
         setTimeout(() => setFeedback(null), 5000);
       };
 
+      const removeCarton = (ref) => {
+        const prod = catalogue.find(c => c.ref === ref);
+        if (!prod) return;
+        const moq = prod.moq || 1;
+        const current = panier[ref]?.quantite || 0;
+        if (current <= 0) return;
+        const next = current - moq;
+        if (next <= 0) {
+          setPanier(p => { const copy = { ...p }; delete copy[ref]; return copy; });
+        } else {
+          setPanier(p => ({ ...p, [ref]: { ...prod, quantite: next } }));
+        }
+        setFeedback(`1 carton retir\u00e9`);
+        setTimeout(() => setFeedback(null), 3000);
+      };
+
       const scrollTo = (id) => {
         const el = previewRef.current?.querySelector('#' + id);
         if (el) el.scrollIntoView({ behavior: window.matchMedia('(prefers-reduced-motion: reduce)').matches ? 'instant' : 'smooth', block: 'start' });
@@ -850,10 +874,14 @@
                             {ess.prod5L && <option value="5000">Recharge 5 L</option>}
                             {ess.prod500 && <option value="500">500 ml</option>}
                           </select>
-                          {(() => { const q = panier[currentProd.ref]?.quantite || 0; const c = moq > 1 ? Math.floor(q / moq) : q; return (
-                            <button className={`tdm-add-small ${c > 0 ? 'tdm-add-active' : ''}`} onClick={() => addCarton(currentProd.ref)}>
-                              {c > 0 ? `${c} carton${c > 1 ? 's' : ''} \u2713 \u00b7 +1` : '+ Ajouter 1 carton'}
-                            </button>
+                          {(() => { const q = panier[currentProd.ref]?.quantite || 0; const c = moq > 1 ? Math.floor(q / moq) : q; return c > 0 ? (
+                            <div className="tdm-qty-row tdm-qty-small">
+                              <button className="tdm-qty-btn" onClick={() => removeCarton(currentProd.ref)}>−</button>
+                              <span className="tdm-qty-label">{c} carton{c > 1 ? 's' : ''} ✓</span>
+                              <button className="tdm-qty-btn" onClick={() => addCarton(currentProd.ref)}>+</button>
+                            </div>
+                          ) : (
+                            <button className="tdm-add-small" onClick={() => addCarton(currentProd.ref)}>+ Ajouter 1 carton</button>
                           ); })()}
                         </div>
                       </article>
@@ -943,10 +971,14 @@
                                   <option key={f.value} value={f.value}>{f.label}</option>
                                 ))}
                               </select>
-                              {(() => { const q = panier[currentProd.ref]?.quantite || 0; const c = moq > 1 ? Math.floor(q / moq) : q; return (
-                                <button className={`tdm-add-small ${c > 0 ? 'tdm-add-active' : ''}`} onClick={() => addCarton(currentProd.ref)}>
-                                  {c > 0 ? `${c} carton${c > 1 ? 's' : ''} \u2713 \u00b7 +1` : '+ Ajouter 1 carton'}
-                                </button>
+                              {(() => { const q = panier[currentProd.ref]?.quantite || 0; const c = moq > 1 ? Math.floor(q / moq) : q; return c > 0 ? (
+                                <div className="tdm-qty-row tdm-qty-small">
+                                  <button className="tdm-qty-btn" onClick={() => removeCarton(currentProd.ref)}>−</button>
+                                  <span className="tdm-qty-label">{c} carton{c > 1 ? 's' : ''} ✓</span>
+                                  <button className="tdm-qty-btn" onClick={() => addCarton(currentProd.ref)}>+</button>
+                                </div>
+                              ) : (
+                                <button className="tdm-add-small" onClick={() => addCarton(currentProd.ref)}>+ Ajouter 1 carton</button>
                               ); })()}
                             </div>
                           </article>
@@ -972,10 +1004,14 @@
                               </div>
                             </div>
                             <div className="tdm-essential-controls">
-                              {(() => { const q = panier[item.prod.ref]?.quantite || 0; const m = item.prod.moq || 1; const c = m > 1 ? Math.floor(q / m) : q; return (
-                                <button className={`tdm-add-small ${c > 0 ? 'tdm-add-active' : ''}`} onClick={() => addCarton(item.prod.ref)}>
-                                  {c > 0 ? `${c} carton${c > 1 ? 's' : ''} \u2713 \u00b7 +1` : '+ Ajouter 1 carton'}
-                                </button>
+                              {(() => { const q = panier[item.prod.ref]?.quantite || 0; const m = item.prod.moq || 1; const c = m > 1 ? Math.floor(q / m) : q; return c > 0 ? (
+                                <div className="tdm-qty-row tdm-qty-small">
+                                  <button className="tdm-qty-btn" onClick={() => removeCarton(item.prod.ref)}>−</button>
+                                  <span className="tdm-qty-label">{c} carton{c > 1 ? 's' : ''} ✓</span>
+                                  <button className="tdm-qty-btn" onClick={() => addCarton(item.prod.ref)}>+</button>
+                                </div>
+                              ) : (
+                                <button className="tdm-add-small" onClick={() => addCarton(item.prod.ref)}>+ Ajouter 1 carton</button>
                               ); })()}
                             </div>
                           </article>
@@ -1035,9 +1071,15 @@
                           <h3>{p.nom}</h3>
                           <div className="tdm-product-price">{euro(unitPrice)} <span>HT / soin</span></div>
                           <p className="tdm-product-pack">Carton de {moq} soin{moq > 1 ? 's' : ''} &middot; <strong>{euro(unitPrice * moq)} HT</strong></p>
-                          {(() => { const q = panier[p.ref]?.quantite || 0; const c = moq > 1 ? Math.floor(q / moq) : q; return (
-                          <button className={`tdm-add ${c > 0 ? 'tdm-add-active' : ''}`} onClick={() => addCarton(p.ref)}>
-                            {c > 0 ? <>{c} carton{c > 1 ? 's' : ''} ✓ · +1</> : <>Ajouter 1 carton <LucideIcon name="plus" size={15} /></>}
+                          {(() => { const q = panier[p.ref]?.quantite || 0; const c = moq > 1 ? Math.floor(q / moq) : q; return c > 0 ? (
+                          <div className="tdm-qty-row tdm-qty-large">
+                            <button className="tdm-qty-btn" onClick={() => removeCarton(p.ref)}>−</button>
+                            <span className="tdm-qty-label">{c} carton{c > 1 ? 's' : ''} ✓</span>
+                            <button className="tdm-qty-btn" onClick={() => addCarton(p.ref)}>+</button>
+                          </div>
+                          ) : (
+                          <button className="tdm-add" onClick={() => addCarton(p.ref)}>
+                            Ajouter 1 carton <LucideIcon name="plus" size={15} />
                           </button>
                           ); })()}
                         </div>
