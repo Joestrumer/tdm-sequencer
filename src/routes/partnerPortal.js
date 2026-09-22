@@ -772,7 +772,7 @@ module.exports = (db) => {
 
       const productTableHtml = productList.length > 0 ? (() => {
         const productRows = productList.map(p =>
-          `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.ref)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.nom)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center">${parseInt(p.quantite, 10) || 0}</td></tr>`
+          `<tr><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.ref)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0">${esc(p.nom)}</td><td style="padding:6px 12px;border:1px solid #e2e8f0;text-align:center">${esc(String(p.quantite))}</td></tr>`
         ).join('');
         return `<table style="border-collapse:collapse;width:100%;margin:16px 0;font-size:14px">
             <thead><tr style="background:#f1f5f9">

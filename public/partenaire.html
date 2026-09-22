@@ -715,7 +715,7 @@
       const [essentialFormats, setEssentialFormats] = useState({});
       const [diffuserFormats, setDiffuserFormats] = useState({});
       const [devisModalOpen, setDevisModalOpen] = useState(false);
-      const [devisProducts, setDevisProducts] = useState([{ ref: '', quantite: '' }]);
+      const [devisSelected, setDevisSelected] = useState({});
       const [devisMessage, setDevisMessage] = useState('');
       const [devisSending, setDevisSending] = useState(false);
       const previewRef = useRef(null);
@@ -1194,59 +1194,95 @@
 
           {/* ── Modal Demande de devis ── */}
           {devisModalOpen && (() => {
-            const closeDevis = () => { setDevisModalOpen(false); setDevisProducts([{ ref: '', quantite: '' }]); setDevisMessage(''); };
-            const DEVIS_CATS = ['Flacons 500 ml', 'Portes flacons', 'Flacons vides'];
+            const closeDevis = () => { setDevisModalOpen(false); setDevisSelected({}); setDevisMessage(''); };
+            const FRAGS = [
+              { key:'verveine', name:'Verveine', sub:'Reddition', notes:'Frais, herbac\u00e9, bois\u00e9' },
+              { key:'cedrat', name:'C\u00e9drat', sub:'Irr\u00e9v\u00e9rence', notes:'Solaire, hesp\u00e9rid\u00e9, cardamome' },
+              { key:'the_blanc', name:'Th\u00e9 Blanc', sub:'\u00c9l\u00e9gance', notes:'Floral, vert, aromatique' },
+              { key:'vetiver', name:'V\u00e9tiver', sub:'Imminence / Insurrection', notes:'\u00c9pic\u00e9, bois\u00e9, ambr\u00e9' },
+              { key:'mediterranee', name:'M\u00e9diterran\u00e9e', sub:'R\u00e9v\u00e9lation', notes:'Floral, basilic, aromatique' },
+              { key:'altitude', name:'Altitude', sub:'Radiance', notes:'Pur, cypr\u00e8s, min\u00e9ral' },
+              { key:'ceylan', name:'Ceylan', sub:'Intuition', notes:'Caf\u00e9, cardamome, figue' },
+            ];
+            const ROWS = [
+              { type:'Gel douche', verveine:'P008', cedrat:null, the_blanc:'P035', vetiver:null, mediterranee:'P045', altitude:'P047', ceylan:'P043', p500:'7,50', p5l:'41,00' },
+              { type:'Shampoing', verveine:'P019', cedrat:'P010', the_blanc:'P034', vetiver:null, mediterranee:'P044', altitude:'P046', ceylan:null, p500:'7,50', p5l:'41,00' },
+              { type:'Gel Corps et Cheveux', verveine:'P042', cedrat:'P014', the_blanc:'P040', vetiver:null, mediterranee:'P049', altitude:'P050', ceylan:null, p500:'7,50', p5l:'41,00' },
+              { type:'Apr\u00e8s Shampoing', verveine:null, cedrat:'P024', the_blanc:'P037', vetiver:null, mediterranee:null, altitude:null, ceylan:null, p500:'10,00', p5l:'70,00' },
+              { type:'Lotion Corps et Main', verveine:null, cedrat:null, the_blanc:'P036', vetiver:'P011', mediterranee:null, altitude:null, ceylan:null, p500:'10,00', p5l:'70,00' },
+              { type:'Savon Liquide Main', verveine:null, cedrat:null, the_blanc:null, vetiver:'P007', mediterranee:'P045', altitude:'P047', ceylan:'P043', p500:'7,50', p5l:'41,00' },
+            ];
             const ownedRefs = new Set();
-            if (amenities) {
-              Object.values(amenities).forEach(ref => { if (ref) { ownedRefs.add(ref); ownedRefs.add(ref + '-5000'); } });
-            }
-            const devisProds = catalogue.filter(p => p.actif !== 0 && DEVIS_CATS.includes(p.categorie) && !ownedRefs.has(p.ref));
-            const devisGrouped = {};
-            devisProds.forEach(p => { const cat = p.categorie; if (!devisGrouped[cat]) devisGrouped[cat] = []; devisGrouped[cat].push(p); });
+            if (amenities) Object.values(amenities).forEach(r => { if (r) ownedRefs.add(r); });
+            const selectedCount = Object.values(devisSelected).filter(Boolean).length;
+            const thBase = { background:'var(--tdm-soft)',padding:'10px 6px',textAlign:'center',verticalAlign:'top',fontWeight:400,borderBottom:'2px solid var(--tdm-olive)',borderLeft:'1px solid var(--tdm-line)',borderRight:'1px solid var(--tdm-line)' };
+            const tdBase = { padding:'10px 8px',textAlign:'center',borderBottom:'1px solid var(--tdm-line)',borderLeft:'1px solid var(--tdm-line)',borderRight:'1px solid var(--tdm-line)' };
             return (
-            <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeDevis}>
+            <div className="fixed inset-0 z-50 flex items-center justify-center" onClick={closeDevis} style={{padding:16}}>
               <div className="absolute inset-0" style={{background:'rgba(0,0,0,.35)',backdropFilter:'blur(4px)'}}></div>
-              <div className="relative w-full mx-4 flex flex-col" style={{maxWidth:460,maxHeight:'88vh',background:'var(--tdm-white)',border:'1px solid var(--tdm-line)',fontFamily:"'DM Sans',Arial,sans-serif",color:'var(--tdm-ink)',fontSize:13}} onClick={e => e.stopPropagation()}>
-                <div style={{padding:'22px 26px 0',flexShrink:0}}>
-                  <button onClick={closeDevis} style={{position:'absolute',top:14,right:16,background:'none',border:'none',fontSize:18,color:'var(--tdm-muted)',cursor:'pointer',lineHeight:1}} aria-label="Fermer">&times;</button>
-                  <h3 className="tdm-serif" style={{fontSize:22,marginBottom:6}}>Demande de devis</h3>
-                  <p style={{fontSize:12,color:'var(--tdm-muted)',lineHeight:1.6}}>S&eacute;lectionnez les produits et quantit&eacute;s souhait&eacute;s, demandez-moi des &eacute;chantillons pour tester les parfums ou d&eacute;crivez vos besoins.</p>
+              <div className="relative w-full flex flex-col" style={{maxWidth:960,maxHeight:'90vh',background:'var(--tdm-white)',border:'1px solid var(--tdm-line)',fontFamily:"'DM Sans',Arial,sans-serif",color:'var(--tdm-ink)',fontSize:13}} onClick={e => e.stopPropagation()}>
+                <div style={{padding:'24px 28px 16px',flexShrink:0}}>
+                  <button onClick={closeDevis} style={{position:'absolute',top:14,right:18,background:'none',border:'none',fontSize:20,color:'var(--tdm-muted)',cursor:'pointer',lineHeight:1}} aria-label="Fermer">&times;</button>
+                  <h3 className="tdm-serif" style={{fontSize:26,marginBottom:6}}>Nos gammes par fragrances</h3>
+                  <p style={{fontSize:12,color:'var(--tdm-muted)',lineHeight:1.6,maxWidth:520}}>S&eacute;lectionnez les parfums dont vous souhaitez recevoir des &eacute;chantillons, demandez-moi des &eacute;chantillons pour tester les parfums ou d&eacute;crivez vos besoins.</p>
                 </div>
-                <div style={{flex:1,overflowY:'auto',padding:'18px 26px'}}>
-                  <div style={{display:'flex',flexDirection:'column',gap:8}}>
-                    {devisProducts.map((dp, idx) => (
-                      <div key={idx} style={{display:'flex',alignItems:'center',gap:8}}>
-                        <select
-                          value={dp.ref}
-                          onChange={e => setDevisProducts(prev => prev.map((p, i) => i === idx ? { ...p, ref: e.target.value } : p))}
-                          style={{flex:1,minWidth:0,border:'1px solid var(--tdm-line)',background:'var(--tdm-paper)',color:'var(--tdm-ink)',padding:'7px 10px',fontSize:12,fontFamily:'inherit'}}
-                        >
-                          <option value="">— Choisir un produit —</option>
-                          {DEVIS_CATS.map(cat => devisGrouped[cat] && devisGrouped[cat].length > 0 && (
-                            <optgroup key={cat} label={cat}>
-                              {devisGrouped[cat].map(p => <option key={p.ref} value={p.ref}>{p.nom}</option>)}
-                            </optgroup>
+                <div style={{flex:1,overflowY:'auto',padding:'0 28px 20px'}}>
+                  <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
+                    <table style={{borderCollapse:'collapse',width:'100%',fontSize:12,minWidth:720}}>
+                      <thead>
+                        <tr>
+                          <th style={{...thBase,textAlign:'left',minWidth:120,fontSize:10,textTransform:'uppercase',letterSpacing:1,fontWeight:600,color:'var(--tdm-muted)',verticalAlign:'middle'}}>Typologie<br/>des produits</th>
+                          {FRAGS.map(f => (
+                            <th key={f.key} style={{...thBase,minWidth:80}}>
+                              <div className="tdm-serif" style={{fontSize:15,color:'var(--tdm-olive)',lineHeight:1.2}}>{f.name}</div>
+                              <div style={{fontSize:10,fontStyle:'italic',color:'var(--tdm-olive)',marginTop:2}}>{f.sub}</div>
+                              <div style={{marginTop:5,fontSize:9,textTransform:'uppercase',letterSpacing:.3,color:'var(--tdm-muted)',lineHeight:1.4}}>{f.notes}</div>
+                            </th>
                           ))}
-                        </select>
-                        <input
-                          type="number"
-                          min="1"
-                          placeholder="Qté"
-                          value={dp.quantite}
-                          onChange={e => setDevisProducts(prev => prev.map((p, i) => i === idx ? { ...p, quantite: e.target.value } : p))}
-                          style={{width:60,border:'1px solid var(--tdm-line)',background:'var(--tdm-paper)',color:'var(--tdm-ink)',padding:'7px 8px',fontSize:12,textAlign:'center',fontFamily:'inherit'}}
-                        />
-                        {devisProducts.length > 1 && (
-                          <button onClick={() => setDevisProducts(prev => prev.filter((_, i) => i !== idx))} style={{background:'none',border:'none',color:'var(--tdm-muted)',fontSize:16,cursor:'pointer',lineHeight:1,padding:'0 2px'}} aria-label="Supprimer">&times;</button>
-                        )}
-                      </div>
-                    ))}
+                          <th style={{...thBase,minWidth:55,fontSize:9,fontWeight:600,color:'var(--tdm-muted)',textTransform:'uppercase',letterSpacing:.3}}>Prix&nbsp;HT<br/>Flacon 500ml</th>
+                          <th style={{...thBase,minWidth:55,fontSize:9,fontWeight:600,color:'var(--tdm-muted)',textTransform:'uppercase',letterSpacing:.3}}>Prix&nbsp;HT<br/>Bidon 5L</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {ROWS.map((row, i) => (
+                          <tr key={i}>
+                            <td style={{...tdBase,textAlign:'left',fontWeight:600,fontSize:11,whiteSpace:'nowrap'}}>{row.type}</td>
+                            {FRAGS.map((frag, j) => {
+                              const ref = row[frag.key];
+                              const cellKey = i + '_' + j;
+                              if (!ref) return <td key={j} style={{...tdBase,color:'var(--tdm-line)',fontSize:11}}>&mdash;</td>;
+                              const isOwned = ownedRefs.has(ref);
+                              const isSel = !!devisSelected[cellKey];
+                              return (
+                                <td
+                                  key={j}
+                                  onClick={isOwned ? undefined : () => setDevisSelected(prev => ({...prev, [cellKey]: !prev[cellKey]}))}
+                                  title={isOwned ? 'D\u00e9j\u00e0 dans vos essentiels' : isSel ? 'Cliquer pour retirer' : 'Cliquer pour s\u00e9lectionner'}
+                                  style={{
+                                    ...tdBase,
+                                    cursor: isOwned ? 'default' : 'pointer',
+                                    background: isOwned ? 'rgba(104,108,69,.10)' : isSel ? 'var(--tdm-dark)' : 'transparent',
+                                    color: isOwned ? 'var(--tdm-olive)' : isSel ? 'var(--tdm-on-dark)' : 'var(--tdm-ink)',
+                                    fontWeight:500,
+                                    fontSize:12,
+                                    transition:'background .15s,color .15s',
+                                  }}
+                                >
+                                  {isOwned ? '\u2713' : isSel ? '\u2713 ' + ref.replace('P','') : ref.replace('P','')}
+                                </td>
+                              );
+                            })}
+                            <td style={{...tdBase,color:'var(--tdm-muted)',fontSize:11}}>{row.p500}&nbsp;&euro;</td>
+                            <td style={{...tdBase,color:'var(--tdm-muted)',fontSize:11}}>{row.p5l}&nbsp;&euro;</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
                   </div>
-                  <button
-                    onClick={() => setDevisProducts(prev => [...prev, { ref: '', quantite: '' }])}
-                    style={{marginTop:10,background:'none',border:'none',fontSize:12,color:'var(--tdm-olive)',cursor:'pointer',fontFamily:'inherit',fontWeight:500}}
-                  >+ Ajouter un produit</button>
-
+                  <div style={{marginTop:10,display:'flex',gap:16,fontSize:10,color:'var(--tdm-muted)'}}>
+                    <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{display:'inline-block',width:10,height:10,background:'rgba(104,108,69,.10)',border:'1px solid var(--tdm-line)'}}></span> D&eacute;j&agrave; en place</span>
+                    <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{display:'inline-block',width:10,height:10,background:'var(--tdm-dark)'}}></span> S&eacute;lectionn&eacute;</span>
+                  </div>
                   <div style={{marginTop:18}}>
                     <label style={{display:'block',fontSize:11,fontWeight:500,letterSpacing:1,textTransform:'uppercase',color:'var(--tdm-muted)',marginBottom:6}}>Message</label>
                     <textarea
@@ -1254,28 +1290,33 @@
                       onChange={e => setDevisMessage(e.target.value)}
                       rows={3}
                       style={{width:'100%',border:'1px solid var(--tdm-line)',background:'var(--tdm-paper)',color:'var(--tdm-ink)',padding:'9px 12px',fontSize:12,fontFamily:'inherit',resize:'none',lineHeight:1.6}}
-                      placeholder="Décrivez votre demande..."
+                      placeholder="D\u00e9crivez votre demande..."
                     />
                   </div>
                 </div>
-                <div style={{flexShrink:0,borderTop:'1px solid var(--tdm-line)',padding:'14px 26px'}}>
+                <div style={{flexShrink:0,borderTop:'1px solid var(--tdm-line)',padding:'14px 28px',display:'flex',alignItems:'center',justifyContent:'space-between'}}>
+                  {selectedCount > 0 ? (
+                    <span style={{fontSize:11,color:'var(--tdm-muted)'}}>{selectedCount} parfum{selectedCount > 1 ? 's' : ''} s&eacute;lectionn&eacute;{selectedCount > 1 ? 's' : ''}</span>
+                  ) : <span></span>}
                   <button
                     disabled={devisSending || !devisMessage.trim()}
                     onClick={async () => {
                       if (!devisMessage.trim()) return;
-                      const valid = devisProducts.filter(p => p.ref && p.quantite);
+                      const selectedProducts = [];
+                      ROWS.forEach((row, ri) => {
+                        FRAGS.forEach((frag, fi) => {
+                          const ref = row[frag.key];
+                          if (ref && devisSelected[ri + '_' + fi]) {
+                            const prod = catalogue.find(c => c.ref === ref);
+                            selectedProducts.push({ ref, nom: prod ? prod.nom : row.type + ' \u2014 ' + frag.name, quantite: '\u00e9chantillon' });
+                          }
+                        });
+                      });
                       setDevisSending(true);
                       try {
-                        const payload = {
-                          products: valid.map(p => {
-                            const prod = catalogue.find(c => c.ref === p.ref);
-                            return { ref: p.ref, nom: prod ? prod.nom : p.ref, quantite: parseInt(p.quantite, 10) };
-                          }),
-                          message: devisMessage
-                        };
-                        const res = await api.post('/devis', payload);
+                        const res = await api.post('/devis', { products: selectedProducts, message: devisMessage });
                         if (res.ok) {
-                          showToast('Demande de devis envoyée !', 'success');
+                          showToast('Demande envoy\u00e9e !', 'success');
                           closeDevis();
                         } else {
                           showToast(res.erreur || "Erreur lors de l'envoi", 'error');
@@ -1287,9 +1328,9 @@
                       }
                     }}
                     className="tdm-action"
-                    style={{width:'100%',justifyContent:'center',opacity: (devisSending || !devisMessage.trim()) ? 0.4 : 1, cursor: (devisSending || !devisMessage.trim()) ? 'default' : 'pointer'}}
+                    style={{opacity: (devisSending || !devisMessage.trim()) ? 0.4 : 1, cursor: (devisSending || !devisMessage.trim()) ? 'default' : 'pointer'}}
                   >
-                    {devisSending ? 'Envoi en cours…' : 'Envoyer ma demande'}
+                    {devisSending ? 'Envoi en cours\u2026' : 'Envoyer ma demande'}
                   </button>
                 </div>
               </div>
