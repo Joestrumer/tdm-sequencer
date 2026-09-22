@@ -20879,7 +20879,7 @@ const VueCommandes = ({ showToast }) => {
   const [expandedId, setExpandedId] = useState(null);
   const [validating, setValidating] = useState(null);
   const [validateModal, setValidateModal] = useState(null);
-  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true, fraisMode: 'auto', fraisRef: null, fraisMontant: 0, discountOverride: '' });
+  const [validateOptions, setValidateOptions] = useState({ documentType: 'vat', shippingId: '1', sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true, fraisPort: [], discountOverride: '' });
   const [downloadingCsv, setDownloadingCsv] = useState(null);
   const [selectedOrderIds, setSelectedOrderIds] = useState(new Set());
   const [batchCsvModal, setBatchCsvModal] = useState(false);
@@ -20943,12 +20943,15 @@ const VueCommandes = ({ showToast }) => {
 
   const openValidateModal = (commande) => {
     const cp = commande.partner_livraison_cp || commande.partner_facturation_cp || '';
+    // Initialiser frais_port depuis la commande stockée
+    const initFrais = [];
+    if (commande.frais_ref && commande.frais_montant > 0) {
+      initFrais.push({ ref: commande.frais_ref, nom: commande.frais_ref === 'FP' ? 'FRAIS PREPARATION' : 'FRAIS EXPEDITION', prix_ht: commande.frais_montant, quantite: 1, tva: commande.frais_tva || 20, discount: 0 });
+    }
     setValidateOptions({
       documentType: 'vat', shippingId: getDefaultShippingId(cp),
       sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true,
-      fraisMode: 'auto',
-      fraisRef: commande.frais_ref || null,
-      fraisMontant: commande.frais_montant || 0,
+      fraisPort: initFrais,
       discountOverride: '',
     });
     // Utiliser les produits édités si disponibles
@@ -20979,12 +20982,10 @@ const VueCommandes = ({ showToast }) => {
         generateCsv: validateOptions.generateCsv,
         createHubspotDeal: validateOptions.createHubspotDeal,
       };
-      // Frais override
-      if (validateOptions.fraisMode === 'none') {
-        body.fraisOverride = { ref: null };
-      } else if (validateOptions.fraisMode === 'manual') {
-        body.fraisOverride = { ref: validateOptions.fraisRef || 'FP', montant: parseFloat(validateOptions.fraisMontant) || 0 };
-      }
+      // Frais override — envoyer la liste complète
+      body.fraisOverride = (validateOptions.fraisPort || []).map(f => ({
+        ref: f.ref, montant: f.prix_ht, tva: f.tva || 20, discount: f.discount || 0,
+      }));
       // Discount override
       if (validateOptions.discountOverride !== '' && validateOptions.discountOverride != null) {
         const d = parseFloat(validateOptions.discountOverride);
@@ -21402,43 +21403,42 @@ const VueCommandes = ({ showToast }) => {
                 </div>
               </div>
 
-              {/* Frais de port */}
+              {/* Frais de port — même pattern que expeditions */}
               <div>
                 <label className="text-xs font-medium text-slate-500 mb-1 block">Frais de port / expédition</label>
-                <div className="flex gap-2 mb-2">
-                  {[
-                    { value: 'auto', label: `Auto (${validateModal.frais_ref ? `${validateModal.frais_ref} ${(validateModal.frais_montant || 0).toFixed(2)} €` : 'aucun'})` },
-                    { value: 'manual', label: 'Manuel' },
-                    { value: 'none', label: 'Aucun' },
-                  ].map(opt => (
-                    <button key={opt.value}
-                      onClick={() => {
-                        const upd = { fraisMode: opt.value };
-                        if (opt.value === 'manual' && validateOptions.fraisMode !== 'manual') {
-                          upd.fraisRef = validateModal.frais_ref || 'FP';
-                          upd.fraisMontant = validateModal.frais_montant || 0;
-                        }
-                        setValidateOptions(o => ({ ...o, ...upd }));
-                      }}
-                      className={`px-3 py-1.5 text-xs rounded-lg border transition-colors ${validateOptions.fraisMode === opt.value ? 'bg-blue-50 border-blue-300 text-blue-700 font-medium' : 'border-slate-200 text-slate-600 hover:bg-slate-50'}`}
-                    >{opt.label}</button>
-                  ))}
-                </div>
-                {validateOptions.fraisMode === 'manual' && (
-                  <div className="flex gap-2">
-                    <select value={validateOptions.fraisRef || 'FP'} onChange={e => setValidateOptions(o => ({ ...o, fraisRef: e.target.value }))}
-                      className="border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400">
-                      <option value="FP">FP (Préparation)</option>
-                      <option value="FE">FE (Expédition)</option>
-                    </select>
-                    <div className="flex items-center gap-1 flex-1">
-                      <input type="number" step="0.01" min="0" value={validateOptions.fraisMontant}
-                        onChange={e => setValidateOptions(o => ({ ...o, fraisMontant: e.target.value }))}
-                        className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
-                      <span className="text-xs text-slate-500 shrink-0">€ HT</span>
+                {(validateOptions.fraisPort || []).map((f, i) => (
+                  <div key={'fp'+i} className="flex items-center justify-between text-sm py-1 text-slate-500">
+                    <span className="flex-1 text-xs">{f.nom}</span>
+                    <div className="flex items-center gap-1">
+                      <input type="number" step="0.01" min="0" value={f.prix_ht}
+                        onChange={e => {
+                          const nf = [...(validateOptions.fraisPort || [])];
+                          nf[i] = { ...nf[i], prix_ht: parseFloat(e.target.value) || 0 };
+                          setValidateOptions(o => ({ ...o, fraisPort: nf }));
+                        }}
+                        className="w-20 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
+                      <span className="text-xs">€ HT</span>
+                      <input type="number" step="1" min="0" max="100" value={f.discount || 0}
+                        onChange={e => {
+                          const nf = [...(validateOptions.fraisPort || [])];
+                          nf[i] = { ...nf[i], discount: parseFloat(e.target.value) || 0 };
+                          setValidateOptions(o => ({ ...o, fraisPort: nf }));
+                        }}
+                        className="w-14 border border-slate-200 rounded px-2 py-0.5 text-sm text-right font-mono" />
+                      <span className="text-xs">%</span>
+                      <button onClick={() => {
+                        const nf = (validateOptions.fraisPort || []).filter((_, idx) => idx !== i);
+                        setValidateOptions(o => ({ ...o, fraisPort: nf }));
+                      }} className="ml-1 text-red-400 hover:text-red-600 text-xs" title="Supprimer">✕</button>
                     </div>
                   </div>
-                )}
+                ))}
+                <div className="flex gap-2 mt-1">
+                  <button onClick={() => setValidateOptions(o => ({ ...o, fraisPort: [...(o.fraisPort || []), { ref: 'FP', nom: 'FRAIS PREPARATION', prix_ht: 25, quantite: 1, tva: 20, discount: 0 }] }))}
+                    className="text-xs text-blue-600 hover:text-blue-800">+ Frais préparation</button>
+                  <button onClick={() => setValidateOptions(o => ({ ...o, fraisPort: [...(o.fraisPort || []), { ref: 'FE', nom: 'FRAIS EXPEDITION', prix_ht: 80, quantite: 1, tva: 20, discount: 0 }] }))}
+                    className="text-xs text-blue-600 hover:text-blue-800">+ Frais expédition</button>
+                </div>
               </div>
 
               {/* Discount */}
@@ -21663,6 +21663,7 @@ const VueCommandes = ({ showToast }) => {
                             <th className="text-left py-2 font-medium">Produit</th>
                             <th className="text-center py-2 font-medium">Qté</th>
                             <th className="text-right py-2 font-medium">PU HT</th>
+                            <th className="text-right py-2 font-medium">Remise</th>
                             <th className="text-right py-2 font-medium">Total HT</th>
                             {isEditable && <th className="py-2 w-8"></th>}
                           </tr></thead>
@@ -21690,7 +21691,8 @@ const VueCommandes = ({ showToast }) => {
                                       className="w-14 border border-slate-200 rounded px-1 py-0.5 text-xs text-center font-mono focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400" />
                                   ) : p.quantite}
                                 </td>
-                                <td className="py-2 text-right">{(p.prix_remise ?? p.prix_ht)?.toFixed(2)} &euro;</td>
+                                <td className="py-2 text-right">{(p.prix_ht)?.toFixed(2)} &euro;</td>
+                                <td className="py-2 text-right">{p.discount_pct > 0 ? <span className="text-amber-600 font-medium">-{p.discount_pct}%</span> : <span className="text-slate-300">—</span>}</td>
                                 <td className="py-2 text-right font-medium">{p.total_ht?.toFixed(2)} &euro;</td>
                                 {isEditable && (
                                   <td className="py-2 text-center">
@@ -21760,6 +21762,14 @@ const VueCommandes = ({ showToast }) => {
 
                   {c.notes && <div className="text-xs text-slate-500 italic mb-3">Notes : "{c.notes}"</div>}
 
+                  {/* Frais de port */}
+                  {c.frais_ref && c.frais_montant > 0 && (
+                    <div className="flex items-center justify-between text-xs text-slate-500 mb-2 px-1">
+                      <span>{c.frais_ref === 'FP' ? 'Frais de préparation' : "Frais d'expédition"} ({c.frais_ref})</span>
+                      <span className="font-mono">{c.frais_montant?.toFixed(2)} € HT</span>
+                    </div>
+                  )}
+
                   {/* Suivi expédition (commandes validées) */}
                   {c.statut === 'validee' && (
                     <div className="mb-3 flex items-center gap-2">
@@ -21793,6 +21803,9 @@ const VueCommandes = ({ showToast }) => {
 
                   <div className="flex items-center justify-between">
                     <div>
+                      {c.frais_montant > 0 && c.subtotal_ht != null && (
+                        <span className="text-xs text-slate-400 mr-2">Produits {c.subtotal_ht?.toFixed(2)} € +</span>
+                      )}
                       <span className="text-sm font-semibold text-slate-900">{c.total_ht?.toFixed(2)} &euro; HT</span>
                       <span className="text-xs text-slate-400 ml-2">({c.total_ttc?.toFixed(2)} &euro; TTC)</span>
                     </div>

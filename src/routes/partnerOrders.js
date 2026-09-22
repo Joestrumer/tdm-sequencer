@@ -343,24 +343,23 @@ module.exports = (db) => {
         positions.push(position);
       }
 
-      // Frais de port — override admin ou logique portail partenaire
+      // Frais de port — override admin (tableau) ou logique portail partenaire
       const fraisPort = [];
       const globalExonere = order.partner_frais_exonere ?? 0;
       const exonereFP = globalExonere || (order.exonere_fp ?? 0);
       const exonereFE = globalExonere || (order.exonere_fe ?? 0);
 
-      // fraisOverride: { ref: 'FP'|'FE'|null, montant: number|null }
-      // null/undefined = auto (logique portail), ref=null = supprimer les frais
-      let fpRef = null, fpMontant = 0, fpTax = 20;
+      // fraisOverride: tableau [{ref, montant, tva, discount}] envoyé par l'admin
+      // tableau vide = pas de frais, undefined = auto (logique portail)
+      const fraisItems = [];
 
-      if (fraisOverride !== undefined && fraisOverride !== null) {
-        // Override admin explicite
-        if (fraisOverride.ref) {
-          fpRef = fraisOverride.ref;
-          fpMontant = fraisOverride.montant ?? 0;
-          fpTax = fraisOverride.tva ?? 20;
+      if (Array.isArray(fraisOverride)) {
+        // Override admin explicite — utiliser la liste telle quelle
+        for (const f of fraisOverride) {
+          if (f.ref && f.montant > 0) {
+            fraisItems.push({ ref: f.ref, montant: f.montant, tva: f.tva || 20, discount: f.discount || 0 });
+          }
         }
-        // sinon ref=null → pas de frais
       } else {
         // Auto : même logique que le portail partenaire (partnerPortal.js POST /commande)
         const totalHTProducts = positions.reduce((s, p) => {
@@ -374,36 +373,35 @@ module.exports = (db) => {
 
         if (totalHTProducts >= francoSeuil) {
           if (!exonereFP) {
-            fpRef = 'FP';
-            fpMontant = fpCatalog?.prix_ht || 25;
+            fraisItems.push({ ref: 'FP', montant: fpCatalog?.prix_ht || 25, tva: 20, discount: 0 });
           }
         } else {
           if (!exonereFE) {
-            fpRef = 'FE';
-            fpMontant = (order.partner_frais_expedition_ht != null)
+            const feMontant = (order.partner_frais_expedition_ht != null)
               ? order.partner_frais_expedition_ht
               : (feCatalog?.prix_ht || 80);
+            fraisItems.push({ ref: 'FE', montant: feMontant, tva: 20, discount: 0 });
           }
         }
       }
 
-      if (fpRef && fpMontant > 0) {
-        const fpGross = roundPrice(fpMontant * (1 + fpTax / 100));
-        const vfProduct = findVFProduct(fpRef, fpMontant, catalog, codeMappings, productIdMappings, productNameMappings);
+      for (const fi of fraisItems) {
+        const netAfterDisc = fi.montant * (1 - (fi.discount || 0) / 100);
+        const fpGross = roundPrice(netAfterDisc * (1 + fi.tva / 100));
+        const vfProduct = findVFProduct(fi.ref, fi.montant, catalog, codeMappings, productIdMappings, productNameMappings);
 
         const fpPosition = {
-          code: fpRef,
-          name: vfProduct.productName || (fpRef === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION"),
-          price_net: Number(fpMontant).toFixed(2),
+          code: fi.ref,
+          name: vfProduct.productName || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION"),
+          price_net: Number(fi.montant).toFixed(2),
           total_price_gross: Number(fpGross).toFixed(2),
-          tax: fpTax,
+          tax: fi.tva,
           quantity: 1,
         };
-        if (vfProduct.productId) {
-          fpPosition.product_id = vfProduct.productId;
-        }
+        if (fi.discount > 0) fpPosition.discount_percent = fi.discount;
+        if (vfProduct.productId) fpPosition.product_id = vfProduct.productId;
         positions.push(fpPosition);
-        fraisPort.push({ ref: fpRef, nom: fpPosition.name, prix_ht: fpMontant, quantite: 1, tva: fpTax });
+        fraisPort.push({ ref: fi.ref, nom: fpPosition.name, prix_ht: fi.montant, quantite: 1, tva: fi.tva });
       }
 
       // Résoudre le client VF pour la facture
