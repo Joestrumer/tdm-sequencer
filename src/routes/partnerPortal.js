@@ -759,10 +759,7 @@ module.exports = (db) => {
   // ─── Demande de devis ────────────────────────────────────────────────────
   router.post('/devis', requireEffectiveId, (req, res) => {
     try {
-      const { products, message } = req.body;
-      if (!message || !message.trim()) {
-        return res.status(400).json({ erreur: 'Veuillez saisir un message' });
-      }
+      const { products, message, cadeauxVIP } = req.body;
       const productList = Array.isArray(products) ? products : [];
 
       const partner = db.prepare('SELECT id, nom, email, contact_nom, telephone FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
@@ -786,12 +783,13 @@ module.exports = (db) => {
 
       const emailHtml = `
         <div style="font-family:'DM Sans',Arial,sans-serif;max-width:600px;margin:0 auto">
-          <h2 style="color:#0f172a">Demande de devis</h2>
+          <h2 style="color:#0f172a">Demande d'&eacute;chantillons</h2>
           <p><strong>Partenaire :</strong> ${esc(partner.nom)}</p>
           ${partner.contact_nom ? `<p><strong>Contact :</strong> ${esc(partner.contact_nom)}</p>` : ''}
           ${partner.email ? `<p><strong>Email :</strong> ${esc(partner.email)}</p>` : ''}
           ${partner.telephone ? `<p><strong>T\u00e9l\u00e9phone :</strong> ${esc(partner.telephone)}</p>` : ''}
-          <p><strong>Message :</strong> ${esc(message)}</p>
+          ${message && message.trim() ? `<p><strong>Message :</strong> ${esc(message)}</p>` : ''}
+          ${cadeauxVIP ? '<p style="margin:12px 0;padding:8px 14px;background:#fef9c3;border-left:3px solid #ca8a04;font-size:13px"><strong>Souhaite aussi d\u00e9couvrir les cadeaux VIP</strong></p>' : ''}
           ${productTableHtml}
           <hr style="border:none;border-top:1px solid #e2e8f0;margin:24px 0" />
           <p style="color:#94a3b8;font-size:12px">Demande envoy&eacute;e depuis le portail partenaire.</p>
@@ -805,7 +803,7 @@ module.exports = (db) => {
           await brevoService.brevoSendEmail({
             sender: { name: 'Terre de Mars', email: process.env.BREVO_SMTP_USER || 'hugo@terredemars.com' },
             to: [{ email: adminEmail, name: 'Hugo' }],
-            subject: `Demande de devis \u2014 ${partner.nom}`,
+            subject: `Demande d'\u00e9chantillons \u2014 ${partner.nom}`,
             htmlContent: emailHtml,
           });
           logger.info('Email demande de devis envoyé', { partner: partner.nom, products: productList.length });

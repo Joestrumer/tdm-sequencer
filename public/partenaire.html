@@ -723,6 +723,7 @@
       const [devisSelected, setDevisSelected] = useState({});
       const [devisMessage, setDevisMessage] = useState('');
       const [devisSending, setDevisSending] = useState(false);
+      const [devisVIP, setDevisVIP] = useState(false);
       const previewRef = useRef(null);
 
       const euro = (n) => new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR' }).format(n);
@@ -1201,7 +1202,7 @@
         </div>
           {/* ── Modal Demande de devis ── */}
           {devisModalOpen && (() => {
-            const closeDevis = () => { setDevisModalOpen(false); setDevisSelected({}); setDevisMessage(''); };
+            const closeDevis = () => { setDevisModalOpen(false); setDevisSelected({}); setDevisMessage(''); setDevisVIP(false); };
             const FRAGS = [
               { key:'verveine', name:'Verveine', sub:'Reddition', notes:'Frais, herbac\u00e9, bois\u00e9' },
               { key:'cedrat', name:'C\u00e9drat', sub:'Irr\u00e9v\u00e9rence', notes:'Solaire, hesp\u00e9rid\u00e9, cardamome' },
@@ -1282,9 +1283,15 @@
                       </tbody>
                     </table>
                   </div>
-                  <div style={{marginTop:10,display:'flex',gap:16,fontSize:10,color:'var(--tdm-muted)'}}>
-                    <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{display:'inline-block',width:10,height:10,background:'rgba(104,108,69,.10)',border:'1px solid var(--tdm-line)'}}></span> D&eacute;j&agrave; en place</span>
-                    <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{display:'inline-block',width:10,height:10,background:'var(--tdm-dark)'}}></span> S&eacute;lectionn&eacute;</span>
+                  <div style={{marginTop:10,display:'flex',alignItems:'center',justifyContent:'space-between',fontSize:10,color:'var(--tdm-muted)'}}>
+                    <label style={{display:'flex',alignItems:'center',gap:6,cursor:'pointer',fontSize:11}}>
+                      <input type="checkbox" checked={devisVIP} onChange={e => setDevisVIP(e.target.checked)} style={{accentColor:'var(--tdm-olive)',width:14,height:14}} />
+                      Je souhaite aussi d&eacute;couvrir les cadeaux VIP
+                    </label>
+                    <div style={{display:'flex',gap:16}}>
+                      <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{display:'inline-block',width:10,height:10,background:'rgba(104,108,69,.10)',border:'1px solid var(--tdm-line)'}}></span> D&eacute;j&agrave; en place</span>
+                      <span style={{display:'flex',alignItems:'center',gap:4}}><span style={{display:'inline-block',width:10,height:10,background:'var(--tdm-dark)'}}></span> S&eacute;lectionn&eacute;</span>
+                    </div>
                   </div>
                   <div style={{marginTop:14}}>
                     <label style={{display:'block',fontSize:11,fontWeight:500,letterSpacing:1,textTransform:'uppercase',color:'var(--tdm-muted)',marginBottom:4}}>Votre projet <span style={{fontWeight:400,textTransform:'none',letterSpacing:0}}>(optionnel)</span></label>
@@ -1317,7 +1324,7 @@
                       });
                       setDevisSending(true);
                       try {
-                        const res = await api.post('/devis', { products: selectedProducts, message: devisMessage });
+                        const res = await api.post('/devis', { products: selectedProducts, message: devisMessage, cadeauxVIP: devisVIP });
                         if (res.ok) {
                           showToast('Demande envoy\u00e9e !', 'success');
                           closeDevis();
