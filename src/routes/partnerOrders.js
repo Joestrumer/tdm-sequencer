@@ -253,7 +253,7 @@ module.exports = (db) => {
   // ─── Valider commande ─────────────────────────────────────────────────────
   router.post('/:id/validate', async (req, res) => {
     try {
-      const { documentType, shippingId, sendEmail = true, logGSheets = true, generateCsv = false, createHubspotDeal = true, fraisOverride, discountOverride, productsOverride } = req.body || {};
+      const { documentType, shippingId, sendEmail = true, logGSheets = true, generateCsv = false, createHubspotDeal = true, fraisOverride, discountOverride, productsOverride, deliveryComment } = req.body || {};
 
       const order = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.nom_normalise, vp.email as partner_email,
@@ -547,10 +547,10 @@ module.exports = (db) => {
           }));
           const shippingNamesMap = getShippingNames();
           const csvContent = genererCSVLogisticien(
-            { number: result.number || '', products: csvProducts, notes: order.notes || '' },
+            { number: result.number || '', products: csvProducts },
             client,
             shippingNamesMap,
-            { shippingId }
+            { shippingId, deliveryComment: deliveryComment || '' }
           );
           csv_base64 = Buffer.from(csvContent, 'utf-8').toString('base64');
           db.prepare('UPDATE vf_invoice_logs SET csv_generated = 1 WHERE vf_invoice_id = ?').run(String(result.id));
@@ -679,7 +679,7 @@ module.exports = (db) => {
       }));
       const shippingNamesMap = getShippingNames();
       const csvContent = genererCSVLogisticien(
-        { number: order.vf_invoice_number || '', products: csvProducts, notes: order.notes || '' },
+        { number: order.vf_invoice_number || '', products: csvProducts },
         client,
         shippingNamesMap,
         { shippingId }
@@ -738,7 +738,7 @@ module.exports = (db) => {
         }));
 
         const csvContent = genererCSVLogisticien(
-          { number: order.vf_invoice_number || '', products: csvProducts, notes: order.notes || '' },
+          { number: order.vf_invoice_number || '', products: csvProducts },
           client,
           shippingNamesMap,
           { shippingId }

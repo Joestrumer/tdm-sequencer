@@ -20996,6 +20996,7 @@ const VueCommandes = ({ showToast }) => {
         logGSheets: validateOptions.logGSheets,
         generateCsv: validateOptions.generateCsv,
         createHubspotDeal: validateOptions.createHubspotDeal,
+        deliveryComment: validateOptions.deliveryComment || '',
       };
       // Séparer produits et frais depuis editableProducts (FP/FE sont maintenant des lignes produit)
       const allItems = editableProducts[id] || validateModal.products || [];
@@ -21155,6 +21156,7 @@ const VueCommandes = ({ showToast }) => {
         logGSheets: batchValidateOptions.logGSheets,
         generateCsv: batchValidateOptions.generateCsv,
         createHubspotDeal: batchValidateOptions.createHubspotDeal,
+        deliveryComment: batchValidateOptions.deliveryComment || '',
       };
 
       const res = await api.post('/partner-orders/batch-validate', {
@@ -21464,6 +21466,20 @@ const VueCommandes = ({ showToast }) => {
                   Créer deal HubSpot
                 </label>
               </div>
+
+              {/* Notes logisticien */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Notes pour le logisticien (optionnel)</label>
+                <textarea value={validateOptions.deliveryComment || ''} onChange={e => setValidateOptions(o => ({ ...o, deliveryComment: e.target.value }))}
+                  placeholder="Instructions de livraison, échantillons à joindre..."
+                  rows={2}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none" />
+              </div>
+              {validateModal.notes && /[ÉE]chantillons/i.test(validateModal.notes) && (
+                <div className="bg-purple-50 border border-purple-200 rounded-lg px-3 py-2 text-xs text-purple-700">
+                  <span className="font-medium">Demande du partenaire :</span> {validateModal.notes}
+                </div>
+              )}
             </div>
 
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
@@ -21521,6 +21537,15 @@ const VueCommandes = ({ showToast }) => {
                   <input type="checkbox" checked={batchValidateOptions.createHubspotDeal} onChange={e => setBatchValidateOptions(o => ({ ...o, createHubspotDeal: e.target.checked }))} className="rounded" />
                   Créer deal HubSpot
                 </label>
+              </div>
+
+              {/* Notes logisticien */}
+              <div>
+                <label className="text-xs font-medium text-slate-500 mb-1 block">Notes pour le logisticien (optionnel)</label>
+                <textarea value={batchValidateOptions.deliveryComment || ''} onChange={e => setBatchValidateOptions(o => ({ ...o, deliveryComment: e.target.value }))}
+                  placeholder="Instructions de livraison, échantillons à joindre..."
+                  rows={2}
+                  className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 resize-none" />
               </div>
             </div>
             <div className="px-6 py-4 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
