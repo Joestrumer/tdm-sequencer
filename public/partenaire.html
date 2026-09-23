@@ -713,7 +713,7 @@
     // Catégorisation VIP pour les filtres
     const VIP_SPA_REFS = new Set(['P016', 'P009', 'P003', 'P317-100', 'P020', 'P004', 'P004-500', 'P005', 'P006', 'P021', 'P022', 'P027', 'P029']);
 
-    const AccueilView = ({ partner, amenities, catalogue, panier, setPanier, commandes, setVue, setPanierOpen, showToast }) => {
+    const AccueilView = ({ partner, amenities, catalogue, panier, setPanier, commandes, setVue, setPanierOpen, showToast, setPanierNotes }) => {
       const [feedback, setFeedback] = useState(null);
       const [contactOpen, setContactOpen] = useState(false);
       const [vipFilter, setVipFilter] = useState('all');
@@ -1294,7 +1294,7 @@
                     </div>
                   </div>
                   <div style={{marginTop:14}}>
-                    <label style={{display:'block',fontSize:11,fontWeight:500,letterSpacing:1,textTransform:'uppercase',color:'var(--tdm-muted)',marginBottom:4}}>Votre projet <span style={{fontWeight:400,textTransform:'none',letterSpacing:0}}>(optionnel)</span></label>
+                    <label style={{display:'block',fontSize:11,fontWeight:500,letterSpacing:1,textTransform:'uppercase',color:'var(--tdm-muted)',marginBottom:4}}>Votre projet</label>
                     <textarea
                       value={devisMessage}
                       onChange={e => setDevisMessage(e.target.value)}
@@ -1326,7 +1326,10 @@
                       try {
                         const res = await api.post('/devis', { products: selectedProducts, message: devisMessage, cadeauxVIP: devisVIP });
                         if (res.ok) {
-                          showToast('Demande envoy\u00e9e !', 'success');
+                          const echanLines = selectedProducts.map(p => p.ref + ' ' + p.nom).join(', ');
+                          const noteEch = '\u00c9chantillons demand\u00e9s : ' + echanLines + (devisVIP ? ' + Cadeaux VIP' : '') + (devisMessage.trim() ? ' | Projet : ' + devisMessage.trim() : '');
+                          setPanierNotes(prev => prev ? prev + '\n' + noteEch : noteEch);
+                          showToast('Demande envoy\u00e9e \u2014 ajout\u00e9e aux notes du panier', 'success');
                           closeDevis();
                         } else {
                           showToast(res.erreur || "Erreur lors de l'envoi", 'error');
@@ -1648,8 +1651,7 @@
     };
 
     // ─── Panier Panel ───────────────────────────────────────────────────────────
-    const PanierPanel = ({ panier, setPanier, onCommander, loading, partner, modifyingOrderId, initialNotes }) => {
-      const [notes, setNotes] = useState(initialNotes || "");
+    const PanierPanel = ({ panier, setPanier, onCommander, loading, partner, modifyingOrderId, notes, setNotes }) => {
       const [showConfirm, setShowConfirm] = useState(false);
       const confirmRef = useRef(null);
       const items = Object.values(panier);
@@ -1885,7 +1887,7 @@
     };
 
     // ─── Historique ─────────────────────────────────────────────────────────────
-    const HistoriqueView = ({ commandes, onRefresh, catalogue, setPanier, setPanierOpen, setVue, setModifyingOrderId, setModifyingNotes, showToast, partner, isMaster }) => {
+    const HistoriqueView = ({ commandes, onRefresh, catalogue, setPanier, setPanierOpen, setVue, setModifyingOrderId, setModifyingNotes, setPanierNotes, showToast, partner, isMaster }) => {
       const [cancelling, setCancelling] = useState(null);
       const [filtre, setFiltre] = useState('tous');
       const [expandedId, setExpandedId] = useState(null);
@@ -1928,6 +1930,7 @@
         setPanier(newPanier);
         setModifyingOrderId(c.id);
         setModifyingNotes(c.notes || "");
+        setPanierNotes(c.notes || "");
         setPanierOpen(true);
         setVue('catalogue');
         showToast('Commande charg\u00e9e dans le panier \u2014 validez pour enregistrer les modifications', 'info');
@@ -2558,6 +2561,7 @@
       const [contactModalOpen, setContactModalOpen] = useState(false);
       const [modifyingOrderId, setModifyingOrderId] = useState(null);
       const [modifyingNotes, setModifyingNotes] = useState("");
+      const [panierNotes, setPanierNotes] = useState("");
       const [loading, setLoading] = useState(false);
       const [submitting, setSubmitting] = useState(false);
       const [orderSuccess, setOrderSuccess] = useState(false);
@@ -2730,6 +2734,7 @@
             showToast(modifyingOrderId ? 'Commande modifi\u00e9e !' : 'Commande enregistr\u00e9e !', 'success');
             setModifyingOrderId(null);
             setModifyingNotes("");
+            setPanierNotes("");
             refreshCommandes();
             setVue('historique');
           }
@@ -2863,10 +2868,10 @@
             {panierOpen ? (
               <div className="max-w-lg mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Votre panier</h2>
-                <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={submitting} partner={partner} modifyingOrderId={modifyingOrderId} initialNotes={modifyingNotes} />
+                <PanierPanel panier={panier} setPanier={setPanier} onCommander={handleCommander} loading={submitting} partner={partner} modifyingOrderId={modifyingOrderId} notes={panierNotes} setNotes={setPanierNotes} />
               </div>
             ) : vue === "accueil" ? (
-              <AccueilView partner={partner} amenities={amenities} catalogue={catalogue} panier={panier} setPanier={setPanier} commandes={commandes} setVue={setVue} setPanierOpen={setPanierOpen} showToast={showToast} />
+              <AccueilView partner={partner} amenities={amenities} catalogue={catalogue} panier={panier} setPanier={setPanier} commandes={commandes} setVue={setVue} setPanierOpen={setPanierOpen} showToast={showToast} setPanierNotes={setPanierNotes} />
             ) : vue === "catalogue" ? (
               <div className="animate-fade-in">
                 <AmenitiesSection amenities={amenities} catalogue={catalogue} panier={panier} setPanier={setPanier} />
@@ -2891,7 +2896,7 @@
             ) : (
               <div className="max-w-2xl mx-auto animate-fade-in">
                 <h2 className="text-lg font-semibold text-gray-900 dark:text-white mb-4">Historique des commandes</h2>
-                <HistoriqueView commandes={commandes} onRefresh={refreshCommandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} setVue={setVue} setModifyingOrderId={setModifyingOrderId} setModifyingNotes={setModifyingNotes} showToast={showToast} partner={partner} isMaster={isMaster} />
+                <HistoriqueView commandes={commandes} onRefresh={refreshCommandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} setVue={setVue} setModifyingOrderId={setModifyingOrderId} setModifyingNotes={setModifyingNotes} setPanierNotes={setPanierNotes} showToast={showToast} partner={partner} isMaster={isMaster} />
               </div>
             )}
           </main>
