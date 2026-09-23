@@ -601,6 +601,7 @@ module.exports = (db) => {
 
       const positions = [];
       let hasDiscount = false;
+      const isProforma = !!isSample;
 
       for (const p of (products || [])) {
         const ref = normalizeRef(p.ref);
@@ -639,7 +640,8 @@ module.exports = (db) => {
         };
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
-        } else {
+        }
+        if (!vfProduct.productId || isProforma) {
           position.name = vfProduct.productName || p.nom || p.name || vfProduct.ref || ref;
         }
         if (discount > 0) position.discount_percent = discount;
@@ -657,7 +659,6 @@ module.exports = (db) => {
 
         const position = {
           code: f.ref || ref,
-          ...(vfProduct.productId ? {} : { name: vfProduct.productName || f.nom || f.name || ref }),
           price_net: Number(priceHT).toFixed(2),
           total_price_gross: Number(gross).toFixed(2),
           tax: taxRate,
@@ -665,6 +666,9 @@ module.exports = (db) => {
         };
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
+        }
+        if (!vfProduct.productId || isProforma) {
+          position.name = vfProduct.productName || f.nom || f.name || ref;
         }
         positions.push(position);
       }
