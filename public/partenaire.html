@@ -1532,6 +1532,13 @@
                 <button onClick={() => setSearch('')} className="absolute right-3 top-1/2 -translate-y-1/2 text-gray-400 dark:text-slate-500 hover:text-gray-600 dark:hover:text-slate-300 text-lg px-1">&times;</button>
               )}
             </div>
+            <div className="mt-1.5 text-xs text-gray-400 dark:text-slate-500">
+              {search ? (
+                filtered.length === 0 ? 'Aucun r\u00e9sultat' : `${filtered.length} r\u00e9sultat${filtered.length > 1 ? 's' : ''} sur ${catalogue.length} produits`
+              ) : (
+                `${catalogue.length} produits`
+              )}
+            </div>
           </div>
 
           {/* Raccourcis rapides */}
