@@ -21603,6 +21603,7 @@ const VueCommandes = ({ showToast }) => {
                     </span>
                     {c.statut === 'validee' && c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">Livrée</span>}
                     {c.statut === 'validee' && c.tracking_number && !c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Expédiée</span>}
+                    {c.notes && /[ÉE]chantillons/i.test(c.notes) && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">Demande échantillons</span>}
                   </div>
                   <div className="text-xs text-slate-400">{parseUTC(c.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric', hour: '2-digit', minute: '2-digit' })}</div>
                 </div>
