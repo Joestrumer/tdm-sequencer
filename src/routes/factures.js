@@ -790,7 +790,7 @@ module.exports = (db) => {
           };
         });
 
-      const client = data.buyer_name ? {
+      let client = data.buyer_name ? {
         name: data.buyer_name,
         id: data.client_id,
         vf_id: data.client_id,
@@ -804,6 +804,28 @@ module.exports = (db) => {
         delivery_address: data.delivery_address || '',
         use_delivery_address: data.use_delivery_address || false,
       } : null;
+
+      // Si l'adresse de facturation sur la facture est vide ou identique au nom client,
+      // enrichir depuis la fiche client VosFactures
+      if (client && data.client_id) {
+        const streetMissing = !client.street || client.street === client.name;
+        const cityMissing = !client.city;
+        if (streetMissing || cityMissing) {
+          try {
+            const vfClient = await req.vfService.getClient(data.client_id);
+            if (vfClient) {
+              if (streetMissing && vfClient.street) client.street = vfClient.street;
+              if (cityMissing && vfClient.city) client.city = vfClient.city;
+              if (!client.zip && vfClient.post_code) client.zip = vfClient.post_code;
+              if (!client.country && vfClient.country) client.country = vfClient.country;
+              if (!client.email && vfClient.email) client.email = vfClient.email;
+              if (!client.phone && vfClient.phone) client.phone = vfClient.phone;
+            }
+          } catch (e) {
+            // Pas bloquant : on continue avec les données de la facture
+          }
+        }
+      }
 
       // Adresse de livraison (si différente de facturation)
       const delivery_address = data.delivery_address || '';
