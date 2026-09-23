@@ -471,6 +471,7 @@
       const unitPrice = p.prix_promo ?? p.prix_remise;
       return (
         <div className={`flex items-center gap-2 px-3 py-1.5 rounded-lg transition-colors ${inCart ? 'bg-gold-50 dark:bg-gold-900/30 border-l-2 border-l-gold-500' : 'hover:bg-gray-50 dark:hover:bg-slate-700'}`}>
+          {p.image_url && <img src={p.image_url} alt={p.nom} className="w-8 h-8 object-contain rounded shrink-0" />}
           <div className="flex-1 min-w-0 flex items-center gap-2">
             <span className="text-xs sm:text-sm text-gray-900 dark:text-white truncate">{p.nom}</span>
             {p.promo_pct > 0 ? (
@@ -552,7 +553,7 @@
               className="flex items-center gap-2 mb-4 group"
             >
               <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
-              <h3 className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-gold-700 dark:group-hover:text-gold-400 transition-colors">Vos produits en chambre</h3>
+              <h3 className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-gold-700 dark:group-hover:text-gold-400 transition-colors">Vos produits en chambre formats bidons</h3>
               <span className="text-gray-400 dark:text-slate-500 text-xs group-hover:text-gray-600 dark:group-hover:text-slate-300 transition-colors">{showBidons ? '\u25b2' : '\u25bc'}</span>
             </button>
             {showBidons && (
@@ -583,8 +584,8 @@
                 onClick={() => setShowFlacons(!showFlacons)}
                 className="flex items-center gap-2 mb-3 group"
               >
-                <div className="w-1 h-5 bg-gray-300 dark:bg-slate-500 rounded-full"></div>
-                <h3 className="text-sm font-medium text-gray-500 dark:text-slate-400 group-hover:text-gray-700 dark:group-hover:text-slate-200 transition-colors">Flacons 500 ml &amp; autres formats <span className="font-normal text-gray-400 dark:text-slate-500">(m&ecirc;mes parfums)</span></h3>
+                <div className="w-1 h-5 bg-gold-500 rounded-full"></div>
+                <h3 className="text-sm font-semibold text-gray-900 dark:text-white group-hover:text-gold-700 dark:group-hover:text-gold-400 transition-colors">Vos produits en chambre formats flacons 500ml et voyage</h3>
                 <span className="text-gray-400 dark:text-slate-500 text-xs group-hover:text-gray-600 dark:group-hover:text-slate-300 transition-colors">{showFlacons ? '\u25b2' : '\u25bc'}</span>
               </button>
               {showFlacons && (
@@ -2856,7 +2857,6 @@
               <AccueilView partner={partner} amenities={amenities} catalogue={catalogue} panier={panier} setPanier={setPanier} commandes={commandes} setVue={setVue} setPanierOpen={setPanierOpen} showToast={showToast} />
             ) : vue === "catalogue" ? (
               <div className="animate-fade-in">
-                <DerniereCommandeSection commandes={commandes} catalogue={catalogue} setPanier={setPanier} setPanierOpen={setPanierOpen} showToast={showToast} />
                 <AmenitiesSection amenities={amenities} catalogue={catalogue} panier={panier} setPanier={setPanier} />
                 <PromotionsSection catalogue={catalogue} panier={panier} setPanier={setPanier} promoActive={promoActive} promoTitle={promoTitle} />
                 <div className="flex items-center justify-between mb-4">
