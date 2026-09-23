@@ -21744,11 +21744,11 @@ const VueCommandes = ({ showToast }) => {
                             {(addProductSearchCmd[c.id] || '').length >= 2 && (() => {
                               const q = (addProductSearchCmd[c.id] || '').toLowerCase();
                               const matches = catalogCmd.filter(cat =>
-                                cat.ref.toLowerCase().includes(q) || (cat.nom || '').toLowerCase().includes(q)
-                              ).slice(0, 8);
+                                cat.ref.toLowerCase().includes(q) || (cat.nom || '').toLowerCase().includes(q) || (cat.categorie || '').toLowerCase().includes(q)
+                              ).slice(0, 15);
                               if (!matches.length) return null;
                               return (
-                                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-72 overflow-y-auto">
                                   {matches.map(cat => (
                                     <button key={cat.ref} onClick={() => {
                                       const tva = cat.tva || 20;
