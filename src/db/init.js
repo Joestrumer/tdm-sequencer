@@ -1724,15 +1724,15 @@ const CATEGORIE_MAP = {
   'Portes flacons': ['SPFS', 'PFS', 'PFD', 'PFT', 'PFDS', 'PFSS', 'PFTS', 'BAV'],
   'Cadeaux VIP & Spa': ['P016', 'P023', 'P012', 'P009', 'P020', 'P021-20', 'P026'],
   'Produits Spa & VIP': ['P021', 'P022', 'P317-100', 'P005', 'P006', 'P027', 'P003', 'P004', 'P004-500', 'P029'],
-  'Diffuseur de Parfums, Bougie & gel hydroalcoolique': ['P015'],
+  'Diffuseurs de Parfums, Bougie & gel hydroalcoolique': ['P015'],
   'Produits hygiène format voyage': ['P010-30', 'P010-50', 'P010-150', 'P024-40', 'P011-100', 'P017-30', 'P017', 'P038-30', 'P008-150', 'P008-75', 'P035-30', 'P008-30', 'P011-30', 'P042-30', 'P007-30', 'P014-100', 'P034-100', 'P035-100', 'P036-100', 'P037-100', 'P019-50', 'P044-30', 'P046-150', 'P047-30'],
   'Flacons vides': ['P007-300V', 'P008-300V', 'P010-300V', 'P011-300V', 'P024-300V', 'P042V', 'P040V-SANS POMPE', 'P042', 'P040'],
   'Autres': ['P5L', 'P500ml', 'P300ML', 'SPRAY-VIDE'],
 };
 
-// Refs avec wildcard (startsWith) pour Diffuseur de Parfums, Bougie & gel hydroalcoolique
+// Refs avec wildcard (startsWith) pour Diffuseurs de Parfums, Bougie & gel hydroalcoolique
 const CATEGORIE_PREFIX = {
-  'Diffuseur de Parfums, Bougie & gel hydroalcoolique': ['P039', 'P041', 'P018'],
+  'Diffuseurs de Parfums, Bougie & gel hydroalcoolique': ['P039', 'P041', 'P018'],
 };
 
 // Seed catégories uniquement pour les produits qui n'en ont pas encore
@@ -1761,8 +1761,8 @@ for (const [cat, prefixes] of Object.entries(CATEGORIE_PREFIX)) {
 if (catForced > 0 || catUpdated > 0) console.log(`🏷️  ${catForced + catUpdated} catégorie(s) assignée(s) au catalogue`);
 
 // Migration : renommer l'ancienne catégorie
-const renCat = db.prepare("UPDATE vf_catalog SET categorie = ? WHERE categorie = ?").run('Diffuseur de Parfums, Bougie & gel hydroalcoolique', 'Parfums & gel hydroalcoolique');
-if (renCat.changes > 0) console.log(`🏷️  ${renCat.changes} produit(s) migré(s) vers "Diffuseur de Parfums, Bougie & gel hydroalcoolique"`);
+const renCat = db.prepare("UPDATE vf_catalog SET categorie = ? WHERE categorie = ?").run('Diffuseurs de Parfums, Bougie & gel hydroalcoolique', 'Parfums & gel hydroalcoolique');
+if (renCat.changes > 0) console.log(`🏷️  ${renCat.changes} produit(s) migré(s) vers "Diffuseurs de Parfums, Bougie & gel hydroalcoolique"`);
 
 // ─── Seed MOQ (quantité par carton) ────────────────────────────────────────
 const MOQ_MAP = {

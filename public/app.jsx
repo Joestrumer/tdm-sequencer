@@ -17275,7 +17275,7 @@ const CATALOG_CATEGORIES_ORDER = [
   'Portes flacons',
   'Cadeaux VIP & Spa',
   'Produits Spa & VIP',
-  'Diffuseur de Parfums, Bougie & gel hydroalcoolique',
+  'Diffuseurs de Parfums, Bougie & gel hydroalcoolique',
   'Produits hygiène format voyage',
   'Flacons vides',
   'Autres',
