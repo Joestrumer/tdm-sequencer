@@ -507,7 +507,7 @@
 
     const AmenitiesSection = ({ amenities, catalogue, panier, setPanier }) => {
       if (!amenities || Object.keys(amenities).length === 0) return null;
-      const [showBidons, setShowBidons] = useState(true);
+      const [showBidons, setShowBidons] = useState(false);
       const [showFlacons, setShowFlacons] = useState(false);
 
       const sections = AMENITY_TYPES
