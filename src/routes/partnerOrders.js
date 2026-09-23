@@ -299,6 +299,7 @@ module.exports = (db) => {
       // Construire les positions
       const positions = [];
       let hasDiscount = false;
+      const isProforma = documentType === 'proforma';
 
       for (const p of products) {
         const ref = normalizeRef(p.ref);
@@ -336,10 +337,12 @@ module.exports = (db) => {
           total_price_gross: totalPriceGross.toFixed(2),
         };
 
-        // Nom : laisser VF utiliser le nom du produit si product_id trouvé
+        // Nom : pour les factures (vat), laisser VF utiliser le nom via product_id
+        // Pour les proforma, toujours fournir name (VF l'exige pour ce type de document)
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
-        } else {
+        }
+        if (!vfProduct.productId || isProforma) {
           position.name = vfProduct.productName || p.nom || vfProduct.ref || ref;
         }
         if (discount > 0) position.discount_percent = discount;
@@ -401,10 +404,10 @@ module.exports = (db) => {
           tax: fi.tva,
           quantity: 1,
         };
-        // Nom : laisser VF utiliser le nom du produit si product_id trouvé
         if (vfProduct.productId) {
           fpPosition.product_id = vfProduct.productId;
-        } else {
+        }
+        if (!vfProduct.productId || isProforma) {
           fpPosition.name = vfProduct.productName || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION");
         }
         if (fi.discount > 0) { fpPosition.discount_percent = fi.discount; hasDiscount = true; }
