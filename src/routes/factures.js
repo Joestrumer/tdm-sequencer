@@ -366,11 +366,10 @@ module.exports = (db) => {
           quantity: qty,
         };
 
-        // Nom : laisser VF utiliser le nom du produit si product_id trouvé
+        // Nom : toujours fournir name (VF l'exige même avec product_id)
+        position.name = vfProduct.productName || p.nom || p.name || vfProduct.ref || ref;
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
-        } else {
-          position.name = vfProduct.productName || p.nom || p.name || vfProduct.ref || ref;
         }
 
         // Toujours envoyer price_net et total_price_gross (VF les exige)
@@ -399,7 +398,7 @@ module.exports = (db) => {
 
         const position = {
           code: f.ref || ref,
-          ...(vfProduct.productId ? {} : { name: vfProduct.productName || f.nom || f.name || ref }),
+          name: vfProduct.productName || f.nom || f.name || ref,
           price_net: Number(priceHT).toFixed(2),
           total_price_gross: Number(gross).toFixed(2),
           tax: taxRate,
@@ -632,10 +631,9 @@ module.exports = (db) => {
           price_net: priceToUse.toFixed(2),
           total_price_gross: totalPriceGross.toFixed(2),
         };
+        position.name = vfProduct.productName || p.nom || p.name || vfProduct.ref || ref;
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
-        } else {
-          position.name = vfProduct.productName || p.nom || p.name || vfProduct.ref || ref;
         }
         if (discount > 0) position.discount_percent = discount;
 
@@ -652,7 +650,7 @@ module.exports = (db) => {
 
         const position = {
           code: f.ref || ref,
-          ...(vfProduct.productId ? {} : { name: vfProduct.productName || f.nom || f.name || ref }),
+          name: vfProduct.productName || f.nom || f.name || ref,
           price_net: Number(priceHT).toFixed(2),
           total_price_gross: Number(gross).toFixed(2),
           tax: taxRate,
