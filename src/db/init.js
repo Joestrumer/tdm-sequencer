@@ -1760,9 +1760,12 @@ for (const [cat, prefixes] of Object.entries(CATEGORIE_PREFIX)) {
 
 if (catForced > 0 || catUpdated > 0) console.log(`🏷️  ${catForced + catUpdated} catégorie(s) assignée(s) au catalogue`);
 
-// Migration : renommer l'ancienne catégorie
-const renCat = db.prepare("UPDATE vf_catalog SET categorie = ? WHERE categorie = ?").run('Diffuseurs de Parfums, Bougie & gel hydroalcoolique', 'Parfums & gel hydroalcoolique');
-if (renCat.changes > 0) console.log(`🏷️  ${renCat.changes} produit(s) migré(s) vers "Diffuseurs de Parfums, Bougie & gel hydroalcoolique"`);
+// Migration : renommer les anciennes catégories
+const stmtRenCat = db.prepare("UPDATE vf_catalog SET categorie = ? WHERE categorie = ?");
+const renCat1 = stmtRenCat.run('Diffuseurs de Parfums, Bougie & gel hydroalcoolique', 'Parfums & gel hydroalcoolique');
+const renCat2 = stmtRenCat.run('Diffuseurs de Parfums, Bougie & gel hydroalcoolique', 'Diffuseur de Parfums, Bougie & gel hydroalcoolique');
+const renTotal = renCat1.changes + renCat2.changes;
+if (renTotal > 0) console.log(`🏷️  ${renTotal} produit(s) migré(s) vers "Diffuseurs de Parfums, Bougie & gel hydroalcoolique"`);
 
 // ─── Seed MOQ (quantité par carton) ────────────────────────────────────────
 const MOQ_MAP = {
