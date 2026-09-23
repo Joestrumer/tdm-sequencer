@@ -1326,8 +1326,8 @@
                       try {
                         const res = await api.post('/devis', { products: selectedProducts, message: devisMessage, cadeauxVIP: devisVIP });
                         if (res.ok) {
-                          const echanLines = selectedProducts.map(p => p.ref + ' ' + p.nom).join(', ');
-                          const noteEch = '\u00c9chantillons demand\u00e9s : ' + echanLines + (devisVIP ? ' + Cadeaux VIP' : '') + (devisMessage.trim() ? ' | Projet : ' + devisMessage.trim() : '');
+                          const echanRefs = selectedProducts.map(p => p.ref).join(', ');
+                          const noteEch = '\u00c9chantillons : ' + echanRefs + (devisVIP ? ' + Cadeaux VIP' : '');
                           setPanierNotes(prev => prev ? prev + '\n' + noteEch : noteEch);
                           showToast('Demande envoy\u00e9e \u2014 ajout\u00e9e aux notes du panier', 'success');
                           closeDevis();
