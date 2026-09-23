@@ -259,8 +259,9 @@ function genererCSVLogisticien(invoiceData, client, shippingNames, options = {})
     const streetKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|lot|zi|zone|voie|rte|chem)\b/i;
     const countryNames = { 'france': 'FR', 'belgique': 'BE', 'suisse': 'CH', 'luxembourg': 'LU', 'allemagne': 'DE', 'italie': 'IT', 'espagne': 'ES', 'autriche': 'AT', 'pays-bas': 'NL', 'portugal': 'PT', 'royaume-uni': 'GB' };
     if (dLines.length >= 2) {
-      // Détecter si la première ligne est une adresse (commence par un numéro ou contient un mot-clé de rue)
-      const firstLineIsStreet = /^\d/.test(dLines[0]) || streetKw.test(dLines[0]);
+      // Détecter si la première ligne est une adresse (commence par un numéro suivi d'un espace, ou contient un mot-clé de rue)
+      // Note: /^\d+\s/ (pas /^\d/) pour éviter les noms comme "1K - Machefert" qui commencent par un chiffre
+      const firstLineIsStreet = /^\d+\s/.test(dLines[0]) || streetKw.test(dLines[0]);
 
       let addrLines; // lignes restantes à parser (CP+Ville, Pays)
       if (firstLineIsStreet) {
