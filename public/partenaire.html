@@ -1318,7 +1318,7 @@
                           const ref = row[frag.key];
                           if (ref && devisSelected[ri + '_' + fi]) {
                             const prod = catalogue.find(c => c.ref === ref);
-                            selectedProducts.push({ ref, nom: prod ? prod.nom : row.type + ' \u2014 ' + frag.name, quantite: '\u00e9chantillon' });
+                            selectedProducts.push({ ref, nom: prod ? prod.nom : row.type + ' \u2014 ' + frag.name, gamme: frag.sub, quantite: '\u00e9chantillon' });
                           }
                         });
                       });
@@ -1326,7 +1326,7 @@
                       try {
                         const res = await api.post('/devis', { products: selectedProducts, message: devisMessage, cadeauxVIP: devisVIP });
                         if (res.ok) {
-                          const echanRefs = selectedProducts.map(p => p.ref).join(', ');
+                          const echanRefs = selectedProducts.map(p => p.ref + ' ' + p.gamme).join(', ');
                           const noteEch = '\u00c9chantillons : ' + echanRefs + (devisVIP ? ' + Cadeaux VIP' : '');
                           setPanierNotes(prev => prev ? prev + '\n' + noteEch : noteEch);
                           showToast('Demande envoy\u00e9e \u2014 ajout\u00e9e aux notes du panier', 'success');
