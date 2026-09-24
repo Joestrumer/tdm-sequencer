@@ -1226,9 +1226,9 @@
             const thBase = { background:'var(--tdm-soft)',padding:'8px 5px',textAlign:'center',verticalAlign:'top',fontWeight:400,borderBottom:'2px solid var(--tdm-olive)',borderLeft:'1px solid var(--tdm-line)',borderRight:'1px solid var(--tdm-line)' };
             const tdBase = { padding:'6px 6px',textAlign:'center',borderBottom:'1px solid var(--tdm-line)',borderLeft:'1px solid var(--tdm-line)',borderRight:'1px solid var(--tdm-line)' };
             return (
-            <div id="tdm-devis-modal" role="dialog" aria-modal="true" aria-label="Demander des \u00e9chantillons" className="fixed z-50 flex items-start justify-center overflow-auto" onClick={closeDevis} onKeyDown={e => { if (e.key === 'Escape') closeDevis(); }} style={{top:0,left:0,right:0,bottom:0,padding:'56px 16px 16px'}}>
-              <div className="fixed inset-0 z-40" style={{background:'rgba(0,0,0,.35)',backdropFilter:'blur(4px)'}}></div>
-              <div className="relative z-50 w-full flex flex-col" style={{maxWidth:960,maxHeight:'calc(100vh - 72px)',background:'var(--tdm-white)',border:'1px solid var(--tdm-line)',fontFamily:"'DM Sans',Arial,sans-serif",color:'var(--tdm-ink)',fontSize:13,overflow:'hidden'}} onClick={e => e.stopPropagation()}>
+            <div id="tdm-devis-modal" role="dialog" aria-modal="true" aria-label="Demander des \u00e9chantillons" className="fixed inset-0 flex items-start justify-center" onClick={closeDevis} onKeyDown={e => { if (e.key === 'Escape') closeDevis(); }} style={{zIndex:9999,padding:'100px 16px 16px'}}>
+              <div className="fixed inset-0" style={{zIndex:9998,background:'rgba(0,0,0,.35)',backdropFilter:'blur(4px)'}}></div>
+              <div className="relative w-full flex flex-col" style={{zIndex:9999,maxWidth:960,maxHeight:'calc(100vh - 116px)',background:'var(--tdm-white)',border:'1px solid var(--tdm-line)',fontFamily:"'DM Sans',Arial,sans-serif",color:'var(--tdm-ink)',fontSize:13,overflow:'hidden'}} onClick={e => e.stopPropagation()}>
                 <div style={{padding:'14px 28px 8px',flexShrink:0}}>
                   <button onClick={closeDevis} style={{position:'absolute',top:12,right:18,background:'none',border:'none',fontSize:20,color:'var(--tdm-muted)',cursor:'pointer',lineHeight:1,zIndex:1}} aria-label="Fermer">&times;</button>
                   <h3 style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontWeight:400,letterSpacing:'-.8px',fontSize:24,marginBottom:4}}>Trouvez votre signature de soin</h3>
