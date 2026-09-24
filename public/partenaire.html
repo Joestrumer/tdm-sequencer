@@ -1228,13 +1228,13 @@
             return (
             <div id="tdm-devis-modal" role="dialog" aria-modal="true" aria-label="Demander des \u00e9chantillons" className="fixed inset-0 z-50 flex items-end sm:items-center justify-center" onClick={closeDevis} onKeyDown={e => { if (e.key === 'Escape') closeDevis(); }} style={{padding:'16px'}}>
               <div className="absolute inset-0" style={{background:'rgba(0,0,0,.35)',backdropFilter:'blur(4px)'}}></div>
-              <div className="relative w-full flex flex-col" style={{maxWidth:960,maxHeight:'calc(100vh - 32px)',background:'var(--tdm-white)',border:'1px solid var(--tdm-line)',fontFamily:"'DM Sans',Arial,sans-serif",color:'var(--tdm-ink)',fontSize:13}} onClick={e => e.stopPropagation()}>
-                <div style={{padding:'18px 28px 12px',flexShrink:0}}>
+              <div className="relative w-full flex flex-col" style={{maxWidth:960,height:'calc(100vh - 32px)',maxHeight:700,background:'var(--tdm-white)',border:'1px solid var(--tdm-line)',fontFamily:"'DM Sans',Arial,sans-serif",color:'var(--tdm-ink)',fontSize:13,overflow:'hidden'}} onClick={e => e.stopPropagation()}>
+                <div style={{padding:'14px 28px 8px',flexShrink:0}}>
                   <button onClick={closeDevis} style={{position:'absolute',top:12,right:18,background:'none',border:'none',fontSize:20,color:'var(--tdm-muted)',cursor:'pointer',lineHeight:1,zIndex:1}} aria-label="Fermer">&times;</button>
                   <h3 style={{fontFamily:"'Cormorant Garamond',Georgia,serif",fontWeight:400,letterSpacing:'-.8px',fontSize:24,marginBottom:4}}>Trouvez votre signature de soin</h3>
                   <p style={{fontSize:12,color:'var(--tdm-muted)',lineHeight:1.6,maxWidth:520}}>S&eacute;lectionnez les soins et les parfums que vous souhaitez essayer, puis pr&eacute;cisez votre projet.</p>
                 </div>
-                <div style={{flex:1,overflowY:'auto',padding:'0 28px 14px'}}>
+                <div style={{flex:1,minHeight:0,overflowY:'auto',padding:'0 28px 14px'}}>
                   <div style={{overflowX:'auto',WebkitOverflowScrolling:'touch'}}>
                     <table style={{borderCollapse:'collapse',width:'100%',fontSize:12,minWidth:720}}>
                       <thead>
