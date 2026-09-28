@@ -4,7 +4,7 @@
 
 const express = require('express');
 const {
-  normalizeRef, findVFProduct, calculerRemise, calculerFraisPort, genererCSVLogisticien, parseAdresseExpedition,
+  normalizeRef, findVFProduct, calculerRemise, calculerFraisPort, genererCSVLogisticien,
 } = require('../services/productMatchingService');
 const logger = require('../config/logger');
 const hubspot = require('../services/hubspotService');
@@ -230,7 +230,11 @@ module.exports = (db) => {
       const order = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.email as partner_email,
                vp.contact_nom as partner_contact, vp.telephone as partner_telephone,
-               vp.adresse as partner_adresse, vp.shipping_id as partner_shipping_id
+               vp.adresse as partner_adresse, vp.shipping_id as partner_shipping_id,
+               vp.livraison_rue as partner_livraison_rue, vp.livraison_code_postal as partner_livraison_cp,
+               vp.livraison_ville as partner_livraison_ville, vp.livraison_pays as partner_livraison_pays,
+               vp.facturation_rue as partner_facturation_rue, vp.facturation_code_postal as partner_facturation_cp,
+               vp.facturation_ville as partner_facturation_ville, vp.facturation_pays as partner_facturation_pays
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         WHERE po.id = ?
@@ -263,7 +267,11 @@ module.exports = (db) => {
                vp.frais_exonere as partner_frais_exonere, vp.exonere_fp, vp.exonere_fe,
                vp.frais_expedition_ht as partner_frais_expedition_ht,
                vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email,
-               vp.vf_client_id as partner_vf_client_id
+               vp.vf_client_id as partner_vf_client_id,
+               vp.livraison_rue as partner_livraison_rue, vp.livraison_code_postal as partner_livraison_cp,
+               vp.livraison_ville as partner_livraison_ville, vp.livraison_pays as partner_livraison_pays,
+               vp.facturation_rue as partner_facturation_rue, vp.facturation_code_postal as partner_facturation_cp,
+               vp.facturation_ville as partner_facturation_ville, vp.facturation_pays as partner_facturation_pays
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         WHERE po.id = ?
@@ -422,9 +430,7 @@ module.exports = (db) => {
       const today = new Date().toISOString().split('T')[0];
       const paymentTo = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
 
-      // Parser l'adresse du partenaire pour les champs VF
-      const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
-
+      // Utiliser les champs structurés pour l'adresse de facturation (facture VF)
       const invoiceData = {
         kind: documentType || 'vat',
         number: null,
@@ -434,10 +440,10 @@ module.exports = (db) => {
         department_id: parseInt(process.env.VF_DEPARTMENT_ID) || 1553025,
         buyer_name: order.partner_nom,
         buyer_email: order.partner_email || '',
-        buyer_street: parsedAddr.street || '',
-        buyer_city: parsedAddr.city || '',
-        buyer_post_code: parsedAddr.zip || '',
-        buyer_country: parsedAddr.country || 'FR',
+        buyer_street: order.partner_facturation_rue || '',
+        buyer_city: order.partner_facturation_ville || '',
+        buyer_post_code: order.partner_facturation_cp || '',
+        buyer_country: order.partner_facturation_pays || 'FR',
         buyer_phone: order.partner_telephone || '',
         show_discount: hasDiscount,
         discount_kind: hasDiscount ? 'percent_unit' : null,
@@ -528,15 +534,14 @@ module.exports = (db) => {
       let csv_base64 = null;
       if (generateCsv && shippingId) {
         try {
-          const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
           const livraisonNom = [order.livraison_prenom, order.livraison_nom].filter(Boolean).join(' ');
           const client = {
             name: order.partner_nom,
             recipient_name: livraisonNom || order.partner_contact || order.partner_nom,
-            street: parsedAddr.street,
-            city: parsedAddr.city,
-            zip: parsedAddr.zip,
-            country: parsedAddr.country,
+            street: order.partner_livraison_rue || order.partner_facturation_rue || '',
+            city: order.partner_livraison_ville || order.partner_facturation_ville || '',
+            zip: order.partner_livraison_cp || order.partner_facturation_cp || '',
+            country: order.partner_livraison_pays || order.partner_facturation_pays || 'FR',
             email: order.livraison_email || order.partner_email || '',
             phone: order.livraison_telephone || order.partner_telephone || '',
           };
@@ -648,9 +653,12 @@ module.exports = (db) => {
 
       const order = db.prepare(`
         SELECT po.*, vp.nom as partner_nom, vp.email as partner_email,
-               vp.contact_nom as partner_contact, vp.adresse as partner_adresse,
-               vp.telephone as partner_telephone,
-               vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email
+               vp.contact_nom as partner_contact, vp.telephone as partner_telephone,
+               vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email,
+               vp.livraison_rue as partner_livraison_rue, vp.livraison_code_postal as partner_livraison_cp,
+               vp.livraison_ville as partner_livraison_ville, vp.livraison_pays as partner_livraison_pays,
+               vp.facturation_rue as partner_facturation_rue, vp.facturation_code_postal as partner_facturation_cp,
+               vp.facturation_ville as partner_facturation_ville, vp.facturation_pays as partner_facturation_pays
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         WHERE po.id = ?
@@ -660,15 +668,14 @@ module.exports = (db) => {
 
       const products = JSON.parse(order.products || '[]');
       const catalog = getCatalogMap();
-      const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
       const livraisonNom = [order.livraison_prenom, order.livraison_nom].filter(Boolean).join(' ');
       const client = {
         name: order.partner_nom,
         recipient_name: livraisonNom || order.partner_contact || order.partner_nom,
-        street: parsedAddr.street,
-        city: parsedAddr.city,
-        zip: parsedAddr.zip,
-        country: parsedAddr.country,
+        street: order.partner_livraison_rue || order.partner_facturation_rue || '',
+        city: order.partner_livraison_ville || order.partner_facturation_ville || '',
+        zip: order.partner_livraison_cp || order.partner_facturation_cp || '',
+        country: order.partner_livraison_pays || order.partner_facturation_pays || 'FR',
         email: order.livraison_email || order.partner_email || '',
         phone: order.livraison_telephone || order.partner_telephone || '',
       };
@@ -708,9 +715,12 @@ module.exports = (db) => {
       for (const orderId of orderIds) {
         const order = db.prepare(`
           SELECT po.*, vp.nom as partner_nom, vp.email as partner_email,
-                 vp.contact_nom as partner_contact, vp.adresse as partner_adresse,
-                 vp.telephone as partner_telephone,
-                 vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email
+                 vp.contact_nom as partner_contact, vp.telephone as partner_telephone,
+                 vp.livraison_prenom, vp.livraison_nom, vp.livraison_telephone, vp.livraison_email,
+                 vp.livraison_rue as partner_livraison_rue, vp.livraison_code_postal as partner_livraison_cp,
+                 vp.livraison_ville as partner_livraison_ville, vp.livraison_pays as partner_livraison_pays,
+                 vp.facturation_rue as partner_facturation_rue, vp.facturation_code_postal as partner_facturation_cp,
+                 vp.facturation_ville as partner_facturation_ville, vp.facturation_pays as partner_facturation_pays
           FROM partner_orders po
           JOIN vf_partners vp ON vp.id = po.partner_id
           WHERE po.id = ? AND po.statut = 'validee'
@@ -719,15 +729,14 @@ module.exports = (db) => {
         if (!order) continue;
 
         const products = JSON.parse(order.products || '[]');
-        const parsedAddr = parseAdresseExpedition(order.partner_adresse, order.partner_nom);
         const livraisonNom = [order.livraison_prenom, order.livraison_nom].filter(Boolean).join(' ');
         const client = {
           name: order.partner_nom,
           recipient_name: livraisonNom || order.partner_contact || order.partner_nom,
-          street: parsedAddr.street,
-          city: parsedAddr.city,
-          zip: parsedAddr.zip,
-          country: parsedAddr.country,
+          street: order.partner_livraison_rue || order.partner_facturation_rue || '',
+          city: order.partner_livraison_ville || order.partner_facturation_ville || '',
+          zip: order.partner_livraison_cp || order.partner_facturation_cp || '',
+          country: order.partner_livraison_pays || order.partner_facturation_pays || 'FR',
           email: order.livraison_email || order.partner_email || '',
           phone: order.livraison_telephone || order.partner_telephone || '',
         };
