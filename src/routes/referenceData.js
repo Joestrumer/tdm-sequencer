@@ -10,6 +10,54 @@ const logger = require('../config/logger');
 module.exports = (db) => {
   const router = express.Router();
 
+  // ─── Helper : parser l'adresse de livraison VF (texte libre) ────────────
+  // Format typique VF : "Nom\nRue\nCP Ville\nPays" ou "Rue\nCP Ville"
+  function parseVFDeliveryAddress(vfClient) {
+    const useDelivery = vfClient.use_delivery_address || false;
+    const rawDelivery = (vfClient.delivery_address || '').trim();
+    const result = { rue: '', code_postal: '', ville: '', pays: '' };
+    if (!useDelivery || !rawDelivery) return result;
+
+    const lines = rawDelivery.split('\n').map(l => l.trim()).filter(Boolean);
+    if (lines.length === 0) return result;
+
+    const cpRegex = /^(\d{4,5})\s+(.+)$/;
+    const streetKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|lot|zi|zone|voie|rte|chem|résidence|hameau|lieu.dit|lieudit)\b/i;
+    const countryNames = { 'france': 'FR', 'belgique': 'BE', 'suisse': 'CH', 'luxembourg': 'LU', 'allemagne': 'DE', 'italie': 'IT', 'espagne': 'ES', 'autriche': 'AT', 'pays-bas': 'NL', 'portugal': 'PT', 'royaume-uni': 'GB' };
+
+    // Identifier chaque ligne
+    const parsed = lines.map(line => {
+      if (cpRegex.test(line)) return { type: 'cp_ville', line };
+      if (/^[A-Z]{2}$/.test(line) || countryNames[line.toLowerCase()]) return { type: 'pays', line };
+      if (/^\d+[\s,]/.test(line) || streetKw.test(line)) return { type: 'rue', line };
+      return { type: 'unknown', line };
+    });
+
+    // Extraire CP/Ville
+    const cpLine = parsed.find(p => p.type === 'cp_ville');
+    if (cpLine) {
+      const m = cpLine.line.match(cpRegex);
+      result.code_postal = m[1];
+      result.ville = m[2];
+    }
+
+    // Extraire pays
+    const paysLine = parsed.find(p => p.type === 'pays');
+    if (paysLine) {
+      result.pays = countryNames[paysLine.line.toLowerCase()] || paysLine.line;
+    }
+
+    // Extraire rue : prendre la ligne identifiée comme rue, sinon la première ligne inconnue
+    // (exclure les lignes déjà utilisées pour CP/ville et pays)
+    const rueLine = parsed.find(p => p.type === 'rue')
+      || parsed.find(p => p.type === 'unknown' && p !== cpLine && p !== paysLine);
+    if (rueLine) {
+      result.rue = rueLine.line;
+    }
+
+    return result;
+  }
+
   // Transforme un lien Google Drive en URL image directe
   function transformGoogleDriveUrl(url) {
     if (!url) return url;
@@ -757,19 +805,9 @@ module.exports = (db) => {
         const emailReminders = vfClient.email_for_reminders || '';
         const adresse = [street, postCode, city].filter(Boolean).join(', ') || null;
 
-        // Adresse de livraison VF (texte libre, format "Nom\nRue\nCP Ville\nPays")
-        const useDelivery = vfClient.use_delivery_address || false;
-        const rawDelivery = (vfClient.delivery_address || '').trim();
-        let livRue = '', livCp = '', livVille = '', livPays = '';
-        if (useDelivery && rawDelivery) {
-          const dLines = rawDelivery.split('\n').map(l => l.trim()).filter(Boolean);
-          for (const line of dLines) {
-            const cpMatch = line.match(/^(\d{4,5})\s+(.+)$/);
-            if (cpMatch) { livCp = cpMatch[1]; livVille = cpMatch[2]; }
-            else if (!livRue) { livRue = line; }
-            else if (!livPays) { livPays = line; }
-          }
-        }
+        // Adresse de livraison VF
+        const liv = parseVFDeliveryAddress(vfClient);
+        const livRue = liv.rue, livCp = liv.code_postal, livVille = liv.ville, livPays = liv.pays;
 
         // Mettre à jour le vf_client_id dans les mappings
         if (vfId) {
@@ -844,9 +882,10 @@ module.exports = (db) => {
       // Max 30 appels pour ne pas ralentir le sync
       const partnersMissingData = db.prepare(
         `SELECT id, vf_client_id, facturation_rue, facturation_code_postal, facturation_ville,
-                facturation_pays, facturation_tva, facturation_portable, facturation_email
+                facturation_pays, facturation_tva, facturation_portable, facturation_email,
+                livraison_rue, livraison_code_postal, livraison_ville, livraison_pays
          FROM vf_partners
-         WHERE vf_client_id IS NOT NULL AND facturation_pays IS NULL
+         WHERE vf_client_id IS NOT NULL AND (facturation_pays IS NULL OR livraison_rue IS NULL)
          LIMIT 30`
       ).all();
 
@@ -863,6 +902,12 @@ module.exports = (db) => {
           if (!p.facturation_ville && fullClient.city) patches.facturation_ville = fullClient.city;
           if (!p.facturation_portable && fullClient.mobile_phone) patches.facturation_portable = fullClient.mobile_phone;
           if (!p.facturation_email && fullClient.email_for_reminders) patches.facturation_email = fullClient.email_for_reminders;
+          // Livraison depuis delivery_address VF
+          const livEnrich = parseVFDeliveryAddress(fullClient);
+          if (!p.livraison_rue && livEnrich.rue) patches.livraison_rue = livEnrich.rue;
+          if (!p.livraison_code_postal && livEnrich.code_postal) patches.livraison_code_postal = livEnrich.code_postal;
+          if (!p.livraison_ville && livEnrich.ville) patches.livraison_ville = livEnrich.ville;
+          if (!p.livraison_pays && livEnrich.pays) patches.livraison_pays = livEnrich.pays;
           if (Object.keys(patches).length > 0) {
             const sets = Object.keys(patches).map(k => `${k} = ?`).join(', ');
             db.prepare(`UPDATE vf_partners SET ${sets} WHERE id = ?`).run(...Object.values(patches), p.id);
@@ -896,6 +941,7 @@ module.exports = (db) => {
           const taxNo = fullClient.tax_no || '';
           const mobile = fullClient.mobile_phone || '';
           const adresse = [street, postCode, city].filter(Boolean).join(', ') || null;
+          const livRec = parseVFDeliveryAddress(fullClient);
           db.prepare(`
             UPDATE vf_partners SET
               email = COALESCE(?, email), contact_nom = COALESCE(?, contact_nom),
@@ -906,9 +952,13 @@ module.exports = (db) => {
               facturation_ville = COALESCE(?, facturation_ville),
               facturation_pays = COALESCE(?, facturation_pays),
               facturation_tva = COALESCE(?, facturation_tva),
-              facturation_portable = COALESCE(?, facturation_portable)
+              facturation_portable = COALESCE(?, facturation_portable),
+              livraison_rue = COALESCE(?, livraison_rue),
+              livraison_code_postal = COALESCE(?, livraison_code_postal),
+              livraison_ville = COALESCE(?, livraison_ville),
+              livraison_pays = COALESCE(?, livraison_pays)
             WHERE id = ?
-          `).run(email, contactName, phone, adresse, vfName, street || null, postCode || null, city || null, country || null, taxNo || null, mobile || null, p.id);
+          `).run(email, contactName, phone, adresse, vfName, street || null, postCode || null, city || null, country || null, taxNo || null, mobile || null, livRec.rue || null, livRec.code_postal || null, livRec.ville || null, livRec.pays || null, p.id);
           recovered++;
         } catch (_) {}
       }
@@ -1005,6 +1055,7 @@ module.exports = (db) => {
       const mobile = vfClient.mobile_phone || '';
       const buyer = vfClient.buyer ? 1 : 0;
       const adresse = [street, postCode, city].filter(Boolean).join(', ') || null;
+      const liv = parseVFDeliveryAddress(vfClient);
 
       // Vérifier conflit de nom avec un partenaire qui a un vf_client_id DIFFÉRENT
       const nameConflict = db.prepare('SELECT id, nom, vf_client_id FROM vf_partners WHERE LOWER(nom) = LOWER(?)').get(vfName);
@@ -1021,8 +1072,8 @@ module.exports = (db) => {
       const nomNormalise = finalName.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
       db.prepare(`
-        INSERT INTO vf_partners (nom, nom_normalise, email, contact_nom, telephone, adresse, vf_client_id, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, vf_display_name, actif)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
+        INSERT INTO vf_partners (nom, nom_normalise, email, contact_nom, telephone, adresse, vf_client_id, facturation_rue, facturation_code_postal, facturation_ville, facturation_pays, facturation_tva, facturation_entite_publique, facturation_portable, vf_display_name, livraison_rue, livraison_code_postal, livraison_ville, livraison_pays, actif)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)
         ON CONFLICT(nom) DO UPDATE SET
           vf_client_id = excluded.vf_client_id,
           email = COALESCE(excluded.email, vf_partners.email),
@@ -1035,8 +1086,12 @@ module.exports = (db) => {
           facturation_pays = COALESCE(excluded.facturation_pays, vf_partners.facturation_pays),
           facturation_tva = COALESCE(excluded.facturation_tva, vf_partners.facturation_tva),
           vf_display_name = COALESCE(excluded.vf_display_name, vf_partners.vf_display_name),
+          livraison_rue = COALESCE(excluded.livraison_rue, vf_partners.livraison_rue),
+          livraison_code_postal = COALESCE(excluded.livraison_code_postal, vf_partners.livraison_code_postal),
+          livraison_ville = COALESCE(excluded.livraison_ville, vf_partners.livraison_ville),
+          livraison_pays = COALESCE(excluded.livraison_pays, vf_partners.livraison_pays),
           actif = 1
-      `).run(finalName, nomNormalise, email, contactName, phone, adresse, String(vf_client_id), street || null, postCode || null, city || null, country || null, taxNo || null, buyer, mobile || null, vfName);
+      `).run(finalName, nomNormalise, email, contactName, phone, adresse, String(vf_client_id), street || null, postCode || null, city || null, country || null, taxNo || null, buyer, mobile || null, vfName, liv.rue || null, liv.code_postal || null, liv.ville || null, liv.pays || null);
 
       // Aussi créer le mapping dans vf_client_mappings
       const existingMapping = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
@@ -1074,6 +1129,7 @@ module.exports = (db) => {
       const vfName = vfClient?.name?.trim() || null;
 
       // Mettre à jour le vf_client_id du partenaire (c'est ce compte VF qui sera utilisé pour facturer)
+      const liv = vfClient ? parseVFDeliveryAddress(vfClient) : { rue: '', code_postal: '', ville: '', pays: '' };
       db.prepare(`
         UPDATE vf_partners SET
           vf_client_id = ?,
@@ -1085,13 +1141,18 @@ module.exports = (db) => {
           facturation_ville = COALESCE(?, facturation_ville),
           facturation_pays = COALESCE(?, facturation_pays),
           facturation_tva = COALESCE(?, facturation_tva),
-          facturation_portable = COALESCE(?, facturation_portable)
+          facturation_portable = COALESCE(?, facturation_portable),
+          livraison_rue = COALESCE(?, livraison_rue),
+          livraison_code_postal = COALESCE(?, livraison_code_postal),
+          livraison_ville = COALESCE(?, livraison_ville),
+          livraison_pays = COALESCE(?, livraison_pays)
         WHERE id = ?
       `).run(
         String(vf_client_id),
         vfClient?.email || null, vfClient?.shortcut || null, vfClient?.phone || null,
         vfClient?.street || null, vfClient?.post_code || null, vfClient?.city || null,
         vfClient?.country || null, vfClient?.tax_no || null, vfClient?.mobile_phone || null,
+        liv.rue || null, liv.code_postal || null, liv.ville || null, liv.pays || null,
         partnerId
       );
 
