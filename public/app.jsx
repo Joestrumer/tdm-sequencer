@@ -20963,6 +20963,14 @@ const VueCommandes = ({ showToast }) => {
 
   useEffect(() => { charger(); }, [filtre]);
 
+  // Polling toutes les 30s pour détecter les nouvelles commandes partenaires
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (!document.hidden && !validating) charger();
+    }, 30000);
+    return () => clearInterval(interval);
+  }, [filtre, validating]);
+
   const openValidateModal = (commande) => {
     const cp = commande.partner_livraison_cp || commande.partner_facturation_cp || '';
     setValidateOptions({
