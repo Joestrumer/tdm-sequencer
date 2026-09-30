@@ -22,6 +22,8 @@ module.exports = (db) => {
     if (lines.length === 0) return result;
 
     const cpRegex = /^(\d{4,5})\s+(.+)$/;
+    // Regex pour CP embarqué dans une ligne (ex: "577 route des moussoux 74400 chamonix")
+    const embeddedCpRegex = /\b(\d{4,5})\s+([a-zA-ZÀ-ÿ][a-zA-ZÀ-ÿ\s-]+)$/;
     const streetKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|lot|zi|zone|voie|rte|chem|résidence|hameau|lieu.dit|lieudit)\b/i;
     const countryNames = { 'france': 'FR', 'belgique': 'BE', 'suisse': 'CH', 'luxembourg': 'LU', 'allemagne': 'DE', 'italie': 'IT', 'espagne': 'ES', 'autriche': 'AT', 'pays-bas': 'NL', 'portugal': 'PT', 'royaume-uni': 'GB' };
 
@@ -41,18 +43,39 @@ module.exports = (db) => {
       result.ville = m[2];
     }
 
+    // Fallback : si pas de ligne CP/Ville dédiée, chercher un CP embarqué dans une ligne rue/unknown
+    // Ex: "577 route des moussoux 74400 chamonix" ou "Chalet Rock N Roll 577 route des moussoux 74400 chamonix"
+    if (!result.code_postal) {
+      for (const p of parsed) {
+        if (p.type === 'pays') continue;
+        const m = p.line.match(embeddedCpRegex);
+        if (m) {
+          result.code_postal = m[1];
+          result.ville = m[2].trim();
+          // Extraire la partie rue (tout avant le CP)
+          const cpIdx = p.line.indexOf(m[0]);
+          const ruePart = p.line.substring(0, cpIdx).trim();
+          if (ruePart) result.rue = ruePart;
+          // Marquer cette ligne comme traitée
+          p._used = true;
+          break;
+        }
+      }
+    }
+
     // Extraire pays
     const paysLine = parsed.find(p => p.type === 'pays');
     if (paysLine) {
       result.pays = countryNames[paysLine.line.toLowerCase()] || paysLine.line;
     }
 
-    // Extraire rue : prendre la ligne identifiée comme rue, sinon la première ligne inconnue
-    // (exclure les lignes déjà utilisées pour CP/ville et pays)
-    const rueLine = parsed.find(p => p.type === 'rue')
-      || parsed.find(p => p.type === 'unknown' && p !== cpLine && p !== paysLine);
-    if (rueLine) {
-      result.rue = rueLine.line;
+    // Extraire rue (si pas déjà extrait par le fallback embedded)
+    if (!result.rue) {
+      const rueLine = parsed.find(p => p.type === 'rue' && !p._used)
+        || parsed.find(p => p.type === 'unknown' && p !== cpLine && p !== paysLine && !p._used);
+      if (rueLine) {
+        result.rue = rueLine.line;
+      }
     }
 
     return result;
@@ -878,15 +901,16 @@ module.exports = (db) => {
       }
 
       // Post-sync : récupérer les champs manquants via appels individuels VF
-      // Limité aux partenaires sans pays (le bulk peut ne pas retourner country)
-      // Max 30 appels pour ne pas ralentir le sync
+      // Le bulk /clients.json ne retourne pas delivery_address ni use_delivery_address,
+      // donc on enrichit tous les partenaires sans adresse de livraison complète
+      // Max 50 appels pour ne pas ralentir le sync
       const partnersMissingData = db.prepare(
         `SELECT id, vf_client_id, facturation_rue, facturation_code_postal, facturation_ville,
                 facturation_pays, facturation_tva, facturation_portable, facturation_email,
                 livraison_rue, livraison_code_postal, livraison_ville, livraison_pays
          FROM vf_partners
-         WHERE vf_client_id IS NOT NULL AND (facturation_pays IS NULL OR livraison_rue IS NULL)
-         LIMIT 30`
+         WHERE vf_client_id IS NOT NULL AND (facturation_pays IS NULL OR livraison_rue IS NULL OR livraison_ville IS NULL)
+         LIMIT 50`
       ).all();
 
       let enriched = 0;
@@ -902,12 +926,13 @@ module.exports = (db) => {
           if (!p.facturation_ville && fullClient.city) patches.facturation_ville = fullClient.city;
           if (!p.facturation_portable && fullClient.mobile_phone) patches.facturation_portable = fullClient.mobile_phone;
           if (!p.facturation_email && fullClient.email_for_reminders) patches.facturation_email = fullClient.email_for_reminders;
-          // Livraison depuis delivery_address VF
+          // Livraison depuis delivery_address VF — toujours écraser si VF a des données
+          // (le bulk /clients.json ne retourne pas ces champs, seul le détail les a)
           const livEnrich = parseVFDeliveryAddress(fullClient);
-          if (!p.livraison_rue && livEnrich.rue) patches.livraison_rue = livEnrich.rue;
-          if (!p.livraison_code_postal && livEnrich.code_postal) patches.livraison_code_postal = livEnrich.code_postal;
-          if (!p.livraison_ville && livEnrich.ville) patches.livraison_ville = livEnrich.ville;
-          if (!p.livraison_pays && livEnrich.pays) patches.livraison_pays = livEnrich.pays;
+          if (livEnrich.rue) patches.livraison_rue = livEnrich.rue;
+          if (livEnrich.code_postal) patches.livraison_code_postal = livEnrich.code_postal;
+          if (livEnrich.ville) patches.livraison_ville = livEnrich.ville;
+          if (livEnrich.pays) patches.livraison_pays = livEnrich.pays;
           if (Object.keys(patches).length > 0) {
             const sets = Object.keys(patches).map(k => `${k} = ?`).join(', ');
             db.prepare(`UPDATE vf_partners SET ${sets} WHERE id = ?`).run(...Object.values(patches), p.id);
