@@ -47,12 +47,8 @@ function getAuth(db) {
 function resolveCanonicalClientName(db, vfName, vfClientId) {
   if (!vfName && !vfClientId) return vfName;
 
-  // Priorité 1 : lookup par vf_client_id (le plus fiable, insensible aux variations de nom)
+  // Priorité 1 : mapping explicite (file_name = nom canonique GSheets)
   if (vfClientId) {
-    // Chercher dans vf_partners d'abord (source de vérité admin)
-    const partnerById = db.prepare('SELECT nom FROM vf_partners WHERE vf_client_id = ? AND actif = 1').get(String(vfClientId));
-    if (partnerById && partnerById.nom) return partnerById.nom;
-    // Chercher dans vf_client_mappings par client_id
     const mappingById = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_client_id = ? AND file_name IS NOT NULL LIMIT 1').get(String(vfClientId));
     if (mappingById && mappingById.file_name) return mappingById.file_name;
   }

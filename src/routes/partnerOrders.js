@@ -42,17 +42,21 @@ module.exports = (db) => {
 
   function resolveCanonicalClientName(vfName, vfClientId) {
     if (!vfName && !vfClientId) return vfName;
-    // Priorité 1 : lookup par vf_client_id (le plus fiable)
+    // Priorité 1 : mapping explicite (file_name = nom canonique GSheets)
     if (vfClientId) {
-      const partnerById = db.prepare('SELECT nom FROM vf_partners WHERE vf_client_id = ? AND actif = 1').get(String(vfClientId));
-      if (partnerById && partnerById.nom) return partnerById.nom;
       const mappingById = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_client_id = ? AND file_name IS NOT NULL LIMIT 1').get(String(vfClientId));
       if (mappingById && mappingById.file_name) return mappingById.file_name;
     }
-    if (!vfName) return vfName;
-    // Priorité 2 : lookup exact par vf_name
-    const mapping = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
-    return (mapping && mapping.file_name) || vfName;
+    if (vfName) {
+      const mappingByName = db.prepare('SELECT file_name FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
+      if (mappingByName && mappingByName.file_name) return mappingByName.file_name;
+    }
+    // Priorité 2 : fallback sur vf_partners.nom
+    if (vfClientId) {
+      const partnerById = db.prepare('SELECT nom FROM vf_partners WHERE vf_client_id = ? AND actif = 1').get(String(vfClientId));
+      if (partnerById && partnerById.nom) return partnerById.nom;
+    }
+    return vfName;
   }
 
   function getDiscountsForClient(clientName) {
