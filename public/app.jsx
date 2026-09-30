@@ -23037,11 +23037,15 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                   { key: 'gel_douche', label: 'Gel douche', gammes: [
                     { ref: 'P008', gamme: 'Verveine / Reddition' },
                     { ref: 'P035', gamme: 'Thé Blanc / Élégance' },
+                    { ref: 'P045', gamme: 'Revelation' },
+                    { ref: 'P047', gamme: 'Radiance' },
                   ]},
                   { key: 'shampoing', label: 'Shampoing', gammes: [
                     { ref: 'P019', gamme: 'Verveine / Reddition' },
                     { ref: 'P010', gamme: 'Cédrat / Irrévérence' },
                     { ref: 'P034', gamme: 'Thé Blanc / Élégance' },
+                    { ref: 'P044', gamme: 'Revelation' },
+                    { ref: 'P046', gamme: 'Radiance' },
                   ]},
                   { key: 'gel_corps_cheveux', label: 'Gel Corps & Cheveux', gammes: [
                     { ref: 'P042', gamme: 'Verveine / Reddition' },
