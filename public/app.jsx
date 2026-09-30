@@ -23206,6 +23206,17 @@ const ModalProfile = ({ onClose, showToast, setCurrentUser }) => {
   const [saving, setSaving] = useState(false);
   const [testingVf, setTestingVf] = useState(false);
 
+  // HubSpot
+  const [hsToken, setHsToken] = useState('');
+  const [testingHs, setTestingHs] = useState(false);
+
+  // Brevo
+  const [brevoApiKey, setBrevoApiKey] = useState('');
+  const [brevoSmtpKey, setBrevoSmtpKey] = useState('');
+  const [brevoSmtpUser, setBrevoSmtpUser] = useState('');
+  const [brevoSenderEmail, setBrevoSenderEmail] = useState(currentUser?.brevo_sender_email || '');
+  const [brevoSenderName, setBrevoSenderName] = useState(currentUser?.brevo_sender_name || '');
+
   // Legacy admin : formulaire de création de compte
   const isLegacy = currentUser?.id === '_legacy_admin';
   const [regEmail, setRegEmail] = useState(currentUser?.email || '');
@@ -23269,6 +23280,45 @@ const ModalProfile = ({ onClose, showToast, setCurrentUser }) => {
       else showToast('Échec connexion : ' + (res.erreur || 'erreur'), 'error');
     } catch (e) { showToast(e.message, 'error'); }
     setTestingVf(false);
+  };
+
+  // HubSpot handlers
+  const handleSaveHsToken = async () => {
+    setSaving(true);
+    try {
+      const res = await api.patch('/auth/profile', { hubspot_api_token: hsToken || null });
+      if (res.erreur) throw new Error(res.erreur);
+      showToast(hsToken ? 'Clé HubSpot enregistrée' : 'Clé HubSpot supprimée', 'success');
+    } catch (e) { showToast(e.message, 'error'); }
+    setSaving(false);
+  };
+
+  const handleTestHs = async () => {
+    setTestingHs(true);
+    try {
+      const res = await api.get('/hubspot/status');
+      if (res.connecte) showToast('Connexion HubSpot OK', 'success');
+      else showToast('Échec connexion HubSpot : ' + (res.raison || 'erreur'), 'error');
+    } catch (e) { showToast(e.message, 'error'); }
+    setTestingHs(false);
+  };
+
+  // Brevo handlers
+  const handleSaveBrevo = async () => {
+    setSaving(true);
+    try {
+      const payload = {};
+      if (brevoApiKey) payload.brevo_api_key = brevoApiKey;
+      if (brevoSmtpKey) payload.brevo_smtp_key = brevoSmtpKey;
+      if (brevoSmtpUser) payload.brevo_smtp_user = brevoSmtpUser;
+      payload.brevo_sender_email = brevoSenderEmail || null;
+      payload.brevo_sender_name = brevoSenderName || null;
+      const res = await api.patch('/auth/profile', payload);
+      if (res.erreur) throw new Error(res.erreur);
+      showToast('Configuration Brevo enregistrée', 'success');
+      setBrevoApiKey(''); setBrevoSmtpKey('');
+    } catch (e) { showToast(e.message, 'error'); }
+    setSaving(false);
   };
 
   // Permissions lisibles
@@ -23344,6 +23394,37 @@ const ModalProfile = ({ onClose, showToast, setCurrentUser }) => {
                 <button onClick={handleTestVf} disabled={testingVf} className="mt-2 text-xs text-indigo-600 hover:text-indigo-800">
                   {testingVf ? 'Test en cours...' : 'Tester la connexion'}
                 </button>
+              </div>
+
+              {/* Clé HubSpot */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">Clé API HubSpot</h3>
+                <p className="text-xs text-slate-400 mb-2">Votre token HubSpot personnel pour la synchronisation CRM.</p>
+                <div className="flex gap-2">
+                  <input type="text" value={hsToken} onChange={e => setHsToken(e.target.value)} placeholder={currentUser?.hubspot_api_token ? 'Nouveau token (laisser vide pour conserver)' : 'Token API HubSpot...'} className="flex-1 px-3 py-2 text-sm border border-slate-200 rounded-lg font-mono" />
+                  <button onClick={handleSaveHsToken} disabled={saving} className="px-3 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+                    Sauver
+                  </button>
+                </div>
+                <button onClick={handleTestHs} disabled={testingHs} className="mt-2 text-xs text-indigo-600 hover:text-indigo-800">
+                  {testingHs ? 'Test en cours...' : 'Tester la connexion'}
+                </button>
+              </div>
+
+              {/* Brevo / SMTP */}
+              <div>
+                <h3 className="text-sm font-semibold text-slate-700 mb-3">Brevo / SMTP</h3>
+                <p className="text-xs text-slate-400 mb-2">Vos identifiants Brevo personnels pour l'envoi d'emails.</p>
+                <div className="space-y-2">
+                  <input type="text" value={brevoApiKey} onChange={e => setBrevoApiKey(e.target.value)} placeholder={currentUser?.brevo_api_key ? 'Nouvelle clé API (laisser vide pour conserver)' : 'Clé API Brevo...'} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-mono" />
+                  <input type="text" value={brevoSmtpKey} onChange={e => setBrevoSmtpKey(e.target.value)} placeholder={currentUser?.brevo_api_key ? 'Nouvelle clé SMTP (laisser vide pour conserver)' : 'Clé SMTP Brevo...'} className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg font-mono" />
+                  <input type="text" value={brevoSmtpUser} onChange={e => setBrevoSmtpUser(e.target.value)} placeholder="Utilisateur SMTP (ex: vous@domaine.com)" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <input type="text" value={brevoSenderEmail} onChange={e => setBrevoSenderEmail(e.target.value)} placeholder="Email expéditeur (ex: vous@domaine.com)" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <input type="text" value={brevoSenderName} onChange={e => setBrevoSenderName(e.target.value)} placeholder="Nom expéditeur (ex: Votre Nom)" className="w-full px-3 py-2 text-sm border border-slate-200 rounded-lg" />
+                  <button onClick={handleSaveBrevo} disabled={saving} className="px-4 py-2 text-sm bg-slate-900 text-white rounded-lg hover:bg-slate-800 disabled:opacity-50">
+                    {saving ? 'Enregistrement...' : 'Sauver la configuration Brevo'}
+                  </button>
+                </div>
               </div>
 
               {/* Permissions (lecture seule pour les membres) */}

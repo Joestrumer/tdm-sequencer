@@ -1248,6 +1248,13 @@ const migrations = [
   'ALTER TABLE vf_partners ADD COLUMN exonere_fe INTEGER DEFAULT 0',
   'ALTER TABLE vf_partners ADD COLUMN frais_expedition_ht REAL',
   'ALTER TABLE vf_catalog ADD COLUMN image_url TEXT',
+  // Clés API per-user (HubSpot + Brevo)
+  'ALTER TABLE users ADD COLUMN hubspot_api_token TEXT',
+  'ALTER TABLE users ADD COLUMN brevo_api_key TEXT',
+  'ALTER TABLE users ADD COLUMN brevo_smtp_key TEXT',
+  'ALTER TABLE users ADD COLUMN brevo_smtp_user TEXT',
+  'ALTER TABLE users ADD COLUMN brevo_sender_email TEXT',
+  'ALTER TABLE users ADD COLUMN brevo_sender_name TEXT',
 ];
 
 // ─── Table audit commandes partenaires ───────────────────────────────────────

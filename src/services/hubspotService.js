@@ -35,13 +35,13 @@ function isPersonalEmail(domaine) {
   return !domaine || PERSONAL_EMAIL_DOMAINS.has(domaine.toLowerCase());
 }
 
-function getApiKey() {
-  return process.env.HUBSPOT_API_KEY;
+function getApiKey(userToken) {
+  return userToken || process.env.HUBSPOT_API_KEY;
 }
 
 // ─── Fetch avec retry ─────────────────────────────────────────────────────────
-async function hubspotFetch(path, options = {}, tentative = 1) {
-  const API_KEY = getApiKey();
+async function hubspotFetch(path, options = {}, tentative = 1, userToken) {
+  const API_KEY = getApiKey(userToken);
   if (!API_KEY) return null;
 
   const url = `${HUBSPOT_BASE}${path}`;
@@ -57,11 +57,11 @@ async function hubspotFetch(path, options = {}, tentative = 1) {
   if (res.status === 429 && tentative <= 3) {
     const retryAfter = Math.min(parseInt(res.headers.get('Retry-After') || '10') * 1000, 30000);
     await new Promise(r => setTimeout(r, retryAfter));
-    return hubspotFetch(path, options, tentative + 1);
+    return hubspotFetch(path, options, tentative + 1, userToken);
   }
   if (res.status >= 500 && tentative <= 3) {
     await new Promise(r => setTimeout(r, 2000 * tentative));
-    return hubspotFetch(path, options, tentative + 1);
+    return hubspotFetch(path, options, tentative + 1, userToken);
   }
   if (!res.ok) {
     const body = await res.text();
@@ -81,8 +81,8 @@ function logHubspot(db, type, action, leadId, hubspotId, payload, erreur = null)
 }
 
 // ─── Rechercher des companies par nom ────────────────────────────────────────
-async function rechercherCompanies(query) {
-  if (!getApiKey() || !query) return [];
+async function rechercherCompanies(query, userToken) {
+  if (!getApiKey(userToken) || !query) return [];
   try {
     const res = await hubspotFetch('/crm/v3/objects/companies/search', {
       method: 'POST',
@@ -93,7 +93,7 @@ async function rechercherCompanies(query) {
         properties: ['name', 'domain', 'city', 'phone', 'address', 'zip', 'country'],
         limit: 10,
       }),
-    });
+    }, 1, userToken);
     return (res?.results || []).map(c => ({
       id: c.id,
       nom: c.properties.name,
@@ -111,8 +111,8 @@ async function rechercherCompanies(query) {
 }
 
 // ─── Chercher une company par domaine email ───────────────────────────────────
-async function trouverCompanyParDomaine(domaine) {
-  if (!getApiKey() || !domaine) return null;
+async function trouverCompanyParDomaine(domaine, userToken) {
+  if (!getApiKey(userToken) || !domaine) return null;
   try {
     const res = await hubspotFetch('/crm/v3/objects/companies/search', {
       method: 'POST',
@@ -123,7 +123,7 @@ async function trouverCompanyParDomaine(domaine) {
         properties: ['name', 'domain', 'city'],
         limit: 1,
       }),
-    });
+    }, 1, userToken);
     const c = res?.results?.[0];
     return c ? { id: c.id, nom: c.properties.name, domaine: c.properties.domain } : null;
   } catch (err) {
@@ -132,8 +132,8 @@ async function trouverCompanyParDomaine(domaine) {
 }
 
 // ─── Chercher une company par nom d'établissement ───────────────────────────
-async function trouverCompanyParNom(nom) {
-  if (!getApiKey() || !nom) return null;
+async function trouverCompanyParNom(nom, userToken) {
+  if (!getApiKey(userToken) || !nom) return null;
   try {
     const res = await hubspotFetch('/crm/v3/objects/companies/search', {
       method: 'POST',
@@ -144,7 +144,7 @@ async function trouverCompanyParNom(nom) {
         properties: ['name', 'domain', 'city'],
         limit: 1,
       }),
-    });
+    }, 1, userToken);
     const c = res?.results?.[0];
     return c ? { id: c.id, nom: c.properties.name, domaine: c.properties.domain } : null;
   } catch (err) {
@@ -153,8 +153,8 @@ async function trouverCompanyParNom(nom) {
 }
 
 // ─── Chercher une company via un contact existant (par email) ───────────────
-async function trouverCompanyParContact(email) {
-  if (!getApiKey() || !email) return null;
+async function trouverCompanyParContact(email, userToken) {
+  if (!getApiKey(userToken) || !email) return null;
   try {
     const search = await hubspotFetch('/crm/v3/objects/contacts/search', {
       method: 'POST',
@@ -162,15 +162,15 @@ async function trouverCompanyParContact(email) {
         filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: email }] }],
         limit: 1,
       }),
-    });
+    }, 1, userToken);
     const contactId = search?.results?.[0]?.id;
     if (!contactId) return null;
 
-    const assoc = await hubspotFetch(`/crm/v4/objects/contacts/${contactId}/associations/companies`);
+    const assoc = await hubspotFetch(`/crm/v4/objects/contacts/${contactId}/associations/companies`, {}, 1, userToken);
     const companyObjId = assoc?.results?.[0]?.toObjectId;
     if (!companyObjId) return null;
 
-    const company = await hubspotFetch(`/crm/v3/objects/companies/${companyObjId}?properties=name,domain,city`);
+    const company = await hubspotFetch(`/crm/v3/objects/companies/${companyObjId}?properties=name,domain,city`, {}, 1, userToken);
     return company ? { id: company.id, nom: company.properties?.name, domaine: company.properties?.domain } : null;
   } catch (err) {
     return null;
@@ -178,14 +178,14 @@ async function trouverCompanyParContact(email) {
 }
 
 // ─── Créer une company ────────────────────────────────────────────────────────
-async function creerCompany(nom, domaine, ville) {
+async function creerCompany(nom, domaine, ville, userToken) {
   try {
     const res = await hubspotFetch('/crm/v3/objects/companies', {
       method: 'POST',
       body: JSON.stringify({
         properties: { name: nom, domain: domaine || '', city: ville || '' }
       }),
-    });
+    }, 1, userToken);
     return res?.id || null;
   } catch (err) {
     logger.error('HubSpot creerCompany', { error: err.message });
@@ -194,8 +194,8 @@ async function creerCompany(nom, domaine, ville) {
 }
 
 // ─── Contacts d'une company (v4 — tous les contacts, pas seulement primary) ─
-async function contactsDeCompany(companyId) {
-  if (!getApiKey() || !companyId) return [];
+async function contactsDeCompany(companyId, userToken) {
+  if (!getApiKey(userToken) || !companyId) return [];
   try {
     // Utiliser l'API v4 pour récupérer TOUS les contacts associés (primary + non-primary)
     const allIds = [];
@@ -203,7 +203,7 @@ async function contactsDeCompany(companyId) {
     do {
       const url = `/crm/v4/objects/companies/${companyId}/associations/contacts` +
         (after ? `?after=${after}` : '');
-      const res = await hubspotFetch(url);
+      const res = await hubspotFetch(url, {}, 1, userToken);
       const ids = (res?.results || []).map(r => String(r.toObjectId));
       allIds.push(...ids);
       after = res?.paging?.next?.after || null;
@@ -220,7 +220,7 @@ async function contactsDeCompany(companyId) {
         inputs: uniqueIds.map(id => ({ id })),
         properties: ['firstname', 'lastname', 'email', 'jobtitle', 'phone'],
       }),
-    });
+    }, 1, userToken);
     return (details?.results || []).map(c => ({
       hubspot_id: c.id,
       prenom: c.properties.firstname || '',
@@ -236,8 +236,8 @@ async function contactsDeCompany(companyId) {
 }
 
 // ─── Créer ou mettre à jour un contact + lier à la company ───────────────────
-async function syncContact(db, lead) {
-  if (!getApiKey()) return null;
+async function syncContact(db, lead, userToken) {
+  if (!getApiKey(userToken)) return null;
   try {
     const payload = {
       properties: {
@@ -257,14 +257,14 @@ async function syncContact(db, lead) {
       await hubspotFetch(`/crm/v3/objects/contacts/${hubspotId}`, {
         method: 'PATCH',
         body: JSON.stringify(payload),
-      });
+      }, 1, userToken);
     } else {
       // Tenter upsert par email
       try {
         const res = await hubspotFetch('/crm/v3/objects/contacts', {
           method: 'POST',
           body: JSON.stringify(payload),
-        });
+        }, 1, userToken);
         hubspotId = res?.id;
       } catch (err) {
         // Contact existe déjà — le retrouver par email
@@ -275,7 +275,7 @@ async function syncContact(db, lead) {
               filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: lead.email }] }],
               limit: 1,
             }),
-          });
+          }, 1, userToken);
           hubspotId = search?.results?.[0]?.id;
         } else throw err;
       }
@@ -294,23 +294,23 @@ async function syncContact(db, lead) {
       if (!companyId) {
         if (domaine && !isPersonalEmail(domaine)) {
           // Domaine pro → chercher par domaine
-          const company = await trouverCompanyParDomaine(domaine);
+          const company = await trouverCompanyParDomaine(domaine, userToken);
           if (company) {
             companyId = company.id;
           } else {
-            companyId = await creerCompany(lead.hotel, domaine, lead.ville);
+            companyId = await creerCompany(lead.hotel, domaine, lead.ville, userToken);
           }
         } else {
           // Email perso → chercher par contact existant ou par nom d'établissement
-          const companyViaContact = await trouverCompanyParContact(lead.email);
+          const companyViaContact = await trouverCompanyParContact(lead.email, userToken);
           if (companyViaContact) {
             companyId = companyViaContact.id;
           } else {
-            const companyViaNom = await trouverCompanyParNom(lead.hotel);
+            const companyViaNom = await trouverCompanyParNom(lead.hotel, userToken);
             if (companyViaNom) {
               companyId = companyViaNom.id;
             } else {
-              companyId = await creerCompany(lead.hotel, '', lead.ville);
+              companyId = await creerCompany(lead.hotel, '', lead.ville, userToken);
             }
           }
         }
@@ -322,18 +322,18 @@ async function syncContact(db, lead) {
           body: JSON.stringify({
             inputs: [{ from: { id: hubspotId }, to: { id: companyId }, type: 'contact_to_company' }]
           }),
-        }).catch(e => logger.warn('HubSpot association contact→company échouée', { error: e.message, hubspotId, companyId }));
+        }, 1, userToken).catch(e => logger.warn('HubSpot association contact→company échouée', { error: e.message, hubspotId, companyId }));
       }
     }
 
     logger.info('✅ HubSpot contact sync', { email: lead.email, hubspotId });
     return hubspotId;
   } catch (err) {
-    logger.error('❌ HubSpot syncContact ERREUR COMPLÈTE', { 
-      error: err.message, 
+    logger.error('❌ HubSpot syncContact ERREUR COMPLÈTE', {
+      error: err.message,
       email: lead.email,
-      hasApiKey: !!getApiKey(),
-      apiKeyPrefix: getApiKey()?.slice(0, 10) + '...'
+      hasApiKey: !!getApiKey(userToken),
+      apiKeyPrefix: getApiKey(userToken)?.slice(0, 10) + '...'
     });
     if (db) logHubspot(db, 'contact', 'error', lead.id, null, {}, err.message);
     return null;
@@ -341,8 +341,8 @@ async function syncContact(db, lead) {
 }
 
 // ─── Logger un email dans la timeline HubSpot ────────────────────────────────
-async function logEmailTimeline(db, lead, emailData) {
-  if (!getApiKey() || !lead.hubspot_id) return;
+async function logEmailTimeline(db, lead, emailData, userToken) {
+  if (!getApiKey(userToken) || !lead.hubspot_id) return;
   try {
     await hubspotFetch('/engagements/v1/engagements', {
       method: 'POST',
@@ -357,7 +357,7 @@ async function logEmailTimeline(db, lead, emailData) {
           html: emailData.corps || '',
         }
       }),
-    });
+    }, 1, userToken);
     logger.info('📝 HubSpot email loggé', { email: lead.email, sujet: emailData.sujet });
   } catch (err) {
     logger.error('❌ HubSpot logEmailTimeline', { error: err.message });
@@ -365,8 +365,8 @@ async function logEmailTimeline(db, lead, emailData) {
 }
 
 // ─── Créer une task J+7 en fin de séquence ───────────────────────────────────
-async function creerTaskFinSequence(db, lead, nomSequence) {
-  if (!getApiKey()) return;
+async function creerTaskFinSequence(db, lead, nomSequence, userToken) {
+  if (!getApiKey(userToken)) return;
   try {
     const dateEcheance = Date.now() + 7 * 24 * 3600 * 1000; // J+7
 
@@ -391,7 +391,7 @@ async function creerTaskFinSequence(db, lead, nomSequence) {
           completionDate: dateEcheance,
         }
       }),
-    });
+    }, 1, userToken);
     logger.info('✅ HubSpot task créée J+7', { email: lead.email, sequence: nomSequence });
   } catch (err) {
     logger.error('❌ HubSpot creerTaskFinSequence', { error: err.message });
@@ -399,8 +399,8 @@ async function creerTaskFinSequence(db, lead, nomSequence) {
 }
 
 // ─── Créer une task de relance à +N mois ────────────────────────────────────
-async function creerTaskRelance(db, lead, nomSequence, delaiMois) {
-  if (!getApiKey() || !delaiMois) return;
+async function creerTaskRelance(db, lead, nomSequence, delaiMois, userToken) {
+  if (!getApiKey(userToken) || !delaiMois) return;
   try {
     const dateEcheance = Date.now() + delaiMois * 30 * 24 * 3600 * 1000;
     const dateLancement = new Date().toLocaleDateString('fr-FR');
@@ -424,7 +424,7 @@ async function creerTaskRelance(db, lead, nomSequence, delaiMois) {
           taskType: 'TODO',
         }
       }),
-    });
+    }, 1, userToken);
     logger.info('✅ HubSpot task relance créée', { email: lead.email, sequence: nomSequence, delaiMois });
   } catch (err) {
     logger.error('❌ HubSpot creerTaskRelance', { error: err.message, email: lead.email });
@@ -432,24 +432,24 @@ async function creerTaskRelance(db, lead, nomSequence, delaiMois) {
 }
 
 // ─── Lifecycle stage ─────────────────────────────────────────────────────────
-async function mettreAJourLifecycle(db, lead, stage) {
-  if (!getApiKey() || !lead.hubspot_id) return;
+async function mettreAJourLifecycle(db, lead, stage, userToken) {
+  if (!getApiKey(userToken) || !lead.hubspot_id) return;
   const stageMap = { 'lead': 'lead', 'MQL': 'marketingqualifiedlead', 'SQL': 'salesqualifiedlead', 'Converti': 'customer' };
   try {
     await hubspotFetch(`/crm/v3/objects/contacts/${lead.hubspot_id}`, {
       method: 'PATCH',
       body: JSON.stringify({ properties: { lifecyclestage: stageMap[stage] || stage } }),
-    });
+    }, 1, userToken);
   } catch (err) {
     logger.error('❌ HubSpot lifecycle', { error: err.message });
   }
 }
 
 // ─── Créer un Deal ────────────────────────────────────────────────────────────
-async function creerDeal(db, lead) {
-  if (!getApiKey()) return null;
+async function creerDeal(db, lead, userToken) {
+  if (!getApiKey(userToken)) return null;
   try {
-    let hubspotId = lead.hubspot_id || await syncContact(db, lead);
+    let hubspotId = lead.hubspot_id || await syncContact(db, lead, userToken);
     const res = await hubspotFetch('/crm/v3/objects/deals', {
       method: 'POST',
       body: JSON.stringify({
@@ -462,7 +462,7 @@ async function creerDeal(db, lead) {
           description: `Lead généré via séquence. Segment: ${lead.segment}.`,
         }
       }),
-    });
+    }, 1, userToken);
     const dealId = res?.id;
     if (dealId && hubspotId) {
       await hubspotFetch('/crm/v3/associations/deals/contacts/batch/create', {
@@ -470,7 +470,7 @@ async function creerDeal(db, lead) {
         body: JSON.stringify({
           inputs: [{ from: { id: dealId }, to: { id: hubspotId }, type: 'deal_to_contact' }]
         }),
-      }).catch(e => logger.warn('HubSpot association deal→contact échouée', { error: e.message, dealId, hubspotId }));
+      }, 1, userToken).catch(e => logger.warn('HubSpot association deal→contact échouée', { error: e.message, dealId, hubspotId }));
     }
     logHubspot(db, 'deal', 'create', lead.id, dealId, { hotel: lead.hotel });
     logger.info('💼 HubSpot Deal créé', { hotel: lead.hotel, dealId });
@@ -482,10 +482,10 @@ async function creerDeal(db, lead) {
 }
 
 // ─── Vérifier la connexion ────────────────────────────────────────────────────
-async function verifierConnexion() {
-  if (!getApiKey()) return { connecte: false, raison: 'Clé API non configurée' };
+async function verifierConnexion(userToken) {
+  if (!getApiKey(userToken)) return { connecte: false, raison: 'Clé API non configurée' };
   try {
-    await hubspotFetch('/crm/v3/objects/contacts?limit=1');
+    await hubspotFetch('/crm/v3/objects/contacts?limit=1', {}, 1, userToken);
     return { connecte: true };
   } catch (err) {
     return { connecte: false, raison: err.message };
@@ -493,8 +493,8 @@ async function verifierConnexion() {
 }
 
 // ─── Rechercher les companies de type Partner (avec pagination) ──────────────
-async function rechercherPartnerCompanies() {
-  if (!getApiKey()) return [];
+async function rechercherPartnerCompanies(userToken) {
+  if (!getApiKey(userToken)) return [];
   const allResults = [];
   let after = undefined;
   try {
@@ -511,7 +511,7 @@ async function rechercherPartnerCompanies() {
       const res = await hubspotFetch('/crm/v3/objects/companies/search', {
         method: 'POST',
         body: JSON.stringify(body),
-      });
+      }, 1, userToken);
       const results = (res?.results || []).map(c => ({
         id: c.id,
         name: c.properties.name || '',
@@ -535,10 +535,10 @@ async function rechercherPartnerCompanies() {
 }
 
 // ─── Fetch HubSpot owners ──────────────────────────────────────────────────
-async function fetchOwners() {
-  if (!getApiKey()) return [];
+async function fetchOwners(userToken) {
+  if (!getApiKey(userToken)) return [];
   try {
-    const res = await hubspotFetch('/crm/v3/owners');
+    const res = await hubspotFetch('/crm/v3/owners', {}, 1, userToken);
     return (res?.results || []).map(o => ({
       id: o.id,
       email: o.email || '',
@@ -552,8 +552,8 @@ async function fetchOwners() {
 }
 
 // ─── Récupérer les deals close won (avec associations companies) ────────────
-async function getClosedWonDeals() {
-  if (!getApiKey()) return [];
+async function getClosedWonDeals(userToken) {
+  if (!getApiKey(userToken)) return [];
   const allDeals = [];
   let after = undefined;
   try {
@@ -570,7 +570,7 @@ async function getClosedWonDeals() {
       const res = await hubspotFetch('/crm/v3/objects/deals/search', {
         method: 'POST',
         body: JSON.stringify(body),
-      });
+      }, 1, userToken);
       const deals = res?.results || [];
       after = res?.paging?.next?.after || null;
 
@@ -582,7 +582,7 @@ async function getClosedWonDeals() {
           const assocRes = await hubspotFetch('/crm/v4/associations/deals/companies/batch/read', {
             method: 'POST',
             body: JSON.stringify({ inputs: dealIds.map(id => ({ id })) }),
-          });
+          }, 1, userToken);
           for (const r of (assocRes?.results || [])) {
             const companyIds = (r.to || []).map(t => String(t.toObjectId));
             if (companyIds.length > 0) assocMap[r.from?.id] = companyIds[0];
@@ -609,8 +609,8 @@ async function getClosedWonDeals() {
 }
 
 // ─── Créer un Deal depuis une facture VosFactures ───────────────────────────
-async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, clientAddress, clientCity, clientCountry, clientZip, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate, isSample, businessType, sampleTaskDays }) {
-  if (!getApiKey()) return null;
+async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, clientAddress, clientCity, clientCountry, clientZip, vfClientName, vfClientId, montantHT, montantTTC, orderNumber, invoiceNumber, closeDate, isSample, businessType, sampleTaskDays }, userToken) {
+  if (!getApiKey(userToken)) return null;
   try {
     // 1. Chercher le mapping centralisé (par vf_client_id ou vf_name)
     let mapping = null;
@@ -632,7 +632,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
     const domaine = clientEmail?.split('@')[1];
     const domaineEstPerso = isPersonalEmail(domaine);
     if (!companyId && domaine && !domaineEstPerso) {
-      const company = await trouverCompanyParDomaine(domaine);
+      const company = await trouverCompanyParDomaine(domaine, userToken);
       if (company) {
         companyId = company.id;
         companyName = company.nom;
@@ -640,14 +640,14 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
     }
     // Email perso → chercher par contact existant ou par nom d'établissement
     if (!companyId && domaineEstPerso) {
-      const companyViaContact = await trouverCompanyParContact(clientEmail);
+      const companyViaContact = await trouverCompanyParContact(clientEmail, userToken);
       if (companyViaContact) {
         companyId = companyViaContact.id;
         companyName = companyViaContact.nom || companyName;
       } else {
         const dashIdx = clientName.lastIndexOf(' - ');
         const hotelNom = dashIdx > 0 ? clientName.substring(0, dashIdx).trim() : clientName;
-        const companyViaNom = await trouverCompanyParNom(hotelNom);
+        const companyViaNom = await trouverCompanyParNom(hotelNom, userToken);
         if (companyViaNom) {
           companyId = companyViaNom.id;
           companyName = companyViaNom.nom || companyName;
@@ -667,7 +667,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
       await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
         method: 'PATCH',
         body: JSON.stringify({ properties: updateProps }),
-      }).catch(e => logger.warn('HubSpot update company existante échoué', { error: e.message, companyId }));
+      }, 1, userToken).catch(e => logger.warn('HubSpot update company existante échoué', { error: e.message, companyId }));
       // Props custom séparément
       const customProps = {};
       if (businessType) customProps.business_type = businessType;
@@ -675,7 +675,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
       await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
         method: 'PATCH',
         body: JSON.stringify({ properties: customProps }),
-      }).catch(e => logger.warn('HubSpot props custom company existante ignorées', { error: e.message, companyId }));
+      }, 1, userToken).catch(e => logger.warn('HubSpot props custom company existante ignorées', { error: e.message, companyId }));
       logger.info('🏨 HubSpot company existante mise à jour (échantillon)', { companyId, companyName });
     }
 
@@ -715,7 +715,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
         const companyRes = await hubspotFetch('/crm/v3/objects/companies', {
           method: 'POST',
           body: JSON.stringify({ properties: companyProps }),
-        });
+        }, 1, userToken);
         companyId = companyRes?.id;
         companyName = hotelName;
         logger.info('🏨 HubSpot company créée (échantillon)', { companyId, hotelName, domaine });
@@ -728,7 +728,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
           await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
             method: 'PATCH',
             body: JSON.stringify({ properties: customProps }),
-          }).catch(e => logger.warn('HubSpot props custom company ignorées', { error: e.message, companyId }));
+          }, 1, userToken).catch(e => logger.warn('HubSpot props custom company ignorées', { error: e.message, companyId }));
         }
       } catch (e) {
         logger.error('HubSpot création company échouée', { error: e.message, hotelName, props: companyProps });
@@ -745,7 +745,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
           const contactRes = await hubspotFetch('/crm/v3/objects/contacts', {
             method: 'POST',
             body: JSON.stringify({ properties: contactProps }),
-          });
+          }, 1, userToken);
           contactId = contactRes?.id;
           logger.info('👤 HubSpot contact créé (échantillon)', { contactId, email: clientEmail, prenom, nom });
         } catch (e) {
@@ -757,7 +757,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
                 filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: clientEmail }] }],
                 limit: 1,
               }),
-            });
+            }, 1, userToken);
             contactId = search?.results?.[0]?.id;
           } else {
             logger.error('HubSpot création contact échouée', { error: e.message, clientEmail });
@@ -771,7 +771,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
             body: JSON.stringify({
               inputs: [{ from: { id: contactId }, to: { id: companyId }, type: 'contact_to_company' }]
             }),
-          }).catch(e => logger.warn('HubSpot association contact→company échouée', { error: e.message, contactId, companyId }));
+          }, 1, userToken).catch(e => logger.warn('HubSpot association contact→company échouée', { error: e.message, contactId, companyId }));
         }
       }
     }
@@ -796,7 +796,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
         const contactRes = await hubspotFetch('/crm/v3/objects/contacts', {
           method: 'POST',
           body: JSON.stringify({ properties: contactProps }),
-        });
+        }, 1, userToken);
         contactId = contactRes?.id;
         logger.info('👤 HubSpot contact créé (échantillon)', { contactId, email: clientEmail });
       } catch (e) {
@@ -807,7 +807,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
               filterGroups: [{ filters: [{ propertyName: 'email', operator: 'EQ', value: clientEmail }] }],
               limit: 1,
             }),
-          });
+          }, 1, userToken);
           contactId = search?.results?.[0]?.id;
           logger.info('👤 HubSpot contact existant retrouvé', { contactId, email: clientEmail });
         } else {
@@ -821,7 +821,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
           body: JSON.stringify({
             inputs: [{ from: { id: contactId }, to: { id: companyId }, type: 'contact_to_company' }]
           }),
-        }).catch(e => logger.warn('HubSpot association contact→company échouée', { error: e.message, contactId, companyId }));
+        }, 1, userToken).catch(e => logger.warn('HubSpot association contact→company échouée', { error: e.message, contactId, companyId }));
       }
     }
 
@@ -852,7 +852,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
     const res = await hubspotFetch('/crm/v3/objects/deals', {
       method: 'POST',
       body: JSON.stringify({ properties }),
-    });
+    }, 1, userToken);
     const dealId = res?.id;
 
     // Ajouter propriétés custom au deal (ne bloque pas si elles n'existent pas)
@@ -863,7 +863,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
           no_vat_amount: String(montantHT || 0),
           n15__sales_commission: String(commission),
         }}),
-      }).catch(e => logger.warn('HubSpot props custom deal ignorées', { error: e.message, dealId }));
+      }, 1, userToken).catch(e => logger.warn('HubSpot props custom deal ignorées', { error: e.message, dealId }));
     }
 
     // 7. Associer le deal à la company + au contact
@@ -873,7 +873,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
         body: JSON.stringify({
           inputs: [{ from: { id: dealId }, to: { id: companyId }, type: 'deal_to_company' }]
         }),
-      }).catch(e => logger.warn('HubSpot association deal→company échouée', { error: e.message, dealId, companyId }));
+      }, 1, userToken).catch(e => logger.warn('HubSpot association deal→company échouée', { error: e.message, dealId, companyId }));
 
       if (contactId) {
         await hubspotFetch('/crm/v3/associations/deals/contacts/batch/create', {
@@ -881,7 +881,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
           body: JSON.stringify({
             inputs: [{ from: { id: dealId }, to: { id: contactId }, type: 'deal_to_contact' }]
           }),
-        }).catch(e => logger.warn('HubSpot association deal→contact échouée', { error: e.message, dealId, contactId }));
+        }, 1, userToken).catch(e => logger.warn('HubSpot association deal→contact échouée', { error: e.message, dealId, contactId }));
       }
     }
 
@@ -890,7 +890,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
       await hubspotFetch(`/crm/v3/objects/companies/${companyId}`, {
         method: 'PATCH',
         body: JSON.stringify({ properties: { envoi_echantillons: 'true' } }),
-      }).catch(e => logger.error('HubSpot update envoi_echantillons échoué', { error: e.message, companyId }));
+      }, 1, userToken).catch(e => logger.error('HubSpot update envoi_echantillons échoué', { error: e.message, companyId }));
     }
 
     // 9. Créer task "retour echantillons" à J+N (skip weekends)
@@ -927,7 +927,7 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
             taskType: 'TODO',
           }
         }),
-      }).catch(e => logger.error('HubSpot création task retour echantillons échouée', { error: e.message, companyId }));
+      }, 1, userToken).catch(e => logger.error('HubSpot création task retour echantillons échouée', { error: e.message, companyId }));
       logger.info(`📋 HubSpot task "retour echantillons" créée (J+${taskDays})`, { companyId, taskDate: taskDate.toISOString().split('T')[0] });
     }
 
@@ -944,10 +944,10 @@ async function creerDealFromInvoice(db, { clientName, clientEmail, clientPhone, 
 function roundMoney(n) { return Math.round(n * 100) / 100; }
 
 // ─── Récupérer les propriétés des deals ─────────────────────────────────────
-async function getDealProperties() {
-  if (!getApiKey()) return [];
+async function getDealProperties(userToken) {
+  if (!getApiKey(userToken)) return [];
   try {
-    const res = await hubspotFetch('/crm/v3/properties/deals');
+    const res = await hubspotFetch('/crm/v3/properties/deals', {}, 1, userToken);
     return (res?.results || []).map(p => ({ name: p.name, label: p.label, type: p.type, fieldType: p.fieldType }));
   } catch (err) {
     logger.error('HubSpot getDealProperties', { error: err.message });
@@ -978,9 +978,9 @@ module.exports = {
 };
 
 // ─── Deals d'un contact ───────────────────────────────────────────────────────
-async function getDealsForContact(hubspotContactId) {
-  if (!getApiKey()) return [];
-  const assoc = await hubspotFetch(`/crm/v4/objects/contacts/${hubspotContactId}/associations/deals`);
+async function getDealsForContact(hubspotContactId, userToken) {
+  if (!getApiKey(userToken)) return [];
+  const assoc = await hubspotFetch(`/crm/v4/objects/contacts/${hubspotContactId}/associations/deals`, {}, 1, userToken);
   const dealIds = (assoc?.results || []).map(r => r.toObjectId);
   if (!dealIds.length) return [];
 
@@ -990,14 +990,14 @@ async function getDealsForContact(hubspotContactId) {
       inputs: dealIds.map(id => ({ id: String(id) })),
       properties: ['dealname', 'dealstage', 'amount', 'closedate', 'pipeline'],
     }),
-  });
+  }, 1, userToken);
   return batch?.results || [];
 }
 
 // ─── Notes d'un contact ───────────────────────────────────────────────────────
-async function getNotesForContact(hubspotContactId) {
-  if (!getApiKey()) return [];
-  const assoc = await hubspotFetch(`/crm/v4/objects/contacts/${hubspotContactId}/associations/notes`);
+async function getNotesForContact(hubspotContactId, userToken) {
+  if (!getApiKey(userToken)) return [];
+  const assoc = await hubspotFetch(`/crm/v4/objects/contacts/${hubspotContactId}/associations/notes`, {}, 1, userToken);
   const noteIds = (assoc?.results || []).slice(0, 10).map(r => r.toObjectId);
   if (!noteIds.length) return [];
 
@@ -1007,7 +1007,7 @@ async function getNotesForContact(hubspotContactId) {
       inputs: noteIds.map(id => ({ id: String(id) })),
       properties: ['hs_note_body', 'hs_lastmodifieddate', 'hubspot_owner_id'],
     }),
-  });
+  }, 1, userToken);
 
   return (batch?.results || []).sort((a, b) =>
     new Date(b.properties?.hs_lastmodifieddate || 0) - new Date(a.properties?.hs_lastmodifieddate || 0)

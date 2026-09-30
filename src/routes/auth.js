@@ -44,6 +44,10 @@ module.exports = (db) => {
               role: user.role,
               permissions,
               vf_api_token: user.vf_api_token ? true : false,
+              hubspot_api_token: user.hubspot_api_token ? true : false,
+              brevo_api_key: user.brevo_api_key ? true : false,
+              brevo_sender_email: user.brevo_sender_email || '',
+              brevo_sender_name: user.brevo_sender_name || '',
             },
           });
         }
@@ -81,6 +85,10 @@ module.exports = (db) => {
         role: req.user.role,
         permissions: req.user.permissions,
         vf_api_token: req.user.vf_api_token ? true : false,
+        hubspot_api_token: req.user.hubspot_api_token ? true : false,
+        brevo_api_key: req.user.brevo_api_key ? true : false,
+        brevo_sender_email: req.user.brevo_sender_email || '',
+        brevo_sender_name: req.user.brevo_sender_name || '',
       },
     });
   });
@@ -91,7 +99,7 @@ module.exports = (db) => {
       return res.status(400).json({ erreur: 'Non disponible avec authentification legacy' });
     }
 
-    const { old_password, new_password, vf_api_token } = req.body;
+    const { old_password, new_password, vf_api_token, hubspot_api_token, brevo_api_key, brevo_smtp_key, brevo_smtp_user, brevo_sender_email, brevo_sender_name } = req.body;
 
     // Changer le mot de passe
     if (new_password) {
@@ -116,6 +124,40 @@ module.exports = (db) => {
     if (vf_api_token !== undefined) {
       db.prepare("UPDATE users SET vf_api_token = ?, updated_at = datetime('now') WHERE id = ?").run(
         vf_api_token || null, req.user.id
+      );
+    }
+
+    // Changer la clé HubSpot
+    if (hubspot_api_token !== undefined) {
+      db.prepare("UPDATE users SET hubspot_api_token = ?, updated_at = datetime('now') WHERE id = ?").run(
+        hubspot_api_token || null, req.user.id
+      );
+    }
+
+    // Changer les clés Brevo
+    if (brevo_api_key !== undefined) {
+      db.prepare("UPDATE users SET brevo_api_key = ?, updated_at = datetime('now') WHERE id = ?").run(
+        brevo_api_key || null, req.user.id
+      );
+    }
+    if (brevo_smtp_key !== undefined) {
+      db.prepare("UPDATE users SET brevo_smtp_key = ?, updated_at = datetime('now') WHERE id = ?").run(
+        brevo_smtp_key || null, req.user.id
+      );
+    }
+    if (brevo_smtp_user !== undefined) {
+      db.prepare("UPDATE users SET brevo_smtp_user = ?, updated_at = datetime('now') WHERE id = ?").run(
+        brevo_smtp_user || null, req.user.id
+      );
+    }
+    if (brevo_sender_email !== undefined) {
+      db.prepare("UPDATE users SET brevo_sender_email = ?, updated_at = datetime('now') WHERE id = ?").run(
+        brevo_sender_email || null, req.user.id
+      );
+    }
+    if (brevo_sender_name !== undefined) {
+      db.prepare("UPDATE users SET brevo_sender_name = ?, updated_at = datetime('now') WHERE id = ?").run(
+        brevo_sender_name || null, req.user.id
       );
     }
 

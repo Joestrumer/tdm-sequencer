@@ -574,7 +574,7 @@ module.exports = (db) => {
           isSample: !!isSample,
           businessType: businessType || '',
           sampleTaskDays: parseInt(sampleTaskDays) || 7,
-        });
+        }, req.user?.hubspot_api_token);
       } catch (hsErr) {
         logger.warn('Erreur création deal HubSpot depuis facture', { error: hsErr.message, invoiceId: result.id });
       }
@@ -728,7 +728,7 @@ module.exports = (db) => {
                 orderNumber: invoiceData.oid || order.orderNumber || '',
                 invoiceNumber: result.number || '',
                 closeDate: new Date().toISOString().split('T')[0],
-              });
+              }, req.user?.hubspot_api_token);
             }
           } catch (hsErr) {
             logger.warn('Erreur deal HubSpot batch', { error: hsErr.message });

@@ -38,7 +38,7 @@ function authMiddleware(db) {
     // Mode 2 : JWT
     try {
       const decoded = jwt.verify(token, JWT_SECRET);
-      const user = db.prepare('SELECT id, email, nom, role, permissions, vf_api_token, gsheets_spreadsheet_id, actif FROM users WHERE id = ?').get(decoded.userId);
+      const user = db.prepare('SELECT id, email, nom, role, permissions, vf_api_token, gsheets_spreadsheet_id, hubspot_api_token, brevo_api_key, brevo_smtp_key, brevo_smtp_user, brevo_sender_email, brevo_sender_name, actif FROM users WHERE id = ?').get(decoded.userId);
 
       if (!user || !user.actif) {
         return res.status(401).json({ erreur: 'Compte désactivé ou introuvable' });
@@ -55,6 +55,12 @@ function authMiddleware(db) {
         permissions,
         vf_api_token: user.vf_api_token,
         gsheets_spreadsheet_id: user.gsheets_spreadsheet_id,
+        hubspot_api_token: user.hubspot_api_token,
+        brevo_api_key: user.brevo_api_key,
+        brevo_smtp_key: user.brevo_smtp_key,
+        brevo_smtp_user: user.brevo_smtp_user,
+        brevo_sender_email: user.brevo_sender_email,
+        brevo_sender_name: user.brevo_sender_name,
       };
       next();
     } catch (e) {

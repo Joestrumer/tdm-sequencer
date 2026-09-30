@@ -14,6 +14,34 @@ require('dotenv').config();
 const { v4: uuidv4 } = require('uuid');
 const logger = require('../config/logger');
 
+// ─── Cache de transporters per-user (clé = smtp_user:smtp_key, TTL 1h) ──────
+const _userTransporters = new Map();
+const USER_TRANSPORTER_TTL = 60 * 60 * 1000; // 1h
+
+function getUserTransporter(userCreds) {
+  let nodemailer;
+  try { nodemailer = require('nodemailer'); } catch(e) { throw new Error('nodemailer non disponible'); }
+  const cacheKey = `${userCreds.smtp_user}:${userCreds.smtp_key}`;
+  const cached = _userTransporters.get(cacheKey);
+  if (cached && Date.now() - cached.createdAt < USER_TRANSPORTER_TTL) return cached.transporter;
+  const smtpPort = parseInt(process.env.BREVO_SMTP_PORT) || 587;
+  const smtpSecure = smtpPort === 465;
+  const transporter = nodemailer.createTransport({
+    host: 'smtp-relay.brevo.com',
+    port: smtpPort,
+    secure: smtpSecure,
+    auth: {
+      user: userCreds.smtp_user,
+      pass: userCreds.smtp_key,
+    },
+    connectionTimeout: 10000,
+    greetingTimeout: 10000,
+    socketTimeout: 15000,
+  });
+  _userTransporters.set(cacheKey, { transporter, createdAt: Date.now() });
+  return transporter;
+}
+
 // ─── Envoi Brevo via SMTP (nodemailer si dispo) ou API REST ─────────────────
 
 let _transporter = null;
@@ -73,11 +101,72 @@ function smtpFailure() {
   }
 }
 
-async function brevoSendEmail(payload, db) {
+async function brevoSendEmail(payload, db, userCreds) {
   // Vérifier la blocklist si db disponible
   if (db && payload.to && payload.to.length) {
     for (const dest of payload.to) {
       if (dest.email) verifierBlocklist(db, dest.email);
+    }
+  }
+
+  // Per-user SMTP si userCreds fourni avec smtp_key
+  if (userCreds && userCreds.smtp_key) {
+    try {
+      const transporter = getUserTransporter(userCreds);
+      const senderEmail = userCreds.sender_email || payload.sender.email;
+      const senderName = userCreds.sender_name || payload.sender.name;
+      const mailOptions = {
+        from: '"' + senderName + '" <' + senderEmail + '>',
+        to: payload.to.map(t => '"' + (t.name || '') + '" <' + t.email + '>').join(', '),
+        subject: payload.subject,
+        html: payload.htmlContent,
+        text: payload.textContent || '',
+        replyTo: payload.replyTo ? '"' + payload.replyTo.name + '" <' + payload.replyTo.email + '>' : undefined,
+        headers: payload.headers || {},
+      };
+      if (payload.bcc && payload.bcc.length) {
+        mailOptions.bcc = payload.bcc.map(b => b.email).join(', ');
+      }
+      if (payload.attachment && payload.attachment.length) {
+        mailOptions.attachments = payload.attachment.map(function(a) {
+          return { filename: a.name, content: Buffer.from(a.content, 'base64') };
+        });
+      }
+      const info = await transporter.sendMail(mailOptions);
+      logger.info('Email envoyé via SMTP Brevo (per-user)', { messageId: info.messageId });
+      return { messageId: info.messageId };
+    } catch(smtpErr) {
+      logger.warn('SMTP per-user échoué, fallback API REST per-user', { erreur: smtpErr.message });
+    }
+
+    // Fallback API REST avec clé per-user
+    if (userCreds.api_key) {
+      const controller = new AbortController();
+      const timeout = setTimeout(() => controller.abort(), 15000);
+      try {
+        const res = await fetch('https://api.brevo.com/v3/smtp/email', {
+          method: 'POST',
+          headers: {
+            'accept': 'application/json',
+            'api-key': userCreds.api_key,
+            'content-type': 'application/json',
+          },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+        clearTimeout(timeout);
+        if (!res.ok) {
+          const errText = await res.text();
+          const err = new Error('Brevo API ' + res.status + ': ' + errText);
+          err.status = res.status;
+          throw err;
+        }
+        return res.json();
+      } catch(e) {
+        clearTimeout(timeout);
+        if (e.name === 'AbortError') throw new Error('Brevo API timeout (>15s)');
+        throw e;
+      }
     }
   }
 

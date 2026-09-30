@@ -624,7 +624,7 @@ module.exports = (db) => {
           orderNumber: gsOrderNumber != null ? String(gsOrderNumber) : '',
           invoiceNumber: result.number || '',
           closeDate: new Date().toISOString().split('T')[0],
-        });
+        }, req.user?.hubspot_api_token);
       } catch (hsErr) {
         logger.warn('Erreur deal HubSpot commande partenaire', { error: hsErr.message });
       }
