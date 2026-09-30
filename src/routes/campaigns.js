@@ -494,8 +494,8 @@ module.exports = (db) => {
         } catch (_) {}
       }
 
-      if (process.env.BREVO_API_KEY) {
-        await bse(payload, db);
+      if (process.env.BREVO_API_KEY || req.effectiveTokens?.brevo) {
+        await bse(payload, db, req.effectiveTokens?.brevo);
       }
 
       res.json({ ok: true, message: `Email test envoyé à ${email}` });

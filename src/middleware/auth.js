@@ -32,6 +32,7 @@ function authMiddleware(db) {
         permissions: {},
         vf_api_token: null,
       };
+      req.effectiveTokens = { hubspot: undefined, brevo: undefined };
       return next();
     }
 
@@ -62,6 +63,21 @@ function authMiddleware(db) {
         brevo_sender_email: user.brevo_sender_email,
         brevo_sender_name: user.brevo_sender_name,
       };
+
+      const isAdmin = req.user.role === 'admin';
+      req.effectiveTokens = {
+        hubspot: req.user.hubspot_api_token || (isAdmin ? undefined : false),
+        brevo: (req.user.brevo_smtp_key || req.user.brevo_api_key)
+          ? {
+              api_key: req.user.brevo_api_key,
+              smtp_key: req.user.brevo_smtp_key,
+              smtp_user: req.user.brevo_smtp_user,
+              sender_email: req.user.brevo_sender_email,
+              sender_name: req.user.brevo_sender_name,
+            }
+          : (isAdmin ? undefined : false),
+      };
+
       next();
     } catch (e) {
       return res.status(401).json({ erreur: 'Token invalide ou expiré' });

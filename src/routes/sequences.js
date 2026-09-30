@@ -241,6 +241,11 @@ module.exports = (db) => {
   // POST /api/sequences/:id/inscrire
   router.post('/:id/inscrire', (req, res) => {
     try {
+      // Non-admin sans clés Brevo : bloquer l'inscription
+      if (req.user?.role !== 'admin' && !req.user?.brevo_smtp_key && !req.user?.brevo_api_key) {
+        return res.status(400).json({ erreur: 'Clés Brevo non configurées — configurez vos clés SMTP dans Mon Profil avant d\'inscrire des leads' });
+      }
+
       const { lead_id, task_relance_mois, scheduled_at } = req.body;
       if (!lead_id) return res.status(400).json({ erreur: 'lead_id requis' });
 
@@ -280,6 +285,11 @@ module.exports = (db) => {
   // POST /api/sequences/:id/inscrire-batch
   router.post('/:id/inscrire-batch', (req, res) => {
     try {
+      // Non-admin sans clés Brevo : bloquer l'inscription
+      if (req.user?.role !== 'admin' && !req.user?.brevo_smtp_key && !req.user?.brevo_api_key) {
+        return res.status(400).json({ erreur: 'Clés Brevo non configurées — configurez vos clés SMTP dans Mon Profil avant d\'inscrire des leads' });
+      }
+
       const { lead_ids, task_relance_mois, scheduled_at } = req.body;
       if (!Array.isArray(lead_ids)) return res.status(400).json({ erreur: 'lead_ids doit être un tableau' });
 

@@ -17,10 +17,17 @@ module.exports = (db) => {
       const rows = db.prepare('SELECT cle, valeur FROM config').all();
       const config = {};
       for (const { cle, valeur } of rows) {
-        // Masquer les clés sensibles (afficher juste les 6 premiers chars)
-        if (CLES_SENSIBLES.includes(cle) && valeur) {
-          config[cle] = valeur.substring(0, 8) + '••••••••';
-          config[cle + '_configured'] = true;
+        if (CLES_SENSIBLES.includes(cle)) {
+          if (req.user?.role !== 'admin') {
+            // Non-admin : ne pas renvoyer les valeurs des clés sensibles
+            config[cle] = '';
+            config[cle + '_configured'] = !!valeur;
+          } else if (valeur) {
+            config[cle] = valeur.substring(0, 8) + '••••••••';
+            config[cle + '_configured'] = true;
+          } else {
+            config[cle] = valeur;
+          }
         } else {
           config[cle] = valeur;
         }
@@ -46,6 +53,14 @@ module.exports = (db) => {
   // Sauvegarder une ou plusieurs clés
   router.post('/', (req, res) => {
     try {
+      // Non-admin : bloquer écriture de clés sensibles
+      if (req.user?.role !== 'admin') {
+        const forbidden = Object.keys(req.body).filter(k => CLES_SENSIBLES.includes(k) || CLES_ENV_AUTORISEES.includes(k));
+        if (forbidden.length) {
+          return res.status(403).json({ erreur: 'Modification de clés API réservée aux administrateurs' });
+        }
+      }
+
       const upsert = db.prepare(`
         INSERT INTO config (cle, valeur, updated_at)
         VALUES (?, ?, datetime('now'))

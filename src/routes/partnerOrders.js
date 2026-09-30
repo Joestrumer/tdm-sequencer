@@ -18,9 +18,13 @@ module.exports = (db) => {
 
   // Middleware : injecter le vfService adapté au user si token perso
   router.use((req, res, next) => {
-    req.vfService = (req.user && req.user.vf_api_token)
-      ? vfServiceFactory(db, req.user.vf_api_token)
-      : vfService;
+    if (req.user && req.user.vf_api_token) {
+      req.vfService = vfServiceFactory(db, req.user.vf_api_token);
+    } else if (!req.user || req.user.role === 'admin') {
+      req.vfService = vfService; // default admin fallback
+    } else {
+      req.vfService = vfServiceFactory(db, false); // sentinel → erreur
+    }
     next();
   });
 
@@ -624,7 +628,7 @@ module.exports = (db) => {
           orderNumber: gsOrderNumber != null ? String(gsOrderNumber) : '',
           invoiceNumber: result.number || '',
           closeDate: new Date().toISOString().split('T')[0],
-        }, req.user?.hubspot_api_token);
+        }, req.effectiveTokens?.hubspot);
       } catch (hsErr) {
         logger.warn('Erreur deal HubSpot commande partenaire', { error: hsErr.message });
       }

@@ -41,7 +41,7 @@ module.exports = (db) => {
     try {
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.id);
       if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
-      const hubspotId = await hubspot.syncContact(db, lead, req.user?.hubspot_api_token);
+      const hubspotId = await hubspot.syncContact(db, lead, req.effectiveTokens?.hubspot);
       res.json({ message: 'Lead synchronisé', hubspotId });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
@@ -51,12 +51,15 @@ module.exports = (db) => {
   // POST /api/hubspot/sync-all — Sync bidirectionnelle
   router.post('/sync-all', async (req, res) => {
     try {
-      const API_KEY = req.user?.hubspot_api_token || process.env.HUBSPOT_API_KEY;
+      if (req.effectiveTokens?.hubspot === false) {
+        return res.status(400).json({ erreur: 'Clé API HubSpot non configurée — configurez votre clé dans Mon Profil' });
+      }
+      const API_KEY = req.effectiveTokens?.hubspot || process.env.HUBSPOT_API_KEY;
 
       // 1. Pousser les leads locaux sans hubspot_id
       const leadsASyncer = db.prepare('SELECT * FROM leads WHERE hubspot_id IS NULL AND unsubscribed = 0').all();
       for (const lead of leadsASyncer) {
-        await hubspot.syncContact(db, lead, req.user?.hubspot_api_token).catch(() => {});
+        await hubspot.syncContact(db, lead, req.effectiveTokens?.hubspot).catch(() => {});
         await new Promise(r => setTimeout(r, 150));
       }
 
@@ -104,7 +107,7 @@ module.exports = (db) => {
     try {
       const lead = db.prepare('SELECT * FROM leads WHERE id = ?').get(req.params.leadId);
       if (!lead) return res.status(404).json({ erreur: 'Lead introuvable' });
-      const dealId = await hubspot.creerDeal(db, lead, req.user?.hubspot_api_token);
+      const dealId = await hubspot.creerDeal(db, lead, req.effectiveTokens?.hubspot);
       db.prepare(`UPDATE leads SET statut = 'Converti', updated_at = datetime('now') WHERE id = ?`).run(lead.id);
       res.json({ message: 'Deal créé', dealId });
     } catch (err) {
@@ -115,7 +118,7 @@ module.exports = (db) => {
   // GET /api/hubspot/recherche-companies?q=
   router.get('/recherche-companies', async (req, res) => {
     try {
-      const results = await hubspot.rechercherCompanies(req.query.q || '', req.user?.hubspot_api_token);
+      const results = await hubspot.rechercherCompanies(req.query.q || '', req.effectiveTokens?.hubspot);
       res.json(results);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -125,7 +128,7 @@ module.exports = (db) => {
   // GET /api/hubspot/contacts-company/:companyId
   router.get('/contacts-company/:companyId', async (req, res) => {
     try {
-      const contacts = await hubspot.contactsDeCompany(req.params.companyId, req.user?.hubspot_api_token);
+      const contacts = await hubspot.contactsDeCompany(req.params.companyId, req.effectiveTokens?.hubspot);
       res.json(contacts);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -198,7 +201,7 @@ module.exports = (db) => {
       if (!lead.hubspot_id) return res.status(400).json({ erreur: 'Lead non synchronisé avec HubSpot' });
       const { stage } = req.body;
       if (!stage) return res.status(400).json({ erreur: 'Stage requis' });
-      await hubspot.mettreAJourLifecycle(db, lead, stage, req.user?.hubspot_api_token);
+      await hubspot.mettreAJourLifecycle(db, lead, stage, req.effectiveTokens?.hubspot);
       res.json({ message: `Lifecycle mis à jour → ${stage}` });
     } catch (err) {
       res.status(500).json({ erreur: err.message });
@@ -208,7 +211,7 @@ module.exports = (db) => {
   // GET /api/hubspot/deal-properties — Découverte des propriétés deals
   router.get('/deal-properties', async (req, res) => {
     try {
-      const properties = await hubspot.getDealProperties(req.user?.hubspot_api_token);
+      const properties = await hubspot.getDealProperties(req.effectiveTokens?.hubspot);
       res.json(properties);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
@@ -217,14 +220,14 @@ module.exports = (db) => {
 
   // GET /api/hubspot/status
   router.get('/status', async (req, res) => {
-    const status = await hubspot.verifierConnexion(req.user?.hubspot_api_token);
+    const status = await hubspot.verifierConnexion(req.effectiveTokens?.hubspot);
     res.json(status);
   });
 
   // GET /api/hubspot/deals/:hubspotContactId
   router.get('/deals/:hubspotContactId', async (req, res) => {
     try {
-      const deals = await hubspot.getDealsForContact(req.params.hubspotContactId, req.user?.hubspot_api_token);
+      const deals = await hubspot.getDealsForContact(req.params.hubspotContactId, req.effectiveTokens?.hubspot);
       res.json({ deals });
     } catch (err) {
       logger.error('GET /hubspot/deals erreur', { error: err.message });
@@ -235,7 +238,7 @@ module.exports = (db) => {
   // GET /api/hubspot/notes/:hubspotContactId
   router.get('/notes/:hubspotContactId', async (req, res) => {
     try {
-      const notes = await hubspot.getNotesForContact(req.params.hubspotContactId, req.user?.hubspot_api_token);
+      const notes = await hubspot.getNotesForContact(req.params.hubspotContactId, req.effectiveTokens?.hubspot);
       res.json({ notes });
     } catch (err) {
       logger.error('GET /hubspot/notes erreur', { error: err.message });
@@ -247,7 +250,7 @@ module.exports = (db) => {
   router.post('/sync-partners', async (req, res) => {
     try {
       // 1. Fetch toutes les companies Partner depuis HubSpot
-      const companies = await hubspot.rechercherPartnerCompanies(req.user?.hubspot_api_token);
+      const companies = await hubspot.rechercherPartnerCompanies(req.effectiveTokens?.hubspot);
       if (!companies.length) return res.json({ message: 'Aucun partenaire trouvé', partners: 0, contacts: 0 });
 
       const now = new Date().toISOString();
@@ -276,7 +279,7 @@ module.exports = (db) => {
 
         // Fetch contacts de cette company
         try {
-          const contacts = await hubspot.contactsDeCompany(c.id, req.user?.hubspot_api_token);
+          const contacts = await hubspot.contactsDeCompany(c.id, req.effectiveTokens?.hubspot);
           for (const ct of contacts) {
             upsertContact.run(ct.hubspot_id, c.id, ct.prenom, ct.nom, ct.email, ct.poste, now);
             totalContacts++;

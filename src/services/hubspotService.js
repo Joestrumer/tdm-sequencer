@@ -36,6 +36,7 @@ function isPersonalEmail(domaine) {
 }
 
 function getApiKey(userToken) {
+  if (userToken === false) throw new Error('Clé API HubSpot non configurée — configurez votre clé dans Mon Profil');
   return userToken || process.env.HUBSPOT_API_KEY;
 }
 

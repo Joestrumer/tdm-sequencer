@@ -29167,6 +29167,18 @@ function App() {
 
         <main className="p-4 pb-24 md:p-8 md:pb-8 flex-1 overflow-y-auto">
           {loading && <div className="flex items-center gap-2 text-sm text-slate-400 mb-4"><span className="w-4 h-4 border-2 border-slate-200 border-t-slate-500 rounded-full animate-spin inline-block" /> Chargement...</div>}
+          {!isAdmin && currentUser && (!currentUser.vf_api_token || !currentUser.hubspot_api_token || !currentUser.brevo_api_key) && (
+            <div className="mb-4 p-3 bg-amber-50 border border-amber-200 rounded-lg flex items-center gap-3 text-sm text-amber-800">
+              <span className="text-amber-500 text-lg flex-shrink-0">&#9888;</span>
+              <span>
+                Clés API manquantes
+                {!currentUser.vf_api_token && !currentUser.hubspot_api_token && !currentUser.brevo_api_key
+                  ? ' (VosFactures, HubSpot, Brevo)'
+                  : ` (${[!currentUser.vf_api_token && 'VosFactures', !currentUser.hubspot_api_token && 'HubSpot', !currentUser.brevo_api_key && 'Brevo'].filter(Boolean).join(', ')})`
+                } — <button onClick={() => setShowProfile(true)} className="underline font-medium hover:text-amber-900">configurez vos clés dans Mon Profil</button> pour utiliser les intégrations.
+              </span>
+            </div>
+          )}
           {vue === "dashboard" && <VueDashboard showToast={showToast} />}
           {vue === "dashboard-marketing" && <VueDashboardMarketing showToast={showToast} />}
           {vue === "dashboard-ventes" && <AnalyticsSpreadsheet showToast={showToast} />}

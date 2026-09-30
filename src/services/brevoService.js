@@ -170,6 +170,11 @@ async function brevoSendEmail(payload, db, userCreds) {
     }
   }
 
+  // Sentinel : non-admin sans clés Brevo
+  if (userCreds === false) {
+    throw new Error('Clés Brevo non configurées — configurez vos clés SMTP/API dans Mon Profil');
+  }
+
   // SMTP si BREVO_SMTP_KEY défini ET nodemailer disponible ET circuit breaker fermé
   if (process.env.BREVO_SMTP_KEY && !smtpCircuitOpen()) {
     try {

@@ -10,6 +10,7 @@ function stripDiacritics(s) {
 }
 
 function getToken(db, userToken) {
+  if (userToken === false) throw new Error('Token VosFactures non configuré — configurez votre clé API dans Mon Profil');
   if (userToken) return userToken;
   const row = db.prepare('SELECT valeur FROM config WHERE cle = ?').get('vf_api_token');
   const token = (row?.valeur || process.env.VF_API_TOKEN || '').trim();
