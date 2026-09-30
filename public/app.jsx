@@ -23037,20 +23037,22 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                   { key: 'gel_douche', label: 'Gel douche', gammes: [
                     { ref: 'P008', gamme: 'Verveine / Reddition' },
                     { ref: 'P035', gamme: 'Thé Blanc / Élégance' },
-                    { ref: 'P045', gamme: 'Revelation' },
-                    { ref: 'P047', gamme: 'Radiance' },
+                    { ref: 'P045', gamme: 'Méditerranée / Révélation' },
+                    { ref: 'P047', gamme: 'Altitude / Radiance' },
                   ]},
                   { key: 'shampoing', label: 'Shampoing', gammes: [
                     { ref: 'P019', gamme: 'Verveine / Reddition' },
                     { ref: 'P010', gamme: 'Cédrat / Irrévérence' },
                     { ref: 'P034', gamme: 'Thé Blanc / Élégance' },
-                    { ref: 'P044', gamme: 'Revelation' },
-                    { ref: 'P046', gamme: 'Radiance' },
+                    { ref: 'P044', gamme: 'Méditerranée / Révélation' },
+                    { ref: 'P046', gamme: 'Altitude / Radiance' },
                   ]},
                   { key: 'gel_corps_cheveux', label: 'Gel Corps & Cheveux', gammes: [
                     { ref: 'P042', gamme: 'Verveine / Reddition' },
                     { ref: 'P014', gamme: 'Cédrat / Irrévérence' },
                     { ref: 'P040', gamme: 'Thé Blanc / Élégance' },
+                    { ref: 'P049', gamme: 'Méditerranée / Révélation' },
+                    { ref: 'P050', gamme: 'Altitude / Radiance' },
                   ]},
                   { key: 'apres_shampoing', label: 'Après-shampoing', gammes: [
                     { ref: 'P024', gamme: 'Cédrat / Irrévérence' },
@@ -23062,6 +23064,8 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                   ]},
                   { key: 'savon_main', label: 'Savon Liquide Main', gammes: [
                     { ref: 'P007', gamme: 'Vétiver / Insurrection' },
+                    { ref: 'P045', gamme: 'Méditerranée / Révélation' },
+                    { ref: 'P047', gamme: 'Altitude / Radiance' },
                   ]},
                 ];
                 const saveAmenities = async (newAm) => {
