@@ -21640,6 +21640,7 @@ const VueCommandes = ({ showToast }) => {
                       <span className={`w-1.5 h-1.5 rounded-full ${cfg.dot}`} />
                       {cfg.label}
                     </span>
+                    {c.statut === 'en_attente' && c.pending_profile_change > 0 && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-amber-100 text-amber-700">&#9888; Modif. profil en attente</span>}
                     {c.statut === 'validee' && c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-100 text-emerald-700">Livrée</span>}
                     {c.statut === 'validee' && c.tracking_number && !c.delivered_at && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-blue-100 text-blue-700">Expédiée</span>}
                     {c.notes && /[ÉE]chantillons/i.test(c.notes) && <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-purple-100 text-purple-700">Demande échantillons</span>}
