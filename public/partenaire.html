@@ -915,6 +915,44 @@
                       </article>
                     );
                   })}
+                  {(() => {
+                    const pompe5L = catalogue.find(p => p.ref === 'P5L');
+                    const has5L = essentials.some(ess => ess.prod5L);
+                    if (!pompe5L || !has5L) return null;
+                    const unitPrice = pompe5L.prix_promo ?? pompe5L.prix_remise;
+                    const imgSrc = getProductImage('P5L', pompe5L.image_url);
+                    const q = panier['P5L']?.quantite || 0;
+                    return (
+                      <article className="tdm-essential" key="p5l-pompe">
+                        <div className="tdm-essential-top">
+                          {imgSrc ? (
+                            <img src={imgSrc} alt="Pompe 5L" />
+                          ) : (
+                            <div style={{ width: 68, height: 85, background: 'var(--tdm-soft)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0 }}>
+                              <span style={{ color: 'var(--tdm-muted)', fontSize: 14, fontWeight: 500 }}>P5L</span>
+                            </div>
+                          )}
+                          <div>
+                            <h3>Pompe pour bidon 5L</h3>
+                            <p className="tdm-essential-cost">
+                              <span>{euro(unitPrice)}</span> HT / unité
+                            </p>
+                          </div>
+                        </div>
+                        <div className="tdm-essential-controls">
+                          {q > 0 ? (
+                            <div className="tdm-qty-row tdm-qty-small">
+                              <button className="tdm-qty-btn" onClick={() => removeCarton('P5L')}>−</button>
+                              <span className="tdm-qty-label">{q} pompe{q > 1 ? 's' : ''} ✓</span>
+                              <button className="tdm-qty-btn" onClick={() => addCarton('P5L')}>+</button>
+                            </div>
+                          ) : (
+                            <button className="tdm-add-small" onClick={() => addCarton('P5L')}>+ Ajouter 1 pompe</button>
+                          )}
+                        </div>
+                      </article>
+                    );
+                  })()}
                 </div>
 
                 {/* ── Bandeau Demande de devis ── */}
