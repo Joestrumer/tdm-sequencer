@@ -22117,7 +22117,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     try {
       const res = await api.post('/reference/partners/sync-vf');
       if (res.ok) {
-        showToast(`Sync VF : ${res.updated} maj, ${res.created} créés${res.recovered ? `, ${res.recovered} récupérés` : ''} (${res.vf_clients} clients VF${res.missing_from_api ? `, ${res.missing_from_api} absents API` : ''})`, "success");
+        showToast(`Sync VF : ${res.updated} maj, ${res.created} créés${res.recovered ? `, ${res.recovered} récupérés` : ''}${res.deduplicated ? `, ${res.deduplicated} doublons fusionnés` : ''} (${res.vf_clients} clients VF${res.missing_from_api ? `, ${res.missing_from_api} absents API` : ''})`, "success");
         charger();
       } else {
         showToast(res.erreur || 'Erreur sync VF', "error");

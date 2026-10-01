@@ -737,7 +737,27 @@ module.exports = (db) => {
         if (m.vf_name) mappingByVfName[m.vf_name.toLowerCase()] = m;
       }
 
-      // Charger les partenaires existants
+      // Dédupliquer les partenaires avec le même vf_client_id avant sync
+      // (garde le premier créé, supprime les doublons)
+      let deduplicated = 0;
+      const dupes = db.prepare(`
+        SELECT vf_client_id, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
+        FROM vf_partners
+        WHERE vf_client_id IS NOT NULL AND vf_client_id != ''
+        GROUP BY vf_client_id HAVING cnt > 1
+      `).all();
+      for (const dupe of dupes) {
+        const ids = dupe.ids.split(',').map(Number);
+        const keepId = ids[0]; // garder le premier
+        const removeIds = ids.slice(1);
+        for (const rid of removeIds) {
+          db.prepare('DELETE FROM vf_partners WHERE id = ?').run(rid);
+          deduplicated++;
+        }
+        logger.info(`📇 Dédupliqué vf_client_id=${dupe.vf_client_id}: gardé #${keepId}, supprimé #${removeIds.join(',')}`);
+      }
+
+      // Charger les partenaires existants (après déduplication)
       const existingPartners = db.prepare('SELECT * FROM vf_partners').all();
       const partnerByNom = {};
       const partnerByVfClientId = {};
@@ -812,11 +832,19 @@ module.exports = (db) => {
         UPDATE vf_client_mappings SET vf_client_id = ? WHERE vf_name = ? AND (vf_client_id IS NULL OR vf_client_id = '')
       `);
 
+      const seenVfIds = new Set(); // Éviter de traiter deux clients VF avec le même ID
       for (const vfClient of vfClients) {
         const vfName = (vfClient.name || '').trim();
         if (!vfName) continue;
 
         const vfId = String(vfClient.id || '');
+
+        // Skip les doublons VF (même ID, noms différents — ex: "hotel X" et "hotel X - Contact Y")
+        if (vfId && seenVfIds.has(vfId)) {
+          skipped++;
+          continue;
+        }
+        if (vfId) seenVfIds.add(vfId);
         const email = vfClient.email || null;
         const phone = vfClient.phone || null;
         const contactName = vfClient.shortcut || null;
@@ -859,6 +887,16 @@ module.exports = (db) => {
         // 4. Match par email (utile pour les comptes portail créés manuellement)
         if (!partner && email) {
           partner = partnerByEmail[email.toLowerCase()] || null;
+        }
+
+        // 5. Vérifier en DB si un partenaire a déjà ce vf_client_id (éviter les doublons)
+        if (!partner && vfId) {
+          const existing = db.prepare('SELECT * FROM vf_partners WHERE vf_client_id = ?').get(vfId);
+          if (existing) {
+            partner = existing;
+            // Mettre à jour le cache pour les prochains matchs
+            partnerByVfClientId[vfId] = existing;
+          }
         }
 
         if (partner) {
@@ -1025,7 +1063,7 @@ module.exports = (db) => {
       // Recharger pour retourner le total
       const total = db.prepare('SELECT COUNT(*) as n FROM vf_partners WHERE actif = 1').get().n;
 
-      logger.info(`📇 Sync VF terminée: ${vfClients.length} clients VF, ${updated} mis à jour, ${created} créés, ${enriched} enrichis, ${recovered} récupérés, ${total} total`);
+      logger.info(`📇 Sync VF terminée: ${vfClients.length} clients VF, ${updated} mis à jour, ${created} créés, ${enriched} enrichis, ${recovered} récupérés, ${deduplicated} dédupliqués, ${skipped} doublons VF ignorés, ${total} total`);
 
       res.json({
         ok: true,
@@ -1034,6 +1072,8 @@ module.exports = (db) => {
         created,
         enriched,
         recovered,
+        deduplicated,
+        skipped,
         missing_from_api: missingPartners.length,
         total_partenaires: total,
       });
