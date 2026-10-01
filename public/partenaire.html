@@ -878,7 +878,7 @@
                             </div>
                           )}
                           <div>
-                            <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{ess.baseRef.replace(/^P/, '')}</span>{ess.label} {ess.gamme.split('/')[1]?.trim() || ess.gamme}<br/><span style={{ fontSize: '0.85em', color: 'var(--tdm-muted)', fontWeight: 400, textTransform: 'lowercase' }}>{ess.gamme.split('/')[0]?.trim()}</span></h3>
+                            <h3><span style={{ color: 'var(--tdm-muted)', fontSize: '0.85em', marginRight: 4 }}>{ess.baseRef.replace(/^P/, '')}</span>{ess.label} {ess.gamme.split('/')[1]?.trim() || ess.gamme}<br/><span style={{ fontSize: '0.85em', color: 'var(--tdm-muted)', fontWeight: 400 }}>{ess.gamme.split('/')[0]?.trim()}</span></h3>
                             <p className="tdm-essential-cost">
                               {currentProd.promo_pct > 0 ? (<>
                                 <span style={{ textDecoration: 'line-through', color: 'var(--tdm-muted)', fontSize: '0.85em' }}>{euro(currentProd.prix_remise)}</span>{' '}
