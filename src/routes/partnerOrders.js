@@ -99,7 +99,9 @@ module.exports = (db) => {
       let sql = `
         SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact,
                vp.master_id, mp.email as master_email,
-               vp.livraison_code_postal as partner_livraison_cp, vp.facturation_code_postal as partner_facturation_cp
+               vp.livraison_code_postal as partner_livraison_cp, vp.facturation_code_postal as partner_facturation_cp,
+               (SELECT COUNT(*) FROM partner_profile_changes ppc
+                WHERE ppc.partner_id = po.partner_id AND ppc.statut = 'en_attente') as pending_profile_change
         FROM partner_orders po
         JOIN vf_partners vp ON vp.id = po.partner_id
         LEFT JOIN vf_partners mp ON mp.id = vp.master_id
@@ -287,6 +289,15 @@ module.exports = (db) => {
 
       if (!order) return res.status(404).json({ erreur: 'Commande introuvable' });
       if (order.statut !== 'en_attente') return res.status(400).json({ erreur: 'Cette commande ne peut plus être validée' });
+
+      const pendingProfileChange = db.prepare(
+        "SELECT id FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente' LIMIT 1"
+      ).get(order.partner_id);
+      if (pendingProfileChange) {
+        return res.status(400).json({
+          erreur: 'Ce partenaire a une demande de modification de profil en attente. Veuillez la traiter avant de valider la commande.'
+        });
+      }
 
       const products = Array.isArray(productsOverride) && productsOverride.length > 0
         ? productsOverride

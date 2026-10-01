@@ -20986,6 +20986,10 @@ const VueCommandes = ({ showToast }) => {
 
   const validerCommande = async () => {
     if (!validateModal) return;
+    if (validateModal.pending_profile_change > 0) {
+      showToast('Modification de profil en attente — validez-la d\'abord', 'error');
+      return;
+    }
     const id = validateModal.id;
     const partnerNom = validateModal.partner_nom || '';
     const partnerEmail = validateModal.master_email || validateModal.partner_email || '';
@@ -21849,6 +21853,13 @@ const VueCommandes = ({ showToast }) => {
                     </div>
                   )}
 
+                  {c.statut === 'en_attente' && c.pending_profile_change > 0 && (
+                    <div className="bg-amber-50 border border-amber-200 rounded-lg px-3 py-2 text-xs text-amber-700 mb-2">
+                      <span className="font-medium">&#9888; Le partenaire a une demande de modification de profil en attente.</span>
+                      <span className="block text-amber-500 mt-0.5">La commande ne peut pas &ecirc;tre valid&eacute;e tant que la demande n'est pas trait&eacute;e.</span>
+                    </div>
+                  )}
+
                   <div className="flex items-center justify-between">
                     {(() => {
                       const isEd = c.statut === 'en_attente';
@@ -21896,7 +21907,13 @@ const VueCommandes = ({ showToast }) => {
                       {c.statut === 'en_attente' && (
                         <>
                           <button onClick={(e) => { e.stopPropagation(); annulerCommande(c.id); }} className="px-3 py-1.5 text-xs border border-slate-200 text-slate-600 rounded-lg hover:bg-slate-100 transition-colors">Annuler</button>
-                          <button onClick={(e) => { e.stopPropagation(); openValidateModal(c); }} className="px-3 py-1.5 text-xs bg-emerald-600 text-white rounded-lg hover:bg-emerald-500 transition-colors">
+                          <button onClick={(e) => { e.stopPropagation(); openValidateModal(c); }}
+                            disabled={c.pending_profile_change > 0}
+                            className={`px-3 py-1.5 text-xs rounded-lg transition-colors ${
+                              c.pending_profile_change > 0
+                                ? 'bg-slate-300 text-slate-500 cursor-not-allowed'
+                                : 'bg-emerald-600 text-white hover:bg-emerald-500'
+                            }`}>
                             Valider la commande
                           </button>
                         </>
