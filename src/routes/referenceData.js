@@ -738,27 +738,36 @@ module.exports = (db) => {
       }
 
       // Dédupliquer les partenaires avec le même vf_client_id avant sync
-      // (garde le premier créé, supprime les doublons)
+      // Soft-delete : actif=0 + vf_client_id=NULL (pas de DELETE car FK constraints)
+      // + migrer les FK dépendantes vers le partenaire conservé
       let deduplicated = 0;
       const dupes = db.prepare(`
         SELECT vf_client_id, GROUP_CONCAT(id) as ids, COUNT(*) as cnt
         FROM vf_partners
-        WHERE vf_client_id IS NOT NULL AND vf_client_id != ''
+        WHERE vf_client_id IS NOT NULL AND vf_client_id != '' AND actif = 1
         GROUP BY vf_client_id HAVING cnt > 1
       `).all();
+      const fkTables = ['vf_partner_contacts', 'vf_devis', 'vf_factures', 'vf_partner_notes', 'vf_partner_fichiers'];
       for (const dupe of dupes) {
         const ids = dupe.ids.split(',').map(Number);
         const keepId = ids[0]; // garder le premier
         const removeIds = ids.slice(1);
         for (const rid of removeIds) {
-          db.prepare('DELETE FROM vf_partners WHERE id = ?').run(rid);
+          // Migrer les FK des tables dépendantes vers le partenaire conservé
+          for (const table of fkTables) {
+            try {
+              db.prepare(`UPDATE ${table} SET partner_id = ? WHERE partner_id = ?`).run(keepId, rid);
+            } catch (_) { /* table peut ne pas exister */ }
+          }
+          // Soft-delete : désactiver et détacher le vf_client_id
+          db.prepare('UPDATE vf_partners SET actif = 0, vf_client_id = NULL WHERE id = ?').run(rid);
           deduplicated++;
         }
-        logger.info(`📇 Dédupliqué vf_client_id=${dupe.vf_client_id}: gardé #${keepId}, supprimé #${removeIds.join(',')}`);
+        logger.info(`📇 Dédupliqué vf_client_id=${dupe.vf_client_id}: gardé #${keepId}, désactivé #${removeIds.join(',')}`);
       }
 
-      // Charger les partenaires existants (après déduplication)
-      const existingPartners = db.prepare('SELECT * FROM vf_partners').all();
+      // Charger les partenaires existants actifs (après déduplication)
+      const existingPartners = db.prepare('SELECT * FROM vf_partners WHERE actif = 1').all();
       const partnerByNom = {};
       const partnerByVfClientId = {};
       const partnerByEmail = {};
@@ -891,7 +900,7 @@ module.exports = (db) => {
 
         // 5. Vérifier en DB si un partenaire a déjà ce vf_client_id (éviter les doublons)
         if (!partner && vfId) {
-          const existing = db.prepare('SELECT * FROM vf_partners WHERE vf_client_id = ?').get(vfId);
+          const existing = db.prepare('SELECT * FROM vf_partners WHERE vf_client_id = ? AND actif = 1').get(vfId);
           if (existing) {
             partner = existing;
             // Mettre à jour le cache pour les prochains matchs
@@ -1078,6 +1087,7 @@ module.exports = (db) => {
         total_partenaires: total,
       });
     } catch (e) {
+      logger.error('❌ Erreur sync VF partenaires', { error: e.message, stack: e.stack });
       res.status(500).json({ erreur: e.message });
     }
   });
