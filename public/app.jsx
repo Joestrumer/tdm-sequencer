@@ -20904,9 +20904,11 @@ const VueCommandes = ({ showToast }) => {
 
   const persistProducts = async (orderId, products) => {
     try {
-      const res = await api.patch(`/partner-orders/${orderId}/products`, { products });
+      // Exclure FP/FE de la sauvegarde (stockés séparément dans frais_ref/frais_montant)
+      const productsToSave = products.filter(p => p.ref !== 'FP' && p.ref !== 'FE');
+      const res = await api.patch(`/partner-orders/${orderId}/products`, { products: productsToSave });
       if (res && !res.erreur) {
-        setCommandes(prev => prev.map(c => c.id === orderId ? { ...c, products, total_ht: res.total_ht, total_ttc: res.total_ttc } : c));
+        setCommandes(prev => prev.map(c => c.id === orderId ? { ...c, products: productsToSave, total_ht: res.total_ht, total_ttc: res.total_ttc } : c));
       } else {
         showToast(res?.erreur || 'Erreur sauvegarde produits', 'error');
       }
@@ -20928,8 +20930,8 @@ const VueCommandes = ({ showToast }) => {
       if (!item.total_ttc) item.total_ttc = Math.round(item.total_ht * (1 + tva / 100) * 100) / 100;
       return item;
     });
-    // Intégrer les frais (FP/FE) comme lignes produit
-    if (c.frais_ref && c.frais_montant > 0) {
+    // Intégrer les frais (FP/FE) comme lignes produit — seulement si pas déjà présent
+    if (c.frais_ref && c.frais_montant > 0 && !copy.some(p => p.ref === 'FP' || p.ref === 'FE')) {
       const fraisHT = c.frais_montant;
       const fraisTva = c.frais_tva || 20;
       copy.push({
