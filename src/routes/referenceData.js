@@ -757,22 +757,24 @@ module.exports = (db) => {
       let created = 0;
       let skipped = 0;
 
+      // Écraser systématiquement les champs locaux avec les données VF
+      // (sauf livraison : le bulk /clients.json ne retourne pas ces champs, COALESCE pour ne pas effacer)
       const updateStmt = db.prepare(`
         UPDATE vf_partners SET
-          email = COALESCE(?, email),
-          contact_nom = COALESCE(?, contact_nom),
-          telephone = COALESCE(?, telephone),
-          adresse = COALESCE(?, adresse),
+          email = ?,
+          contact_nom = ?,
+          telephone = ?,
+          adresse = ?,
           vf_client_id = ?,
-          vf_display_name = COALESCE(?, vf_display_name),
-          facturation_rue = COALESCE(?, facturation_rue),
-          facturation_code_postal = COALESCE(?, facturation_code_postal),
-          facturation_ville = COALESCE(?, facturation_ville),
-          facturation_pays = COALESCE(?, facturation_pays),
-          facturation_tva = COALESCE(?, facturation_tva),
-          facturation_entite_publique = COALESCE(?, facturation_entite_publique),
-          facturation_portable = COALESCE(?, facturation_portable),
-          facturation_email = COALESCE(?, facturation_email),
+          vf_display_name = ?,
+          facturation_rue = ?,
+          facturation_code_postal = ?,
+          facturation_ville = ?,
+          facturation_pays = ?,
+          facturation_tva = ?,
+          facturation_entite_publique = ?,
+          facturation_portable = ?,
+          facturation_email = ?,
           livraison_rue = COALESCE(?, livraison_rue),
           livraison_code_postal = COALESCE(?, livraison_code_postal),
           livraison_ville = COALESCE(?, livraison_ville),
@@ -860,28 +862,54 @@ module.exports = (db) => {
         }
 
         if (partner) {
-          // Mettre à jour avec les données VF (seulement si le champ local est vide)
+          // Écraser les champs locaux avec les données VF (si VF fournit une valeur non vide)
+          // Sinon conserver la valeur locale existante
+          const newEmail = email || partner.email || null;
+          const newContact = contactName || partner.contact_nom || null;
+          const newPhone = phone || partner.telephone || null;
+          const newAdresse = adresse || partner.adresse || null;
+          const newStreet = street || partner.facturation_rue || null;
+          const newPostCode = postCode || partner.facturation_code_postal || null;
+          const newCity = city || partner.facturation_ville || null;
+          const newCountry = country || partner.facturation_pays || null;
+          const newTaxNo = taxNo || partner.facturation_tva || null;
+          const newMobile = mobile || partner.facturation_portable || null;
+          const newEmailReminders = emailReminders || partner.facturation_email || null;
+
           updateStmt.run(
-            email || null,
-            contactName || null,
-            phone || null,
-            adresse || null,
+            newEmail,
+            newContact,
+            newPhone,
+            newAdresse,
             vfId,
             vfName,
-            street || null,
-            postCode || null,
-            city || null,
-            country || null,
-            taxNo || null,
+            newStreet,
+            newPostCode,
+            newCity,
+            newCountry,
+            newTaxNo,
             buyer,
-            mobile || null,
-            emailReminders || null,
+            newMobile,
+            newEmailReminders,
             livRue || null,
             livCp || null,
             livVille || null,
             livPays || null,
             partner.id
           );
+
+          // Log des changements significatifs pour debug
+          const changes = [];
+          if (email && email !== partner.email) changes.push(`email: ${partner.email} → ${email}`);
+          if (contactName && contactName !== partner.contact_nom) changes.push(`contact: ${partner.contact_nom} → ${contactName}`);
+          if (phone && phone !== partner.telephone) changes.push(`tel: ${partner.telephone} → ${phone}`);
+          if (street && street !== partner.facturation_rue) changes.push(`rue: → ${street}`);
+          if (city && city !== partner.facturation_ville) changes.push(`ville: → ${city}`);
+          if (mobile && mobile !== partner.facturation_portable) changes.push(`portable: → ${mobile}`);
+          if (emailReminders && emailReminders !== partner.facturation_email) changes.push(`email_fact: → ${emailReminders}`);
+          if (changes.length > 0) {
+            logger.info(`📇 VF sync update [${partner.nom}]: ${changes.join(', ')}`);
+          }
           // Auto-sync vf_client_mappings : vf_name (nom VF brut) → file_name (nom canonique du partenaire)
           if (vfName && vfName.toLowerCase() !== partner.nom.toLowerCase()) {
             const existingMapping = db.prepare('SELECT id FROM vf_client_mappings WHERE vf_name = ?').get(vfName);
@@ -919,13 +947,14 @@ module.exports = (db) => {
           const fullClient = await vfService.getClient(p.vf_client_id);
           if (!fullClient) continue;
           const patches = {};
-          if (!p.facturation_pays && fullClient.country) patches.facturation_pays = fullClient.country;
-          if (!p.facturation_tva && fullClient.tax_no) patches.facturation_tva = fullClient.tax_no;
-          if (!p.facturation_rue && fullClient.street) patches.facturation_rue = fullClient.street;
-          if (!p.facturation_code_postal && fullClient.post_code) patches.facturation_code_postal = fullClient.post_code;
-          if (!p.facturation_ville && fullClient.city) patches.facturation_ville = fullClient.city;
-          if (!p.facturation_portable && fullClient.mobile_phone) patches.facturation_portable = fullClient.mobile_phone;
-          if (!p.facturation_email && fullClient.email_for_reminders) patches.facturation_email = fullClient.email_for_reminders;
+          // Écraser systématiquement avec les valeurs VF (plus seulement si le champ local est vide)
+          if (fullClient.country) patches.facturation_pays = fullClient.country;
+          if (fullClient.tax_no) patches.facturation_tva = fullClient.tax_no;
+          if (fullClient.street) patches.facturation_rue = fullClient.street;
+          if (fullClient.post_code) patches.facturation_code_postal = fullClient.post_code;
+          if (fullClient.city) patches.facturation_ville = fullClient.city;
+          if (fullClient.mobile_phone) patches.facturation_portable = fullClient.mobile_phone;
+          if (fullClient.email_for_reminders) patches.facturation_email = fullClient.email_for_reminders;
           // Livraison depuis delivery_address VF — toujours écraser si VF a des données
           // (le bulk /clients.json ne retourne pas ces champs, seul le détail les a)
           const livEnrich = parseVFDeliveryAddress(fullClient);
@@ -967,17 +996,18 @@ module.exports = (db) => {
           const mobile = fullClient.mobile_phone || '';
           const adresse = [street, postCode, city].filter(Boolean).join(', ') || null;
           const livRec = parseVFDeliveryAddress(fullClient);
+          // Écraser avec les données VF (API unitaire = données complètes)
           db.prepare(`
             UPDATE vf_partners SET
               email = COALESCE(?, email), contact_nom = COALESCE(?, contact_nom),
               telephone = COALESCE(?, telephone), adresse = COALESCE(?, adresse),
               vf_display_name = COALESCE(?, vf_display_name),
-              facturation_rue = COALESCE(?, facturation_rue),
-              facturation_code_postal = COALESCE(?, facturation_code_postal),
-              facturation_ville = COALESCE(?, facturation_ville),
-              facturation_pays = COALESCE(?, facturation_pays),
-              facturation_tva = COALESCE(?, facturation_tva),
-              facturation_portable = COALESCE(?, facturation_portable),
+              facturation_rue = ?,
+              facturation_code_postal = ?,
+              facturation_ville = ?,
+              facturation_pays = ?,
+              facturation_tva = ?,
+              facturation_portable = ?,
               livraison_rue = COALESCE(?, livraison_rue),
               livraison_code_postal = COALESCE(?, livraison_code_postal),
               livraison_ville = COALESCE(?, livraison_ville),
@@ -994,6 +1024,8 @@ module.exports = (db) => {
 
       // Recharger pour retourner le total
       const total = db.prepare('SELECT COUNT(*) as n FROM vf_partners WHERE actif = 1').get().n;
+
+      logger.info(`📇 Sync VF terminée: ${vfClients.length} clients VF, ${updated} mis à jour, ${created} créés, ${enriched} enrichis, ${recovered} récupérés, ${total} total`);
 
       res.json({
         ok: true,
