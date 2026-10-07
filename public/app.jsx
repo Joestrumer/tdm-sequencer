@@ -14865,7 +14865,7 @@ const FacturesBatch = ({ showToast }) => {
           const totalTTC = productsTTC + fraisTTC;
 
           return (
-            <div key={order.id} className="border border-slate-200 rounded-xl overflow-visible">
+            <div key={order.id} className={`border border-slate-200 rounded-xl overflow-visible relative ${addProductSearchBatch[order.id] ? 'z-20' : 'z-0'}`}>
               {/* Order header */}
               <div className="p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50" onClick={() => toggleExpanded(order.id)}>
                 <div className="flex items-center gap-3">
