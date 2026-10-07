@@ -21629,7 +21629,7 @@ const VueCommandes = ({ showToast }) => {
           const cfg = statutConfig[c.statut] || statutConfig.en_attente;
           const expanded = expandedId === c.id;
           return (
-            <div key={c.id} className="bg-white rounded-2xl border border-slate-100 overflow-hidden">
+            <div key={c.id} className={`bg-white rounded-2xl border border-slate-100 ${addProductSearchCmd[c.id] ? 'overflow-visible relative z-20' : 'overflow-hidden'}`}>
               <div className="p-4 flex items-center gap-4 cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => setExpandedId(expanded ? null : c.id)}>
                 <input type="checkbox" checked={selectedOrderIds.has(c.id)} onChange={(e) => toggleOrderSelection(c.id, e)} onClick={e => e.stopPropagation()}
                   className="rounded border-slate-300 text-slate-900 focus:ring-slate-500 w-4 h-4 flex-shrink-0 cursor-pointer" />
@@ -21788,7 +21788,7 @@ const VueCommandes = ({ showToast }) => {
                               ).slice(0, 15);
                               if (!matches.length) return null;
                               return (
-                                <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-72 overflow-y-auto">
+                                <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-72 overflow-y-auto">
                                   {matches.map(cat => (
                                     <button key={cat.ref} onClick={() => {
                                       const tva = cat.tva || 20;
