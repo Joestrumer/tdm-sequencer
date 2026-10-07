@@ -14865,7 +14865,7 @@ const FacturesBatch = ({ showToast }) => {
           const totalTTC = productsTTC + fraisTTC;
 
           return (
-            <div key={order.id} className="border border-slate-200 rounded-xl overflow-hidden">
+            <div key={order.id} className="border border-slate-200 rounded-xl overflow-visible">
               {/* Order header */}
               <div className="p-3 flex items-center justify-between cursor-pointer hover:bg-slate-50" onClick={() => toggleExpanded(order.id)}>
                 <div className="flex items-center gap-3">
@@ -15083,7 +15083,7 @@ const FacturesBatch = ({ showToast }) => {
                         ).slice(0, 8);
                         if (!matches.length) return null;
                         return (
-                          <div className="absolute z-10 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
+                          <div className="absolute z-50 left-0 right-0 mt-1 bg-white border border-slate-200 rounded-xl shadow-lg max-h-48 overflow-y-auto">
                             {matches.map(c => (
                               <button key={c.ref} onClick={() => {
                                 const tva = c.tva || 20;
