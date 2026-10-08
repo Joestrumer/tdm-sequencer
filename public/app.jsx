@@ -2529,11 +2529,11 @@ const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
     try {
       const r = await api.post("/leads/import", { leads });
       setResult(r);
-      const parts = [`${r.crees} lead(s) importé(s)`];
-      if (r.doublons) parts.push(`${r.doublons} doublon(s) ignoré(s)`);
-      if (r.incomplets) parts.push(`${r.incomplets} ligne(s) incomplète(s)`);
+      const parts = [`${r.crees} contact(s) importé(s)`];
+      if (r.doublons) parts.push(`${r.doublons} non importé(s) (email déjà existant)`);
+      if (r.incomplets) parts.push(`${r.incomplets} ligne(s) ignorée(s)`);
       if (r.erreurs?.length) parts.push(`${r.erreurs.length} erreur(s)`);
-      showToast(parts.join(' · '), r.crees > 0 ? 'success' : 'error');
+      showToast(parts.join(' · '), r.crees > 0 ? 'success' : (r.doublons > 0 ? 'warning' : 'error'));
       if (onSuccess) onSuccess();
     } catch (e) {
       setError("Erreur lors de l'import");
@@ -2568,9 +2568,15 @@ const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
 
           {error && <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
           {result && (
-            <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
-              ✓ {result.crees ?? 0} créés{result.doublons ? `, ${result.doublons} doublons` : ""}{result.incomplets ? `, ${result.incomplets} incomplets` : ""}
-            </p>
+            <div className="rounded-lg px-4 py-3 space-y-1.5 border bg-emerald-50 border-emerald-200">
+              <p className="text-sm font-semibold text-emerald-700">✓ {result.crees ?? 0} contact(s) importé(s) avec succès</p>
+              {(result.doublons > 0 || result.incomplets > 0) && (
+                <div className="text-sm text-amber-700 bg-amber-50 border border-amber-200 rounded-md px-3 py-2 -mx-1">
+                  {result.doublons > 0 && <p>⚠ {result.doublons} contact(s) non importé(s) — adresse email déjà existante en base</p>}
+                  {result.incomplets > 0 && <p>⚠ {result.incomplets} ligne(s) ignorée(s) — email ou hôtel manquant</p>}
+                </div>
+              )}
+            </div>
           )}
 
           {/* Mapping */}
