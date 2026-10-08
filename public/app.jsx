@@ -2439,9 +2439,9 @@ const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
     { key: "ville", label: "Ville" },
     { key: "segment", label: "Segment" },
     { key: "poste", label: "Poste / Fonction" },
-    { key: "langue", label: "Langue" },
+    { key: "langue", label: "Langue", hasDefault: true, defaultOptions: ["fr", "en", "de", "es", "it", "nl", "pt"] },
     { key: "telephone", label: "Téléphone" },
-    { key: "source", label: "Source" },
+    { key: "source", label: "Source", hasDefault: true, defaultOptions: ["Site web", "LinkedIn", "HubSpot", "Import CSV", "Salon", "Recommandation", "Partenaire"] },
   ];
 
   const AUTO_DETECT = [
@@ -2461,6 +2461,7 @@ const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
   const [csvHeaders, setCsvHeaders] = useState([]);
   const [csvRows, setCsvRows] = useState([]);
   const [mapping, setMapping] = useState({});
+  const [defaults, setDefaults] = useState({ source: "Import CSV", langue: "fr" });
   const [importing, setImporting] = useState(false);
   const [result, setResult] = useState(null);
   const [error, setError] = useState(null);
@@ -2504,9 +2505,13 @@ const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
   const buildLeads = () => {
     return csvRows.map(row => {
       const lead = {};
-      LEAD_FIELDS.forEach(({ key }) => {
+      LEAD_FIELDS.forEach(({ key, hasDefault }) => {
         const col = mapping[key];
-        if (col) lead[key] = row[col] || "";
+        if (col) {
+          lead[key] = row[col] || "";
+        } else if (hasDefault && defaults[key]) {
+          lead[key] = defaults[key];
+        }
       });
       return lead;
     }).filter(l => l.email && l.hotel);
@@ -2585,7 +2590,7 @@ const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
               <div>
                 <h4 className="text-sm font-semibold text-slate-700 mb-3">Mapping des champs</h4>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2">
-                  {LEAD_FIELDS.map(({ key, label, required }) => (
+                  {LEAD_FIELDS.map(({ key, label, required, hasDefault, defaultOptions }) => (
                     <div key={key} className="flex items-center gap-2">
                       <label className="text-xs text-slate-600 w-32 shrink-0">
                         {label}{required ? " *" : ""}
@@ -2602,6 +2607,23 @@ const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
                           <option key={h} value={h}>{h}</option>
                         ))}
                       </select>
+                      {hasDefault && !mapping[key] && (
+                        <>
+                          <span className="text-xs text-slate-400">→</span>
+                          <div className="relative flex-1">
+                            <input
+                              list={`default-${key}`}
+                              value={defaults[key] || ""}
+                              onChange={e => setDefaults(d => ({ ...d, [key]: e.target.value }))}
+                              placeholder="Valeur par défaut"
+                              className="w-full border border-blue-200 bg-blue-50 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                            />
+                            <datalist id={`default-${key}`}>
+                              {defaultOptions.map(o => <option key={o} value={o} />)}
+                            </datalist>
+                          </div>
+                        </>
+                      )}
                     </div>
                   ))}
                 </div>
