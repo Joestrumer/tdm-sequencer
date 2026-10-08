@@ -2428,6 +2428,227 @@ const ModalBulkLaunch = ({ count, sequences, onClose, onLaunch }) => {
   );
 };
 
+// ── Modal Import CSV Leads (avec mapping) ───────────────────────────────
+const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
+  const LEAD_FIELDS = [
+    { key: "email", label: "Email", required: true },
+    { key: "hotel", label: "Hôtel / Établissement", required: true },
+    { key: "prenom", label: "Prénom" },
+    { key: "nom", label: "Nom" },
+    { key: "civilite", label: "Civilité" },
+    { key: "ville", label: "Ville" },
+    { key: "segment", label: "Segment" },
+    { key: "poste", label: "Poste / Fonction" },
+    { key: "langue", label: "Langue" },
+    { key: "telephone", label: "Téléphone" },
+    { key: "source", label: "Source" },
+  ];
+
+  const AUTO_DETECT = [
+    { key: "email",     re: /^e-?mail$|^courriel$/ },
+    { key: "hotel",     re: /hotel|company|etablissement|societe|enseigne|raison/ },
+    { key: "prenom",    re: /prenom|prénom|first.?name/ },
+    { key: "nom",       re: /^nom$|^nom.?contact$|^lastname$|^family/ },
+    { key: "civilite",  re: /^civilit/ },
+    { key: "ville",     re: /^ville$|^commune$|^city$/ },
+    { key: "segment",   re: /segment|class|etoil|stars|categor/ },
+    { key: "poste",     re: /poste|position|title|job|fonction/ },
+    { key: "langue",    re: /langue|language|lang/ },
+    { key: "telephone", re: /tel|phone/ },
+    { key: "source",    re: /source|origine/ },
+  ];
+
+  const [csvHeaders, setCsvHeaders] = useState([]);
+  const [csvRows, setCsvRows] = useState([]);
+  const [mapping, setMapping] = useState({});
+  const [importing, setImporting] = useState(false);
+  const [result, setResult] = useState(null);
+  const [error, setError] = useState(null);
+  const [fileName, setFileName] = useState(null);
+
+  const handleFile = async (file) => {
+    if (!file) return;
+    setFileName(file.name);
+    setResult(null);
+    setError(null);
+    const text = await file.text();
+    const lines = text.trim().split(/\r?\n/);
+    if (lines.length < 2) { setError("Fichier vide ou sans données"); return; }
+    const sep = lines[0].includes(";") ? ";" : ",";
+    const headers = lines[0].split(sep).map(h => h.trim().replace(/"/g, ""));
+    const headersNorm = headers.map(h => h.toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g, ""));
+    const rows = lines.slice(1).filter(l => l.trim()).map(line => {
+      const vals = line.split(sep).map(v => v.trim().replace(/"/g, ""));
+      const obj = {};
+      headers.forEach((h, i) => { obj[h] = vals[i] || ""; });
+      return obj;
+    });
+    setCsvHeaders(headers);
+    setCsvRows(rows);
+
+    // Auto-detect mapping
+    const autoMap = {};
+    AUTO_DETECT.forEach(({ key, re }) => {
+      const idx = headersNorm.findIndex(h => re.test(h));
+      if (idx !== -1 && !Object.values(autoMap).includes(headers[idx])) {
+        autoMap[key] = headers[idx];
+      }
+    });
+    setMapping(autoMap);
+  };
+
+  const setField = (fieldKey, csvCol) => {
+    setMapping(m => ({ ...m, [fieldKey]: csvCol }));
+  };
+
+  const buildLeads = () => {
+    return csvRows.map(row => {
+      const lead = {};
+      LEAD_FIELDS.forEach(({ key }) => {
+        const col = mapping[key];
+        if (col) lead[key] = row[col] || "";
+      });
+      return lead;
+    }).filter(l => l.email && l.hotel);
+  };
+
+  const validCount = csvRows.length > 0 ? buildLeads().length : 0;
+
+  const handleImport = async () => {
+    if (!mapping.email || !mapping.hotel) {
+      setError("Email et Hôtel sont requis");
+      return;
+    }
+    const leads = buildLeads();
+    if (leads.length === 0) {
+      setError("Aucun lead valide (email + hôtel requis)");
+      return;
+    }
+    setImporting(true);
+    setError(null);
+    try {
+      const r = await api.post("/leads/import", { leads });
+      setResult(r);
+      const parts = [`${r.crees} lead(s) importé(s)`];
+      if (r.doublons) parts.push(`${r.doublons} doublon(s) ignoré(s)`);
+      if (r.incomplets) parts.push(`${r.incomplets} ligne(s) incomplète(s)`);
+      if (r.erreurs?.length) parts.push(`${r.erreurs.length} erreur(s)`);
+      showToast(parts.join(' · '), r.crees > 0 ? 'success' : 'error');
+      if (onSuccess) onSuccess();
+    } catch (e) {
+      setError("Erreur lors de l'import");
+      showToast('Erreur import CSV', 'error');
+    }
+    setImporting(false);
+  };
+
+  const previewRows = csvRows.slice(0, 3);
+  const mappedFields = LEAD_FIELDS.filter(f => mapping[f.key]);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={onClose}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-2xl mx-4 overflow-hidden max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
+        <div className="px-6 py-5 border-b border-slate-100 flex items-center justify-between flex-shrink-0">
+          <h3 className="text-base font-semibold text-slate-900">📥 Importer des contacts CSV</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 text-xl leading-none">×</button>
+        </div>
+        <div className="p-6 space-y-5 overflow-y-auto flex-1">
+          {/* File picker */}
+          <div>
+            <label className="inline-flex items-center gap-2 px-4 py-2 bg-slate-100 hover:bg-slate-200 rounded-lg cursor-pointer transition-colors text-sm font-medium text-slate-700">
+              📂 Choisir un fichier CSV
+              <input type="file" accept=".csv" className="hidden" onChange={e => handleFile(e.target.files?.[0])} />
+            </label>
+            {fileName && (
+              <span className="ml-3 text-sm text-slate-500">
+                {fileName} — {csvHeaders.length} colonnes, {csvRows.length} lignes
+              </span>
+            )}
+          </div>
+
+          {error && <p className="text-sm text-red-500 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>}
+          {result && (
+            <p className="text-sm text-emerald-700 bg-emerald-50 border border-emerald-200 rounded-lg px-3 py-2">
+              ✓ {result.crees ?? 0} créés{result.doublons ? `, ${result.doublons} doublons` : ""}{result.incomplets ? `, ${result.incomplets} incomplets` : ""}
+            </p>
+          )}
+
+          {/* Mapping */}
+          {csvHeaders.length > 0 && !result && (
+            <>
+              <div>
+                <h4 className="text-sm font-semibold text-slate-700 mb-3">Mapping des champs</h4>
+                <div className="grid grid-cols-2 gap-x-6 gap-y-2">
+                  {LEAD_FIELDS.map(({ key, label, required }) => (
+                    <div key={key} className="flex items-center gap-2">
+                      <label className="text-xs text-slate-600 w-32 shrink-0">
+                        {label}{required ? " *" : ""}
+                      </label>
+                      <select
+                        value={mapping[key] || ""}
+                        onChange={e => setField(key, e.target.value)}
+                        className={`flex-1 border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white ${
+                          required && !mapping[key] ? "border-red-300 bg-red-50" : "border-slate-200"
+                        }`}
+                      >
+                        <option value="">-- Non mappé --</option>
+                        {csvHeaders.map(h => (
+                          <option key={h} value={h}>{h}</option>
+                        ))}
+                      </select>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Preview */}
+              {previewRows.length > 0 && mappedFields.length > 0 && (
+                <div>
+                  <h4 className="text-sm font-semibold text-slate-700 mb-2">Aperçu ({previewRows.length} premières lignes)</h4>
+                  <div className="overflow-x-auto rounded-lg border border-slate-200">
+                    <table className="w-full text-xs">
+                      <thead>
+                        <tr className="bg-slate-50">
+                          {mappedFields.map(f => (
+                            <th key={f.key} className="px-3 py-2 text-left font-medium text-slate-600 border-b border-slate-200">{f.label}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {previewRows.map((row, i) => (
+                          <tr key={i} className="border-b border-slate-100 last:border-0">
+                            {mappedFields.map(f => (
+                              <td key={f.key} className="px-3 py-2 text-slate-700 truncate max-w-[160px]">{row[mapping[f.key]] || ""}</td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+        <div className="px-6 py-4 bg-slate-50 border-t border-slate-100 flex justify-end gap-3 flex-shrink-0">
+          <button onClick={onClose} className="px-4 py-2 text-sm font-medium text-slate-600 bg-white border border-slate-200 rounded-xl hover:bg-slate-50">Annuler</button>
+          {!result ? (
+            <button
+              onClick={handleImport}
+              disabled={importing || !mapping.email || !mapping.hotel || csvRows.length === 0}
+              className="px-4 py-2 text-sm font-semibold text-white bg-blue-600 rounded-xl hover:bg-blue-700 disabled:opacity-50"
+            >
+              {importing ? "⟳ Import..." : `✓ Importer ${validCount} contacts`}
+            </button>
+          ) : (
+            <button onClick={onClose} className="px-4 py-2 text-sm font-semibold text-white bg-emerald-600 rounded-xl hover:bg-emerald-700">Fermer</button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+};
+
 const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const [search, setSearch] = useState("");
@@ -2451,7 +2672,6 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [showAdd, setShowAdd] = useState(false);
   const [showLaunch, setShowLaunch] = useState(null);
   const [triggerStatus, setTriggerStatus] = useState(null);
-  const [importStatus, setImportStatus] = useState(null);
   const [selectedIds, setSelectedIds] = useState(new Set());
   const [showBulkLaunch, setShowBulkLaunch] = useState(false);
   const [hsDetails, setHsDetails] = useState(null);
@@ -2461,9 +2681,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [detailData, setDetailData] = useState(null);     // détail complet lead (emails + events)
   const [loadingDetail, setLoadingDetail] = useState(false);
   const [detailTab, setDetailTab] = useState('timeline'); // 'timeline' | 'emails' | 'hubspot'
-  const [showTooltip, setShowTooltip] = useState(null);   // "csv" | "sync" | "trigger" | null
+  const [showTooltip, setShowTooltip] = useState(null);   // "sync" | "trigger" | null
   const [tooltipPos, setTooltipPos] = useState({ top: 0, left: 0 });
-  const csvRef = useRef(null);
+  const [showImportLeadsModal, setShowImportLeadsModal] = useState(false);
   const detailLoadingRef = useRef(null); // ID du lead dont on charge le détail
 
   const toggleTooltip = (key, e) => {
@@ -2668,45 +2888,6 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
 
   const KANBAN_COLS = useMemo(() => ["Nouveau", "En séquence", "Répondu", "Converti", "Échantillon envoyé", "Fin de séquence", "Closed Lost", "Partner", "Désabonné"], []);
 
-  // ── Import CSV ──────────────────────────────────────────────────────────
-  const importerCSV = async (file) => {
-    if (!file) return;
-    setImportStatus("⟳ Import...");
-    const text = await file.text();
-    const lines = text.trim().split(/\r?\n/);
-    const sep = lines[0].includes(";") ? ";" : ",";
-    const headers = lines[0].split(sep).map(h => h.trim().replace(/"/g, "").toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g, ""));
-    const toImport = lines.slice(1).map(line => {
-      const vals = line.split(sep).map(v => v.trim().replace(/"/g, ""));
-      const obj = {};
-      headers.forEach((h, i) => { obj[h] = vals[i] || ""; });
-      return {
-        prenom: obj.prenom || obj.firstname || obj["prenom"] || "",
-        nom: obj.nom || obj.lastname || obj["nom"] || "",
-        email: obj.email || "",
-        hotel: obj.hotel || obj.company || obj.etablissement || obj["etablissement"] || obj.societe || "",
-        ville: obj.ville || obj.city || "",
-        segment: obj.segment || "5*",
-        poste: obj.poste || obj.position || obj.title || obj.job || "",
-        langue: obj.langue || obj.language || obj.lang || "fr",
-        civilite: obj.civilite || obj.salutation || "",
-        source: obj.source || "Import CSV",
-      };
-    }).filter(l => l.email && l.hotel);
-    try {
-      const r = await api.post("/leads/import", { leads: toImport });
-      setImportStatus(`✓ ${r.crees} importés`);
-      const parts = [`${r.crees} lead(s) importé(s)`];
-      if (r.doublons) parts.push(`${r.doublons} doublon(s) ignoré(s) (email déjà existant)`);
-      if (r.incomplets) parts.push(`${r.incomplets} ligne(s) incomplète(s) (email ou hôtel manquant)`);
-      if (r.erreurs?.length) parts.push(`${r.erreurs.length} erreur(s)`);
-      showToast(parts.join(' · '), r.crees > 0 ? 'success' : 'error');
-      if (onRefresh) onRefresh();
-    } catch(e) { setImportStatus("✗ Erreur"); showToast('Erreur import CSV', 'error'); }
-    setTimeout(() => setImportStatus(null), 4000);
-    if (csvRef.current) csvRef.current.value = "";
-  };
-
   // ── Actions lead ────────────────────────────────────────────────────────
   const supprimerLead = async (lead, e) => {
     if (e) e.stopPropagation();
@@ -2803,6 +2984,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
         })();
       }} />}
       {editLead && <ModalEditLead lead={editLead} onClose={() => setEditLead(null)} onSave={() => { setEditLead(null); if(onRefresh) onRefresh(); }} campaigns={campaigns.filter(c => c !== "Tous")} sequences={sequences} />}
+      {showImportLeadsModal && <ModalImportLeadsCSV onClose={() => setShowImportLeadsModal(false)} onSuccess={() => { if (onRefresh) onRefresh(); }} showToast={showToast} />}
 
       {/* ── Filtres ── */}
       <div className="flex flex-col md:flex-row flex-wrap gap-2 md:items-center bg-white rounded-2xl border border-slate-100 px-4 py-3">
@@ -2903,18 +3085,9 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
           <SearchInput value={search} onChange={e => setSearch(e.target.value)} placeholder="Rechercher..." className="border border-slate-200 rounded-lg px-3 py-1.5 text-sm w-full md:w-44 focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white" />
         </div>
         <div className="flex gap-2 overflow-x-auto">
-          <div className="flex items-center gap-1" data-info-popup>
-            <button onClick={() => csvRef.current?.click()} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
-              {importStatus || "📥 Import CSV"}
-            </button>
-            <button
-              onClick={(e) => toggleTooltip('csv', e)}
-              className="w-5 h-5 rounded-full bg-slate-100 text-slate-400 hover:bg-slate-200 text-xs flex items-center justify-center font-bold"
-            >
-              ℹ️
-            </button>
-          </div>
-          <input ref={csvRef} type="file" accept=".csv" className="hidden" onChange={e => importerCSV(e.target.files?.[0])} />
+          <button onClick={() => setShowImportLeadsModal(true)} className="px-3 py-1.5 text-xs font-medium rounded-lg border border-slate-200 bg-white text-slate-600 hover:border-slate-300 whitespace-nowrap">
+            📥 Import CSV
+          </button>
           <div className="flex items-center gap-1" data-info-popup>
             <button onClick={async () => {
               const r = await api.post("/hubspot/sync-all", {}).catch(() => null);
@@ -4157,11 +4330,6 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
       {showTooltip && (
         <div data-info-popover style={{ position: 'fixed', top: tooltipPos.top, left: tooltipPos.left, zIndex: 9999 }}
           className="bg-slate-800 text-white text-xs rounded-lg px-3 py-2.5 shadow-xl max-w-xs animate-in fade-in">
-          {showTooltip === 'csv' && (<>
-            <p className="font-semibold mb-1">Format CSV :</p>
-            <p className="text-slate-300">civilite, prenom, nom, email, hotel, ville, segment, poste, langue, source</p>
-            <p className="text-slate-300 mt-1.5">Requis : <span className="text-white font-semibold">email, hotel, prenom</span></p>
-          </>)}
           {showTooltip === 'sync' && (
             <p>Synchroniser tous les leads avec HubSpot (contacts + entreprises)</p>
           )}
