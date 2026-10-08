@@ -4565,7 +4565,7 @@ const ModalImportCSV = ({ onClose, onSuccess, showToast }) => {
                     Activer le scraping automatique
                   </label>
                   <p className="text-xs text-slate-500 mt-1">
-                    Extrait emails génériques + contacts LinkedIn depuis la colonne "Site web"
+                    Extrait emails scrapés + contacts LinkedIn depuis la colonne "Site web"
                   </p>
                 </div>
               </div>
@@ -4827,7 +4827,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
   const [contactsFilter, setContactsFilter] = useState({ search: '', avec_email: '', fonction: '' });
   const [showConvertModal, setShowConvertModal] = useState(false);
 
-  // States pour vue emails génériques
+  // States pour vue emails scrapés
   const [emailsGeneriques, setEmailsGeneriques] = useState([]);
   const [emailsStats, setEmailsStats] = useState(null);
   const [emailsTotal, setEmailsTotal] = useState(0);
@@ -5571,7 +5571,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [activeTab, contactsFilter.search, contactsFilter.avec_email, contactsFilter.fonction]);
 
-  // Charger emails génériques
+  // Charger emails scrapés
   const chargerEmailsGeneriques = async () => {
     setLoading(true);
     try {
@@ -5658,7 +5658,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
     setConvertingEmails(false);
   };
 
-  // Exclure des emails génériques (batch)
+  // Exclure des emails scrapés (batch)
   const handleExcludeEmails = async (ids, exclude = true) => {
     try {
       const res = await api.post('/prospection/emails-generiques/exclude', {
@@ -5808,6 +5808,21 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           🏨 Hôtels
         </button>
         <button
+          onClick={() => setActiveTab('emails-generiques')}
+          className={`px-4 py-2 text-sm font-medium transition-colors ${
+            activeTab === 'emails-generiques'
+              ? 'text-blue-600 border-b-2 border-blue-600'
+              : 'text-slate-600 hover:text-slate-900'
+          }`}
+        >
+          📧 Emails scrapés
+          {emailsStats && emailsStats.total_emails > 0 && (
+            <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium">
+              {emailsStats.total_emails}
+            </span>
+          )}
+        </button>
+        <button
           onClick={() => setActiveTab('contacts')}
           className={`px-4 py-2 text-sm font-medium transition-colors ${
             activeTab === 'contacts'
@@ -5819,21 +5834,6 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
           {contactsStats && contactsStats.avec_email > 0 && (
             <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-emerald-50 text-emerald-700 font-medium">
               {contactsStats.avec_email}
-            </span>
-          )}
-        </button>
-        <button
-          onClick={() => setActiveTab('emails-generiques')}
-          className={`px-4 py-2 text-sm font-medium transition-colors ${
-            activeTab === 'emails-generiques'
-              ? 'text-blue-600 border-b-2 border-blue-600'
-              : 'text-slate-600 hover:text-slate-900'
-          }`}
-        >
-          📧 Emails génériques
-          {emailsStats && emailsStats.total_emails > 0 && (
-            <span className="ml-2 px-2 py-0.5 rounded-full text-xs bg-blue-50 text-blue-700 font-medium">
-              {emailsStats.total_emails}
             </span>
           )}
         </button>
@@ -6555,216 +6555,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
         </>
       )}
 
-      {/* Contenu onglet Contacts LinkedIn */}
-      {activeTab === 'contacts' && (
-        <>
-          {/* Stats */}
-          {contactsStats && (
-            <div className="grid grid-cols-3 gap-3 mb-6">
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total contacts</p>
-                <p className="text-2xl font-bold text-slate-900">{contactsStats.avec_email + contactsStats.sans_email}</p>
-              </div>
-              <div className="bg-white rounded-xl border border-emerald-200 p-4">
-                <p className="text-xs font-medium text-emerald-600 uppercase tracking-wide mb-1">Avec email</p>
-                <p className="text-2xl font-bold text-emerald-700">{contactsStats.avec_email}</p>
-              </div>
-              <div className="bg-white rounded-xl border border-slate-200 p-4">
-                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Hôtels</p>
-                <p className="text-2xl font-bold text-slate-900">{contactsStats.hotels}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Filtres */}
-          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-              <input
-                type="text"
-                placeholder="Rechercher hôtel..."
-                value={contactsFilter.search}
-                onChange={(e) => setContactsFilter(prev => ({ ...prev, search: e.target.value }))}
-                className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
-              />
-              <select
-                value={contactsFilter.avec_email}
-                onChange={(e) => setContactsFilter(prev => ({ ...prev, avec_email: e.target.value }))}
-                className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
-              >
-                <option value="">Tous les contacts</option>
-                <option value="true">Avec email uniquement</option>
-              </select>
-              <input
-                type="text"
-                placeholder="Filtrer par fonction..."
-                value={contactsFilter.fonction}
-                onChange={(e) => setContactsFilter(prev => ({ ...prev, fonction: e.target.value }))}
-                className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
-              />
-            </div>
-          </div>
-
-          {/* Actions */}
-          {selectedContacts.size > 0 && (
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center justify-between">
-              <p className="text-sm font-medium text-blue-900">{selectedContacts.size} contact(s) sélectionné(s)</p>
-              <button
-                onClick={() => setShowConvertModal(true)}
-                disabled={converting}
-                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
-              >
-                {converting ? 'Conversion...' : 'Créer les leads'}
-              </button>
-            </div>
-          )}
-
-          {/* Tableau des contacts */}
-          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
-            <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead className="bg-slate-50 border-b border-slate-200">
-                  <tr>
-                    <th className="w-8 px-4 py-3">
-                      <input
-                        type="checkbox"
-                        checked={selectedContacts.size === contacts.length && contacts.length > 0}
-                        onChange={() => {
-                          if (selectedContacts.size === contacts.length) {
-                            setSelectedContacts(new Set());
-                          } else {
-                            setSelectedContacts(new Set(contacts.map((_, i) => i)));
-                          }
-                        }}
-                        className="w-4 h-4"
-                      />
-                    </th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Contact</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Fonction</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Email</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Hôtel</th>
-                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Pertinence</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {loading ? (
-                    <tr>
-                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
-                        <div className="flex justify-center"><div className="w-6 h-6 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" /></div>
-                      </td>
-                    </tr>
-                  ) : contacts.length === 0 ? (
-                    <tr>
-                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
-                        Aucun contact trouvé. Utilisez le bouton "🔍 Contacts" sur les hôtels pour trouver des contacts LinkedIn.
-                      </td>
-                    </tr>
-                  ) : (
-                    contacts.map((contact, i) => (
-                      <tr key={i} className="hover:bg-slate-50">
-                        <td className="px-4 py-3">
-                          <input
-                            type="checkbox"
-                            checked={selectedContacts.has(i)}
-                            onChange={() => toggleSelectContact(i)}
-                            className="w-4 h-4"
-                          />
-                        </td>
-                        <td className="px-4 py-3">
-                          <div className="flex items-center gap-2">
-                            <div>
-                              <p className="text-sm font-medium text-slate-900">{contact.nom_complet}</p>
-                              {contact.linkedin_url && (
-                                <a
-                                  href={contact.linkedin_url}
-                                  target="_blank"
-                                  rel="noopener noreferrer"
-                                  className="text-xs text-blue-600 hover:underline"
-                                >
-                                  🔗 Voir profil
-                                </a>
-                              )}
-                            </div>
-                            {contact.is_lead && (
-                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap ${
-                                contact.lead_statut === 'En séquence' ? 'bg-blue-50 text-blue-700' :
-                                contact.lead_statut === 'Répondu' ? 'bg-emerald-50 text-emerald-700' :
-                                contact.lead_statut === 'Converti' ? 'bg-amber-50 text-amber-700' :
-                                'bg-emerald-50 text-emerald-700'
-                              }`}>
-                                {contact.lead_statut ? `✓ ${contact.lead_statut}` : '✓ Lead'}
-                              </span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          <span className="text-sm text-slate-700">{contact.fonction}</span>
-                        </td>
-                        <td className="px-4 py-3">
-                          {contact.email ? (
-                            <div>
-                              <span className="text-sm font-mono text-slate-900">{contact.email}</span>
-                              <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓</span>
-                            </div>
-                          ) : (
-                            <div className="flex items-center gap-2">
-                              <input
-                                type="email"
-                                placeholder="Saisir email..."
-                                className="px-2 py-1 text-sm border border-slate-300 rounded-lg w-48 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
-                                onKeyDown={async (e) => {
-                                  if (e.key === 'Enter' && e.target.value.trim()) {
-                                    e.preventDefault();
-                                    const email = e.target.value.trim().toLowerCase();
-                                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
-                                      showToast('Email invalide', 'error');
-                                      return;
-                                    }
-                                    try {
-                                      const res = await api.patch(`/prospection/contacts/${contact.hotel_id}/email`, {
-                                        linkedin_url: contact.linkedin_url,
-                                        nom_complet: contact.nom_complet,
-                                        email,
-                                      });
-                                      if (res.error) {
-                                        showToast('Erreur: ' + res.error, 'error');
-                                        return;
-                                      }
-                                      showToast('Email ajouté', 'success');
-                                      chargerContacts();
-                                    } catch (err) {
-                                      showToast('Erreur: ' + err.message, 'error');
-                                    }
-                                  }
-                                }}
-                              />
-                              <span className="text-[10px] text-slate-400">Entrée pour valider</span>
-                            </div>
-                          )}
-                        </td>
-                        <td className="px-4 py-3">
-                          <div>
-                            <p className="text-sm font-medium text-slate-900">{contact.hotel_nom}</p>
-                            <p className="text-xs text-slate-500">{contact.hotel_commune}</p>
-                          </div>
-                        </td>
-                        <td className="px-4 py-3">
-                          {contact.pertinence === 'haute' ? (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Pertinent</span>
-                          ) : (
-                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600">Moyenne</span>
-                          )}
-                        </td>
-                      </tr>
-                    ))
-                  )}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        </>
-      )}
-
-      {/* Contenu onglet Emails génériques */}
+      {/* Contenu onglet Emails scrapés */}
       {activeTab === 'emails-generiques' && (
         <>
           {/* Stats */}
@@ -7110,7 +6901,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
         </>
       )}
 
-      {/* Modal choix séquence après création leads depuis emails génériques */}
+      {/* Modal choix séquence après création leads depuis emails scrapés */}
       {showEmailsSequenceModal && createdLeadIds.length > 0 && (
         <ModalBulkLaunch
           count={createdLeadIds.length}
@@ -7137,7 +6928,7 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
         />
       )}
 
-      {/* Modal choix campagne après création leads depuis emails génériques */}
+      {/* Modal choix campagne après création leads depuis emails scrapés */}
       {showEmailsCampaignModal && createdLeadIds.length > 0 && (
         <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-50" onClick={() => setShowEmailsCampaignModal(false)}>
           <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg mx-4 max-h-[90vh] flex flex-col" onClick={e => e.stopPropagation()}>
@@ -7467,6 +7258,215 @@ const VueProspection = ({ showToast, readOnly, sequences, onRefreshLeads }) => {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Contenu onglet Contacts LinkedIn */}
+      {activeTab === 'contacts' && (
+        <>
+          {/* Stats */}
+          {contactsStats && (
+            <div className="grid grid-cols-3 gap-3 mb-6">
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Total contacts</p>
+                <p className="text-2xl font-bold text-slate-900">{contactsStats.avec_email + contactsStats.sans_email}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-emerald-200 p-4">
+                <p className="text-xs font-medium text-emerald-600 uppercase tracking-wide mb-1">Avec email</p>
+                <p className="text-2xl font-bold text-emerald-700">{contactsStats.avec_email}</p>
+              </div>
+              <div className="bg-white rounded-xl border border-slate-200 p-4">
+                <p className="text-xs font-medium text-slate-500 uppercase tracking-wide mb-1">Hôtels</p>
+                <p className="text-2xl font-bold text-slate-900">{contactsStats.hotels}</p>
+              </div>
+            </div>
+          )}
+
+          {/* Filtres */}
+          <div className="bg-white rounded-xl border border-slate-200 p-4 mb-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
+              <input
+                type="text"
+                placeholder="Rechercher hôtel..."
+                value={contactsFilter.search}
+                onChange={(e) => setContactsFilter(prev => ({ ...prev, search: e.target.value }))}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+              />
+              <select
+                value={contactsFilter.avec_email}
+                onChange={(e) => setContactsFilter(prev => ({ ...prev, avec_email: e.target.value }))}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+              >
+                <option value="">Tous les contacts</option>
+                <option value="true">Avec email uniquement</option>
+              </select>
+              <input
+                type="text"
+                placeholder="Filtrer par fonction..."
+                value={contactsFilter.fonction}
+                onChange={(e) => setContactsFilter(prev => ({ ...prev, fonction: e.target.value }))}
+                className="px-3 py-2 rounded-lg border border-slate-300 text-sm"
+              />
+            </div>
+          </div>
+
+          {/* Actions */}
+          {selectedContacts.size > 0 && (
+            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 flex items-center justify-between">
+              <p className="text-sm font-medium text-blue-900">{selectedContacts.size} contact(s) sélectionné(s)</p>
+              <button
+                onClick={() => setShowConvertModal(true)}
+                disabled={converting}
+                className="px-4 py-2 rounded-lg bg-blue-600 text-white text-sm font-medium hover:bg-blue-700 disabled:opacity-50"
+              >
+                {converting ? 'Conversion...' : 'Créer les leads'}
+              </button>
+            </div>
+          )}
+
+          {/* Tableau des contacts */}
+          <div className="bg-white rounded-xl border border-slate-200 overflow-hidden">
+            <div className="overflow-x-auto">
+              <table className="w-full">
+                <thead className="bg-slate-50 border-b border-slate-200">
+                  <tr>
+                    <th className="w-8 px-4 py-3">
+                      <input
+                        type="checkbox"
+                        checked={selectedContacts.size === contacts.length && contacts.length > 0}
+                        onChange={() => {
+                          if (selectedContacts.size === contacts.length) {
+                            setSelectedContacts(new Set());
+                          } else {
+                            setSelectedContacts(new Set(contacts.map((_, i) => i)));
+                          }
+                        }}
+                        className="w-4 h-4"
+                      />
+                    </th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Contact</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Fonction</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Email</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Hôtel</th>
+                    <th className="px-4 py-3 text-left text-xs font-semibold text-slate-700 uppercase tracking-wider">Pertinence</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {loading ? (
+                    <tr>
+                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
+                        <div className="flex justify-center"><div className="w-6 h-6 border-2 border-slate-300 border-t-blue-600 rounded-full animate-spin" /></div>
+                      </td>
+                    </tr>
+                  ) : contacts.length === 0 ? (
+                    <tr>
+                      <td colSpan="6" className="px-4 py-12 text-center text-sm text-slate-500">
+                        Aucun contact trouvé. Utilisez le bouton "🔍 Contacts" sur les hôtels pour trouver des contacts LinkedIn.
+                      </td>
+                    </tr>
+                  ) : (
+                    contacts.map((contact, i) => (
+                      <tr key={i} className="hover:bg-slate-50">
+                        <td className="px-4 py-3">
+                          <input
+                            type="checkbox"
+                            checked={selectedContacts.has(i)}
+                            onChange={() => toggleSelectContact(i)}
+                            className="w-4 h-4"
+                          />
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex items-center gap-2">
+                            <div>
+                              <p className="text-sm font-medium text-slate-900">{contact.nom_complet}</p>
+                              {contact.linkedin_url && (
+                                <a
+                                  href={contact.linkedin_url}
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="text-xs text-blue-600 hover:underline"
+                                >
+                                  🔗 Voir profil
+                                </a>
+                              )}
+                            </div>
+                            {contact.is_lead && (
+                              <span className={`px-2 py-0.5 rounded-full text-[10px] font-medium whitespace-nowrap ${
+                                contact.lead_statut === 'En séquence' ? 'bg-blue-50 text-blue-700' :
+                                contact.lead_statut === 'Répondu' ? 'bg-emerald-50 text-emerald-700' :
+                                contact.lead_statut === 'Converti' ? 'bg-amber-50 text-amber-700' :
+                                'bg-emerald-50 text-emerald-700'
+                              }`}>
+                                {contact.lead_statut ? `✓ ${contact.lead_statut}` : '✓ Lead'}
+                              </span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className="text-sm text-slate-700">{contact.fonction}</span>
+                        </td>
+                        <td className="px-4 py-3">
+                          {contact.email ? (
+                            <div>
+                              <span className="text-sm font-mono text-slate-900">{contact.email}</span>
+                              <span className="ml-2 px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓</span>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="email"
+                                placeholder="Saisir email..."
+                                className="px-2 py-1 text-sm border border-slate-300 rounded-lg w-48 focus:ring-2 focus:ring-blue-500 focus:border-blue-500"
+                                onKeyDown={async (e) => {
+                                  if (e.key === 'Enter' && e.target.value.trim()) {
+                                    e.preventDefault();
+                                    const email = e.target.value.trim().toLowerCase();
+                                    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+                                      showToast('Email invalide', 'error');
+                                      return;
+                                    }
+                                    try {
+                                      const res = await api.patch(`/prospection/contacts/${contact.hotel_id}/email`, {
+                                        linkedin_url: contact.linkedin_url,
+                                        nom_complet: contact.nom_complet,
+                                        email,
+                                      });
+                                      if (res.error) {
+                                        showToast('Erreur: ' + res.error, 'error');
+                                        return;
+                                      }
+                                      showToast('Email ajouté', 'success');
+                                      chargerContacts();
+                                    } catch (err) {
+                                      showToast('Erreur: ' + err.message, 'error');
+                                    }
+                                  }
+                                }}
+                              />
+                              <span className="text-[10px] text-slate-400">Entrée pour valider</span>
+                            </div>
+                          )}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div>
+                            <p className="text-sm font-medium text-slate-900">{contact.hotel_nom}</p>
+                            <p className="text-xs text-slate-500">{contact.hotel_commune}</p>
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          {contact.pertinence === 'haute' ? (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-emerald-50 text-emerald-700">✓ Pertinent</span>
+                          ) : (
+                            <span className="px-2 py-0.5 rounded-full text-[10px] font-medium bg-slate-100 text-slate-600">Moyenne</span>
+                          )}
+                        </td>
+                      </tr>
+                    ))
+                  )}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </>
       )}
 
       {/* Contenu onglet Scrap Social (Instagram) */}
