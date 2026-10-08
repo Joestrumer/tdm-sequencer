@@ -2591,38 +2591,38 @@ const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
                 <h4 className="text-sm font-semibold text-slate-700 mb-3">Mapping des champs</h4>
                 <div className="grid grid-cols-2 gap-x-6 gap-y-2">
                   {LEAD_FIELDS.map(({ key, label, required, hasDefault, defaultOptions }) => (
-                    <div key={key} className="flex items-center gap-2">
-                      <label className="text-xs text-slate-600 w-32 shrink-0">
-                        {label}{required ? " *" : ""}
-                      </label>
-                      <select
-                        value={mapping[key] || ""}
-                        onChange={e => setField(key, e.target.value)}
-                        className={`flex-1 border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white ${
-                          required && !mapping[key] ? "border-red-300 bg-red-50" : "border-slate-200"
-                        }`}
-                      >
-                        <option value="">-- Non mappé --</option>
-                        {csvHeaders.map(h => (
-                          <option key={h} value={h}>{h}</option>
-                        ))}
-                      </select>
+                    <div key={key} className={`flex flex-col gap-1.5 ${hasDefault && !mapping[key] ? "col-span-2" : ""}`}>
+                      <div className="flex items-center gap-2">
+                        <label className="text-xs text-slate-600 w-32 shrink-0">
+                          {label}{required ? " *" : ""}
+                        </label>
+                        <select
+                          value={mapping[key] || ""}
+                          onChange={e => setField(key, e.target.value)}
+                          className={`flex-1 border rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400 bg-white ${
+                            required && !mapping[key] ? "border-red-300 bg-red-50" : "border-slate-200"
+                          }`}
+                        >
+                          <option value="">-- Non mappé --</option>
+                          {csvHeaders.map(h => (
+                            <option key={h} value={h}>{h}</option>
+                          ))}
+                        </select>
+                      </div>
                       {hasDefault && !mapping[key] && (
-                        <>
-                          <span className="text-xs text-slate-400">→</span>
-                          <div className="relative flex-1">
-                            <input
-                              list={`default-${key}`}
-                              value={defaults[key] || ""}
-                              onChange={e => setDefaults(d => ({ ...d, [key]: e.target.value }))}
-                              placeholder="Valeur par défaut"
-                              className="w-full border border-blue-200 bg-blue-50 rounded-lg px-2 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                            />
-                            <datalist id={`default-${key}`}>
-                              {defaultOptions.map(o => <option key={o} value={o} />)}
-                            </datalist>
-                          </div>
-                        </>
+                        <div className="flex items-center gap-2 ml-32 pl-2">
+                          <span className="text-xs text-slate-400 shrink-0">↳ Valeur par défaut :</span>
+                          <input
+                            list={`default-${key}`}
+                            value={defaults[key] || ""}
+                            onChange={e => setDefaults(d => ({ ...d, [key]: e.target.value }))}
+                            placeholder={`Saisir ou choisir une ${label.toLowerCase()}`}
+                            className="flex-1 max-w-xs border border-blue-200 bg-blue-50 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                          />
+                          <datalist id={`default-${key}`}>
+                            {defaultOptions.map(o => <option key={o} value={o} />)}
+                          </datalist>
+                        </div>
                       )}
                     </div>
                   ))}
