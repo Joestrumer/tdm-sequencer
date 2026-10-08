@@ -2611,17 +2611,27 @@ const ModalImportLeadsCSV = ({ onClose, onSuccess, showToast }) => {
                       </div>
                       {hasDefault && !mapping[key] && (
                         <div className="flex items-center gap-2 ml-32 pl-2">
-                          <span className="text-xs text-slate-400 shrink-0">↳ Valeur par défaut :</span>
-                          <input
-                            list={`default-${key}`}
-                            value={defaults[key] || ""}
-                            onChange={e => setDefaults(d => ({ ...d, [key]: e.target.value }))}
-                            placeholder={`Saisir ou choisir une ${label.toLowerCase()}`}
-                            className="flex-1 max-w-xs border border-blue-200 bg-blue-50 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
-                          />
-                          <datalist id={`default-${key}`}>
-                            {defaultOptions.map(o => <option key={o} value={o} />)}
-                          </datalist>
+                          <span className="text-xs text-slate-400 shrink-0">Appliquer à tous :</span>
+                          <select
+                            value={defaultOptions.includes(defaults[key]) ? defaults[key] : "__custom__"}
+                            onChange={e => {
+                              if (e.target.value === "__custom__") setDefaults(d => ({ ...d, [key]: "" }));
+                              else setDefaults(d => ({ ...d, [key]: e.target.value }));
+                            }}
+                            className="border border-blue-200 bg-blue-50 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                          >
+                            {defaultOptions.map(o => <option key={o} value={o}>{o}</option>)}
+                            <option value="__custom__">Autre…</option>
+                          </select>
+                          {!defaultOptions.includes(defaults[key]) && (
+                            <input
+                              value={defaults[key] || ""}
+                              onChange={e => setDefaults(d => ({ ...d, [key]: e.target.value }))}
+                              placeholder={`Saisir une ${label.toLowerCase()}`}
+                              className="flex-1 max-w-[200px] border border-blue-200 bg-blue-50 rounded-lg px-3 py-1.5 text-xs focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+                              autoFocus
+                            />
+                          )}
                         </div>
                       )}
                     </div>
