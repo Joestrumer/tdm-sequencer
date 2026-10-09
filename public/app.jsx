@@ -137,6 +137,60 @@ const ConfirmDialog = ({ title, message, onConfirm, onCancel, confirmLabel = 'Co
   );
 };
 
+// ─── PROMPT DIALOG (input text) ─────────────────────────────────────────────
+const PromptDialog = ({ title, message, defaultValue, placeholder, onConfirm, onCancel, confirmLabel = 'Envoyer', cancelLabel = 'Annuler', skipLabel }) => {
+  const [value, setValue] = useState(defaultValue || '');
+  const inputRef = useRef(null);
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onCancel]);
+  useEffect(() => { if (inputRef.current) { inputRef.current.focus(); inputRef.current.select(); } }, []);
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[60]" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm mx-4 p-6" onClick={e => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-slate-900 mb-2">{title || 'Saisie'}</h3>
+        {message && <p className="text-sm text-slate-600 mb-4 whitespace-pre-line">{message}</p>}
+        <input
+          ref={inputRef}
+          type="email"
+          value={value}
+          onChange={e => setValue(e.target.value)}
+          onKeyDown={e => { if (e.key === 'Enter' && value.trim()) onConfirm(value.trim()); }}
+          placeholder={placeholder || ''}
+          className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:border-slate-400 focus:ring-1 focus:ring-slate-200 outline-none mb-4"
+        />
+        <div className="flex justify-end gap-2">
+          {skipLabel && <button onClick={() => onConfirm('')} className="px-4 py-2 text-sm font-medium text-slate-400 hover:text-slate-600 mr-auto">{skipLabel}</button>}
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200">{cancelLabel}</button>
+          <button onClick={() => onConfirm(value.trim())} disabled={!value.trim()} className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-slate-900 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+function usePromptDialog() {
+  const [state, setState] = useState(null);
+  const prompt = useCallback((message, options = {}) => {
+    return new Promise(resolve => {
+      setState({ message, ...options, resolve });
+    });
+  }, []);
+  const dialog = state ? (
+    <PromptDialog
+      title={state.title} message={state.message} defaultValue={state.defaultValue}
+      placeholder={state.placeholder} confirmLabel={state.confirmLabel}
+      cancelLabel={state.cancelLabel} skipLabel={state.skipLabel}
+      onConfirm={(val) => { state.resolve(val); setState(null); }}
+      onCancel={() => { state.resolve(null); setState(null); }}
+    />
+  ) : null;
+  return { prompt, dialog };
+}
+
 function useConfirmDialog() {
   const [state, setState] = useState(null);
   const confirm = useCallback((message, options = {}) => {
@@ -22342,6 +22396,7 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
 // ─── VUE PARTENAIRES (onglet dédié) ──────────────────────────────────────────
 const VuePartenaires = ({ showToast, readOnly }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
+  const { prompt: promptDialog, dialog: promptDialogEl } = usePromptDialog();
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -22513,10 +22568,17 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     if (!ok) return;
     let sendEmail = false;
     let emailTo = '';
-    const emailInput = prompt('Envoyer le mot de passe par email à :\n(Modifiez l\'adresse si besoin, ou laissez vide pour ne pas envoyer)', selected.email || '');
-    if (emailInput !== null && emailInput.trim()) {
+    const emailInput = await promptDialog('Modifiez l\'adresse si besoin.', {
+      title: 'Envoyer le mot de passe par email',
+      defaultValue: selected.email || '',
+      placeholder: 'adresse@email.com',
+      confirmLabel: 'Envoyer',
+      cancelLabel: 'Annuler',
+      skipLabel: 'Ne pas envoyer',
+    });
+    if (emailInput !== null && emailInput !== '') {
       sendEmail = true;
-      emailTo = emailInput.trim();
+      emailTo = emailInput;
     }
     try {
       const res = await api.post(`/reference/partners/${selected.id}/generate-password`, { sendEmail, emailTo });
@@ -23016,11 +23078,17 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                     )}
                     {selected.has_password && (
                       <button onClick={async () => {
-                        const emailInput = prompt('Envoyer le mot de passe par email à :', selected.email || '');
-                        if (emailInput === null || !emailInput.trim()) return;
+                        const emailInput = await promptDialog('Modifiez l\'adresse si besoin.', {
+                          title: 'Renvoyer le mot de passe par email',
+                          defaultValue: selected.email || '',
+                          placeholder: 'adresse@email.com',
+                          confirmLabel: 'Envoyer',
+                          cancelLabel: 'Annuler',
+                        });
+                        if (emailInput === null || emailInput === '') return;
                         try {
                           setSaving(true);
-                          const r = await api.post(`/reference/partners/${selected.id}/resend-password-email`, { emailTo: emailInput.trim() });
+                          const r = await api.post(`/reference/partners/${selected.id}/resend-password-email`, { emailTo: emailInput });
                           showToast(r.message || 'Email envoyé', 'success');
                         } catch (e) { showToast('Erreur envoi : ' + (e.message || e), 'error'); }
                         setSaving(false);
@@ -23505,6 +23573,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
       </div>
       )}
       {confirmDialogEl}
+      {promptDialogEl}
     </div>
   );
 };
