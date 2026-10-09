@@ -479,8 +479,9 @@ module.exports = (db) => {
   });
 
   // Envoyer l'email d'accès portail à un partenaire
-  async function envoyerEmailAccesPortail(partner, plainPassword) {
+  async function envoyerEmailAccesPortail(partner, plainPassword, overrideEmail) {
     const brevoService = require('../services/brevoService');
+    const targetEmail = overrideEmail || partner.email;
     const prenom = (partner.nom || '').split(/\s*[-–—(]/)[0].trim() || partner.nom;
     const escapedPrenom = (prenom || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
     const escapedCode = (plainPassword || '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -540,7 +541,7 @@ module.exports = (db) => {
 
     const payload = {
       sender: brevoService.SENDER,
-      to: [{ email: partner.email, name: partner.nom }],
+      to: [{ email: targetEmail, name: partner.nom }],
       subject: 'Votre espace partenaire Terre de Mars vous attend',
       headers: { 'X-Mailin-Tag': 'portail-partenaire', 'X-Mailin-Track': '0', 'X-Mailin-TrackLinks': '0' },
       htmlContent,
@@ -555,10 +556,12 @@ module.exports = (db) => {
       const partner = db.prepare('SELECT id, nom, email, password_plain FROM vf_partners WHERE id = ?').get(req.params.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       if (!partner.password_plain) return res.status(400).json({ erreur: 'Aucun mot de passe configuré pour ce partenaire' });
-      if (!partner.email) return res.status(400).json({ erreur: 'Aucun email configuré pour ce partenaire' });
+      const { emailTo } = req.body || {};
+      const targetEmail = emailTo || partner.email;
+      if (!targetEmail) return res.status(400).json({ erreur: 'Aucun email configuré pour ce partenaire' });
 
-      await envoyerEmailAccesPortail(partner, partner.password_plain);
-      res.json({ ok: true, message: `Email renvoyé à ${partner.email}` });
+      await envoyerEmailAccesPortail(partner, partner.password_plain, targetEmail);
+      res.json({ ok: true, message: `Email renvoyé à ${targetEmail}` });
     } catch (e) {
       logger.error(`Erreur renvoi email accès portail ${req.params.id}: ${e.message}`);
       res.status(500).json({ erreur: e.message });
@@ -577,11 +580,12 @@ module.exports = (db) => {
       db.prepare('UPDATE vf_partners SET password_hash = ?, password_plain = ? WHERE id = ?').run(hash, plainPassword, partner.id);
 
       // Envoyer l'email si demandé
-      const { sendEmail } = req.body || {};
+      const { sendEmail, emailTo } = req.body || {};
       let emailSent = false;
-      if (sendEmail && partner.email) {
+      const targetEmail = emailTo || partner.email;
+      if (sendEmail && targetEmail) {
         try {
-          await envoyerEmailAccesPortail(partner, plainPassword);
+          await envoyerEmailAccesPortail(partner, plainPassword, targetEmail);
           emailSent = true;
         } catch (emailErr) {
           logger.error(`Erreur envoi email mot de passe partenaire ${partner.nom}: ${emailErr.message}`);

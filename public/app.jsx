@@ -22512,15 +22512,14 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     });
     if (!ok) return;
     let sendEmail = false;
-    if (selected.email) {
-      sendEmail = await confirmDialog(`Envoyer le nouveau mot de passe par email à ${selected.email} ?`, {
-        title: 'Envoi email',
-        confirmLabel: 'Oui, envoyer',
-        cancelLabel: 'Non, ne pas envoyer',
-      });
+    let emailTo = '';
+    const emailInput = prompt('Envoyer le mot de passe par email à :\n(Modifiez l\'adresse si besoin, ou laissez vide pour ne pas envoyer)', selected.email || '');
+    if (emailInput !== null && emailInput.trim()) {
+      sendEmail = true;
+      emailTo = emailInput.trim();
     }
     try {
-      const res = await api.post(`/reference/partners/${selected.id}/generate-password`, { sendEmail });
+      const res = await api.post(`/reference/partners/${selected.id}/generate-password`, { sendEmail, emailTo });
       if (res.ok) {
         showToast(res.emailSent ? 'Mot de passe généré et email envoyé' : 'Mot de passe généré (sans email)', "success");
         setShowPwd(true);
@@ -23015,11 +23014,13 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                         {showPwd ? 'Masquer' : 'Afficher'}
                       </button>
                     )}
-                    {selected.has_password && selected.email && (
+                    {selected.has_password && (
                       <button onClick={async () => {
+                        const emailInput = prompt('Envoyer le mot de passe par email à :', selected.email || '');
+                        if (emailInput === null || !emailInput.trim()) return;
                         try {
                           setSaving(true);
-                          const r = await api.post(`/reference/partners/${selected.id}/resend-password-email`);
+                          const r = await api.post(`/reference/partners/${selected.id}/resend-password-email`, { emailTo: emailInput.trim() });
                           showToast(r.message || 'Email envoyé', 'success');
                         } catch (e) { showToast('Erreur envoi : ' + (e.message || e), 'error'); }
                         setSaving(false);
