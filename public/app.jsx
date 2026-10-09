@@ -21801,14 +21801,20 @@ const VueCommandes = ({ showToast }) => {
 
               {/* Checkboxes */}
               <div className="space-y-2">
-                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-                  <input type="checkbox" checked={validateOptions.sendEmailVF} onChange={e => setValidateOptions(o => ({ ...o, sendEmailVF: e.target.checked }))} className="rounded" />
-                  Envoyer email VF (facture)
-                </label>
-                <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
-                  <input type="checkbox" checked={validateOptions.sendEmailPartner} onChange={e => setValidateOptions(o => ({ ...o, sendEmailPartner: e.target.checked }))} className="rounded" />
-                  Envoyer email de confirmation au partenaire
-                </label>
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                    <input type="checkbox" checked={validateOptions.sendEmailVF} onChange={e => setValidateOptions(o => ({ ...o, sendEmailVF: e.target.checked }))} className="rounded" />
+                    Envoyer email VF (facture)
+                  </label>
+                  {validateOptions.sendEmailVF && <div className="ml-6 mt-0.5 text-xs text-slate-400">{validateModal.partner_email || <span className="text-amber-500">Aucun email configuré</span>}</div>}
+                </div>
+                <div>
+                  <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
+                    <input type="checkbox" checked={validateOptions.sendEmailPartner} onChange={e => setValidateOptions(o => ({ ...o, sendEmailPartner: e.target.checked }))} className="rounded" />
+                    Envoyer email de confirmation au partenaire
+                  </label>
+                  {validateOptions.sendEmailPartner && <div className="ml-6 mt-0.5 text-xs text-slate-400">{validateModal.master_email || validateModal.partner_email || <span className="text-amber-500">Aucun email configuré</span>}</div>}
+                </div>
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
                   <input type="checkbox" checked={validateOptions.logGSheets} onChange={e => setValidateOptions(o => ({ ...o, logGSheets: e.target.checked }))} className="rounded" />
                   Logger Google Sheets
