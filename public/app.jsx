@@ -15529,8 +15529,8 @@ const FacturesSamples = ({ showToast }) => {
   const clientSearchTimer = useRef(null);
   const clientAbortRef = useRef(null);
   const defaultProductsRef = useRef(DEFAULT_SAMPLE_PRODUCTS);
-  const cadeauxVipRef = useRef([]);
-  const diffuseursRef = useRef([]);
+  const [cadeauxVipPreset, setCadeauxVipPreset] = useState([]);
+  const [diffuseursPreset, setDiffuseursPreset] = useState([]);
 
   // HubSpot search
   const [hsQuery, setHsQuery] = useState('');
@@ -15552,10 +15552,10 @@ const FacturesSamples = ({ showToast }) => {
       setProducts(DEFAULT_SAMPLE_PRODUCTS);
     }).catch(() => setProducts(DEFAULT_SAMPLE_PRODUCTS));
     api.get('/config/sample_cadeaux_vip_products').then(res => {
-      if (res?.valeur) try { const p = JSON.parse(res.valeur); if (Array.isArray(p)) cadeauxVipRef.current = p; } catch(_){}
+      if (res?.valeur) try { const p = JSON.parse(res.valeur); if (Array.isArray(p)) setCadeauxVipPreset(p); } catch(_){}
     }).catch(() => {});
     api.get('/config/sample_diffuseurs_products').then(res => {
-      if (res?.valeur) try { const p = JSON.parse(res.valeur); if (Array.isArray(p)) diffuseursRef.current = p; } catch(_){}
+      if (res?.valeur) try { const p = JSON.parse(res.valeur); if (Array.isArray(p)) setDiffuseursPreset(p); } catch(_){}
     }).catch(() => {});
   }, []);
 
@@ -16070,15 +16070,15 @@ const FacturesSamples = ({ showToast }) => {
           </div>
           <div className="flex gap-2 mt-2">
             <button
-              onClick={() => addPresetProducts(cadeauxVipRef.current)}
-              disabled={cadeauxVipRef.current.length === 0}
+              onClick={() => addPresetProducts(cadeauxVipPreset)}
+              disabled={cadeauxVipPreset.length === 0}
               className="px-3 py-1.5 text-xs font-medium bg-purple-50 text-purple-700 border border-purple-200 rounded-lg hover:bg-purple-100 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               🎁 + Cadeaux VIP
             </button>
             <button
-              onClick={() => addPresetProducts(diffuseursRef.current)}
-              disabled={diffuseursRef.current.length === 0}
+              onClick={() => addPresetProducts(diffuseursPreset)}
+              disabled={diffuseursPreset.length === 0}
               className="px-3 py-1.5 text-xs font-medium bg-teal-50 text-teal-700 border border-teal-200 rounded-lg hover:bg-teal-100 disabled:opacity-40 disabled:cursor-not-allowed"
             >
               🌿 + Diffuseurs
