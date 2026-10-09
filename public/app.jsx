@@ -18406,7 +18406,7 @@ const VueSampleDefaultProducts = () => {
     };
 
     return React.createElement('div', { className: 'mb-8' },
-      React.createElement('h3', { className: 'text-lg font-semibold text-white mb-1' }, title),
+      React.createElement('h3', { className: 'text-lg font-semibold text-gray-800 mb-1' }, title),
       React.createElement('p', { className: 'text-sm text-gray-400 mb-4' }, description),
 
       // Liste des produits configurés
