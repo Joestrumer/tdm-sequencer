@@ -99,6 +99,7 @@ module.exports = (db) => {
       let sql = `
         SELECT po.*, vp.nom as partner_nom, vp.email as partner_email, vp.contact_nom as partner_contact,
                vp.master_id, mp.email as master_email,
+               vp.livraison_email as partner_livraison_email, vp.facturation_email as partner_facturation_email,
                vp.livraison_code_postal as partner_livraison_cp, vp.facturation_code_postal as partner_facturation_cp,
                (SELECT COUNT(*) FROM partner_profile_changes ppc
                 WHERE ppc.partner_id = po.partner_id AND ppc.statut = 'en_attente') as pending_profile_change

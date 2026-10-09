@@ -21317,9 +21317,11 @@ const VueCommandes = ({ showToast }) => {
 
   const openValidateModal = (commande) => {
     const cp = commande.partner_livraison_cp || commande.partner_facturation_cp || '';
+    const defaultConfirmEmail = commande.master_email || commande.partner_email || '';
     setValidateOptions({
       documentType: 'vat', shippingId: getDefaultShippingId(cp),
       sendEmailVF: true, sendEmailPartner: true, logGSheets: true, generateCsv: true, createHubspotDeal: true,
+      partnerConfirmEmail: defaultConfirmEmail,
     });
     // Utiliser les produits édités si disponibles
     const currentProducts = editableProducts[commande.id] || commande.products;
@@ -21334,7 +21336,7 @@ const VueCommandes = ({ showToast }) => {
     }
     const id = validateModal.id;
     const partnerNom = validateModal.partner_nom || '';
-    const partnerEmail = validateModal.master_email || validateModal.partner_email || '';
+    const partnerEmail = validateOptions.partnerConfirmEmail || validateModal.master_email || validateModal.partner_email || '';
     setValidating(id);
     try {
       // Pré-valider l'accès aux dossiers AVANT l'appel API
@@ -21813,7 +21815,15 @@ const VueCommandes = ({ showToast }) => {
                     <input type="checkbox" checked={validateOptions.sendEmailPartner} onChange={e => setValidateOptions(o => ({ ...o, sendEmailPartner: e.target.checked }))} className="rounded" />
                     Envoyer email de confirmation au partenaire
                   </label>
-                  {validateOptions.sendEmailPartner && <div className="ml-6 mt-0.5 text-xs text-slate-400">{validateModal.master_email || validateModal.partner_email || <span className="text-amber-500">Aucun email configuré</span>}</div>}
+                  {validateOptions.sendEmailPartner && (() => {
+                    const emails = [...new Set([validateModal.partner_email, validateModal.master_email, validateModal.partner_facturation_email, validateModal.partner_livraison_email].filter(Boolean))];
+                    if (emails.length === 0) return <div className="ml-6 mt-0.5 text-xs text-amber-500">Aucun email configuré</div>;
+                    if (emails.length === 1) return <div className="ml-6 mt-0.5 text-xs text-slate-400">{emails[0]}</div>;
+                    return <select value={validateOptions.partnerConfirmEmail || ''} onChange={e => setValidateOptions(o => ({ ...o, partnerConfirmEmail: e.target.value }))}
+                      className="ml-6 mt-1 w-auto border border-slate-200 rounded-lg px-2 py-1 text-xs text-slate-600 focus:outline-none focus:ring-1 focus:ring-blue-400 focus:border-blue-400 bg-white">
+                      {emails.map(em => <option key={em} value={em}>{em}</option>)}
+                    </select>;
+                  })()}
                 </div>
                 <label className="flex items-center gap-2 cursor-pointer text-sm text-slate-700">
                   <input type="checkbox" checked={validateOptions.logGSheets} onChange={e => setValidateOptions(o => ({ ...o, logGSheets: e.target.checked }))} className="rounded" />
