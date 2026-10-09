@@ -16105,7 +16105,7 @@ const FacturesSamples = ({ showToast }) => {
                 let personName = '', hotelName = '';
                 const addressKw = /\b(rue|avenue|av\.|boulevard|blvd|bd|chemin|route|place|allée|impasse|passage|cours|quai|square|lot|lotissement|zi|zone|voie|sentier|hameau|lieu.dit|lieudit|faubourg|parvis|promenade|esplanade|rond.point|rte|chem)\b/i;
                 const titleKw = /^(directeur|directrice|gérant|gérante|manager|general manager|chef|responsable|président|pdg|dg|ceo|cfo|coo|propriétaire|réceptionniste|receptionist|concierge|maître d'hôtel|sommelier|cost controller|front desk|revenue manager|sales manager|food & beverage|f&b|housekeeping|guest relation|assistant|adjoint|coordinat|founder|co-founder|fondateur|fondatrice|chargée?|commercial|attaché)/i;
-                const hotelKw = /\b(h[oô]tel|château|domaine|maison|villa|auberge|résidence|chalet|lodge|resort|relais|manoir|bastide|g[iî]te|restaurant|bistrot|brasserie|palace|appart.?h[oô]tel|club|spa|camp|camping|centre|ferme|moulin|prieuré|abbaye|clos|mas|inn|hostel|chalets)\b/i;
+                const hotelKw = /\b(h[oô]tel|château|domaine|maison|villa|auberge|résidence|chalet|lodge|resort|relais|manoir|bastide|g[iî]te|restaurant|bistrot|brasserie|palace|appart.?h[oô]tel|club|spa|camp|camping|centre|ferme|moulin|prieuré|abbaye|clos|mas|inn|hostel|chalets|studio|atelier|galerie|boutique|concept.?store|showroom|loft|coworking|co-working)\b/i;
                 const countryMap = { france: 'FR', belgique: 'BE', be: 'BE', suisse: 'CH', ch: 'CH', luxembourg: 'LU', lu: 'LU', allemagne: 'DE', espagne: 'ES', italie: 'IT', portugal: 'PT', 'royaume-uni': 'GB', uk: 'GB', gb: 'GB' };
 
                 // ── Step 0: Extract email & phone from raw text (can be anywhere) ──
@@ -16146,7 +16146,8 @@ const FacturesSamples = ({ showToast }) => {
                     continue;
                   }
                   // "14 rue Pétel, 75015 Paris" — address with embedded zip+city (comma or space separated)
-                  const hasAddr = addressKw.test(lines[i]) || /^\d+[\s,]/.test(lines[i]);
+                  // Skip lines matching hotelKw to avoid confusing business names (e.g. "The Square studio") with addresses
+                  const hasAddr = (addressKw.test(lines[i]) || /^\d+[\s,]/.test(lines[i])) && !hotelKw.test(lines[i]);
                   const embZip = lines[i].match(/[,\s]\s*(\d{5})\s+([A-Za-zÀ-ÿ][a-zA-ZÀ-ÿ0-9\s.'-]*?)(?:\s*,?\s*(?:France|FR)?)?$/i);
                   if (hasAddr && embZip) {
                     const zipIdx = lines[i].indexOf(embZip[1]);
