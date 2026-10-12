@@ -227,7 +227,9 @@ async function brevoSendEmail(payload, db, userCreds) {
       err.status = res.status;
       throw err;
     }
-    return res.json();
+    const result = await res.json();
+    logger.info('Email envoyé via API REST Brevo', { messageId: result?.messageId, to: payload.to?.map(t => t.email).join(', ') });
+    return result;
   } catch(e) {
     clearTimeout(timeout);
     if (e.name === 'AbortError') throw new Error('Brevo API timeout (>15s) — verifier IP whitelist ou connectivite Railway');
