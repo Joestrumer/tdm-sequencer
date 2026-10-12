@@ -191,6 +191,86 @@ function usePromptDialog() {
   return { prompt, dialog };
 }
 
+// ─── MULTI-EMAIL DIALOG ──────────────────────────────────────────────────────
+const MultiEmailDialog = ({ title, message, defaultEmails, onConfirm, onCancel, confirmLabel = 'Envoyer', cancelLabel = 'Annuler', skipLabel }) => {
+  const [emails, setEmails] = useState(defaultEmails || []);
+  const [input, setInput] = useState('');
+  const [error, setError] = useState('');
+  const inputRef = useRef(null);
+  useEffect(() => {
+    const handler = (e) => { if (e.key === 'Escape') onCancel(); };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [onCancel]);
+  useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
+
+  const addEmail = () => {
+    const val = input.trim().toLowerCase();
+    if (!val) return;
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(val)) { setError('Adresse email invalide'); return; }
+    if (emails.includes(val)) { setError('Adresse déjà ajoutée'); return; }
+    setEmails([...emails, val]);
+    setInput('');
+    setError('');
+    if (inputRef.current) inputRef.current.focus();
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/40 backdrop-blur-sm flex items-center justify-center z-[60]" onClick={onCancel}>
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md mx-4 p-6" onClick={e => e.stopPropagation()}>
+        <h3 className="text-base font-semibold text-slate-900 mb-2">{title || 'Destinataires'}</h3>
+        {message && <p className="text-sm text-slate-600 mb-4 whitespace-pre-line">{message}</p>}
+        {emails.length > 0 && (
+          <div className="flex flex-wrap gap-1.5 mb-3">
+            {emails.map((em, i) => (
+              <span key={i} className="inline-flex items-center gap-1 bg-slate-100 text-slate-700 text-xs px-2.5 py-1.5 rounded-full">
+                {em}
+                <button onClick={() => setEmails(emails.filter((_, j) => j !== i))} className="text-slate-400 hover:text-red-500 ml-0.5 text-sm leading-none">&times;</button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="flex gap-2 mb-1">
+          <input
+            ref={inputRef}
+            type="text"
+            value={input}
+            onChange={e => { setInput(e.target.value); setError(''); }}
+            onKeyDown={e => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
+            placeholder="adresse@email.com"
+            className="flex-1 border border-slate-200 rounded-lg px-3 py-2 text-sm focus:border-slate-400 focus:ring-1 focus:ring-slate-200 outline-none"
+          />
+          <button onClick={addEmail} type="button" className="px-3 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200">+ Ajouter</button>
+        </div>
+        {error && <p className="text-xs text-red-500 mb-2">{error}</p>}
+        <div className="flex justify-end gap-2 mt-4">
+          {skipLabel && <button onClick={() => onConfirm([])} className="px-4 py-2 text-sm font-medium text-slate-400 hover:text-slate-600 mr-auto">{skipLabel}</button>}
+          <button onClick={onCancel} className="px-4 py-2 text-sm font-medium text-slate-600 bg-slate-100 rounded-lg hover:bg-slate-200">{cancelLabel}</button>
+          <button onClick={() => onConfirm(emails)} disabled={emails.length === 0} className="px-4 py-2 text-sm font-medium text-white rounded-lg bg-slate-900 hover:bg-slate-700 disabled:opacity-40 disabled:cursor-not-allowed">{confirmLabel}</button>
+        </div>
+      </div>
+    </div>
+  );
+};
+
+function useMultiEmailDialog() {
+  const [state, setState] = useState(null);
+  const prompt = useCallback((message, options = {}) => {
+    return new Promise(resolve => {
+      setState({ message, ...options, resolve });
+    });
+  }, []);
+  const dialog = state ? (
+    <MultiEmailDialog
+      title={state.title} message={state.message} defaultEmails={state.defaultEmails}
+      confirmLabel={state.confirmLabel} cancelLabel={state.cancelLabel} skipLabel={state.skipLabel}
+      onConfirm={(val) => { state.resolve(val); setState(null); }}
+      onCancel={() => { state.resolve(null); setState(null); }}
+    />
+  ) : null;
+  return { prompt, dialog };
+}
+
 function useConfirmDialog() {
   const [state, setState] = useState(null);
   const confirm = useCallback((message, options = {}) => {
@@ -22413,6 +22493,7 @@ const MasterAccountSection = ({ partner, partners, onUpdate, showToast }) => {
 const VuePartenaires = ({ showToast, readOnly }) => {
   const { confirm: confirmDialog, dialog: confirmDialogEl } = useConfirmDialog();
   const { prompt: promptDialog, dialog: promptDialogEl } = usePromptDialog();
+  const { prompt: multiEmailDialog, dialog: multiEmailDialogEl } = useMultiEmailDialog();
   const [partners, setPartners] = useState([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState("");
@@ -22583,23 +22664,22 @@ const VuePartenaires = ({ showToast, readOnly }) => {
     });
     if (!ok) return;
     let sendEmail = false;
-    let emailTo = '';
-    const emailInput = await promptDialog('Modifiez l\'adresse si besoin.', {
+    let emailsTo = [];
+    const emailResult = await multiEmailDialog('Ajoutez des destinataires supplémentaires si besoin.', {
       title: 'Envoyer le mot de passe par email',
-      defaultValue: selected.email || '',
-      placeholder: 'adresse@email.com',
+      defaultEmails: selected.email ? [selected.email] : [],
       confirmLabel: 'Envoyer',
       cancelLabel: 'Annuler',
       skipLabel: 'Ne pas envoyer',
     });
-    if (emailInput !== null && emailInput !== '') {
+    if (emailResult !== null && emailResult.length > 0) {
       sendEmail = true;
-      emailTo = emailInput;
+      emailsTo = emailResult;
     }
     try {
-      const res = await api.post(`/reference/partners/${selected.id}/generate-password`, { sendEmail, emailTo });
+      const res = await api.post(`/reference/partners/${selected.id}/generate-password`, { sendEmail, emailsTo });
       if (res.ok) {
-        showToast(res.emailSent ? 'Mot de passe généré et email envoyé' : 'Mot de passe généré (sans email)', "success");
+        showToast(res.emailSent ? `Mot de passe généré et email envoyé à ${res.emailsSentCount || emailsTo.length} destinataire(s)` : 'Mot de passe généré (sans email)', "success");
         setShowPwd(true);
         charger();
       } else {
@@ -23094,18 +23174,17 @@ const VuePartenaires = ({ showToast, readOnly }) => {
                     )}
                     {selected.has_password && (
                       <button onClick={async () => {
-                        const emailInput = await promptDialog('Modifiez l\'adresse si besoin.', {
+                        const emailResult = await multiEmailDialog('Ajoutez des destinataires supplémentaires si besoin.', {
                           title: 'Renvoyer le mot de passe par email',
-                          defaultValue: selected.email || '',
-                          placeholder: 'adresse@email.com',
+                          defaultEmails: selected.email ? [selected.email] : [],
                           confirmLabel: 'Envoyer',
                           cancelLabel: 'Annuler',
                         });
-                        if (emailInput === null || emailInput === '') return;
+                        if (emailResult === null || emailResult.length === 0) return;
                         try {
                           setSaving(true);
-                          const r = await api.post(`/reference/partners/${selected.id}/resend-password-email`, { emailTo: emailInput });
-                          showToast(r.message || 'Email envoyé', 'success');
+                          const r = await api.post(`/reference/partners/${selected.id}/resend-password-email`, { emailsTo: emailResult });
+                          showToast(r.message || `Email envoyé à ${emailResult.length} destinataire(s)`, 'success');
                         } catch (e) { showToast('Erreur envoi : ' + (e.message || e), 'error'); }
                         setSaving(false);
                       }} disabled={saving} className="text-[11px] px-2 py-1 rounded-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 font-medium disabled:opacity-50">
@@ -23590,6 +23669,7 @@ const VuePartenaires = ({ showToast, readOnly }) => {
       )}
       {confirmDialogEl}
       {promptDialogEl}
+      {multiEmailDialogEl}
     </div>
   );
 };

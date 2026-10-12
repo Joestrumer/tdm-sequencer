@@ -539,15 +539,19 @@ module.exports = (db) => {
 <!--[if mso]></td></tr></table><![endif]-->
 </td></tr></table></body></html>`;
 
-    const payload = {
-      sender: brevoService.SENDER,
-      to: [{ email: targetEmail, name: partner.nom }],
-      subject: 'Votre espace partenaire Terre de Mars vous attend',
-      headers: { 'X-Mailin-Tag': 'portail-partenaire', 'X-Mailin-Track': '0', 'X-Mailin-TrackLinks': '0' },
-      htmlContent,
-      replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
-    };
-    await brevoService.brevoSendEmail(payload);
+    // Supporter un email unique (string) ou plusieurs (array)
+    const emailList = Array.isArray(targetEmail) ? targetEmail : [targetEmail];
+    for (const email of emailList) {
+      const payload = {
+        sender: brevoService.SENDER,
+        to: [{ email, name: partner.nom }],
+        subject: 'Votre espace partenaire Terre de Mars vous attend',
+        headers: { 'X-Mailin-Tag': 'portail-partenaire', 'X-Mailin-Track': '0', 'X-Mailin-TrackLinks': '0' },
+        htmlContent,
+        replyTo: { email: brevoService.SENDER.email, name: brevoService.SENDER.name },
+      };
+      await brevoService.brevoSendEmail(payload);
+    }
   }
 
   // Renvoyer l'email d'accès portail (sans changer le mot de passe)
@@ -556,12 +560,13 @@ module.exports = (db) => {
       const partner = db.prepare('SELECT id, nom, email, password_plain FROM vf_partners WHERE id = ?').get(req.params.id);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
       if (!partner.password_plain) return res.status(400).json({ erreur: 'Aucun mot de passe configuré pour ce partenaire' });
-      const { emailTo } = req.body || {};
-      const targetEmail = emailTo || partner.email;
-      if (!targetEmail) return res.status(400).json({ erreur: 'Aucun email configuré pour ce partenaire' });
+      const { emailTo, emailsTo } = req.body || {};
+      // Supporter le nouveau format (array) et l'ancien (string)
+      const targetEmails = emailsTo || (emailTo ? [emailTo] : (partner.email ? [partner.email] : []));
+      if (targetEmails.length === 0) return res.status(400).json({ erreur: 'Aucun email configuré pour ce partenaire' });
 
-      await envoyerEmailAccesPortail(partner, partner.password_plain, targetEmail);
-      res.json({ ok: true, message: `Email renvoyé à ${targetEmail}` });
+      await envoyerEmailAccesPortail(partner, partner.password_plain, targetEmails);
+      res.json({ ok: true, message: `Email renvoyé à ${targetEmails.join(', ')}`, emailsSentCount: targetEmails.length });
     } catch (e) {
       logger.error(`Erreur renvoi email accès portail ${req.params.id}: ${e.message}`);
       res.status(500).json({ erreur: e.message });
@@ -580,13 +585,16 @@ module.exports = (db) => {
       db.prepare('UPDATE vf_partners SET password_hash = ?, password_plain = ? WHERE id = ?').run(hash, plainPassword, partner.id);
 
       // Envoyer l'email si demandé
-      const { sendEmail, emailTo } = req.body || {};
+      const { sendEmail, emailTo, emailsTo } = req.body || {};
       let emailSent = false;
-      const targetEmail = emailTo || partner.email;
-      if (sendEmail && targetEmail) {
+      let emailsSentCount = 0;
+      // Supporter le nouveau format (array) et l'ancien (string)
+      const targetEmails = emailsTo || (emailTo ? [emailTo] : (partner.email ? [partner.email] : []));
+      if (sendEmail && targetEmails.length > 0) {
         try {
-          await envoyerEmailAccesPortail(partner, plainPassword, targetEmail);
+          await envoyerEmailAccesPortail(partner, plainPassword, targetEmails);
           emailSent = true;
+          emailsSentCount = targetEmails.length;
         } catch (emailErr) {
           logger.error(`Erreur envoi email mot de passe partenaire ${partner.nom}: ${emailErr.message}`);
         }
@@ -596,7 +604,8 @@ module.exports = (db) => {
         ok: true,
         password: plainPassword,
         emailSent,
-        message: `Mot de passe généré pour ${partner.nom}.` + (emailSent ? ' Email envoyé.' : ' ⚠️ Email non envoyé.'),
+        emailsSentCount,
+        message: `Mot de passe généré pour ${partner.nom}.` + (emailSent ? ` Email envoyé à ${targetEmails.join(', ')}.` : ' ⚠️ Email non envoyé.'),
       });
     } catch (e) {
       res.status(500).json({ erreur: e.message });
