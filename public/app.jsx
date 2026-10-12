@@ -2831,6 +2831,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
   const [filterCampaign, setFilterCampaign] = useState(new Set());
   const [filterTag, setFilterTag] = useState(new Set());
   const [filterSource, setFilterSource] = useState(new Set());
+  const [filterDernierEmail, setFilterDernierEmail] = useState(""); // nombre de jours minimum depuis dernier email
   const [openFilterDropdown, setOpenFilterDropdown] = useState(null);
   const [sortBy, setSortBy] = useState("recent"); // "recent"|"score"|"nom"
   const [sortColumn, setSortColumn] = useState(null); // colonne active pour tri
@@ -3012,7 +3013,14 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     const matchCampaign = filterCampaign.size === 0 || filterCampaign.has(l.campaign);
     const matchTag = filterTag.size === 0 || (l.tags || []).some(t => { const prefix = t.split(':')[0]?.trim(); return filterTag.has(prefix); });
     const matchSource = filterSource.size === 0 || filterSource.has(l.source);
-    return matchSearch && matchStatut && matchSegment && matchVille && matchLangue && matchCampaign && matchTag && matchSource;
+    const matchDernierEmail = !filterDernierEmail || (() => {
+      const jours = parseInt(filterDernierEmail, 10);
+      if (isNaN(jours) || jours <= 0) return true;
+      if (!l.dernier_email_at) return true; // jamais contacté = match
+      const diff = (Date.now() - new Date(l.dernier_email_at).getTime()) / (1000 * 60 * 60 * 24);
+      return diff >= jours;
+    })();
+    return matchSearch && matchStatut && matchSegment && matchVille && matchLangue && matchCampaign && matchTag && matchSource && matchDernierEmail;
   }).sort((a, b) => {
     // Tri par colonne (prioritaire)
     if (sortColumn) {
@@ -3053,7 +3061,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
     if (sortBy === "score") return (b.score||0) - (a.score||0);
     if (sortBy === "nom") return `${a.nom} ${a.prenom}`.localeCompare(`${b.nom} ${b.prenom}`);
     return 0; // recent = ordre API
-  }), [leadsNorm, debouncedSearch, filterStatut, filterSegment, filterVille, filterLangue, filterCampaign, filterTag, filterSource, sortColumn, sortDirection, sortBy]);
+  }), [leadsNorm, debouncedSearch, filterStatut, filterSegment, filterVille, filterLangue, filterCampaign, filterTag, filterSource, filterDernierEmail, sortColumn, sortDirection, sortBy]);
 
   const totalPages = Math.max(1, Math.ceil(filtered.length / pageSize));
   const paginated = filtered.slice((page - 1) * pageSize, page * pageSize);
@@ -3219,13 +3227,28 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
               )}
             </div>
           ))}
+          <div className="relative flex items-center gap-1">
+            <label className={`border rounded-lg px-2.5 py-1.5 md:py-1 text-xs font-medium flex items-center gap-1.5 ${filterDernierEmail ? "border-blue-400 bg-blue-50 text-blue-700" : "border-slate-200 text-slate-600 bg-white"}`}>
+              Dernier email &ge;
+              <input
+                type="number" min="1" value={filterDernierEmail}
+                onChange={e => { setFilterDernierEmail(e.target.value); setPage(1); }}
+                placeholder="j"
+                className="w-10 bg-transparent border-none outline-none text-center text-xs font-semibold [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+              />
+              j
+              {filterDernierEmail && (
+                <button onClick={() => setFilterDernierEmail("")} className="text-blue-400 hover:text-red-500 ml-0.5">&times;</button>
+              )}
+            </label>
+          </div>
           <select value={sortBy} onChange={e => setSortBy(e.target.value)} className="border border-slate-200 rounded-lg px-2.5 py-1.5 md:py-1 text-xs text-slate-600 focus:outline-none bg-white">
             <option value="recent">Plus récents</option>
             <option value="score">Score ↓</option>
             <option value="nom">Nom A→Z</option>
           </select>
           {/* Reset all filters */}
-          {(filterStatut.size > 0 || filterSegment.size > 0 || filterVille.size > 0 || filterLangue.size > 0 || filterCampaign.size > 0 || filterTag.size > 0 || filterSource.size > 0 || search) && (
+          {(filterStatut.size > 0 || filterSegment.size > 0 || filterVille.size > 0 || filterLangue.size > 0 || filterCampaign.size > 0 || filterTag.size > 0 || filterSource.size > 0 || filterDernierEmail || search) && (
             <button
               onClick={() => {
                 setFilterStatut(new Set());
@@ -3235,6 +3258,7 @@ const VueLeads = ({ leads, sequences, onAdd, onLaunch, onRefresh, showToast }) =
                 setFilterCampaign(new Set());
                 setFilterTag(new Set());
                 setFilterSource(new Set());
+                setFilterDernierEmail("");
                 setSearch("");
                 setOpenFilterDropdown(null);
               }}
