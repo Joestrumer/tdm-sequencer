@@ -365,14 +365,11 @@ module.exports = (db) => {
           total_price_gross: totalPriceGross.toFixed(2),
         };
 
-        // Nom : pour les factures (vat), laisser VF utiliser le nom via product_id
-        // Pour les proforma, toujours fournir name (VF l'exige pour ce type de document)
         if (vfProduct.productId) {
           position.product_id = vfProduct.productId;
         }
-        if (!vfProduct.productId || isProforma) {
-          position.name = vfProduct.productName || p.nom || vfProduct.ref || ref;
-        }
+        // Toujours fournir name — VF l'exige même avec product_id
+        position.name = vfProduct.productName || p.nom || vfProduct.ref || ref;
         if (discount > 0) position.discount_percent = discount;
 
         positions.push(position);
@@ -435,9 +432,8 @@ module.exports = (db) => {
         if (vfProduct.productId) {
           fpPosition.product_id = vfProduct.productId;
         }
-        if (!vfProduct.productId || isProforma) {
-          fpPosition.name = vfProduct.productName || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION");
-        }
+        // Toujours fournir name — VF l'exige même avec product_id
+        fpPosition.name = vfProduct.productName || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION");
         if (fi.discount > 0) { fpPosition.discount_percent = fi.discount; hasDiscount = true; }
         positions.push(fpPosition);
         fraisPort.push({ ref: fi.ref, nom: fpPosition.name || (fi.ref === 'FP' ? 'FRAIS DE PREPARATION' : "FRAIS D'EXPEDITION"), prix_ht: fi.montant, quantite: 1, tva: fi.tva, discount: fi.discount || 0 });
