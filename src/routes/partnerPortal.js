@@ -282,11 +282,39 @@ module.exports = (db) => {
       const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(req.partner.effectiveId);
       if (!partner) return res.status(404).json({ erreur: 'Partenaire introuvable' });
 
-      // Comparer chaque champ soumis avec la valeur actuelle
+      // Construire les fallbacks identiques au frontend (livraison ← facturation si vide)
+      const contactParts = (partner.contact_nom || '').trim().split(/\s+/);
+      const defaultPrenom = contactParts.length > 1 ? contactParts.slice(0, -1).join(' ') : contactParts[0] || '';
+      const defaultNom = contactParts.length > 1 ? contactParts[contactParts.length - 1] : '';
+      let fbRue = '', fbCp = '', fbVille = '';
+      if (!partner.facturation_rue && !partner.facturation_code_postal && !partner.facturation_ville && partner.adresse) {
+        const pts = partner.adresse.split(',').map(s => s.trim());
+        if (pts.length >= 3) { fbRue = pts[0]; fbCp = pts[1]; fbVille = pts[2]; }
+        else if (pts.length === 2) { fbRue = pts[0]; fbVille = pts[1]; }
+        else { fbRue = pts[0]; }
+      }
+      const fRue = partner.facturation_rue || fbRue;
+      const fCp = partner.facturation_code_postal || fbCp;
+      const fVille = partner.facturation_ville || fbVille;
+      const fPays = partner.facturation_pays || '';
+      const fallbacks = {
+        livraison_prenom: partner.livraison_prenom || defaultPrenom,
+        livraison_nom: partner.livraison_nom || defaultNom,
+        livraison_rue: partner.livraison_rue || fRue,
+        livraison_code_postal: partner.livraison_code_postal || fCp,
+        livraison_ville: partner.livraison_ville || fVille,
+        livraison_pays: partner.livraison_pays || fPays,
+        livraison_telephone: partner.livraison_telephone || partner.telephone || '',
+        livraison_portable: partner.livraison_portable || partner.facturation_portable || '',
+        livraison_email: partner.livraison_email || partner.email || '',
+        facturation_email: partner.facturation_email || partner.email || '',
+      };
+
+      // Comparer chaque champ soumis avec la valeur visible par le partenaire (avec fallbacks)
       const changes = {};
       for (const key of allowed) {
         if (req.body[key] !== undefined) {
-          const ancien = partner[key] || '';
+          const ancien = (key in fallbacks) ? (fallbacks[key] || '') : (partner[key] || '');
           const nouveau = req.body[key] || '';
           if (ancien !== nouveau) {
             changes[key] = { ancien, nouveau };
