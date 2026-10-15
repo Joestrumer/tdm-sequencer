@@ -1562,7 +1562,49 @@ module.exports = (db) => {
   router.get('/partners/:id/profile-changes', (req, res) => {
     try {
       const row = db.prepare("SELECT * FROM partner_profile_changes WHERE partner_id = ? AND statut = 'en_attente' ORDER BY created_at DESC LIMIT 1").get(req.params.id);
-      res.json(row || null);
+      if (!row) return res.json(null);
+
+      // Enrichir les "ancien" vides avec les fallbacks (même logique que le portail partenaire)
+      const partner = db.prepare('SELECT * FROM vf_partners WHERE id = ?').get(req.params.id);
+      if (partner) {
+        const changes = JSON.parse(row.changes);
+        const cp = (partner.contact_nom || '').trim().split(/\s+/);
+        const defPrenom = cp.length > 1 ? cp.slice(0, -1).join(' ') : cp[0] || '';
+        const defNom = cp.length > 1 ? cp[cp.length - 1] : '';
+        let fbRue = '', fbCp = '', fbVille = '';
+        if (!partner.facturation_rue && !partner.facturation_code_postal && !partner.facturation_ville && partner.adresse) {
+          const pts = partner.adresse.split(',').map(s => s.trim());
+          if (pts.length >= 3) { fbRue = pts[0]; fbCp = pts[1]; fbVille = pts[2]; }
+          else if (pts.length === 2) { fbRue = pts[0]; fbVille = pts[1]; }
+          else { fbRue = pts[0]; }
+        }
+        const fRue = partner.facturation_rue || fbRue;
+        const fCp = partner.facturation_code_postal || fbCp;
+        const fVille = partner.facturation_ville || fbVille;
+        const fPays = partner.facturation_pays || '';
+        const fallbacks = {
+          livraison_prenom: partner.livraison_prenom || defPrenom,
+          livraison_nom: partner.livraison_nom || defNom,
+          livraison_rue: partner.livraison_rue || fRue,
+          livraison_code_postal: partner.livraison_code_postal || fCp,
+          livraison_ville: partner.livraison_ville || fVille,
+          livraison_pays: partner.livraison_pays || fPays,
+          livraison_telephone: partner.livraison_telephone || partner.telephone || '',
+          livraison_portable: partner.livraison_portable || partner.facturation_portable || '',
+          livraison_email: partner.livraison_email || partner.email || '',
+          facturation_email: partner.facturation_email || partner.email || '',
+        };
+        let enriched = false;
+        for (const [key, val] of Object.entries(changes)) {
+          if (!val.ancien && fallbacks[key]) {
+            val.ancien = fallbacks[key];
+            enriched = true;
+          }
+        }
+        if (enriched) row.changes = JSON.stringify(changes);
+      }
+
+      res.json(row);
     } catch (e) {
       res.status(500).json({ erreur: e.message });
     }
